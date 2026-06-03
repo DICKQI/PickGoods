@@ -1,0 +1,204 @@
+/* Element Plus 主题定制 - 香槟镭射风格 */
+
+/* 主色 */
+:root {
+  --el-color-primary: #D4AF37;
+  --el-color-primary-light-3: #EACDA3;
+  --el-color-primary-light-5: #F0D9B8;
+  --el-color-primary-light-7: #F5E6CC;
+  --el-color-primary-light-8: #F8EED9;
+  --el-color-primary-light-9: #FBF5E6;
+  --el-color-primary-dark-2: #B8941F;
+}
+
+/* 成功色 */
+:root {
+  --el-color-success: #67C23A;
+}
+
+/* 警告色 */
+:root {
+  --el-color-warning: #E6A23C;
+}
+
+/* 危险色 */
+:root {
+  --el-color-danger: #F56C6C;
+}
+
+/* 信息色 */
+:root {
+  --el-color-info: #909399;
+}
+
+/* 按钮样式 */
+.el-button--primary {
+  background-color: var(--accent-purple);
+  border-color: var(--accent-purple);
+}
+
+.el-button--primary:hover {
+  background-color: var(--accent-purple-dark);
+  border-color: var(--accent-purple-dark);
+}
+
+.el-button--primary:focus {
+  background-color: var(--accent-purple-dark);
+  border-color: var(--accent-purple-dark);
+}
+
+/* 输入框焦点颜色 */
+.el-input__wrapper.is-focus {
+  box-shadow: 0 0 0 1px var(--primary-gold) inset;
+}
+
+.el-select .el-input.is-focus .el-input__wrapper {
+  box-shadow: 0 0 0 1px var(--primary-gold) inset;
+}
+
+/* 卡片边框 */
+.el-card {
+  border: 1px solid var(--border-color);
+}
+
+.el-card__header {
+  border-bottom: 1px solid var(--border-color);
+  color: var(--primary-gold);
+  font-weight: bold;
+}
+
+/* 菜单激活色 */
+.el-menu-item.is-active {
+  color: var(--primary-gold);
+}
+
+/* 标签页激活色 */
+.el-tabs__active-bar {
+  background-color: var(--primary-gold);
+}
+
+.el-tabs__item.is-active {
+  color: var(--primary-gold);
+}
+
+/* 分页激活色 */
+.el-pagination.is-background .el-pager li.is-active {
+  background-color: var(--primary-gold);
+  color: white;
+}
+
+/* 抽屉标题 */
+.el-drawer__title {
+  color: var(--primary-gold);
+  font-weight: bold;
+}
+
+/* 树节点选中 */
+.el-tree-node__content:hover {
+  background-color: var(--secondary-gray);
+}
+
+.el-tree-node.is-current > .el-tree-node__content {
+  background-color: rgba(212, 175, 55, 0.1);
+}
+
+/* ========================================= */
+/* Toast (ElMessage) 美化与适配 - 精致胶囊风 */
+/* ========================================= */
+
+.el-message {
+  /* 核心改动：宽度自适应，不再强制撑满 */
+  min-width: unset !important;
+  width: fit-content !important;
+  max-width: 85vw !important; /* 移动端防止过宽 */
+  
+  /* 布局调整：内容居中 */
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  
+  /* 间距与形状：更紧凑的胶囊形 */
+  padding: 10px 24px !important;
+  border-radius: 50px !important; /* 全圆角/胶囊状 */
+  border-width: 1px !important;
+  
+  /* 阴影与背景：保持高级感，但更轻盈 */
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 
+              0 0 10px rgba(212, 175, 55, 0.1) !important;
+  
+  background-color: rgba(255, 255, 255, 0.9) !important;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  
+  /* 字体优化 */
+  font-weight: 500;
+  font-size: 14px;
+}
+
+/* 确保文字不换行（短语时），长文自动换行 */
+.el-message .el-message__content {
+  text-align: center;
+  word-break: break-word;
+}
+
+/* 图标大小与间距微调 */
+.el-message .el-message__icon {
+  font-size: 16px !important;
+  margin-right: 8px !important;
+}
+
+/* 关闭按钮（如果有） */
+.el-message .el-message__closeBtn {
+  margin-left: 12px !important;
+}
+
+/* --- 针对不同类型的配色优化 (保持香槟风格) --- */
+
+/* 1. 普通信息 (Info) */
+.el-message--info {
+  border-color: rgba(212, 175, 55, 0.3) !important;
+  color: #303133 !important;
+}
+.el-message--info .el-message__icon {
+  color: var(--el-color-primary) !important;
+}
+
+/* 2. 成功 (Success) - 保持淡雅 */
+.el-message--success {
+  background: linear-gradient(to bottom, #f0f9eb, #ffffff) !important;
+  border-color: #e1f3d8 !important;
+  color: #67c23a !important;
+}
+
+/* 3. 警告 (Warning) */
+.el-message--warning {
+  background: linear-gradient(to bottom, #fdf6ec, #ffffff) !important;
+  border-color: #faecd8 !important;
+  color: #e6a23c !important;
+}
+
+/* 4. 错误 (Error) */
+.el-message--error {
+  background: linear-gradient(to bottom, #fef0f0, #ffffff) !important;
+  border-color: #fde2e2 !important;
+  color: #f56c6c !important;
+}
+
+/* --- 位置与响应式适配 --- */
+
+/* 默认 PC 端 */
+.el-message {
+  top: 30px !important;
+}
+
+/* 移动端适配 */
+@media screen and (max-width: 768px) {
+  .el-message {
+    /* 移动端顶部避让 */
+    top: calc(70px + env(safe-area-inset-top, 0px)) !important;
+    
+    /* 移动端稍微调小一点内边距，显得更精致 */
+    padding: 8px 20px !important;
+  }
+}
+

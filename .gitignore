@@ -1,0 +1,149 @@
+# ==================== Python (backend) ====================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+pip-wheel-metadata/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+/media
+/staticfiles
+/static
+
+# 虚拟环境
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+.venv
+
+# 测试和覆盖率
+.coverage
+.coverage.*
+.cache
+.pytest_cache/
+.tox/
+htmlcov/
+*.cover
+.hypothesis/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# 迁移文件（可选）
+# */migrations/*.py
+# !*/migrations/__init__.py
+
+# ==================== Node.js (frontend) ====================
+node_modules
+.DS_Store
+dist-ssr
+coverage
+*.local
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+*.tsbuildinfo
+.eslintcache
+
+# Vite
+.vite
+vite.config.*.timestamp-*
+
+# Build tools
+.turbo
+
+# Package managers
+.pnpm-store
+.yarn
+.pnp.*
+
+# Cypress
+/cypress/videos/
+/cypress/screenshots/
+
+# Vitest
+__screenshots__/
+.vitest
+
+# Capacitor
+android/
+
+# ==================== Common ====================
+# IDE
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+*.swo
+*~
+.project
+.pydevproject
+.settings/
+
+# OS generated
+Thumbs.db
+Desktop.ini
+ehthumbs.db
+$RECYCLE.BIN/
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+.*.sw?
+
+# AI tools
+.trae/
+.claude/
+
+# Deploy scripts (local credentials)
+deploy.cjs
