@@ -8,6 +8,7 @@ export const useGuziStore = defineStore('guzi', () => {
   // 状态
   const guziList = ref<GoodsListItem[]>([])
   const loading = ref(false)
+  const loadingMore = ref(false)
   const error = ref<string | null>(null)
   const filters = ref<GoodsSearchParams>({})
   const viewMode = ref<'standard' | 'similar'>('standard')
@@ -29,11 +30,19 @@ export const useGuziStore = defineStore('guzi', () => {
       .filter((goods): goods is GoodsListItem => Boolean(goods)),
   )
 
-  // 内部搜索函数（不带防抖）
-  const _searchGuzi = async (params?: GoodsSearchParams, keepPage?: boolean) => {
-    if (loading.value) return
+  const hasMore = computed(() => {
+    if (viewMode.value !== 'standard') return false
+    return pagination.value.next !== null
+  })
 
-    loading.value = true
+  // 内部搜索函数（不带防抖）
+  const _searchGuzi = async (params?: GoodsSearchParams, keepPage?: boolean, append?: boolean) => {
+    if (loading.value) return
+    if (!append && loadingMore.value) return
+
+    if (!append) {
+      loading.value = true
+    }
     error.value = null
 
     // 检查是否有除 page 之外的筛选条件变化
@@ -109,7 +118,11 @@ export const useGuziStore = defineStore('guzi', () => {
       }
 
       // 更新数据
-      guziList.value = results
+      if (append) {
+        guziList.value = [...guziList.value, ...results]
+      } else {
+        guziList.value = results
+      }
       results.forEach((goods) => {
         if (selectedGoodsById.value[goods.id]) {
           selectedGoodsById.value[goods.id] = goods
@@ -129,9 +142,13 @@ export const useGuziStore = defineStore('guzi', () => {
       }
     } catch (err: any) {
       error.value = err.message || '搜索失败'
-      guziList.value = []
+      if (!append) {
+        guziList.value = []
+      }
     } finally {
-      loading.value = false
+      if (!append) {
+        loading.value = false
+      }
     }
   }
 
@@ -167,6 +184,17 @@ export const useGuziStore = defineStore('guzi', () => {
     pagination.value.page_size = size
     pagination.value.page = 1
     _searchGuzi()
+  }
+
+  async function loadMore() {
+    if (loading.value || loadingMore.value || !hasMore.value) return
+    loadingMore.value = true
+    try {
+      pagination.value.page += 1
+      await _searchGuzi(undefined, true, true)
+    } finally {
+      loadingMore.value = false
+    }
   }
 
   // 立即搜索（用于首次加载）
@@ -219,6 +247,7 @@ export const useGuziStore = defineStore('guzi', () => {
   return {
     guziList,
     loading,
+    loadingMore,
     error,
     filters,
     viewMode,
@@ -228,12 +257,14 @@ export const useGuziStore = defineStore('guzi', () => {
     selectedGoodsById,
     selectedGoodsCount,
     selectedGoodsList,
+    hasMore,
     searchGuzi,
     searchGuziImmediate,
     fetchGoodsDetail,
     resetFilters,
     setPage,
     setPageSize,
+    loadMore,
     setViewMode,
     enterSelectionMode,
     exitSelectionMode,

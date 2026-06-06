@@ -57,8 +57,8 @@
             <el-empty description="暂无谷子数据" />
           </div>
 
-          <!-- 商品列表状态 - 绑定 currentPage 作为 key，强制分页时触发动画 -->
-          <div v-else class="goods-grid" :key="currentPage">
+          <!-- 商品列表状态 -->
+          <div v-else class="goods-grid" key="grid">
             <GoodsCard
               v-for="goods in guziStore.guziList"
               :key="goods.id"
@@ -74,21 +74,22 @@
         </Transition>
       </div>
 
-      <!-- 分页 - 悬浮固定在底部（相似视图不显示分页） -->
+      <!-- 哨兵元素：滚动到此处触发加载更多 -->
+      <div v-if="guziStore.guziList.length > 0" ref="sentinelRef" class="scroll-sentinel"></div>
+      <!-- 加载更多指示器 -->
+      <div v-if="guziStore.loadingMore" class="loading-more">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>加载中...</span>
+      </div>
+      <!-- 已加载全部 -->
+      <div v-else-if="!guziStore.hasMore && guziStore.guziList.length > 0" class="no-more">
+        已加载全部 {{ guziStore.pagination.count }} 项
+      </div>
+      <!-- 每页数量选择器 -->
       <div
-        v-if="guziStore.pagination.count > 0 && guziStore.viewMode === 'standard'"
-        class="pagination-container"
-        :class="{ 'pagination-visible': showPagination || !isMobile }"
+        v-if="guziStore.guziList.length > 0 && guziStore.viewMode === 'standard'"
+        class="page-size-float"
       >
-        <div class="pagination-wrapper">
-          <el-pagination
-            v-model:current-page="currentPage"
-            :page-size="guziStore.pagination.page_size"
-            :total="guziStore.pagination.count"
-            layout="prev, pager, next"
-            @current-change="handlePageChange"
-          />
-        </div>
         <div class="page-size-wrapper">
           <el-select
             v-model="pageSize"
@@ -174,7 +175,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Delete, Edit, Top } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useShowcaseStore } from '@/stores/showcase'
 import SearchBar from '@/components/SearchBar.vue'
@@ -207,24 +208,14 @@ const moveLoading = ref(false)
 const showcaseRefreshing = ref(false)
 const statsRefreshing = ref(false)
 
-// 移动端分页器显示控制
+// 移动端检测
 const isMobile = ref(window.innerWidth < 768)
-const showPagination = ref(false)
-
-const currentPage = computed({
-  get: () => guziStore.pagination.page,
-  set: (val) => guziStore.setPage(val),
-})
+const sentinelRef = ref<HTMLElement | null>(null)
+let sentinelObserver: IntersectionObserver | null = null
 
 const pageSize = computed({
   get: () => guziStore.pagination.page_size,
   set: (val) => guziStore.setPageSize(val),
-})
-
-const totalPages = computed(() => {
-  const size = guziStore.pagination.page_size || 1
-  const total = guziStore.pagination.count || 0
-  return size > 0 ? Math.ceil(total / size) || 1 : 1
 })
 
 const contextMenuIndex = computed(() => {
@@ -232,17 +223,14 @@ const contextMenuIndex = computed(() => {
   return guziStore.guziList.findIndex(item => item.id === contextMenuGoods.value?.id)
 })
 
-const isFirstItemFirstPage = computed(() => {
-  return contextMenuGoods.value && guziStore.pagination.page === 1 && contextMenuIndex.value === 0
+const isFirstItemInList = computed(() => {
+  return contextMenuGoods.value && contextMenuIndex.value === 0
 })
 
 const isLastItemLastPage = computed(() => {
   if (!contextMenuGoods.value) return false
   const idx = contextMenuIndex.value
-  return (
-    idx === guziStore.guziList.length - 1 &&
-    guziStore.pagination.page >= totalPages.value
-  )
+  return idx === guziStore.guziList.length - 1 && !guziStore.hasMore
 })
 
 const isFirstItemInCurrentPage = computed(() => {
@@ -250,7 +238,7 @@ const isFirstItemInCurrentPage = computed(() => {
 })
 
 const moveDisabledToTop = computed(() => moveLoading.value || isFirstItemInCurrentPage.value)
-const moveDisabledForward = computed(() => moveLoading.value || isFirstItemFirstPage.value)
+const moveDisabledForward = computed(() => moveLoading.value || isFirstItemInList.value)
 const moveDisabledBackward = computed(() => moveLoading.value || isLastItemLastPage.value)
 
 const handleCardClick = (goods: GoodsListItem) => {
@@ -316,11 +304,6 @@ const handleSelectionExit = async () => {
   }
 
   guziStore.exitSelectionMode(true)
-}
-
-const handlePageChange = (page: number) => {
-  guziStore.setPage(page)
-  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const handleSizeChange = () => {
@@ -391,8 +374,8 @@ const handleMove = async (direction: 'forward' | 'backward') => {
     return
   }
 
-  // 前移：保护第一页第一个
-  if (direction === 'forward' && isFirstItemFirstPage.value) {
+  // 前移：保护列表第一项
+  if (direction === 'forward' && isFirstItemInList.value) {
     ElMessage.info('第一页最前面的卡片无法再前移')
     return
   }
@@ -464,8 +447,8 @@ const handleMove = async (direction: 'forward' | 'backward') => {
 
 const handleMoveForward = () => {
   if (moveDisabledForward.value) {
-    if (isFirstItemFirstPage.value) {
-      ElMessage.info('第一页最前面的卡片无法再前移')
+    if (isFirstItemInList.value) {
+      ElMessage.info('已经是列表第一项，无法前移')
     }
     return
   }
@@ -486,7 +469,7 @@ const handleMoveToTop = async () => {
   if (!contextMenuGoods.value) return
   if (moveLoading.value) return
   if (isFirstItemInCurrentPage.value) {
-    ElMessage.info('当前商品已经是本页第一项')
+    ElMessage.info('当前商品已经是列表第一项')
     return
   }
 
@@ -522,33 +505,6 @@ const handleMoveToTop = async () => {
     } finally {
       moveLoading.value = false
     }
-  }
-}
-
-// 检测是否滚动到底部
-const checkScrollBottom = () => {
-  if (!isMobile.value) {
-    showPagination.value = true
-    return
-  }
-
-  const scrollTop = window.pageYOffset || document.documentElement.scrollTop
-  const windowHeight = window.innerHeight
-  const documentHeight = document.documentElement.scrollHeight
-
-  // 当距离底部小于等于 100px 时显示分页器
-  const threshold = 100
-  const distanceToBottom = documentHeight - (scrollTop + windowHeight)
-
-  showPagination.value = distanceToBottom <= threshold
-}
-
-const handleResize = () => {
-  isMobile.value = window.innerWidth < 768
-  if (!isMobile.value) {
-    showPagination.value = true
-  } else {
-    checkScrollBottom()
   }
 }
 
@@ -591,6 +547,10 @@ const handleShowcaseRefresh = async () => {
   }
 }
 
+const handleResize = () => {
+  isMobile.value = window.innerWidth < 768
+}
+
 onMounted(() => {
   // 初始化加载数据（立即执行，不使用防抖）
   guziStore.searchGuziImmediate()
@@ -598,18 +558,26 @@ onMounted(() => {
   // 将当前 Tab 同步给布局层（用于控制右下角 + 号显示）
   window.dispatchEvent(new CustomEvent('cloud-showcase:tab-changed', { detail: { tab: activeTab.value } }))
 
-  // 初始化分页器显示状态
-  if (isMobile.value) {
-    checkScrollBottom()
-  } else {
-    showPagination.value = true
-  }
+  // 设置无限滚动哨兵观察器
+  sentinelObserver = new IntersectionObserver((entries) => {
+    if (entries[0]?.isIntersecting) {
+      guziStore.loadMore()
+    }
+  }, {
+    rootMargin: '200px',
+  })
 
-  // 添加滚动监听
-  window.addEventListener('scroll', checkScrollBottom, { passive: true })
+  // 监听哨兵元素挂载
+  watch(sentinelRef, (el) => {
+    if (el && sentinelObserver) {
+      sentinelObserver.unobserve(el)
+      sentinelObserver.observe(el)
+    }
+  }, { immediate: true })
+
   window.addEventListener('resize', handleResize)
 
-  // 监听右下角“刷新”按钮事件，按当前 Tab 执行对应刷新
+  // 监听右下角"刷新"按钮事件，按当前 Tab 执行对应刷新
   window.addEventListener('cloud-showcase:refresh', handleShowcaseRefresh as EventListener)
   window.addEventListener('cloud-showcase:selection-enter', handleSelectionEnter as EventListener)
   window.addEventListener('cloud-showcase:selection-confirm', handleSelectionConfirm as EventListener)
@@ -617,7 +585,9 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('scroll', checkScrollBottom)
+  if (sentinelObserver) {
+    sentinelObserver.disconnect()
+  }
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('cloud-showcase:refresh', handleShowcaseRefresh as EventListener)
   window.removeEventListener('cloud-showcase:selection-enter', handleSelectionEnter as EventListener)
@@ -789,38 +759,37 @@ watch(
   }
 }
 
-/* 悬浮分页器容器 - 固定在底部 */
-.pagination-container {
-  position: fixed;
-  bottom: 0;
-  left: 0;
-  right: 0;
+/* 哨兵元素：无限滚动触发点 */
+.scroll-sentinel {
+  height: 1px;
+  width: 100%;
+}
+
+/* 加载更多指示器 */
+.loading-more {
   display: flex;
-  justify-content: center;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px 0;
+  color: var(--text-secondary, #909399);
+  font-size: 14px;
+}
+
+/* 已加载全部 */
+.no-more {
+  text-align: center;
+  padding: 24px 0;
+  color: var(--text-lighter, #c0c4cc);
+  font-size: 13px;
+}
+
+/* 每页数量选择器 - 悬浮固定在右下角 */
+.page-size-float {
+  position: fixed;
+  bottom: 24px;
+  right: 90px;
   z-index: 100;
-  pointer-events: none; /* 让容器本身不拦截点击 */
-}
-
-/* 悬浮卡片包装器 */
-.pagination-wrapper {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 8px 12px;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1), 0 -2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  pointer-events: auto; /* 恢复分页器本身的点击事件 */
-  transition: all var(--transition-normal);
-  display: inline-flex; /* 让宽度根据内容自适应 */
-}
-
-.pagination-wrapper:hover {
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.12), 0 -4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
 }
 
 .page-size-wrapper {
@@ -835,6 +804,11 @@ watch(
   transition: all var(--transition-normal);
   display: inline-flex;
   align-items: center;
+}
+
+.page-size-wrapper:hover {
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.12), 0 -4px 12px rgba(0, 0, 0, 0.08);
+  transform: translateY(-2px);
 }
 
 .page-size-select {
@@ -870,31 +844,10 @@ watch(
   color: var(--text-dark);
 }
 
-.page-size-wrapper:hover {
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.12), 0 -4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
-}
-
 @media (max-width: 768px) {
-  .pagination-container {
-    padding: 10px 16px;
-    /* 在移动端，将分页器放在底部导航栏上方 */
-    bottom: calc(64px + env(safe-area-inset-bottom));
-    /* 默认隐藏，通过 transform 向下移动 */
-    transform: translateY(calc(100% + 20px));
-    opacity: 0;
-    transition: transform 0.3s ease, opacity 0.3s ease;
-  }
-
-  .pagination-container.pagination-visible {
-    transform: translateY(0);
-    opacity: 1;
-  }
-
-  .pagination-wrapper {
-    padding: 6px 10px;
-    border-radius: 12px;
-    /* 移除 width 设置，让分页器根据内容自适应宽度 */
+  .page-size-float {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    right: 70px;
   }
 
   .page-size-wrapper {
@@ -912,8 +865,8 @@ watch(
 
   /* 兼容不支持 safe-area-inset-bottom 的环境 */
   @supports not (bottom: env(safe-area-inset-bottom)) {
-    .pagination-container {
-      bottom: 64px;
+    .page-size-float {
+      bottom: 80px;
     }
   }
 }
@@ -977,32 +930,5 @@ watch(
 .context-menu-item-danger:hover {
   background-color: rgba(245, 108, 108, 0.1);
   color: #F56C6C;
-}
-
-:deep(.el-pagination) {
-  --el-pagination-button-color: var(--text-dark);
-  --el-pagination-hover-color: var(--primary-gold);
-  --el-pagination-active-color: var(--primary-gold);
-}
-
-/* 让分页器更紧凑 */
-:deep(.el-pagination .el-pager li),
-:deep(.el-pagination .btn-prev),
-:deep(.el-pagination .btn-next) {
-  min-width: 32px;
-  height: 32px;
-  line-height: 32px;
-  font-size: 14px;
-}
-
-@media (max-width: 768px) {
-  :deep(.el-pagination .el-pager li),
-  :deep(.el-pagination .btn-prev),
-  :deep(.el-pagination .btn-next) {
-    min-width: 28px;
-    height: 28px;
-    line-height: 28px;
-    font-size: 13px;
-  }
 }
 </style>
