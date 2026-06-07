@@ -77,6 +77,39 @@ _PRODUCT_TITLE_RE = re.compile(r'【[^】\n]{2,}(?:】|$)')
 _ASCII_NOISE_RE = re.compile(r'^[A-Za-z0-9\s:：._/\-]+$')
 
 
+def _clean_ocr_name(name: str) -> str:
+    """清理 OCR 文本中的括号、分隔符等噪音，提高子串匹配精度。"""
+    name = re.sub(r'[【】『』「」\[\]()（）]', ' ', name)
+    name = re.sub(r'[/／：:·]', ' ', name)
+    return ' '.join(name.split())
+
+
+def _compact_name(name: str) -> str:
+    """去除所有括号、分隔符和空格，用于 OCR 吞掉分隔符时的容错匹配。"""
+    return re.sub(r'[【】『』「」\[\]()（）/／：:·\s]', '', name)
+
+
+def _tokenize(text: str) -> list[str]:
+    """jieba 分词，返回长度 ≥2 的 token 列表。jieba 不可用时返回原文。"""
+    if _JIEBA_AVAILABLE and jieba is not None:
+        try:
+            tokens = list(jieba.cut(text))
+        except Exception:
+            return [text]
+        return [t.strip() for t in tokens if len(t.strip()) >= 2]
+    return [text]
+
+
+def _token_threshold(token: str) -> float:
+    """短 token 信息量低，需更严格阈值防误伤。"""
+    n = len(token)
+    if n <= 2:
+        return 0.80
+    if n == 3:
+        return 0.67
+    return 0.55
+
+
 def _decimal_to_string(value: str) -> str | None:
     try:
         return str(Decimal(value))
@@ -497,11 +530,14 @@ def parse_ocr_results(ocr_lines: list[str]) -> dict:
 def match_metadata(name: Optional[str], all_ips: list, all_characters: list,
                    all_categories: list) -> dict:
     """
-    对商品名称进行 jieba 分词后匹配 IP、角色、品类。
+    对商品名称进行多策略匹配 IP、角色、品类。
+
+    匹配优先级：子串包含（长名优先） → jieba 分词模糊 → 全文模糊兜底。
+    数据库名称/关键词更新后，缓存 60 秒自动刷新，无需重启。
 
     Args:
         name: 商品名称
-        all_ips: [(id, name), ...]
+        all_ips: [(id, name), ...]  包含 IP 名和 IPKeyword 值
         all_characters: [(id, name, ip_id, ip_name), ...]
         all_categories: [(id, name, path_name), ...]
 
@@ -517,72 +553,137 @@ def match_metadata(name: Optional[str], all_ips: list, all_characters: list,
     if not name:
         return result
 
-    # jieba 分词
-    if _JIEBA_AVAILABLE and jieba is not None:
-        tokens = list(jieba.cut(name))
-        tokens = [t.strip() for t in tokens if len(t.strip()) >= 2]
-    else:
-        tokens = [name]
-
+    cleaned = _clean_ocr_name(name)
+    compact = _compact_name(name)
+    tokens = _tokenize(name)
     if not tokens:
         tokens = [name]
 
-    # IP 匹配：优先全名匹配，再分词匹配
-    ip_matches = []
-    full_id, full_name, full_conf = _fuzzy_match(name, all_ips, threshold=0.55)
-    if full_id:
-        ip_matches.append((full_id, full_name, full_conf))
-    for token in tokens:
-        tid, tname, tconf = _fuzzy_match(token, all_ips, threshold=0.55)
-        if tid and tid not in {m[0] for m in ip_matches}:
-            ip_matches.append((tid, tname, tconf))
-    if ip_matches:
-        ip_matches.sort(key=lambda x: x[2], reverse=True)
-        best = ip_matches[0]
-        result['ip'] = {'id': best[0], 'name': best[1], 'confidence': best[2]}
+    # 来源优先级：子串 > 分词模糊 > 关键词 hint > 全文模糊
+    source_rank = {'substr': 0, 'fuzzy_token': 1, 'hint': 2, 'fuzzy_full': 3}
 
-    # 角色匹配：如果匹配到了 IP，优先从该 IP 下的角色中查找
+    # ═══════════════════════════════════════════════════════════
+    # 预计算所有候选名的清洗结果，避免循环内重复 regex
+    # 同时保留 compact 版本用于 OCR 吞掉分隔符时的容错匹配
+    # ═══════════════════════════════════════════════════════════
+    _ip_entries = [(ip_id, ip_name, _clean_ocr_name(ip_name), _compact_name(ip_name))
+                   for ip_id, ip_name in all_ips]
+    _ip_entries.sort(key=lambda x: len(x[2]), reverse=True)
+
+    _cat_entries = [(cid, cpath or cname, _clean_ocr_name(cpath or cname), _compact_name(cpath or cname))
+                     for cid, cname, cpath in all_categories]
+    _cat_entries.sort(key=lambda x: len(x[2]), reverse=True)
+
+    # ═══════════════════════════════════════════════════════════
+    # IP 匹配（单最佳候选）
+    # ═══════════════════════════════════════════════════════════
+
+    ip_candidates: list[dict] = []
+
+    # 1. 子串匹配（长名优先，clean + compact 双路容错）
+    for ip_id, ip_name, ip_cleaned, ip_compact in _ip_entries:
+        if len(ip_compact) >= 2 and (ip_cleaned in cleaned or ip_compact in compact):
+            ip_candidates.append({'id': ip_id, 'name': ip_name, 'confidence': 0.95, 'source': 'substr'})
+            break
+
+    # 2. jieba 分词 + 动态阈值模糊匹配
+    if not ip_candidates:
+        seen_ip_ids: set[int] = set()
+        for token in tokens:
+            threshold = _token_threshold(token)
+            tid, tname, tconf = _fuzzy_match(token, all_ips, threshold=threshold)
+            if tid and tid not in seen_ip_ids:
+                seen_ip_ids.add(tid)
+                ip_candidates.append({'id': tid, 'name': tname, 'confidence': tconf, 'source': 'fuzzy_token'})
+
+    # 3. 全文模糊兜底
+    if not ip_candidates:
+        tid, tname, tconf = _fuzzy_match(name, all_ips, threshold=0.55)
+        if tid:
+            ip_candidates.append({'id': tid, 'name': tname, 'confidence': tconf, 'source': 'fuzzy_full'})
+
+    if ip_candidates:
+        ip_candidates.sort(key=lambda x: (source_rank[x['source']], -len(x['name']), -x['confidence']))
+        best = ip_candidates[0]
+        result['ip'] = {'id': best['id'], 'name': best['name'], 'confidence': best['confidence']}
+
+    # ═══════════════════════════════════════════════════════════
+    # 角色匹配（多候选，统一评分后截断取前 3）
+    # ═══════════════════════════════════════════════════════════
+
     matched_ip_id = result['ip']['id'] if result['ip'] else None
-    char_candidates = all_characters
     if matched_ip_id:
-        char_candidates = [(cid, cname, cip_id, cip_name) for cid, cname, cip_id, cip_name in all_characters
-                           if cip_id == matched_ip_id]
-        if not char_candidates:
-            char_candidates = all_characters
+        scoped = [(cid, cname) for cid, cname, cip_id, _ in all_characters
+                  if cip_id == matched_ip_id]
+        if not scoped:
+            scoped = [(cid, cname) for cid, cname, *_ in all_characters]
+    else:
+        scoped = [(cid, cname) for cid, cname, *_ in all_characters]
 
-    char_list = [(cid, cname) for cid, cname, *_ in char_candidates]
-    char_found_ids = set()
+    _char_entries = [(cid, cname, _clean_ocr_name(cname), _compact_name(cname)) for cid, cname in scoped]
+    _char_entries.sort(key=lambda x: len(x[2]), reverse=True)
+
+    char_candidates: list[dict] = []
+
+    # 1. 子串匹配（clean + compact 双路容错）
+    for cid, cname, cname_cleaned, cname_compact in _char_entries:
+        if len(cname_compact) >= 2 and (cname_cleaned in cleaned or cname_compact in compact):
+            char_candidates.append({'id': cid, 'name': cname, 'confidence': 0.95, 'source': 'substr'})
+
+    # 2. jieba 分词 + 动态阈值模糊匹配
     for token in tokens:
-        cid, cname, cconf = _fuzzy_match(token, char_list, threshold=0.55)
-        if cid and cid not in char_found_ids:
-            char_found_ids.add(cid)
-            result['characters'].append({'id': cid, 'name': cname, 'confidence': cconf})
+        threshold = _token_threshold(token)
+        cid, cname, cconf = _fuzzy_match(token, scoped, threshold=threshold)
+        if cid:
+            char_candidates.append({'id': cid, 'name': cname, 'confidence': cconf, 'source': 'fuzzy_token'})
+
+    # 3. 全文模糊兜底
+    if not char_candidates:
+        cid, cname, cconf = _fuzzy_match(name, scoped, threshold=0.4)
+        if cid:
+            char_candidates.append({'id': cid, 'name': cname, 'confidence': cconf, 'source': 'fuzzy_full'})
+
+    # 统一排序 + 去重 + 截断（source 优先，再按候选名长度降序、置信度降序）
+    char_candidates.sort(key=lambda x: (source_rank[x['source']], -len(x['name']), -x['confidence']))
+    seen_char_ids: set[int] = set()
+    for entry in char_candidates:
+        if entry['id'] in seen_char_ids:
+            continue
+        seen_char_ids.add(entry['id'])
+        result['characters'].append({'id': entry['id'], 'name': entry['name'], 'confidence': entry['confidence']})
         if len(result['characters']) >= 3:
             break
 
-    # 全名兜底角色匹配
-    if not result['characters']:
-        cid, cname, cconf = _fuzzy_match(name, char_list, threshold=0.4)
-        if cid:
-            result['characters'].append({'id': cid, 'name': cname, 'confidence': cconf})
+    # ═══════════════════════════════════════════════════════════
+    # 品类匹配（单最佳候选）
+    # ═══════════════════════════════════════════════════════════
 
-    # 品类匹配：关键词匹配优先（长关键词优先），其次名称匹配
-    cat_match = None
-    for hint_text, hint_cat_name in _CATEGORY_HINTS:
-        if hint_text in name:
-            for cid, cname, cpath in all_categories:
-                if cname == hint_cat_name or (cpath and hint_cat_name in cpath):
-                    cat_match = {'id': cid, 'name': cpath or cname, 'confidence': 0.9}
-                    break
-        if cat_match:
+    cat_candidates: list[dict] = []
+
+    # 1. 子串匹配（clean + compact 双路容错）
+    for cid, cname, cat_cleaned, cat_compact in _cat_entries:
+        if len(cat_compact) >= 2 and (cat_cleaned in cleaned or cat_compact in compact):
+            cat_candidates.append({'id': cid, 'name': cname, 'confidence': 0.95, 'source': 'substr'})
             break
 
-    if not cat_match:
-        cat_list = [(cid, cpath or cname) for cid, cname, cpath in all_categories]
-        cid, cname, cconf = _fuzzy_match(name, cat_list, threshold=0.35)
-        if cid:
-            cat_match = {'id': cid, 'name': cname, 'confidence': cconf}
+    # 2. 关键词 hints（OCR 俗名 → 正式品类名）
+    if not cat_candidates:
+        for hint_text, hint_cat_name in _CATEGORY_HINTS:
+            if hint_text in name:
+                for cid, cname, cpath in all_categories:
+                    if cname == hint_cat_name or (cpath and hint_cat_name in cpath):
+                        cat_candidates.append({'id': cid, 'name': cpath or cname, 'confidence': 0.9, 'source': 'hint'})
+                        break
+            if cat_candidates:
+                break
 
-    result['category'] = cat_match
+    # 3. 模糊兜底
+    if not cat_candidates:
+        cid, cname, cconf = _fuzzy_match(name, [(c[0], c[1]) for c in _cat_entries], threshold=0.35)
+        if cid:
+            cat_candidates.append({'id': cid, 'name': cname, 'confidence': cconf, 'source': 'fuzzy_full'})
+
+    if cat_candidates:
+        result['category'] = {'id': cat_candidates[0]['id'], 'name': cat_candidates[0]['name'], 'confidence': cat_candidates[0]['confidence']}
 
     return result
