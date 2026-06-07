@@ -24,7 +24,7 @@
 - **我有什么谷子？** —— 按 IP / 角色 / 品类等多维度快速检索、统一管理资产。
 - **它们都放哪儿了？** —— 用树状的「物理收纳空间」模型精确标记每一件谷子的存放位置。
 
-项目名称「拾谷」一语双关：既呼应了「吃谷」的圈内文化，又表达了「拾取、整理收藏」的核心理念。
+
 
 ---
 
@@ -133,45 +133,80 @@ PickGoods/
 
 ## 功能模块概览
 
-| 模块 | 路由 | 说明 |
-|------|------|------|
-| 登录/注册 | `/login` | 注册、登录获取 Token，受保护路由自动跳转登录页 |
-| 云展柜 | `/showcase` | 默认入口，包含「展柜」「谷仓」「统计看板」三个 Tab |
-| 展柜 | `/showcase` | 私有/公共展柜切换，创建、编辑、删除、封面上传、谷子管理 |
-| 谷仓 | `/showcase` | 搜索、筛选、分页、相似随机视图、详情抽屉、右键操作 |
-| 统计看板 | `/showcase` | 资产概览、状态分布、官谷/同人分布、IP/品类 TopN |
-| 资产录入 | `/goods/new` `/goods/:id/edit` | 新增/编辑谷子，多角色、主题、图片裁剪上传 |
-| 草稿箱 | `/goods/drafts` | 查看并继续编辑状态为 `draft` 的谷子 |
-| 位置管理 | `/location` | 树形收纳位置 CRUD、位置下谷子列表 |
-| IP 与角色 | `/ipcharacter` | IP/角色管理、关键词、Bangumi 导入 |
-| 品类管理 | `/category` | 树形品类 CRUD、颜色标签、拖拽排序 |
-| 主题管理 | `/theme` | 主题 CRUD、主题图片管理 |
-| 设置 | `/settings` | 后端地址配置、账号信息、退出登录、管理员入口 |
-| 管理后台 | `/admin/*` | 管理员：用户管理、全站谷子管理、公共元数据管理 |
+| 模块     | 路由                             | 说明                           |
+| ------ | ------------------------------ | ---------------------------- |
+| 登录/注册  | `/login`                       | 注册、登录获取 Token，受保护路由自动跳转登录页   |
+| 云展柜    | `/showcase`                    | 默认入口，包含「展柜」「谷仓」「统计看板」三个 Tab  |
+| 展柜     | `/showcase`                    | 私有/公共展柜切换，创建、编辑、删除、封面上传、谷子管理 |
+| 谷仓     | `/showcase`                    | 搜索、筛选、分页、相似随机视图、详情抽屉、右键操作    |
+| 统计看板   | `/showcase`                    | 资产概览、状态分布、官谷/同人分布、IP/品类 TopN |
+| 资产录入   | `/goods/new` `/goods/:id/edit` | 新增/编辑谷子，多角色、主题、图片裁剪上传        |
+| 草稿箱    | `/goods/drafts`                | 查看并继续编辑状态为 `draft` 的谷子       |
+| 位置管理   | `/location`                    | 树形收纳位置 CRUD、位置下谷子列表          |
+| IP 与角色 | `/ipcharacter`                 | IP/角色管理、关键词、Bangumi 导入       |
+| 品类管理   | `/category`                    | 树形品类 CRUD、颜色标签、拖拽排序          |
+| 主题管理   | `/theme`                       | 主题 CRUD、主题图片管理               |
+| 设置     | `/settings`                    | 后端地址配置、账号信息、退出登录、管理员入口       |
+| 管理后台   | `/admin/*`                     | 管理员：用户管理、全站谷子管理、公共元数据管理      |
+
+---
+
+## 界面截图
+
+<div align="center">
+
+### PC 端
+
+![PC端首页展示](frontend/screenshot/PC端首页展示.png)
+
+*PC 端云展柜/谷仓界面*
+
+![PC端详情展示](frontend/screenshot/PC端详情展示.png)
+
+*PC 端谷子详情界面*
+
+![PC端品类管理](frontend/screenshot/PC端品类管理.png)
+
+*PC 端品类管理界面*
+
+![PC端IP管理](frontend/screenshot/PC端IP管理.png)
+
+*PC 端 IP 与角色管理界面*
+
+### 移动端
+
+<table>
+<tr>
+<td align="center"><img src="frontend/screenshot/移动端首页展示.png" alt="移动端首页展示"/><br/><em>云展柜/谷仓</em></td>
+<td align="center"><img src="frontend/screenshot/移动端详情展示.png" alt="移动端详情展示"/><br/><em>谷子详情</em></td>
+</tr>
+</table>
+
+</div>
 
 ---
 
 ## 技术栈
 
-| 层级 | 技术 | 说明 |
-|------|------|------|
-| 前端框架 | Vue 3.5 + Composition API | SPA 应用 |
-| 类型系统 | TypeScript 5.9 | 全量类型覆盖 |
-| 构建工具 | Vite 7.3 | 开发服务器与生产构建 |
-| UI 组件库 | Element Plus 2.8 | 统一 UI 风格 |
-| 状态管理 | Pinia 3.0 | 响应式状态管理 |
-| 路由 | Vue Router 4.6 | 导航鉴权守卫 |
-| HTTP 客户端 | Axios 1.7 | API 请求封装 |
-| 图表 | ECharts 6.0 | 统计看板可视化 |
-| 拖拽排序 | SortableJS + 稀疏排序 | 谷子/品类排序 |
-| 图片裁剪 | vue-picture-cropper | 主图/封面裁剪 |
-| 移动端 | Capacitor 8.0 | Android 原生壳 |
-| 后端框架 | Django 5.2 + DRF 3.14 | RESTful API |
-| 认证 | JWT (HS256) | 无状态认证 |
-| 数据库 | SQLite（开发）/ PostgreSQL（生产） | 多用户隔离 |
-| API 文档 | drf-spectacular | Swagger UI / Redoc |
-| 图片处理 | Pillow 10.0+ | 自动压缩 |
-| WSGI 服务器 | Gunicorn | 生产环境部署 |
+| 层级       | 技术                         | 说明                 |
+| -------- | -------------------------- | ------------------ |
+| 前端框架     | Vue 3.5 + Composition API  | SPA 应用             |
+| 类型系统     | TypeScript 5.9             | 全量类型覆盖             |
+| 构建工具     | Vite 7.3                   | 开发服务器与生产构建         |
+| UI 组件库   | Element Plus 2.8           | 统一 UI 风格           |
+| 状态管理     | Pinia 3.0                  | 响应式状态管理            |
+| 路由       | Vue Router 4.6             | 导航鉴权守卫             |
+| HTTP 客户端 | Axios 1.7                  | API 请求封装           |
+| 图表       | ECharts 6.0                | 统计看板可视化            |
+| 拖拽排序     | SortableJS + 稀疏排序          | 谷子/品类排序            |
+| 图片裁剪     | vue-picture-cropper        | 主图/封面裁剪            |
+| 移动端      | Capacitor 8.0              | Android 原生壳        |
+| 后端框架     | Django 5.2 + DRF 3.14      | RESTful API        |
+| 认证       | JWT (HS256)                | 无状态认证              |
+| 数据库      | SQLite（开发）/ PostgreSQL（生产） | 多用户隔离              |
+| API 文档   | drf-spectacular            | Swagger UI / Redoc |
+| 图片处理     | Pillow 10.0+               | 自动压缩               |
+| WSGI 服务器 | Gunicorn                   | 生产环境部署             |
 
 ---
 
@@ -179,12 +214,12 @@ PickGoods/
 
 ### 环境要求
 
-| 工具 | 要求 |
-|------|------|
-| Node.js | `^20.19.0 \|\| >=22.12.0` |
-| pnpm | `>=9.0.0` |
-| Python | 3.11+ |
-| 数据库 | SQLite（开发默认）/ PostgreSQL（生产） |
+| 工具      | 要求                           |
+| ------- | ---------------------------- |
+| Node.js | `^20.19.0 \|\| >=22.12.0`    |
+| pnpm    | `>=9.0.0`                    |
+| Python  | 3.11+                        |
+| 数据库     | SQLite（开发默认）/ PostgreSQL（生产） |
 
 ### 后端
 
@@ -237,18 +272,18 @@ pnpm dev
 
 ## API 概览
 
-| 模块 | 端点 | 说明 |
-|------|------|------|
-| 认证中心 | `/api/auth/` | 注册、登录、个人信息、退出 |
-| IP 管理 | `/api/ips/` | IP 作品 CRUD，支持关键词和作品类型 |
-| 角色管理 | `/api/characters/` | 角色 CRUD，按 IP 过滤 |
-| 品类管理 | `/api/categories/` | 树形品类 CRUD，批量排序 |
-| 谷子管理 | `/api/goods/` | 检索与 CRUD，主图/补充图上传，排序 |
-| 统计 | `/api/goods/stats/` | 仪表盘统计数据 |
-| 主题管理 | `/api/themes/` | 主题 CRUD，主题图片上传 |
-| 展柜管理 | `/api/showcases/` | 公有/私有展柜，谷子关联管理 |
-| 位置管理 | `/api/location/` | 收纳节点 CRUD，位置树下发 |
-| BGM 集成 | `/api/bgm/` | 搜索作品、获取角色、批量同步 |
+| 模块     | 端点                  | 说明                    |
+| ------ | ------------------- | --------------------- |
+| 认证中心   | `/api/auth/`        | 注册、登录、个人信息、退出         |
+| IP 管理  | `/api/ips/`         | IP 作品 CRUD，支持关键词和作品类型 |
+| 角色管理   | `/api/characters/`  | 角色 CRUD，按 IP 过滤       |
+| 品类管理   | `/api/categories/`  | 树形品类 CRUD，批量排序        |
+| 谷子管理   | `/api/goods/`       | 检索与 CRUD，主图/补充图上传，排序  |
+| 统计     | `/api/goods/stats/` | 仪表盘统计数据               |
+| 主题管理   | `/api/themes/`      | 主题 CRUD，主题图片上传        |
+| 展柜管理   | `/api/showcases/`   | 公有/私有展柜，谷子关联管理        |
+| 位置管理   | `/api/location/`    | 收纳节点 CRUD，位置树下发       |
+| BGM 集成 | `/api/bgm/`         | 搜索作品、获取角色、批量同步        |
 
 完整的 API 文档见 [backend/api.md](backend/api.md)，或启动后端后访问 Swagger UI。
 
@@ -304,33 +339,17 @@ pnpm deploy   # 通过 SFTP 上传到服务器（需配置 deploy.cjs）
 
 ## 文档索引
 
-| 文档 | 说明 |
-|------|------|
-| [前端 README](frontend/README.md) | 前端技术栈、功能概览、开发命令 |
-| [后端 README](backend/README.md) | 后端核心特性、代码结构、部署指南 |
-| [后端 API 文档](backend/api.md) | 完整 API 接口说明与请求/响应示例 |
-| [前端功能特性](frontend/docs/FEATURES.md) | 页面、模块和主要交互说明 |
-| [前端开发指南](frontend/docs/DEVELOPMENT.md) | 本地开发、约定、测试 |
-| [前端部署说明](frontend/docs/DEPLOYMENT.md) | Web 部署、Nginx、SFTP 脚本 |
+| 文档                                             | 说明                       |
+| ---------------------------------------------- | ------------------------ |
+| [前端 README](frontend/README.md)                | 前端技术栈、功能概览、开发命令          |
+| [后端 README](backend/README.md)                 | 后端核心特性、代码结构、部署指南         |
+| [后端 API 文档](backend/api.md)                    | 完整 API 接口说明与请求/响应示例      |
+| [前端功能特性](frontend/docs/FEATURES.md)            | 页面、模块和主要交互说明             |
+| [前端开发指南](frontend/docs/DEVELOPMENT.md)         | 本地开发、约定、测试               |
+| [前端部署说明](frontend/docs/DEPLOYMENT.md)          | Web 部署、Nginx、SFTP 脚本     |
 | [前端移动端开发](frontend/docs/MOBILE_DEVELOPMENT.md) | Capacitor Android/iOS 接入 |
-| [前端设计规范](frontend/docs/STYLING.md) | 主题变量、样式结构 |
-| [前端常见问题](frontend/docs/TROUBLESHOOTING.md) | 开发、部署排障 |
-
----
-
-## 界面截图
-
-<div align="center">
-
-![PC端首页展示](frontend/screenshot/PC端首页展示.jpeg)
-
-*PC 端云展柜/谷仓界面*
-
-![移动端首页展示](frontend/screenshot/移动端首页展示.jpeg)
-
-*移动端云展柜/谷仓界面*
-
-</div>
+| [前端设计规范](frontend/docs/STYLING.md)             | 主题变量、样式结构                |
+| [前端常见问题](frontend/docs/TROUBLESHOOTING.md)     | 开发、部署排障                  |
 
 ---
 

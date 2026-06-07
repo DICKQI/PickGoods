@@ -42,6 +42,39 @@
 
 详细说明见 [功能特性文档](docs/FEATURES.md)。
 
+## 界面截图
+
+<div align="center">
+
+### PC 端
+
+![PC端首页展示](screenshot/PC端首页展示.png)
+
+*PC 端云展柜/谷仓界面*
+
+![PC端详情展示](screenshot/PC端详情展示.png)
+
+*PC 端谷子详情界面*
+
+![PC端品类管理](screenshot/PC端品类管理.png)
+
+*PC 端品类管理界面*
+
+![PC端IP管理](screenshot/PC端IP管理.png)
+
+*PC 端 IP 与角色管理界面*
+
+### 移动端
+
+<table>
+<tr>
+<td align="center"><img src="screenshot/移动端首页展示.png" alt="移动端首页展示"/><br/><em>云展柜/谷仓</em></td>
+<td align="center"><img src="screenshot/移动端详情展示.png" alt="移动端详情展示"/><br/><em>谷子详情</em></td>
+</tr>
+</table>
+
+</div>
+
 ## 快速开始
 
 ### 环境要求
@@ -142,19 +175,7 @@ PickGoods_Frontend/
 | vue-picture-cropper | 0.7.0 | 图片裁剪 |
 | Capacitor | 8.0.0 | Android 原生壳和移动端能力 |
 
-## 界面截图
 
-<div align="center">
-
-![PC端首页展示](screenshot/PC端首页展示.jpeg)
-
-*PC 端云展柜/谷仓界面*
-
-![移动端首页展示](screenshot/移动端首页展示.jpeg)
-
-*移动端云展柜/谷仓界面*
-
-</div>
 
 ## 项目文档
 
