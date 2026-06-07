@@ -348,6 +348,45 @@ export interface GoodsDuplicateResponse {
   candidates: GoodsDuplicateCandidate[]
 }
 
+// ==================== OCR 识别 ====================
+
+export interface OcrSuggestionItem {
+  id: number
+  name: string
+  confidence: number
+}
+
+export interface OcrSuggestions {
+  ip: OcrSuggestionItem | null
+  characters: OcrSuggestionItem[]
+  category: OcrSuggestionItem | null
+}
+
+export interface OcrResult {
+  name?: string | null
+  price?: string | null
+  quantity?: number
+  purchase_date?: string | null
+  is_official?: boolean
+  shop_name?: string | null
+  raw_text: string
+  suggestions: OcrSuggestions
+  items?: OcrGoodsItem[]
+}
+
+export interface OcrGoodsItem {
+  name?: string | null
+  price?: string | null
+  quantity?: number
+  purchase_date?: string | null
+  is_official?: boolean
+  shop_name?: string | null
+  raw_text: string
+  suggestions: OcrSuggestions
+  source_lines: string[]
+  warnings: string[]
+}
+
 // 谷子排序移动响应
 export interface MoveGoodsResponse {
   detail?: string
@@ -530,4 +569,3 @@ export interface AdminUser {
   created_at: string
   updated_at: string
 }
-

@@ -2,6 +2,10 @@ import axios from 'axios'
 import type { AxiosInstance, InternalAxiosRequestConfig, AxiosResponse, AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 
+interface RequestConfig extends AxiosRequestConfig {
+  suppressGlobalError?: boolean
+}
+
 // API基础URL存储键名
 const API_BASE_URL_KEY = 'pickgoods_api_base_url'
 const LEGACY_API_BASE_URL_KEY = 'shigu_api_base_url'
@@ -93,6 +97,7 @@ axiosInstance.interceptors.response.use(
   },
   (error: any) => {
     const status = error.response?.status
+    const suppressGlobalError = Boolean(error.config?.suppressGlobalError)
     // 处理 401：未认证，清除 Token 并跳转登录页
     if (status === 401) {
       if (typeof window !== 'undefined') {
@@ -103,6 +108,9 @@ axiosInstance.interceptors.response.use(
         const fullPath = `${window.location.origin}${loginPath}?redirect=${redirect}`
         window.location.href = fullPath
       }
+      return Promise.reject(error)
+    }
+    if (suppressGlobalError) {
       return Promise.reject(error)
     }
     // 处理 403：无权限
@@ -128,11 +136,11 @@ axiosInstance.interceptors.response.use(
 
 // 创建自定义请求接口，返回类型为 T 而不是 AxiosResponse<T>
 interface CustomAxiosInstance {
-  get<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
-  post<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
-  put<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
-  delete<T = any>(url: string, config?: AxiosRequestConfig): Promise<T>
-  patch<T = any>(url: string, data?: any, config?: AxiosRequestConfig): Promise<T>
+  get<T = any>(url: string, config?: RequestConfig): Promise<T>
+  post<T = any>(url: string, data?: any, config?: RequestConfig): Promise<T>
+  put<T = any>(url: string, data?: any, config?: RequestConfig): Promise<T>
+  delete<T = any>(url: string, config?: RequestConfig): Promise<T>
+  patch<T = any>(url: string, data?: any, config?: RequestConfig): Promise<T>
 }
 
 const request = axiosInstance as unknown as CustomAxiosInstance
@@ -168,4 +176,3 @@ export const resetBaseURL = (): void => {
 }
 
 export default request
-

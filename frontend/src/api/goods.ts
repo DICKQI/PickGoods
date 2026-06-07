@@ -9,6 +9,7 @@ import type {
   MoveGoodsResponse,
   GoodsStatsParams,
   GoodsStatsResponse,
+  OcrResult,
 } from './types'
 
 // 获取谷子列表
@@ -105,6 +106,16 @@ export function deleteAdditionalPhotos(goodsId: string, photoIds: number[]) {
 // 删除谷子
 export function deleteGoods(id: string) {
   return request.delete(`/api/goods/${id}/`)
+}
+
+// OCR 识别订单截图
+export function recognizeOrderImage(file: File) {
+  const formData = new FormData()
+  formData.append('image', file)
+  return request.post<OcrResult>('/api/ocr/recognize/', formData, {
+    timeout: 120000,
+    suppressGlobalError: true,
+  })
 }
 
 // 移动谷子排序（支持跨页锚点）

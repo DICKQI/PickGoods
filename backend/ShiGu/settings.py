@@ -48,6 +48,7 @@ INSTALLED_APPS = [
     "apps.location.apps.LocationConfig",
     "apps.users.apps.UsersConfig",
     "apps.admin_api.apps.AdminApiConfig",
+    "apps.ocr.apps.OcrConfig",
 ]
 
 MIDDLEWARE = [
@@ -156,6 +157,8 @@ REST_FRAMEWORK = {
     "DEFAULT_THROTTLE_RATES": {
         # 核心检索接口限流：每分钟 60 次（可根据设备/网络情况再调）
         "goods_search": "60/minute",
+        # OCR 识别接口限流
+        "ocr": "20/minute",
     },
     # 指定使用的 Schema 类
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',

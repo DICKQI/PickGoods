@@ -5,4 +5,7 @@ django-cors-headers>=4.3.0
 Pillow>=10.0.0
 requests>=2.31.0
 gunicorn>=21.2.0
+paddlepaddle==3.0.0  # CPU版；Python 3.13 兼容版本，3.3.x有一DNN问题
+paddleocr>=3.0.0,<4.0.0  # 代码使用 PaddleOCR 3.x predict/rec_texts 返回结构
+jieba>=0.42.1
 

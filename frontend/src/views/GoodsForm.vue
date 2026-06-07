@@ -164,6 +164,35 @@
             </el-form-item>
           </el-col>
         </el-row>
+
+        <!-- OCR 订单截图识别 -->
+        <el-row :gutter="20" style="margin-top: 16px">
+          <el-col :xs="24">
+            <el-form-item label="📸 订单截图识别">
+              <div class="ocr-upload-area">
+                <el-upload
+                  ref="ocrUploadRef"
+                  :auto-upload="false"
+                  :limit="1"
+                  :show-file-list="false"
+                  :http-request="dummyUpload"
+                  :on-change="handleOcrFileChange"
+                  accept="image/*"
+                  class="ocr-uploader"
+                >
+                  <template #trigger>
+                    <div class="ocr-upload-trigger" :class="{ 'is-loading': ocrUploading }">
+                      <el-icon v-if="!ocrUploading" :size="20"><Picture /></el-icon>
+                      <el-icon v-else :size="20" class="is-loading"><Loading /></el-icon>
+                      <span>{{ ocrUploading ? '识别中...' : '上传淘宝订单截图，自动识别填充' }}</span>
+                    </div>
+                  </template>
+                </el-upload>
+                <p class="ocr-upload-hint">支持淘宝/天猫订单截图，识别商品名、价格、日期等信息</p>
+              </div>
+            </el-form-item>
+          </el-col>
+        </el-row>
       </section>
 
       <!-- 备注分区 -->
@@ -254,6 +283,29 @@
       </template>
     </el-dialog>
 
+    <OcrBatchImportDialog
+      v-if="!isEditMode"
+      v-model="ocrBatchDialogVisible"
+      :ocr-result="ocrResult"
+      :ip-options="ipOptions"
+      :all-characters="characters"
+      :category-options="categoryOptions"
+      :defaults="ocrBatchDefaults"
+      @imported="handleOcrBatchImported"
+    />
+
+    <!-- 编辑模式保留单条填充，避免误创建多条新记录 -->
+    <OcrFillDialog
+      v-if="isEditMode"
+      v-model="ocrFillDialogVisible"
+      :ocr-result="ocrResult"
+      :ip-options="ipOptions"
+      :all-characters="characters"
+      :category-options="categoryOptions"
+      :loading="ocrUploading"
+      @confirm="handleOcrFillConfirm"
+    />
+
     <!-- 图片预览 -->
     <el-image-viewer v-if="previewVisible" :url-list="[previewImage]" @close="previewVisible = false" />
   </div>
@@ -263,14 +315,16 @@
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
-import { Plus, Delete, Picture, Camera as CameraIcon, Edit, MoreFilled } from '@element-plus/icons-vue'
+import { Plus, Delete, Picture, Camera as CameraIcon, Edit, MoreFilled, Loading } from '@element-plus/icons-vue'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
-import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto } from '@/api/goods'
-import type { GoodsCreateResponse, GoodsDetail, GoodsInput, GoodsStatus } from '@/api/types'
+import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
+import type { GoodsCreateResponse, GoodsDetail, GoodsInput, GoodsStatus, OcrResult } from '@/api/types'
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
+import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
+import OcrFillDialog from '@/views/goods-form/components/OcrFillDialog.vue'
 import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFormMetadata'
 import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
@@ -415,6 +469,85 @@ const handleCropDialogConfirm = (file: File, previewUrl: string) => {
 const handleCropDialogCancel = () => { cropDialogVisible.value = false }
 
 const onCropDialogVisibleChange = (v: boolean) => { cropDialogVisible.value = v }
+
+// ── OCR recognition state ──
+
+const ocrUploadRef = ref<any>(null)
+const ocrUploading = ref(false)
+const ocrResult = ref<OcrResult | null>(null)
+const ocrBatchDialogVisible = ref(false)
+const ocrFillDialogVisible = ref(false)
+const ocrBatchThemeId = ref<number | null>(null)
+
+const ocrBatchDefaults = computed(() => ({
+  status: formData.value.status === 'draft' ? 'in_cabinet' as GoodsStatus : formData.value.status,
+  location: formData.value.location ?? null,
+  theme_id: ocrBatchThemeId.value,
+  notes: formData.value.notes || null,
+  purchase_date: formData.value.purchase_date || null,
+  is_official: formData.value.is_official,
+}))
+
+const handleOcrFileChange = async (uploadFile: any) => {
+  const file = uploadFile?.raw as File | undefined
+  if (!file) return
+
+  ocrUploading.value = true
+  ocrResult.value = null
+  try {
+    const result = await recognizeOrderImage(file)
+    ocrResult.value = result
+    if (isEditMode.value) {
+      ocrFillDialogVisible.value = true
+    } else {
+      ocrBatchThemeId.value = await ensureThemeCreated()
+      ocrBatchDialogVisible.value = true
+    }
+  } catch (err: any) {
+    const detail = err?.response?.data?.detail || err?.message || 'OCR 识别失败'
+    ElMessage.error(detail)
+  } finally {
+    ocrUploading.value = false
+    ocrUploadRef.value?.clearFiles()
+  }
+}
+
+const handleOcrBatchImported = () => {
+  router.push({ name: 'CloudShowcase' })
+}
+
+const handleOcrFillConfirm = (data: {
+  name: string
+  price: string
+  quantity: number
+  purchase_date: string
+  is_official: boolean
+  ipId: number | undefined
+  characterIds: number[]
+  categoryId: number | undefined
+  raw_text: string
+}) => {
+  const fd = formData.value
+  if (!fd.name && data.name) fd.name = data.name
+  if (fd.price === undefined && data.price !== undefined && data.price !== '') {
+    const p = parseFloat(data.price)
+    if (!isNaN(p)) fd.price = p
+  }
+  if (fd.quantity <= 1 && data.quantity > 1) fd.quantity = data.quantity
+  if (!fd.purchase_date && data.purchase_date) fd.purchase_date = data.purchase_date
+  fd.is_official = data.is_official
+  if (fd.ip === undefined && data.ipId !== undefined) {
+    fd.ip = data.ipId
+    fd.characters = []
+  }
+  if (fd.characters.length === 0 && data.characterIds.length > 0) {
+    fd.characters = data.characterIds
+  }
+  if (fd.category === undefined && data.categoryId !== undefined) {
+    fd.category = data.categoryId
+  }
+  ElMessage.success('已填入识别结果')
+}
 
 // ── Re-edit main photo ──
 
@@ -763,4 +896,14 @@ onUnmounted(() => {
 .duplicate-dialog-footer .duplicate-merge-btn { background-color: #E2C04A; border-color: #E2C04A; color: #1a1a1a; }
 .duplicate-dialog-footer .duplicate-merge-btn:hover, .duplicate-dialog-footer .duplicate-merge-btn:focus { background-color: #D9B83D; border-color: #D9B83D; color: #1a1a1a; }
 .duplicate-dialog-footer .duplicate-merge-btn:disabled { background-color: var(--el-fill-color); border-color: var(--el-border-color-lighter); color: var(--el-text-color-placeholder); }
+
+.ocr-upload-area { width: 100%; }
+.ocr-uploader { width: 100%; }
+.ocr-upload-trigger { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-radius: 12px; border: 1px dashed #d0d5dd; background: #fafbff; cursor: pointer; color: #606266; font-size: 14px; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s; }
+.ocr-upload-trigger:hover { border-color: var(--primary-gold); background: #fdfaf3; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }
+.ocr-upload-trigger.is-loading { border-color: var(--primary-gold); background: #fdfaf3; cursor: wait; }
+.ocr-upload-trigger .is-loading { animation: rotating 1.2s linear infinite; }
+@keyframes rotating { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.ocr-upload-hint { margin: 6px 0 0; font-size: 12px; color: #a8abb2; }
+
 </style>

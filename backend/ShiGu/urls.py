@@ -33,6 +33,7 @@ from apps.goods.views import (
     ShowcaseViewSet,
     ThemeViewSet,
 )
+from apps.ocr.views import recognize as ocr_recognize
 from apps.location.views import (
     StorageNodeDetailView,
     StorageNodeGoodsView,
@@ -74,6 +75,8 @@ urlpatterns = [
     path("api/location/nodes/<int:pk>/", StorageNodeDetailView.as_view(), name="location-node-detail"),
     path("api/location/nodes/<int:pk>/goods/", StorageNodeGoodsView.as_view(), name="location-node-goods"),
     path("api/location/tree/", StorageNodeTreeView.as_view(), name="location-tree"),
+    # OCR 识别接口
+    path("api/ocr/recognize/", ocr_recognize, name="ocr-recognize"),
     # 导出 Schema 文件 (YAML格式)
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # 导出 Swagger UI 和 Redoc 界面
