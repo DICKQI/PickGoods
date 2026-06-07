@@ -337,6 +337,7 @@ const handleDeleteGoods = async () => {
     )
     await deleteGoods(goods.id)
     ElMessage.success('删除成功')
+    guziStore.pagination.page = 1
     guziStore.searchGuziImmediate()
   } catch (error: any) {
     // 用户取消
@@ -435,6 +436,7 @@ const handleMove = async (direction: 'forward' | 'backward') => {
 
     closeContextMenu()
     ElMessage.success('排序已更新')
+    guziStore.pagination.page = 1
     await guziStore.searchGuziImmediate()
   } catch (error: any) {
     console.error('排序移动失败:', error)
@@ -497,6 +499,7 @@ const handleMoveToTop = async () => {
       })
       closeContextMenu()
       ElMessage.success('已置顶到本页顶部')
+      guziStore.pagination.page = 1
       await guziStore.searchGuziImmediate()
     } catch (error: any) {
       console.error('置顶失败:', error)
@@ -552,7 +555,8 @@ const handleResize = () => {
 }
 
 onMounted(() => {
-  // 初始化加载数据（立即执行，不使用防抖）
+  // 重置到第一页并初始化加载数据（立即执行，不使用防抖）
+  guziStore.pagination.page = 1
   guziStore.searchGuziImmediate()
 
   // 将当前 Tab 同步给布局层（用于控制右下角 + 号显示）
