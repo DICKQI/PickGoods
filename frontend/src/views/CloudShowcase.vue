@@ -87,7 +87,7 @@
       </div>
       <!-- 每页数量选择器 -->
       <div
-        v-if="guziStore.guziList.length > 0 && guziStore.viewMode === 'standard'"
+        v-if="!isMobile && guziStore.guziList.length > 0 && guziStore.viewMode === 'standard'"
         class="page-size-float"
       >
         <div class="page-size-wrapper">
@@ -613,7 +613,7 @@ watch(
 <style scoped>
 .cloud-showcase {
   padding: 20px;
-  padding-bottom: 100px; /* 为固定分页器预留空间 */
+  padding-bottom: 100px; /* 为底部浮动控件预留空间 */
   max-width: 1400px;
   margin: 0 auto;
   min-height: calc(100vh - 64px); /* 减去导航栏高度 */
@@ -759,7 +759,7 @@ watch(
   }
 
   .cloud-showcase {
-    padding-bottom: 120px; /* 移动端预留更多空间 */
+    padding-bottom: 120px; /* 为移动端底部导航和悬浮操作按钮预留空间 */
   }
 }
 
