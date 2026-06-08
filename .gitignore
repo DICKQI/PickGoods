@@ -148,3 +148,4 @@ $RECYCLE.BIN/
 # Deploy scripts (local credentials)
 deploy.cjs
 CLAUDE.md
+AGENTS.md
