@@ -7,7 +7,7 @@
 """
 import re
 import logging
-from difflib import SequenceMatcher
+from rapidfuzz import fuzz
 from decimal import Decimal
 from typing import Any, Optional
 
@@ -80,16 +80,22 @@ _TRADE_SNAPSHOT_SUFFIX_RE = re.compile(r'\s*[【\[\(（]?\s*交易快照\s*[】\
 _SALE_STATUS_PREFIX_RE = re.compile(r'^\s*现货\s*')
 
 
+# ── 预编译正则 ──────────────────────────────────────────────────
+_CLEAN_OCR_BRACKET_RE = re.compile(r'[【】『』「」\[\]()（）]')
+_CLEAN_OCR_SEP_RE = re.compile(r'[/／：:·]')
+_COMPACT_NAME_RE = re.compile(r'[【】『』「」\[\]()（）/／：:·\s]')
+
+
 def _clean_ocr_name(name: str) -> str:
     """清理 OCR 文本中的括号、分隔符等噪音，提高子串匹配精度。"""
-    name = re.sub(r'[【】『』「」\[\]()（）]', ' ', name)
-    name = re.sub(r'[/／：:·]', ' ', name)
+    name = _CLEAN_OCR_BRACKET_RE.sub(' ', name)
+    name = _CLEAN_OCR_SEP_RE.sub(' ', name)
     return ' '.join(name.split())
 
 
 def _compact_name(name: str) -> str:
     """去除所有括号、分隔符和空格，用于 OCR 吞掉分隔符时的容错匹配。"""
-    return re.sub(r'[【】『』「」\[\]()（）/／：:·\s]', '', name)
+    return _COMPACT_NAME_RE.sub('', name)
 
 
 def _is_trade_snapshot_line(text: str) -> bool:
@@ -421,7 +427,7 @@ def _fuzzy_match(text: str, candidates: list[tuple[int, str]], threshold: float 
         return None, None, 0.0
     best_id, best_name, best_score = None, None, 0.0
     for cid, cname in candidates:
-        score = SequenceMatcher(None, text, cname).ratio()
+        score = fuzz.ratio(text, cname) / 100.0
         if score > best_score:
             best_score = score
             best_id = cid

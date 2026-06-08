@@ -1,13 +1,13 @@
 """
 OCR 识别接口：接收图片，返回结构化字段。
 """
+import hashlib
 import io
 import logging
 import threading
-import tempfile
-import os
 
-from PIL import Image, ImageOps
+import numpy as np
+from PIL import Image, ImageOps, UnidentifiedImageError
 from django.core.cache import cache
 from rest_framework import status
 from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
@@ -45,7 +45,7 @@ _TALL_SCREENSHOT_RATIO = 1.6
 _SCREENSHOT_MIN_HEIGHT = 1600
 _SCREENSHOT_CROP_TOP_RATIO = 0.10
 _SCREENSHOT_CROP_BOTTOM_RATIO = 0.99
-_OCR_MAX_SIDE = 1400
+_OCR_MAX_SIDE = 1280
 
 
 def _get_ocr():
@@ -72,11 +72,13 @@ def _get_ocr():
     return _ocr_instance
 
 
-def _prepare_ocr_image(image_bytes: bytes) -> bytes:
-    """Validate and shrink order screenshots before handing them to PaddleOCR."""
+def _prepare_and_run_ocr(image_bytes: bytes) -> list[dict]:
+    """预处理图片并执行 OCR，全程在内存中完成，无磁盘 I/O。"""
     with Image.open(io.BytesIO(image_bytes)) as img:
         img.load()
-        image = ImageOps.exif_transpose(img).convert('RGB')
+        image = ImageOps.exif_transpose(img)
+        if image.mode != 'RGB':
+            image = image.convert('RGB')
 
     width, height = image.size
     if height >= _SCREENSHOT_MIN_HEIGHT and height / max(width, 1) >= _TALL_SCREENSHOT_RATIO:
@@ -94,29 +96,11 @@ def _prepare_ocr_image(image_bytes: bytes) -> bytes:
             Image.Resampling.LANCZOS,
         )
 
-    output = io.BytesIO()
-    image.save(output, format='JPEG', quality=92)
-    return output.getvalue()
+    # PIL RGB → numpy BGR（PaddleOCR 默认 BGR 格式）
+    img_array = np.array(image)[:, :, ::-1].copy()
 
-
-def _run_ocr(image_bytes: bytes) -> list[dict]:
-    """
-    对图片字节执行 OCR，返回带坐标的文本行列表（按从上到下、从左到右排序）。
-    PaddleOCR 3.x 返回格式：list[dict]，每个 dict 包含 rec_texts 和 rec_scores。
-    """
     ocr = _get_ocr()
-
-    with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-        tmp.write(image_bytes)
-        tmp_path = tmp.name
-
-    try:
-        result = ocr.predict(tmp_path)
-    finally:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+    result = ocr.predict(img_array)
 
     if not result:
         return []
@@ -205,25 +189,27 @@ def recognize(request):
             status=status.HTTP_400_BAD_REQUEST,
         )
 
-    # MIME 类型验证 + OCR 前预处理：裁掉长截图 UI chrome 并压缩尺寸，减少 CPU 检测面积
+    # 检查 OCR 结果缓存（仅缓存推理结果，阈值过滤每次重算）
     image_bytes = image_file.read()
-    try:
-        prepared_image_bytes = _prepare_ocr_image(image_bytes)
-    except Exception:
-        return Response(
-            {'detail': '无法识别为有效图片，请确认文件格式正确'},
-            status=status.HTTP_400_BAD_REQUEST,
-        )
+    cache_key = 'ocr:entries:' + hashlib.sha256(image_bytes).hexdigest()
+    ocr_entries = cache.get(cache_key)
 
-    # OCR 识别
-    try:
-        ocr_entries = _run_ocr(prepared_image_bytes)
-    except Exception as e:
-        logger.exception("OCR 识别失败")
-        return Response(
-            {'detail': f'OCR 识别失败: {str(e)}', 'raw_text': ''},
-            status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        )
+    if ocr_entries is None:
+        try:
+            ocr_entries = _prepare_and_run_ocr(image_bytes)
+        except (UnidentifiedImageError, OSError):
+            return Response(
+                {'detail': '无法识别为有效图片，请确认文件格式正确'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        except Exception as e:
+            logger.exception("OCR 识别失败")
+            return Response(
+                {'detail': f'OCR 识别失败: {str(e)}', 'raw_text': ''},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+        if ocr_entries:
+            cache.set(cache_key, ocr_entries, timeout=300)
 
     if not ocr_entries:
         return Response(

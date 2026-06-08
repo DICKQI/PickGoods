@@ -115,10 +115,8 @@ class OcrRecognizeApiTestCase(TestCase):
         buffer.name = 'order.jpg'
         return buffer
 
-    @patch('apps.ocr.views._run_ocr')
-    @patch('apps.ocr.views._prepare_ocr_image')
-    def test_recognize_returns_items_and_first_item_compat_fields(self, prepare_mock, run_mock):
-        prepare_mock.return_value = b'image'
+    @patch('apps.ocr.views._prepare_and_run_ocr')
+    def test_recognize_returns_items_and_first_item_compat_fields(self, run_mock):
         run_mock.return_value = [
             entry('【米哈游/崩坏：星穹铁道】', 100),
             entry('￥12.86', 100, x=620),
