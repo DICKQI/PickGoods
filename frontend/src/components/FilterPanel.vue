@@ -821,19 +821,31 @@ onUnmounted(() => {})
   --status-chip-text: #374151;
 }
 
+.filter-item--status :deep(.status-chip) {
+  width: 100%;
+  min-width: 0;
+}
+
 .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
   background-color: var(--status-chip-bg) !important;
   border: 1px solid var(--status-chip-border) !important;
   border-radius: var(--filter-control-radius) !important;
   color: var(--status-chip-text) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-weight: 600;
   gap: 6px;
-  justify-content: center;
+  line-height: 1;
+  box-sizing: border-box;
   box-shadow: none !important;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
+  width: 100%;
+  min-width: 0;
   height: var(--filter-control-height);
   min-height: var(--filter-control-height);
   padding: 0 12px !important;
+  white-space: nowrap;
 }
 
 .filter-item--status :deep(.status-chip .el-checkbox-button__inner)::before {
@@ -903,9 +915,14 @@ onUnmounted(() => {})
   border-color: #cbd5e1 !important;
 }
 
+@media (max-width: 768px) {
+  .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
+    padding: 0 8px !important;
+  }
+}
+
 /* 输入类控件的高度/圆角已在上方统一变量中设置 */
 </style>
-
 
 
 
