@@ -74,10 +74,7 @@
         </div>
       </div>
 
-      <div class="ocr-section" v-if="editData.raw_text">
-        <h4 class="ocr-section-title">原始识别文本</h4>
-        <el-input v-model="editData.raw_text" type="textarea" :rows="6" readonly />
-      </div>
+      <OcrRawTextViewer :text="editData.raw_text" />
     </template>
 
     <template #footer>
@@ -92,6 +89,7 @@
 <script setup lang="ts">
 import { reactive, computed } from 'vue'
 import type { IP, Character, Category, OcrResult } from '@/api/types'
+import OcrRawTextViewer from './OcrRawTextViewer.vue'
 
 interface FillData {
   name: string

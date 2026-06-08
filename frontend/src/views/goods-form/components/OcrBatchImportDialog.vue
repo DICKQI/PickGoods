@@ -120,6 +120,8 @@
       </div>
     </template>
 
+    <OcrRawTextViewer v-if="ocrResult?.raw_text" :text="ocrResult.raw_text" />
+
     <template #footer>
       <div class="ocr-batch-footer">
         <el-button @click="emit('update:modelValue', false)" :disabled="submitting">关闭</el-button>
@@ -134,6 +136,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createGoods } from '@/api/goods'
+import OcrRawTextViewer from './OcrRawTextViewer.vue'
 import type {
   Category,
   Character,
