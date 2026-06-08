@@ -450,6 +450,9 @@ python manage.py runserver
 项目提供了管理命令用于维护数据：
 
 ```bash
+# 创建初始角色（Admin、User）和 id=1 管理员（后端迁移依赖此 ID）
+python manage.py seed_users --admin-username admin --admin-password "你的强密码"
+
 # 重排谷子排序值（消除相同 order 值的堆积）
 python manage.py rebalance_goods_order
 
