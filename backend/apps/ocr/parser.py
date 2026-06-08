@@ -66,15 +66,18 @@ _CATEGORY_HINTS = sorted(_CATEGORY_HINTS_RAW.items(), key=lambda x: len(x[0]), r
 
 _SUMMARY_KEYWORDS = (
     '商品总价', '实付款', '订单信息', '赠品', '店铺优惠', '确认收货', '查看物流',
-    '催发货', '交易快照', '查看详情', '复制',
+    '催发货', '查看详情', '复制',
 )
 _SUMMARY_LINE_RE = re.compile(r'^共\s*\d+\s*件$')
 _SERVICE_KEYWORDS = (
     '退货宝', '假一赔四', '极速退款', '加入购物车', '申请售后', '退款',
-    '进店逛逛', '客服', '更多',
+    '进店逛逛', '客服', '更多', '再买一单', '不支持7天无理由', '7天无理由退货',
 )
 _PRODUCT_TITLE_RE = re.compile(r'【[^】\n]{2,}(?:】|$)')
 _ASCII_NOISE_RE = re.compile(r'^[A-Za-z0-9\s:：._/\-]+$')
+_TRADE_SNAPSHOT_LINE_RE = re.compile(r'^[【\[\(（]?\s*交易快照\s*[】\]\)）]?$')
+_TRADE_SNAPSHOT_SUFFIX_RE = re.compile(r'\s*[【\[\(（]?\s*交易快照\s*[】\]\)）]?\s*$')
+_SALE_STATUS_PREFIX_RE = re.compile(r'^\s*现货\s*')
 
 
 def _clean_ocr_name(name: str) -> str:
@@ -87,6 +90,21 @@ def _clean_ocr_name(name: str) -> str:
 def _compact_name(name: str) -> str:
     """去除所有括号、分隔符和空格，用于 OCR 吞掉分隔符时的容错匹配。"""
     return re.sub(r'[【】『』「」\[\]()（）/／：:·\s]', '', name)
+
+
+def _is_trade_snapshot_line(text: str) -> bool:
+    return bool(_TRADE_SNAPSHOT_LINE_RE.fullmatch(text.strip()))
+
+
+def _strip_trade_snapshot_suffix(text: str) -> str:
+    return _TRADE_SNAPSHOT_SUFFIX_RE.sub('', text.strip()).strip()
+
+
+def _clean_item_name_part(text: str) -> str | None:
+    text = _strip_trade_snapshot_suffix(text)
+    text = _SALE_STATUS_PREFIX_RE.sub('', text).strip()
+    text = ' '.join(text.split())
+    return text or None
 
 
 def _tokenize(text: str) -> list[str]:

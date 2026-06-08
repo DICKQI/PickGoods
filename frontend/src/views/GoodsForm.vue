@@ -188,6 +188,17 @@
                     </div>
                   </template>
                 </el-upload>
+                <div class="ocr-threshold-row">
+                  <span class="ocr-threshold-label">匹配精度</span>
+                  <el-select v-model="confidenceThreshold" size="small" style="width: 120px" :disabled="ocrUploading">
+                    <el-option
+                      v-for="item in confidencePresets"
+                      :key="item.value"
+                      :label="item.label"
+                      :value="item.value"
+                    />
+                  </el-select>
+                </div>
                 <p class="ocr-upload-hint">支持淘宝/天猫订单截图，识别商品名、价格、日期等信息</p>
               </div>
             </el-form-item>
@@ -472,12 +483,20 @@ const onCropDialogVisibleChange = (v: boolean) => { cropDialogVisible.value = v 
 
 // ── OCR recognition state ──
 
+const confidencePresets = [
+  { label: '宽松', value: 0.0 },
+  { label: '均衡', value: 0.5 },
+  { label: '严格', value: 0.7 },
+  { label: '仅精确', value: 0.9 },
+]
+
 const ocrUploadRef = ref<any>(null)
 const ocrUploading = ref(false)
 const ocrResult = ref<OcrResult | null>(null)
 const ocrBatchDialogVisible = ref(false)
 const ocrFillDialogVisible = ref(false)
 const ocrBatchThemeId = ref<number | null>(null)
+const confidenceThreshold = ref(0.5)
 
 const ocrBatchDefaults = computed(() => ({
   status: formData.value.status === 'draft' ? 'in_cabinet' as GoodsStatus : formData.value.status,
@@ -495,7 +514,7 @@ const handleOcrFileChange = async (uploadFile: any) => {
   ocrUploading.value = true
   ocrResult.value = null
   try {
-    const result = await recognizeOrderImage(file)
+    const result = await recognizeOrderImage(file, confidenceThreshold.value)
     ocrResult.value = result
     if (isEditMode.value) {
       ocrFillDialogVisible.value = true
@@ -898,6 +917,8 @@ onUnmounted(() => {
 .duplicate-dialog-footer .duplicate-merge-btn:disabled { background-color: var(--el-fill-color); border-color: var(--el-border-color-lighter); color: var(--el-text-color-placeholder); }
 
 .ocr-upload-area { width: 100%; }
+.ocr-threshold-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.ocr-threshold-label { font-size: 12px; color: #909399; white-space: nowrap; }
 .ocr-uploader { width: 100%; }
 .ocr-upload-trigger { display: flex; align-items: center; gap: 10px; padding: 14px 18px; border-radius: 12px; border: 1px dashed #d0d5dd; background: #fafbff; cursor: pointer; color: #606266; font-size: 14px; transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s; }
 .ocr-upload-trigger:hover { border-color: var(--primary-gold); background: #fdfaf3; box-shadow: 0 4px 12px rgba(0,0,0,0.04); }

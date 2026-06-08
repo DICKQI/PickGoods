@@ -109,9 +109,10 @@ export function deleteGoods(id: string) {
 }
 
 // OCR 识别订单截图
-export function recognizeOrderImage(file: File) {
+export function recognizeOrderImage(file: File, confidenceThreshold = 0.5) {
   const formData = new FormData()
   formData.append('image', file)
+  formData.append('confidence_threshold', String(confidenceThreshold))
   return request.post<OcrResult>('/api/ocr/recognize/', formData, {
     timeout: 120000,
     suppressGlobalError: true,

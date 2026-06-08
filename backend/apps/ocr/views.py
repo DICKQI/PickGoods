@@ -170,6 +170,7 @@ def recognize(request):
     订单截图 OCR 识别接口。
 
     入参：multipart/form-data，字段名 `image`（图片文件，最大 10MB）。
+          可选 `confidence_threshold`（float，默认 0.0），用于过滤低置信度匹配。
 
     返回：
     ```json
@@ -259,6 +260,23 @@ def recognize(request):
         except Exception as e:
             logger.warning(f"元数据匹配失败: {e}")
             item['suggestions'] = {'ip': None, 'characters': [], 'category': None}
+
+    # 置信度阈值过滤
+    try:
+        confidence_threshold = float(request.data.get('confidence_threshold', 0.0))
+    except (TypeError, ValueError):
+        confidence_threshold = 0.0
+
+    if confidence_threshold > 0.0:
+        for item in items:
+            s = item.get('suggestions')
+            if not s:
+                continue
+            if s.get('ip') and s['ip']['confidence'] < confidence_threshold:
+                s['ip'] = None
+            s['characters'] = [c for c in s.get('characters', []) if c['confidence'] >= confidence_threshold]
+            if s.get('category') and s['category']['confidence'] < confidence_threshold:
+                s['category'] = None
 
     first = items[0]
 
