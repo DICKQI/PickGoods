@@ -149,3 +149,7 @@ $RECYCLE.BIN/
 deploy.cjs
 CLAUDE.md
 AGENTS.md
+.codegraph/.gitignore
+.codegraph/daemon.pid
+.reasonix/desktop-topic-titles.json
+.reasonix/desktop-topic-title-sources.json

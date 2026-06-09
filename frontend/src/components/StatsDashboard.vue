@@ -1,6 +1,24 @@
 <template>
   <div class="stats-dashboard">
+    <!-- 移动端筛选胶囊条 -->
+    <div v-if="isMobile" class="mobile-stats-filter-strip">
+      <button class="mobile-stats-filter-trigger" type="button" @click="openMobileStatsFilter">
+        <el-icon><List /></el-icon>
+        <span>统计筛选</span>
+        <strong v-if="activeStatsFilterCount > 0">{{ activeStatsFilterCount }}</strong>
+      </button>
+      <div class="mobile-stats-filter-chips" aria-label="当前筛选">
+        <span
+          v-for="chip in activeStatsFilterChips"
+          :key="chip"
+          class="mobile-stats-filter-chip"
+        >{{ chip }}</span>
+      </div>
+    </div>
+
+    <!-- 桌面端筛选卡片 -->
     <el-card
+      v-if="!isMobile"
       class="stats-filter-card"
       :class="{ 'stats-filter-card--collapsed': collapsed }"
       shadow="never"
@@ -42,170 +60,194 @@
       <transition name="stats-filter-collapse">
         <div v-show="!collapsed" class="stats-filter-collapse-wrapper">
           <div class="stats-filter-grid">
-        <div class="stats-filter-item">
-          <label>Top N</label>
-          <div class="topn-control">
-            <el-slider
-              v-model="filters.top"
-              :min="3"
-              :max="30"
-              :step="1"
-              :show-tooltip="false"
+            <stats-filter-controls
+              :top="filters.top"
+              :is-official="filters.is_official"
+              :selected-statuses="selectedStatuses"
+              :ip="filters.ip"
+              :category="filters.category"
+              :purchase-date-range="purchaseDateRange"
+              :created-date-range="createdDateRange"
+              :ip-options="ipOptions"
+              :category-tree-data="categoryTreeData"
+              @update:top="filters.top = $event"
+              @update:is-official="filters.is_official = $event"
+              @update:selected-statuses="selectedStatuses = $event"
+              @update:ip="filters.ip = $event"
+              @update:category="filters.category = $event"
+              @update:purchase-date-range="purchaseDateRange = $event"
+              @update:created-date-range="createdDateRange = $event"
             />
-            <span class="topn-value">{{ filters.top }}</span>
-          </div>
-        </div>
-
-        <div class="stats-filter-item">
-          <label>是否官谷</label>
-          <el-select
-            v-model="filters.is_official"
-            placeholder="全部"
-            clearable
-            size="small"
-          >
-            <el-option :value="true" label="官谷" />
-            <el-option :value="false" label="同人/非官谷" />
-          </el-select>
-        </div>
-
-        <div class="stats-filter-item">
-          <label>状态</label>
-          <el-checkbox-group
-            v-model="selectedStatuses"
-            class="status-group"
-            size="small"
-          >
-            <el-checkbox-button label="in_cabinet">在馆</el-checkbox-button>
-            <el-checkbox-button label="outdoor">出街中</el-checkbox-button>
-            <el-checkbox-button label="sold">已售出</el-checkbox-button>
-          </el-checkbox-group>
-        </div>
-
-        <div class="stats-filter-item">
-          <label>IP作品</label>
-          <el-select
-            v-model="filters.ip"
-            placeholder="全部IP"
-            clearable
-            filterable
-            size="small"
-          >
-            <el-option
-              v-for="ip in ipOptions"
-              :key="ip.id"
-              :label="ip.name"
-              :value="ip.id"
-            />
-          </el-select>
-        </div>
-
-        <div class="stats-filter-item">
-          <label>品类</label>
-          <el-tree-select
-            v-model="filters.category"
-            :data="categoryTreeData"
-            :props="{ label: 'label', value: 'id', children: 'children' }"
-            placeholder="全部品类"
-            clearable
-            size="small"
-            check-strictly
-          />
-        </div>
-
-        <div class="stats-filter-item stats-filter-item--range">
-          <label>入手日期区间</label>
-          <el-date-picker
-            v-model="purchaseDateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            size="small"
-          />
-        </div>
-
-        <div class="stats-filter-item stats-filter-item--range">
-          <label>录入日期区间</label>
-          <el-date-picker
-            v-model="createdDateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            size="small"
-          />
-        </div>
           </div>
         </div>
       </transition>
     </el-card>
 
+    <!-- 移动端筛选底部面板 -->
+    <div v-if="isMobile" class="mobile-stats-filter-host">
+      <div
+        v-show="mobileFilterVisible"
+        class="mobile-stats-filter-backdrop"
+        @click="closeMobileStatsFilter"
+      />
+      <section
+        class="mobile-stats-filter-sheet"
+        :class="{ 'is-open': mobileFilterVisible }"
+        :aria-hidden="!mobileFilterVisible"
+      >
+        <div class="mobile-stats-filter-sheet-header">
+          <span>统计筛选</span>
+          <button class="mobile-stats-filter-close" type="button" @click="closeMobileStatsFilter" aria-label="关闭筛选">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+        <div class="mobile-stats-filter-sheet-body">
+          <div class="mobile-stats-filter-grid">
+            <stats-filter-controls
+              :top="mobileDraftFilters.top"
+              :is-official="mobileDraftFilters.is_official"
+              :selected-statuses="mobileDraftSelectedStatuses"
+              :ip="mobileDraftFilters.ip"
+              :category="mobileDraftFilters.category"
+              :purchase-date-range="mobileDraftPurchaseDateRange"
+              :created-date-range="mobileDraftCreatedDateRange"
+              :ip-options="ipOptions"
+              :category-tree-data="categoryTreeData"
+              @update:top="mobileDraftFilters.top = $event"
+              @update:is-official="mobileDraftFilters.is_official = $event"
+              @update:selected-statuses="mobileDraftSelectedStatuses = $event"
+              @update:ip="mobileDraftFilters.ip = $event"
+              @update:category="mobileDraftFilters.category = $event"
+              @update:purchase-date-range="mobileDraftPurchaseDateRange = $event"
+              @update:created-date-range="mobileDraftCreatedDateRange = $event"
+            />
+          </div>
+        </div>
+        <div class="mobile-stats-filter-sheet-footer">
+          <el-button class="mobile-stats-filter-reset" @click="resetMobileStatsFilterDraft">
+            重置
+          </el-button>
+          <el-button type="primary" class="mobile-stats-filter-apply" @click="applyMobileStatsFilter">
+            应用筛选
+          </el-button>
+        </div>
+      </section>
+    </div>
+
     <div class="stats-content" v-loading="loading">
-      <el-row :gutter="16" class="overview-row">
-        <el-col :xs="8" :sm="12" :md="8">
-          <el-card class="overview-card overview-card--goods" shadow="hover">
-            <div class="overview-label">谷子件数</div>
-            <div class="overview-value">{{ overview?.goods_count ?? 0 }}</div>
-            <div class="overview-sub">不同 Asset 记录数</div>
-          </el-card>
-        </el-col>
-        <el-col :xs="8" :sm="12" :md="8">
-          <el-card class="overview-card overview-card--quantity" shadow="hover">
-            <div class="overview-label">总数量</div>
-            <div class="overview-value">{{ overview?.quantity_sum ?? 0 }}</div>
-            <div class="overview-sub">合计 quantity</div>
-          </el-card>
-        </el-col>
-        <el-col :xs="8" :sm="12" :md="8">
-          <el-card class="overview-card overview-card--value" shadow="hover">
-            <div class="overview-label">估算总金额</div>
-            <div class="overview-value overview-value--money">
-              <span class="overview-currency">¥</span>
-              <span class="overview-amount">{{ formattedValueSum }}</span>
-            </div>
-            <div class="overview-sub">price×quantity 汇总</div>
-          </el-card>
-        </el-col>
-      </el-row>
+      <div class="overview-carousel" :class="{ 'is-mobile': isMobile }">
+        <div class="overview-carousel-track" ref="overviewCarouselRef">
+          <el-row :gutter="16" class="overview-row">
+            <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+              <el-card class="overview-card overview-card--goods" shadow="hover">
+                <div class="overview-label">谷子件数</div>
+                <div class="overview-value">{{ overview?.goods_count ?? 0 }}</div>
+                <div class="overview-sub">不同 Asset 记录数</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+              <el-card class="overview-card overview-card--quantity" shadow="hover">
+                <div class="overview-label">总数量</div>
+                <div class="overview-value">{{ overview?.quantity_sum ?? 0 }}</div>
+                <div class="overview-sub">合计 quantity</div>
+              </el-card>
+            </el-col>
+            <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+              <el-card class="overview-card overview-card--value" shadow="hover">
+                <div class="overview-label">估算总金额</div>
+                <div class="overview-value overview-value--money">
+                  <span class="overview-currency">¥</span>
+                  <span class="overview-amount">{{ formattedValueSum }}</span>
+                </div>
+                <div class="overview-sub">price×quantity 汇总</div>
+              </el-card>
+            </el-col>
+          </el-row>
+        </div>
+        <div v-if="isMobile" class="overview-carousel-dots">
+          <span
+            v-for="i in 3"
+            :key="i"
+            class="overview-carousel-dot"
+            :class="{ 'is-active': overviewActiveIndex === i - 1 }"
+          />
+        </div>
+      </div>
 
-      <el-row :gutter="16" class="charts-row">
-        <el-col :xs="24" :md="8">
-          <el-card shadow="hover" class="chart-card">
-            <div class="chart-title">状态分布</div>
-            <div ref="statusChartRef" class="chart-container" />
-          </el-card>
-        </el-col>
-        <el-col :xs="24" :md="8">
-          <el-card shadow="hover" class="chart-card">
-            <div class="chart-title">官谷 / 同人</div>
-            <div ref="officialChartRef" class="chart-container" />
-          </el-card>
-        </el-col>
-        <el-col :xs="24" :md="8">
-          <el-card shadow="hover" class="chart-card">
-            <div class="chart-title">作品类型结构</div>
-            <div ref="subjectChartRef" class="chart-container" />
-          </el-card>
-        </el-col>
-      </el-row>
+      <!-- 移动端图表 Tab 切换 -->
+      <div v-if="isMobile" class="chart-tabs">
+        <button
+          class="chart-tab"
+          :class="{ 'is-active': chartTab === 'distribution' }"
+          @click="chartTab = 'distribution'"
+        >
+          分布图
+        </button>
+        <button
+          class="chart-tab"
+          :class="{ 'is-active': chartTab === 'ranking' }"
+          @click="chartTab = 'ranking'"
+        >
+          排行榜
+        </button>
+      </div>
 
-      <el-row :gutter="16" class="charts-row">
-        <el-col :xs="24" :md="12">
-          <el-card shadow="hover" class="chart-card">
-            <div class="chart-title">IP Top {{ filters.top }}</div>
-            <div ref="ipTopChartRef" class="chart-container" />
-          </el-card>
-        </el-col>
-        <el-col :xs="24" :md="12">
-          <el-card shadow="hover" class="chart-card">
-            <div class="chart-title">品类 Top {{ filters.top }}</div>
-            <div ref="categoryTopChartRef" class="chart-container" />
-          </el-card>
-        </el-col>
-      </el-row>
+      <!-- 分布图组：桌面端始终可见，移动端按 tab 切换 -->
+      <div v-show="!isMobile || chartTab === 'distribution'" class="chart-group">
+        <el-row :gutter="16" class="charts-row">
+          <el-col :xs="24" :sm="12" :md="8">
+            <el-card shadow="hover" class="chart-card">
+              <div v-if="loading && !statsData" class="chart-skeleton" />
+              <template v-else>
+                <div class="chart-title">状态分布</div>
+                <div ref="statusChartRef" class="chart-container" />
+              </template>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :sm="12" :md="8">
+            <el-card shadow="hover" class="chart-card">
+              <div v-if="loading && !statsData" class="chart-skeleton" />
+              <template v-else>
+                <div class="chart-title">官谷 / 同人</div>
+                <div ref="officialChartRef" class="chart-container" />
+              </template>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :md="8">
+            <el-card shadow="hover" class="chart-card">
+              <div v-if="loading && !statsData" class="chart-skeleton" />
+              <template v-else>
+                <div class="chart-title">作品类型结构</div>
+                <div ref="subjectChartRef" class="chart-container" />
+              </template>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
+
+      <!-- 排行榜组：桌面端始终可见，移动端按 tab 切换 -->
+      <div v-show="!isMobile || chartTab === 'ranking'" class="chart-group">
+        <el-row :gutter="16" class="charts-row">
+          <el-col :xs="24" :md="12">
+            <el-card shadow="hover" class="chart-card">
+              <div v-if="loading && !statsData" class="chart-skeleton chart-skeleton--wide" />
+              <template v-else>
+                <div class="chart-title">IP Top {{ filters.top }}</div>
+                <div ref="ipTopChartRef" class="chart-container chart-container--wide" />
+              </template>
+            </el-card>
+          </el-col>
+          <el-col :xs="24" :md="12">
+            <el-card shadow="hover" class="chart-card">
+              <div v-if="loading && !statsData" class="chart-skeleton chart-skeleton--wide" />
+              <template v-else>
+                <div class="chart-title">品类 Top {{ filters.top }}</div>
+                <div ref="categoryTopChartRef" class="chart-container chart-container--wide" />
+              </template>
+            </el-card>
+          </el-col>
+        </el-row>
+      </div>
 
       <div v-if="!loading && !overview" class="empty-tip">
         <el-empty description="暂无统计数据，请调整筛选条件后重试" />
@@ -217,11 +259,12 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { RefreshLeft, ArrowDown } from '@element-plus/icons-vue'
+import { RefreshLeft, ArrowDown, List, Close } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getGoodsStats } from '@/api/goods'
 import { getIPList, getCategoryTree } from '@/api/metadata'
 import { useLocationStore } from '@/stores/location'
+import StatsFilterControls from '@/components/StatsFilterControls.vue'
 import type {
   GoodsStatsOverview,
   GoodsStatsParams,
@@ -233,8 +276,10 @@ import type {
 
 const loading = ref(false)
 const statsData = ref<GoodsStatsResponse | null>(null)
+const DEFAULT_STATS_TOP = 10
 
 // 筛选面板折叠状态（PC 默认展开，移动端默认收起，与谷仓页一致）
+const isMobile = ref(false)
 const isStatsFilterMobile = ref(false)
 const collapsed = ref(false)
 const statsFilterCardBodyStyle = computed(() => ({}))
@@ -242,8 +287,147 @@ const toggleStatsFilterCollapsed = () => {
   collapsed.value = !collapsed.value
 }
 
+// 移动端筛选底部面板
+const mobileFilterVisible = ref(false)
+let bodyOverflowBeforeStatsFilter = ''
+let bodyOverflowLockedByStatsFilter = false
+
+const mobileDraftFilters = reactive<GoodsStatsParams>({
+  top: DEFAULT_STATS_TOP,
+})
+const mobileDraftSelectedStatuses = ref<GoodsStatus[]>([])
+const mobileDraftPurchaseDateRange = ref<[string, string] | null>(null)
+const mobileDraftCreatedDateRange = ref<[string, string] | null>(null)
+
+const setStatsFilterDefaults = (target: GoodsStatsParams) => {
+  target.top = DEFAULT_STATS_TOP
+  target.ip = undefined
+  target.category = undefined
+  target.is_official = undefined
+}
+
+const copyStatsFilters = (source: GoodsStatsParams, target: GoodsStatsParams) => {
+  target.top = source.top ?? DEFAULT_STATS_TOP
+  target.ip = source.ip
+  target.category = source.category
+  target.is_official = source.is_official
+}
+
+const copyDateRange = (range: [string, string] | null): [string, string] | null =>
+  range ? [range[0], range[1]] : null
+
+const syncMobileDraftFromAppliedFilters = () => {
+  copyStatsFilters(filters, mobileDraftFilters)
+  mobileDraftSelectedStatuses.value = [...selectedStatuses.value]
+  mobileDraftPurchaseDateRange.value = copyDateRange(purchaseDateRange.value)
+  mobileDraftCreatedDateRange.value = copyDateRange(createdDateRange.value)
+}
+
+const applyMobileDraftToFilters = () => {
+  copyStatsFilters(mobileDraftFilters, filters)
+  selectedStatuses.value = [...mobileDraftSelectedStatuses.value]
+  purchaseDateRange.value = copyDateRange(mobileDraftPurchaseDateRange.value)
+  createdDateRange.value = copyDateRange(mobileDraftCreatedDateRange.value)
+}
+
+const resetMobileStatsFilterDraft = () => {
+  setStatsFilterDefaults(mobileDraftFilters)
+  mobileDraftSelectedStatuses.value = []
+  mobileDraftPurchaseDateRange.value = null
+  mobileDraftCreatedDateRange.value = null
+}
+
+const restoreBodyOverflowForStatsFilter = () => {
+  if (!bodyOverflowLockedByStatsFilter) return
+  document.body.style.overflow = bodyOverflowBeforeStatsFilter
+  bodyOverflowBeforeStatsFilter = ''
+  bodyOverflowLockedByStatsFilter = false
+}
+
+const openMobileStatsFilter = () => {
+  syncMobileDraftFromAppliedFilters()
+  mobileFilterVisible.value = true
+}
+
+const closeMobileStatsFilter = () => {
+  mobileFilterVisible.value = false
+  syncMobileDraftFromAppliedFilters()
+}
+
+const applyMobileStatsFilter = () => {
+  applyMobileDraftToFilters()
+  mobileFilterVisible.value = false
+  syncMobileDraftFromAppliedFilters()
+  fetchStats()
+}
+
+const statusLabelMap: Record<string, string> = {
+  in_cabinet: '在馆',
+  outdoor: '出街中',
+  sold: '已售出',
+}
+
+const activeStatsFilterChips = computed(() => {
+  const chips: string[] = []
+
+  if (filters.top !== DEFAULT_STATS_TOP) {
+    chips.push(`Top ${filters.top}`)
+  }
+
+  if (filters.is_official === true) {
+    chips.push('官谷')
+  } else if (filters.is_official === false) {
+    chips.push('同人')
+  }
+
+  if (selectedStatuses.value.length > 0) {
+    chips.push(
+      selectedStatuses.value.map((s) => statusLabelMap[s] ?? s).join('/'),
+    )
+  }
+
+  if (filters.ip) chips.push('IP')
+  if (filters.category) chips.push('品类')
+  if (purchaseDateRange.value) chips.push('入手日期')
+  if (createdDateRange.value) chips.push('录入日期')
+
+  return chips.length > 0 ? chips : ['全部']
+})
+
+const activeStatsFilterCount = computed(() => {
+  const chips = activeStatsFilterChips.value
+  if (chips.length === 1 && chips[0] === '全部') return 0
+  return chips.length
+})
+
+// 概览卡片轮播
+const overviewActiveIndex = ref(0)
+const overviewCarouselRef = ref<HTMLDivElement | null>(null)
+
+// 图表 Tab 切换（仅移动端）
+const chartTab = ref<'distribution' | 'ranking'>('distribution')
+
+const handleOverviewScroll = () => {
+  const el = overviewCarouselRef.value
+  if (!el) return
+  const cols = el.querySelectorAll('.overview-col')
+  if (!cols.length) return
+  const trackCenter = el.getBoundingClientRect().left + el.clientWidth / 2
+  let closest = 0
+  let minDist = Infinity
+  cols.forEach((col, i) => {
+    const rect = col.getBoundingClientRect()
+    const dist = Math.abs(rect.left + rect.width / 2 - trackCenter)
+    if (dist < minDist) {
+      minDist = dist
+      closest = i
+    }
+  })
+  overviewActiveIndex.value = closest
+}
+
 const filters = reactive<GoodsStatsParams>({
-  top: 10,
+  top: DEFAULT_STATS_TOP,
 })
 
 const selectedStatuses = ref<GoodsStatus[]>([])
@@ -536,7 +720,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
-          barMaxWidth: isMobile ? 14 : 18,
+          barMaxWidth: isMobile ? 16 : 18,
           itemStyle: { borderRadius: [0, 10, 10, 0] },
         },
       ],
@@ -582,7 +766,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
-          barMaxWidth: isMobile ? 14 : 18,
+          barMaxWidth: isMobile ? 16 : 18,
           itemStyle: { borderRadius: [0, 10, 10, 0] },
         },
       ],
@@ -651,13 +835,11 @@ const fetchStats = async () => {
 }
 
 const handleResetFilters = () => {
-  filters.top = 10
-  filters.ip = undefined
-  filters.category = undefined
-  filters.is_official = undefined
+  setStatsFilterDefaults(filters)
   selectedStatuses.value = []
   purchaseDateRange.value = null
   createdDateRange.value = null
+  syncMobileDraftFromAppliedFilters()
   fetchStats()
 }
 
@@ -678,6 +860,10 @@ const handleResize = () => {
   if (resizeTimer !== null) window.clearTimeout(resizeTimer)
   resizeTimer = window.setTimeout(() => {
     resizeTimer = null
+    isMobile.value = window.innerWidth < 768
+    if (!isMobile.value) {
+      closeMobileStatsFilter()
+    }
     updateCharts()
   }, 150)
 }
@@ -689,18 +875,39 @@ const handleStatsRefresh = async () => {
 }
 
 onMounted(async () => {
-  isStatsFilterMobile.value = window.innerWidth < 768
-  collapsed.value = isStatsFilterMobile.value
+  isMobile.value = window.innerWidth < 768
+  isStatsFilterMobile.value = isMobile.value
+  collapsed.value = isMobile.value
+  syncMobileDraftFromAppliedFilters()
   await initMetadata()
   await fetchStats()
   window.addEventListener('resize', handleResize)
   window.addEventListener('cloud-showcase:stats-refresh', handleStatsRefresh as EventListener)
+
+  const carousel = overviewCarouselRef.value
+  if (carousel) {
+    carousel.addEventListener('scroll', handleOverviewScroll, { passive: true })
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('cloud-showcase:stats-refresh', handleStatsRefresh as EventListener)
   disposeCharts()
+  restoreBodyOverflowForStatsFilter()
+  if (resizeTimer !== null) {
+    window.clearTimeout(resizeTimer)
+    resizeTimer = null
+  }
+  if (autoFetchTimer !== null) {
+    window.clearTimeout(autoFetchTimer)
+    autoFetchTimer = null
+  }
+
+  const carousel = overviewCarouselRef.value
+  if (carousel) {
+    carousel.removeEventListener('scroll', handleOverviewScroll)
+  }
 })
 
 watch(
@@ -716,6 +923,7 @@ watch(
 let autoFetchTimer: number | null = null
 const triggerAutoFetch = () => {
   if (loading.value) return
+  if (isMobile.value) return
   if (autoFetchTimer !== null) {
     window.clearTimeout(autoFetchTimer)
   }
@@ -747,6 +955,25 @@ watch(
 
 watch(purchaseDateRange, () => triggerAutoFetch())
 watch(createdDateRange, () => triggerAutoFetch())
+
+watch(mobileFilterVisible, (visible) => {
+  if (visible) {
+    if (bodyOverflowLockedByStatsFilter) return
+    bodyOverflowBeforeStatsFilter = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    bodyOverflowLockedByStatsFilter = true
+  } else {
+    restoreBodyOverflowForStatsFilter()
+  }
+})
+
+// 移动端图表 Tab 切换后，v-show 会导致图表容器尺寸变化，需要 resize
+watch(chartTab, () => {
+  if (!isMobile.value) return
+  requestAnimationFrame(() => {
+    chartInstances.forEach((c) => c.resize())
+  })
+})
 </script>
 
 <style scoped>
@@ -803,7 +1030,7 @@ watch(createdDateRange, () => triggerAutoFetch())
   overflow: hidden;
 }
 
-.stats-filter-collapse-wrapper > .stats-filter-grid {
+.stats-filter-collapse-wrapper > :deep(.stats-filter-grid) {
   min-height: 0;
   overflow: hidden;
 }
@@ -824,85 +1051,6 @@ watch(createdDateRange, () => triggerAutoFetch())
 .stats-filter-collapse-leave-from {
   grid-template-rows: 1fr;
   opacity: 1;
-}
-
-/* PC 端：固定 2 行，第一行 5 项，第二行 2 个日期各占 2 列 */
-.stats-filter-grid {
-  display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
-  gap: 16px 20px;
-  align-items: start;
-}
-
-.stats-filter-item {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  min-width: 0;
-}
-
-.stats-filter-item--range {
-  grid-column: span 2;
-}
-
-.stats-filter-item label {
-  font-size: 12px;
-  color: var(--text-light);
-  font-weight: 500;
-  line-height: 1.4;
-  flex-shrink: 0;
-}
-
-@media (max-width: 900px) {
-  .stats-filter-grid {
-    grid-template-columns: repeat(2, minmax(140px, 1fr));
-  }
-
-  .stats-filter-item--range {
-    grid-column: span 2;
-  }
-}
-
-@media (max-width: 480px) {
-  .stats-filter-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .stats-filter-item--range {
-    grid-column: span 1;
-  }
-}
-
-.topn-control {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.topn-control .el-slider {
-  flex: 1;
-}
-
-.topn-value {
-  width: 28px;
-  text-align: right;
-  font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  color: var(--text-dark);
-  flex-shrink: 0;
-}
-
-.status-group {
-  display: inline-flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.stats-filter-item :deep(.el-select),
-.stats-filter-item :deep(.el-tree-select),
-.stats-filter-item :deep(.el-date-editor) {
-  width: 100%;
 }
 
 .stats-content {
@@ -988,29 +1136,72 @@ watch(createdDateRange, () => triggerAutoFetch())
   color: var(--text-light);
 }
 
-/* 移动端：三张概览卡一行排布时的紧凑样式 */
+/* 概览卡片轮播 */
+.overview-carousel.is-mobile .overview-carousel-track {
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 20px;
+  margin: 0 -20px;
+}
+
+.overview-carousel.is-mobile .overview-carousel-track::-webkit-scrollbar {
+  display: none;
+}
+
+.overview-carousel.is-mobile .overview-row {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 12px;
+}
+
+.overview-carousel.is-mobile :deep(.overview-col) {
+  flex: 0 0 calc(80vw - 40px);
+  max-width: calc(80vw - 40px);
+  width: calc(80vw - 40px);
+  scroll-snap-align: center;
+  padding: 0 !important;
+}
+
+.overview-carousel-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.overview-carousel-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-lighter);
+  transition: background var(--transition-fast), transform var(--transition-fast);
+}
+
+.overview-carousel-dot.is-active {
+  background: var(--primary-gold);
+  transform: scale(1.5);
+}
+
+/* 移动端：概览卡片紧凑样式 */
 @media (max-width: 768px) {
   .overview-row {
     margin-bottom: 4px;
   }
 
-  .overview-row :deep(.el-col) {
-    padding-left: 6px;
-    padding-right: 6px;
-  }
-
   .overview-card :deep(.el-card__body) {
-    padding: 10px 8px;
+    padding: 16px 14px;
   }
 
   .overview-label {
-    font-size: 11px;
-    margin-bottom: 2px;
+    font-size: 12px;
+    margin-bottom: 4px;
   }
 
   .overview-value {
-    font-size: 16px;
-    margin-bottom: 2px;
+    font-size: 22px;
+    margin-bottom: 4px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1025,7 +1216,7 @@ watch(createdDateRange, () => triggerAutoFetch())
   }
 
   .overview-sub {
-    font-size: 10px;
+    font-size: 11px;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -1081,6 +1272,62 @@ watch(createdDateRange, () => triggerAutoFetch())
   height: 320px;
 }
 
+/* 图表 Tab 切换（移动端） */
+.chart-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.chart-tab {
+  flex: 1;
+  height: 36px;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.7);
+  color: var(--text-light);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chart-tab.is-active {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(234, 205, 163, 0.24));
+  border-color: rgba(212, 175, 55, 0.5);
+  color: var(--primary-gold-dark);
+  box-shadow: 0 2px 8px rgba(212, 175, 55, 0.15);
+}
+
+/* 图表骨架屏 */
+.chart-skeleton {
+  width: 100%;
+  height: 220px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, #f1f5f9 0%, #ffffff 50%, #f1f5f9 100%);
+  background-size: 220% 100%;
+  animation: chartSkeleton 1.2s ease-in-out infinite;
+}
+
+.chart-skeleton--wide {
+  height: 260px;
+}
+
+@keyframes chartSkeleton {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
+}
+
+/* 图表组切换过渡 */
+.chart-group {
+  transition: opacity var(--transition-fast);
+}
+
 .empty-tip {
   margin-top: 24px;
 }
@@ -1104,13 +1351,208 @@ watch(createdDateRange, () => triggerAutoFetch())
 }
 
 @media (max-width: 768px) {
+  .charts-row {
+    row-gap: 12px;
+  }
+
   .chart-container {
-    height: 220px;
+    height: 280px;
   }
 
   .chart-container--wide {
-    height: 260px;
+    height: 420px;
+  }
+
+  .chart-skeleton {
+    height: 240px;
+  }
+
+  .chart-skeleton--wide {
+    height: 380px;
   }
 }
-</style>
 
+/* 移动端筛选胶囊条 */
+.mobile-stats-filter-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.mobile-stats-filter-trigger {
+  flex: 0 0 auto;
+  min-width: 86px;
+  height: 36px;
+  border: 1px solid rgba(212, 175, 55, 0.42);
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(234, 205, 163, 0.24));
+  color: var(--primary-gold-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 700;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.mobile-stats-filter-trigger .el-icon {
+  font-size: 16px;
+}
+
+.mobile-stats-filter-trigger strong {
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--primary-gold);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.mobile-stats-filter-chips {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-stats-filter-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-stats-filter-chip {
+  flex: 0 0 auto;
+  max-width: 96px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 28px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 移动端筛选底部面板 */
+.mobile-stats-filter-host {
+  display: block;
+}
+
+.mobile-stats-filter-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.mobile-stats-filter-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1301;
+  max-height: min(82dvh, 720px);
+  padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+  border-radius: 24px 24px 0 0;
+  background: #ffffff;
+  box-shadow: 0 -18px 48px rgba(15, 23, 42, 0.22);
+  transform: translateY(104%);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0.28s;
+}
+
+.mobile-stats-filter-sheet.is-open {
+  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.mobile-stats-filter-sheet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 2px 12px;
+  color: var(--text-dark);
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.mobile-stats-filter-close {
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: #f3f4f6;
+  color: #64748b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  -webkit-tap-highlight-color: transparent;
+  cursor: pointer;
+}
+
+.mobile-stats-filter-sheet-body {
+  max-height: calc(min(82dvh, 720px) - 130px);
+  overflow-y: auto;
+  padding-bottom: 4px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.mobile-stats-filter-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.mobile-stats-filter-sheet-footer {
+  display: flex;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(212, 175, 55, 0.18);
+}
+
+.mobile-stats-filter-sheet-footer .el-button {
+  flex: 1;
+  height: 44px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.mobile-stats-filter-reset {
+  border-color: rgba(212, 175, 55, 0.35);
+  color: var(--primary-gold-dark);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.mobile-stats-filter-apply {
+  background: var(--accent-purple) !important;
+  border-color: var(--accent-purple) !important;
+}
+</style>
