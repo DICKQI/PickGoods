@@ -13,14 +13,56 @@
         <ShowcaseManager />
       </div>
 
-      <div v-else-if="activeTab === 'barn'" key="barn">
-      <!-- 搜索栏 -->
-      <div class="search-section">
-        <SearchBar />
+      <div v-else-if="activeTab === 'barn'" key="barn" class="barn-section">
+      <div class="barn-discovery">
+        <!-- 搜索栏 -->
+        <div class="search-section">
+          <SearchBar />
+        </div>
+
+        <div v-if="isMobile" class="mobile-filter-strip">
+          <button class="mobile-filter-trigger" type="button" @click="openMobileFilter">
+            <el-icon><List /></el-icon>
+            <span>筛选</span>
+            <strong v-if="activeFilterCount > 0">{{ activeFilterCount }}</strong>
+          </button>
+          <div class="mobile-filter-chips" aria-label="当前筛选">
+            <span
+              v-for="chip in activeFilterChips"
+              :key="chip"
+              class="mobile-filter-chip"
+            >
+              {{ chip }}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <!-- 筛选面板 -->
-      <FilterPanel />
+      <!-- 筛选面板：桌面端仍为卡片，移动端放入底部面板 -->
+      <FilterPanel v-if="!isMobile" />
+
+      <div v-if="isMobile" class="mobile-filter-host">
+        <div
+          v-show="mobileFilterVisible"
+          class="mobile-filter-backdrop"
+          @click="closeMobileFilter"
+        ></div>
+        <section
+          class="mobile-filter-sheet"
+          :class="{ 'is-open': mobileFilterVisible }"
+          :aria-hidden="!mobileFilterVisible"
+        >
+          <div class="mobile-filter-sheet-header">
+            <span>筛选谷子</span>
+            <button class="mobile-filter-close" type="button" @click="closeMobileFilter" aria-label="关闭筛选">
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+          <div class="mobile-filter-sheet-body">
+            <FilterPanel force-expanded />
+          </div>
+        </section>
+      </div>
 
       <Transition name="selection-bar" appear>
         <div v-if="guziStore.selectionMode" class="selection-status-bar">
@@ -77,9 +119,22 @@
       <!-- 哨兵元素：滚动到此处触发加载更多 -->
       <div v-if="guziStore.guziList.length > 0" ref="sentinelRef" class="scroll-sentinel"></div>
       <!-- 加载更多指示器 -->
-      <div v-if="guziStore.loadingMore" class="loading-more">
-        <el-icon class="is-loading"><Loading /></el-icon>
-        <span>加载中...</span>
+      <div
+        v-if="guziStore.loadingMore"
+        class="loading-more"
+        :class="{ 'loading-more--mobile': isMobile }"
+      >
+        <template v-if="isMobile">
+          <div v-for="index in 4" :key="index" class="mobile-loading-card">
+            <span class="mobile-loading-image"></span>
+            <span class="mobile-loading-line"></span>
+            <span class="mobile-loading-line short"></span>
+          </div>
+        </template>
+        <template v-else>
+          <el-icon class="is-loading"><Loading /></el-icon>
+          <span>加载中...</span>
+        </template>
       </div>
       <!-- 已加载全部 -->
       <div v-else-if="!guziStore.hasMore && guziStore.guziList.length > 0" class="no-more">
@@ -175,7 +230,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useShowcaseStore } from '@/stores/showcase'
 import SearchBar from '@/components/SearchBar.vue'
@@ -210,8 +265,60 @@ const statsRefreshing = ref(false)
 
 // 移动端检测
 const isMobile = ref(window.innerWidth < 768)
+const mobileFilterVisible = ref(false)
 const sentinelRef = ref<HTMLElement | null>(null)
 let sentinelObserver: IntersectionObserver | null = null
+let bodyOverflowBeforeFilter = ''
+
+const statusLabelMap: Record<string, string> = {
+  in_cabinet: '在馆',
+  outdoor: '出街中',
+  sold: '已售出',
+}
+
+const activeFilterChips = computed(() => {
+  const filters = guziStore.filters
+  const chips: string[] = []
+
+  if (guziStore.viewMode === 'similar') {
+    chips.push('相似')
+  }
+
+  if (filters.search) {
+    chips.push('搜索')
+  }
+
+  const statusValues = filters.status__in
+    ? filters.status__in.split(',')
+    : filters.status
+      ? [filters.status]
+      : []
+
+  if (statusValues.length > 0) {
+    chips.push(statusValues.map(status => statusLabelMap[status] ?? status).join('/'))
+  }
+
+  if (filters.is_official === true) {
+    chips.push('官谷')
+  } else if (filters.is_official === false) {
+    chips.push('同人')
+  }
+
+  if (filters.ip) chips.push('IP')
+  if (filters.character) chips.push('角色')
+  if (filters.category) chips.push('品类')
+  if (filters.theme) chips.push('主题')
+  if (filters.location) chips.push('位置')
+  if (filters.group_by) chips.push('分组')
+
+  return chips.length > 0 ? chips.slice(0, 5) : ['全部']
+})
+
+const activeFilterCount = computed(() => (
+  activeFilterChips.value.length === 1 && activeFilterChips.value[0] === '全部'
+    ? 0
+    : activeFilterChips.value.length
+))
 
 const pageSize = computed({
   get: () => guziStore.pagination.page_size,
@@ -270,6 +377,7 @@ const handleLocationClick = (path: string) => {
 
 const handleSelectionEnter = () => {
   closeContextMenu()
+  closeMobileFilter()
   drawerVisible.value = false
   guziStore.enterSelectionMode()
 }
@@ -308,6 +416,14 @@ const handleSelectionExit = async () => {
 
 const handleSizeChange = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const openMobileFilter = () => {
+  mobileFilterVisible.value = true
+}
+
+const closeMobileFilter = () => {
+  mobileFilterVisible.value = false
 }
 
 const closeContextMenu = () => {
@@ -552,6 +668,9 @@ const handleShowcaseRefresh = async () => {
 
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768
+  if (!isMobile.value) {
+    closeMobileFilter()
+  }
 }
 
 onMounted(() => {
@@ -592,6 +711,7 @@ onUnmounted(() => {
   if (sentinelObserver) {
     sentinelObserver.disconnect()
   }
+  document.body.style.overflow = bodyOverflowBeforeFilter
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('cloud-showcase:refresh', handleShowcaseRefresh as EventListener)
   window.removeEventListener('cloud-showcase:selection-enter', handleSelectionEnter as EventListener)
@@ -605,9 +725,21 @@ onUnmounted(() => {
 watch(
   () => activeTab.value,
   (tab) => {
+    closeMobileFilter()
     window.dispatchEvent(new CustomEvent('cloud-showcase:tab-changed', { detail: { tab } }))
   },
 )
+
+watch(mobileFilterVisible, (visible) => {
+  if (visible) {
+    if (!isMobile.value) return
+    bodyOverflowBeforeFilter = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return
+  }
+
+  document.body.style.overflow = bodyOverflowBeforeFilter
+})
 </script>
 
 <style scoped>
@@ -621,6 +753,15 @@ watch(
 
 .search-section {
   margin-bottom: 24px;
+}
+
+.barn-discovery {
+  margin-bottom: 20px;
+}
+
+.mobile-filter-strip,
+.mobile-filter-host {
+  display: none;
 }
 
 .cloud-tabs {
@@ -743,6 +884,213 @@ watch(
 }
 
 @media (max-width: 768px) {
+  .cloud-showcase {
+    padding: 12px 10px 128px;
+  }
+
+  .cloud-tabs {
+    position: sticky;
+    top: calc(64px + env(safe-area-inset-top));
+    z-index: 30;
+    margin: 0 -10px 12px;
+    padding: 0 10px 8px;
+    background: rgba(247, 248, 250, 0.92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+  }
+
+  .cloud-tabs :deep(.el-tabs__header) {
+    margin: 0;
+  }
+
+  .cloud-tabs :deep(.el-tabs__nav-wrap::after) {
+    height: 1px;
+    background-color: rgba(212, 175, 55, 0.14);
+  }
+
+  .cloud-tabs :deep(.el-tabs__item) {
+    height: 44px;
+    padding: 0 18px;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .barn-discovery {
+    margin-bottom: 12px;
+    padding: 10px;
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .search-section {
+    margin-bottom: 10px;
+  }
+
+  .barn-discovery :deep(.search-bar) {
+    margin-bottom: 0;
+  }
+
+  .barn-discovery :deep(.search-input) {
+    max-width: none;
+  }
+
+  .barn-discovery :deep(.el-input__wrapper) {
+    min-height: 42px;
+    border-radius: 999px;
+    box-shadow: none;
+    background: #ffffff;
+  }
+
+  .mobile-filter-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mobile-filter-trigger {
+    flex: 0 0 auto;
+    min-width: 86px;
+    height: 36px;
+    border: 1px solid rgba(212, 175, 55, 0.42);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(234, 205, 163, 0.24));
+    color: var(--primary-gold-dark);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-filter-trigger .el-icon {
+    font-size: 16px;
+  }
+
+  .mobile-filter-trigger strong {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--primary-gold);
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  .mobile-filter-chips {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-filter-chip {
+    flex: 0 0 auto;
+    max-width: 96px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 28px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-filter-host {
+    display: block;
+  }
+
+  .mobile-filter-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    background: rgba(15, 23, 42, 0.34);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .mobile-filter-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1301;
+    max-height: min(82dvh, 720px);
+    padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+    border-radius: 24px 24px 0 0;
+    background: #ffffff;
+    box-shadow: 0 -18px 48px rgba(15, 23, 42, 0.22);
+    transform: translateY(104%);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0.28s;
+  }
+
+  .mobile-filter-sheet.is-open {
+    transform: translateY(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .mobile-filter-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 2px 12px;
+    color: var(--text-dark);
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  .mobile-filter-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 50%;
+    background: #f3f4f6;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-filter-sheet-body {
+    max-height: calc(min(82dvh, 720px) - 62px);
+    overflow-y: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-filter-sheet-body :deep(.filter-panel) {
+    margin-bottom: 0;
+  }
+
   .goods-grid {
     grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
     gap: 12px;
@@ -758,8 +1106,10 @@ watch(
     line-height: 1.4;
   }
 
-  .cloud-showcase {
-    padding-bottom: 120px; /* 为移动端底部导航和悬浮操作按钮预留空间 */
+  @supports not (top: env(safe-area-inset-top)) {
+    .cloud-tabs {
+      top: 64px;
+    }
   }
 }
 
@@ -778,6 +1128,53 @@ watch(
   padding: 24px 0;
   color: var(--text-secondary, #909399);
   font-size: 14px;
+}
+
+.loading-more--mobile {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 8px 0 20px;
+}
+
+.mobile-loading-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 18px;
+  background: #ffffff;
+  border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.mobile-loading-image,
+.mobile-loading-line {
+  display: block;
+  border-radius: 12px;
+  background: linear-gradient(90deg, #f1f5f9 0%, #ffffff 50%, #f1f5f9 100%);
+  background-size: 220% 100%;
+  animation: mobileSkeleton 1.2s ease-in-out infinite;
+}
+
+.mobile-loading-image {
+  aspect-ratio: 1;
+}
+
+.mobile-loading-line {
+  height: 12px;
+}
+
+.mobile-loading-line.short {
+  width: 62%;
+}
+
+@keyframes mobileSkeleton {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -120% 0;
+  }
 }
 
 /* 已加载全部 */

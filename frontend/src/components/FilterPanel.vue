@@ -45,6 +45,7 @@
               </el-icon>
             </el-button>
             <el-button
+              v-if="!forceExpanded"
               text
               class="toggle-btn"
               @click="toggleCollapsed"
@@ -232,6 +233,14 @@ interface CategoryTreeNode {
 const guziStore = useGuziStore()
 const locationStore = useLocationStore()
 
+const props = withDefaults(defineProps<{
+  forceExpanded?: boolean
+}>(), {
+  forceExpanded: false,
+})
+
+const forceExpanded = computed(() => props.forceExpanded)
+
 // 设备类型 & 折叠状态（PC 默认展开，移动端默认收起）
 const isMobile = ref(false)
 const collapsed = ref(false)
@@ -239,6 +248,7 @@ const collapsed = ref(false)
 const cardBodyStyle = computed(() => ({}))
 
 const toggleCollapsed = () => {
+  if (forceExpanded.value) return
   collapsed.value = !collapsed.value
 }
 
@@ -411,7 +421,7 @@ watch(
 onMounted(async () => {
   // 根据当前窗口宽度决定默认展开/收起
   isMobile.value = window.innerWidth < 768
-  collapsed.value = isMobile.value
+  collapsed.value = forceExpanded.value ? false : isMobile.value
 
   // 从 store 同步初始筛选条件到本地状态
   localFilters.value = {
@@ -455,6 +465,11 @@ onMounted(async () => {
   }
 
   locationStore.fetchNodes()
+})
+watch(forceExpanded, (value) => {
+  if (value) {
+    collapsed.value = false
+  }
 })
 onUnmounted(() => {})
 </script>
@@ -923,7 +938,6 @@ onUnmounted(() => {})
 
 /* 输入类控件的高度/圆角已在上方统一变量中设置 */
 </style>
-
 
 
 

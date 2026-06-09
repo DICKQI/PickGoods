@@ -82,7 +82,7 @@
 
     <!-- 悬浮按钮组（仅云展柜页面展示；统计看板隐藏刷新按钮） -->
     <TransitionGroup
-      v-if="showFab"
+      v-if="showFab && !isMobile"
       name="fab-list"
       tag="div"
       class="fab-group"
@@ -138,13 +138,86 @@
         <el-icon><Close /></el-icon>
       </div>
     </TransitionGroup>
+
+    <div v-if="showFab && isMobile" class="mobile-action-layer">
+      <Transition name="mobile-action-backdrop">
+        <div
+          v-if="mobileActionOpen && showMobileActionFab"
+          class="mobile-action-backdrop"
+          @click="closeMobileActions"
+        ></div>
+      </Transition>
+
+      <Transition name="mobile-action-sheet">
+        <div v-if="mobileActionOpen && showMobileActionFab" class="mobile-action-sheet">
+          <button
+            v-if="showRefreshFab"
+            type="button"
+            class="mobile-action-item"
+            :class="{ loading: refreshLoading }"
+            @click="handleMobileRefresh"
+          >
+            <span class="mobile-action-icon">
+              <el-icon v-if="!refreshLoading"><Refresh /></el-icon>
+              <el-icon v-else class="is-loading"><Loading /></el-icon>
+            </span>
+            <span>刷新</span>
+          </button>
+          <button
+            v-if="showAddFab"
+            type="button"
+            class="mobile-action-item primary"
+            @click="handleMobileAdd"
+          >
+            <span class="mobile-action-icon"><el-icon><Plus /></el-icon></span>
+            <span>新增</span>
+          </button>
+          <button
+            v-if="showMultiSelectFab"
+            type="button"
+            class="mobile-action-item"
+            @click="handleMobileSelectionEnter"
+          >
+            <span class="mobile-action-icon"><el-icon><Grid /></el-icon></span>
+            <span>批量展示</span>
+          </button>
+        </div>
+      </Transition>
+
+      <Transition name="mobile-selection-dock">
+        <div v-if="showMobileSelectionDock" class="mobile-selection-dock">
+          <button type="button" class="mobile-selection-exit" @click="exitSelectionMode">
+            <el-icon><Close /></el-icon>
+          </button>
+          <div class="mobile-selection-summary">
+            <span>已选</span>
+            <strong>{{ guziStore.selectedGoodsCount }}</strong>
+          </div>
+          <button type="button" class="mobile-selection-confirm" @click="confirmSelection">
+            <el-icon><Check /></el-icon>
+            <span>展示</span>
+          </button>
+        </div>
+      </Transition>
+
+      <button
+        v-if="showMobileActionFab"
+        type="button"
+        class="mobile-action-fab"
+        :class="{ 'is-open': mobileActionOpen }"
+        @click="toggleMobileActions"
+        aria-label="打开操作"
+      >
+        <el-icon><MoreFilled /></el-icon>
+      </button>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { Capacitor } from '@capacitor/core'
@@ -157,6 +230,7 @@ const authStore = useAuthStore()
 
 const isMobile = ref(window.innerWidth < 768)
 const refreshLoading = ref(false)
+const mobileActionOpen = ref(false)
 const isNativePlatform = ref(Capacitor.isNativePlatform())
 const statusBarHeight = ref(0)
 const navbarRef = ref<HTMLElement | null>(null)
@@ -202,9 +276,31 @@ const showAddFab = computed(() => showFab.value && showcaseActiveTab.value === '
 const showMultiSelectFab = computed(() => showFab.value && showcaseActiveTab.value === 'barn' && !showSelectionControls.value)
 const showSelectionConfirmFab = computed(() => showSelectionControls.value)
 const showSelectionExitFab = computed(() => showSelectionControls.value)
+const showMobileActionFab = computed(() => !showSelectionControls.value && (
+  showRefreshFab.value || showAddFab.value || showMultiSelectFab.value
+))
+const showMobileSelectionDock = computed(() => showSelectionControls.value)
 
 const goToAdd = () => {
   router.push('/goods/new')
+}
+
+const closeMobileActions = () => {
+  mobileActionOpen.value = false
+}
+
+const toggleMobileActions = () => {
+  mobileActionOpen.value = !mobileActionOpen.value
+}
+
+const handleMobileAdd = () => {
+  closeMobileActions()
+  goToAdd()
+}
+
+const handleMobileSelectionEnter = () => {
+  closeMobileActions()
+  enterSelectionMode()
 }
 
 const enterSelectionMode = () => {
@@ -250,13 +346,22 @@ const handleRefresh = async () => {
   }
 }
 
+const handleMobileRefresh = async () => {
+  closeMobileActions()
+  await handleRefresh()
+}
+
 const handleResize = () => {
   isMobile.value = window.innerWidth < 768
+  if (!isMobile.value) {
+    closeMobileActions()
+  }
 }
 
 const handleShowcaseTabChanged = (e: Event) => {
   const ce = e as CustomEvent<{ tab?: 'showcase' | 'barn' | 'stats' }>
   showcaseActiveTab.value = ce.detail?.tab ?? null
+  closeMobileActions()
 }
 
 onMounted(() => {
@@ -694,6 +799,10 @@ onUnmounted(() => {
     0 2px 8px rgba(212, 175, 55, 0.22);
 }
 
+.mobile-action-layer {
+  display: none;
+}
+
 .refresh-fab .is-loading {
   animation: rotate 1s linear infinite;
 }
@@ -762,6 +871,202 @@ onUnmounted(() => {
     width: 50px;
     height: 50px;
     font-size: 24px;
+  }
+
+  .mobile-action-layer {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1002;
+    pointer-events: none;
+  }
+
+  .mobile-action-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+    pointer-events: auto;
+  }
+
+  .mobile-action-fab {
+    position: fixed;
+    right: 18px;
+    bottom: calc(82px + env(safe-area-inset-bottom));
+    width: 52px;
+    height: 52px;
+    border: 1px solid rgba(212, 175, 55, 0.42);
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.94);
+    color: var(--primary-gold);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow:
+      0 14px 32px rgba(15, 23, 42, 0.16),
+      0 4px 14px rgba(212, 175, 55, 0.18);
+    pointer-events: auto;
+    transition: transform 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-action-fab.is-open {
+    transform: rotate(90deg) scale(0.96);
+    background: var(--primary-gold);
+    color: #fff;
+  }
+
+  .mobile-action-sheet {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(146px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    gap: 8px;
+    padding: 10px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    pointer-events: auto;
+  }
+
+  .mobile-action-item {
+    min-height: 72px;
+    border: 0;
+    border-radius: 16px;
+    background: #f8fafc;
+    color: #475569;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    font-size: 12px;
+    font-weight: 700;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-action-item.primary {
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(234, 205, 163, 0.95));
+    color: #ffffff;
+  }
+
+  .mobile-action-item.loading {
+    opacity: 0.72;
+  }
+
+  .mobile-action-icon {
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.72);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+  }
+
+  .mobile-selection-dock {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    min-height: 58px;
+    padding: 8px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    box-shadow: 0 16px 38px rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: grid;
+    grid-template-columns: 44px 1fr minmax(92px, auto);
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+  }
+
+  .mobile-selection-exit,
+  .mobile-selection-confirm {
+    height: 42px;
+    border: 0;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 800;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-selection-exit {
+    background: #f1f5f9;
+    color: #64748b;
+  }
+
+  .mobile-selection-confirm {
+    padding: 0 14px;
+    background: linear-gradient(135deg, var(--primary-gold), var(--primary-gold-light));
+    color: #ffffff;
+  }
+
+  .mobile-selection-summary {
+    min-width: 0;
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: center;
+    gap: 5px;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .mobile-selection-summary strong {
+    color: var(--primary-gold-dark);
+    font-size: 20px;
+  }
+
+  .mobile-action-backdrop-enter-active,
+  .mobile-action-backdrop-leave-active,
+  .mobile-action-sheet-enter-active,
+  .mobile-action-sheet-leave-active,
+  .mobile-selection-dock-enter-active,
+  .mobile-selection-dock-leave-active {
+    transition: opacity 0.2s ease, transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .mobile-action-backdrop-enter-from,
+  .mobile-action-backdrop-leave-to {
+    opacity: 0;
+  }
+
+  .mobile-action-sheet-enter-from,
+  .mobile-action-sheet-leave-to,
+  .mobile-selection-dock-enter-from,
+  .mobile-selection-dock-leave-to {
+    opacity: 0;
+    transform: translateY(14px) scale(0.98);
+  }
+
+  @supports not (bottom: env(safe-area-inset-bottom)) {
+    .mobile-action-fab {
+      bottom: 82px;
+    }
+
+    .mobile-action-sheet {
+      bottom: 146px;
+    }
+
+    .mobile-selection-dock {
+      bottom: 76px;
+    }
   }
 
   /* 为主内容区域在移动端预留顶部导航高度，避免内容被遮挡 */
