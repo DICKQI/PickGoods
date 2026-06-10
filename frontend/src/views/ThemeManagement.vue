@@ -139,7 +139,12 @@
       <div class="visible-xs-only mobile-list-container">
         <!-- 移动端筛选状态栏 -->
         <div class="mobile-filter-bar" v-if="hasActiveFilters">
-          <span class="filter-result">找到 {{ filteredThemeList.length }} 个结果</span>
+          <div class="mobile-filter-summary">
+            <span class="filter-result">找到 {{ filteredThemeList.length }} 个结果</span>
+            <div class="mobile-filter-chips">
+              <span v-for="chip in mobileFilterChips" :key="chip" class="mobile-filter-chip">{{ chip }}</span>
+            </div>
+          </div>
           <el-button text size="small" @click="clearFilters">
             <el-icon><Close /></el-icon>
             清除
@@ -173,6 +178,7 @@
               :key="item.id"
               class="mobile-card"
             >
+              <div class="mobile-card-spine" aria-hidden="true"></div>
               <div class="mobile-card-left" @click="handleEdit(item)">
                 <div class="icon-placeholder">
                   <el-icon><Star /></el-icon>
@@ -181,6 +187,7 @@
                   <div class="card-name">{{ item.name }}</div>
                   <div class="card-description">{{ item.description || '暂无描述' }}</div>
                   <div class="card-meta">
+                    <span class="card-meta-pill">主题</span>
                     <span class="card-time">{{ formatDate(item.created_at) }}</span>
                   </div>
                 </div>
@@ -195,7 +202,7 @@
             <!-- 加载更多按钮 -->
             <div class="load-more-wrapper" v-if="hasMoreMobileData">
               <el-button @click="loadMoreMobile" :loading="loadingMore">
-                加载更多
+                继续加载
               </el-button>
             </div>
 
@@ -351,29 +358,12 @@
       </template>
     </el-dialog>
 
-    <!-- 移动端底部操作面板 -->
-    <el-drawer
+    <MobileActionSheet
       v-model="mobileDrawerVisible"
-      direction="btt"
-      :with-header="false"
-      size="auto"
-      class="mobile-action-drawer"
-    >
-      <div class="action-sheet-content">
-        <div class="sheet-header">
-          对 "{{ currentActionRow?.name }}" 进行操作
-        </div>
-        <div class="sheet-menu">
-          <div class="sheet-item" @click="handleMobileEdit">
-            <el-icon><Edit /></el-icon> 编辑主题
-          </div>
-          <div class="sheet-item danger" @click="handleMobileDelete">
-            <el-icon><Delete /></el-icon> 删除主题
-          </div>
-        </div>
-        <div class="sheet-cancel" @click="mobileDrawerVisible = false">取消</div>
-      </div>
-    </el-drawer>
+      :title="themeActionSheetTitle"
+      :actions="themeMobileActions"
+      @select="handleThemeMobileAction"
+    />
 
   </div>
 </template>
@@ -386,6 +376,8 @@ import type { FormInstance, FormRules } from 'element-plus'
 import type { UploadFile } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
+import MobileActionSheet from '@/components/MobileActionSheet.vue'
+import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import {
   getThemeList,
   getThemeDetail,
@@ -432,11 +424,6 @@ const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
 
 const scrollContainerRef = ref<HTMLElement | null>(null)
-const startY = ref(0)
-const pullDistance = ref(0)
-const isRefreshing = ref(false)
-const MAX_PULL = 80
-const TRIGGER_DIST = 50
 
 const sortBy = ref<string>('')
 const dateRange = ref<[string, string] | null>(null)
@@ -450,63 +437,23 @@ const mobilePageSize = 10
 const mobileDisplayList = ref<Theme[]>([])
 const loadingMore = ref(false)
 
-const getScrollTop = () => {
-  return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0
-}
-
-const handleTouchStart = (e: TouchEvent) => {
-  if (!isMobile.value || isRefreshing.value) return
-
-  if (getScrollTop() > 0) {
-    startY.value = 0
-    return
-  }
-
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  startY.value = firstTouch.clientY
-}
-
-const handleTouchMove = (e: TouchEvent) => {
-  if (!isMobile.value || isRefreshing.value || startY.value === 0) return
-
-  if (getScrollTop() > 0) return
-
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  const currentY = firstTouch.clientY
-  const distance = currentY - startY.value
-
-  if (distance > 0) {
-    if (e.cancelable) e.preventDefault()
-    pullDistance.value = Math.min(distance * 0.4, MAX_PULL)
-  } else {
-    pullDistance.value = 0
-  }
-}
-
-const handleTouchEnd = async () => {
-  if (!isMobile.value || isRefreshing.value) return
-  if (pullDistance.value >= TRIGGER_DIST) {
-    isRefreshing.value = true
-    pullDistance.value = TRIGGER_DIST
+const {
+  pullDistance,
+  isRefreshing,
+  handleTouchStart,
+  handleTouchMove,
+  handleTouchEnd,
+} = useMobilePullRefresh({
+  enabled: isMobile,
+  onRefresh: async () => {
     try {
       await fetchThemeList(true)
       ElMessage.success('刷新成功')
-    } catch (error) {
+    } catch {
       ElMessage.error('刷新失败')
-    } finally {
-      setTimeout(() => {
-        isRefreshing.value = false
-        pullDistance.value = 0
-        startY.value = 0
-      }, 500)
     }
-  } else {
-    pullDistance.value = 0
-    startY.value = 0
-  }
-}
+  },
+})
 
 const formData = ref({
   name: '',
@@ -534,6 +481,21 @@ const dialogTitle = computed(() => isEdit.value ? '✨ 修改主题' : '✨ 新�
 
 const hasActiveFilters = computed(() => {
   return searchText.value.trim() !== '' || sortBy.value !== '' || (dateRange.value !== null && dateRange.value.length === 2)
+})
+
+const sortLabelMap: Record<string, string> = {
+  created_asc: '创建时间正序',
+  created_desc: '创建时间倒序',
+  name_asc: '名称正序',
+  name_desc: '名称倒序',
+}
+
+const mobileFilterChips = computed(() => {
+  const chips: string[] = []
+  if (searchText.value.trim()) chips.push('关键词')
+  if (sortBy.value) chips.push(sortLabelMap[sortBy.value] || '排序')
+  if (dateRange.value?.length === 2) chips.push('日期范围')
+  return chips
 })
 
 const filteredThemeList = computed(() => {
@@ -732,6 +694,20 @@ const handleDelete = async (row: Theme) => {
 const openMobileActions = (row: Theme) => {
   currentActionRow.value = row
   mobileDrawerVisible.value = true
+}
+
+const themeActionSheetTitle = computed(() => (
+  currentActionRow.value ? `对「${currentActionRow.value.name}」进行操作` : '主题操作'
+))
+
+const themeMobileActions = computed(() => [
+  { key: 'edit', label: '编辑主题', icon: Edit, tone: 'primary' as const },
+  { key: 'delete', label: '删除主题', icon: Delete, tone: 'danger' as const },
+])
+
+const handleThemeMobileAction = (key: string) => {
+  if (key === 'edit') handleMobileEdit()
+  if (key === 'delete') handleMobileDelete()
 }
 
 const handleMobileCardClick = (row: Theme) => {
@@ -1155,39 +1131,92 @@ onUnmounted(() => {
 .mobile-filter-bar {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 10px 16px;
-  background: linear-gradient(135deg, #f6f4ff 0%, #ebe7ff 100%);
-  border-radius: 10px;
-  margin-bottom: 12px;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  border-radius: 14px;
+  margin-bottom: 14px;
+  box-shadow:
+    0 10px 28px -22px rgba(17, 24, 39, 0.36),
+    inset 3px 0 0 rgba(212, 175, 55, 0.72);
+}
+
+.mobile-filter-summary {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .filter-result {
-  font-size: 14px;
-  color: #606266;
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-dark);
+  font-weight: 700;
+}
+
+.mobile-filter-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.mobile-filter-chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  max-width: 100%;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(162, 155, 254, 0.12);
+  color: var(--accent-purple-dark);
+  border: 1px solid rgba(162, 155, 254, 0.22);
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 
 .mobile-card {
-  background: #ffffff;
+  position: relative;
+  min-height: 88px;
+  background: rgba(255, 255, 255, 0.96);
   border-radius: 16px;
-  padding: 16px;
+  padding: 14px 12px 14px 16px;
   margin-bottom: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  transition: all 0.2s;
+  gap: 10px;
+  box-shadow:
+    0 10px 28px -20px rgba(17, 24, 39, 0.36),
+    0 3px 10px -8px rgba(212, 175, 55, 0.18);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
   cursor: pointer;
-  border: 1px solid #f2f3f5;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  overflow: hidden;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .mobile-card:active {
-  background-color: #fafafa;
   transform: scale(0.98);
+  border-color: rgba(212, 175, 55, 0.3);
 }
 
 .mobile-card:last-child {
   margin-bottom: 0;
+}
+
+.mobile-card-spine {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, var(--primary-gold), var(--accent-purple));
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.08);
 }
 
 .mobile-card-left {
@@ -1195,19 +1224,20 @@ onUnmounted(() => {
   align-items: center;
   gap: 12px;
   flex: 1;
+  min-width: 0;
 }
 
 .icon-placeholder {
-  width: 40px;
-  height: 40px;
-  background: #f0f2f5;
-  border-radius: 8px;
+  width: 42px;
+  height: 42px;
+  flex: 0 0 42px;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.14), rgba(162, 155, 254, 0.12));
+  border-radius: 13px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8e7dff;
+  color: var(--primary-gold-dark);
   font-size: 20px;
-  flex-shrink: 0;
 }
 
 .card-info {
@@ -1215,22 +1245,23 @@ onUnmounted(() => {
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  gap: 5px;
 }
 
 .card-name {
   font-size: 16px;
-  font-weight: 600;
-  color: #333;
-  margin-bottom: 4px;
+  font-weight: 700;
+  color: var(--text-dark);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.25;
 }
 
 .card-description {
-  font-size: 14px;
-  color: #666;
-  margin-bottom: 4px;
+  font-size: 13px;
+  color: var(--text-light);
+  line-height: 1.45;
   overflow: hidden;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -1243,43 +1274,76 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+  min-width: 0;
+}
+
+.card-meta-pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--primary-gold-dark);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .card-time {
   font-size: 12px;
-  color: #999;
+  color: var(--text-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .mobile-card-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #ccc;
+  color: var(--text-lighter);
   font-size: 18px;
   flex-shrink: 0;
 }
 
 .mobile-more {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--secondary-gray);
+  color: var(--text-light);
+  transition: transform var(--transition-fast), background var(--transition-fast), color var(--transition-fast);
+}
+
+.mobile-more:active {
+  transform: scale(0.94);
+  background: rgba(162, 155, 254, 0.12);
+  color: var(--accent-purple-dark);
 }
 
 /* 加载更多 */
 .load-more-wrapper {
   display: flex;
   justify-content: center;
-  padding: 20px 0;
+  padding: 22px 0 calc(22px + env(safe-area-inset-bottom));
 }
 
 .load-more-wrapper .el-button {
-  background: linear-gradient(135deg, #f6f4ff 0%, #ebe7ff 100%);
-  border-color: #d9d4ff;
-  color: #8e7dff;
+  min-width: 142px;
+  height: 40px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, rgba(246, 244, 255, 0.96), rgba(234, 205, 163, 0.26));
+  border-color: rgba(162, 155, 254, 0.26);
+  color: var(--accent-purple-dark);
+  font-weight: 800;
 }
 
 .load-more-wrapper .el-button:hover {
-  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
+  background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-purple-dark) 100%);
   color: #fff;
 }
 
@@ -1289,58 +1353,6 @@ onUnmounted(() => {
   background: #fff;
   border-radius: 12px;
   margin-top: 16px;
-}
-
-/* 底部动作面板样式 */
-.action-sheet-content {
-  background: #f8f8f8;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.sheet-header {
-  padding: 12px;
-  text-align: center;
-  font-size: 12px;
-  color: #909399;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.sheet-menu {
-  background: #fff;
-}
-
-.sheet-item {
-  padding: 16px;
-  text-align: center;
-  font-size: 16px;
-  border-bottom: 1px solid #f5f5f5;
-  color: #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.sheet-item:active {
-  background: #f5f5f5;
-}
-
-.sheet-item.danger {
-  color: #f56c6c;
-}
-
-.sheet-cancel {
-  margin-top: 8px;
-  background: #fff;
-  padding: 16px;
-  text-align: center;
-  font-size: 16px;
-  color: #333;
-}
-
-.sheet-cancel:active {
-  background: #f5f5f5;
 }
 
 /* 主题附加图片区块 */
@@ -1479,4 +1491,3 @@ onUnmounted(() => {
   .desktop-view { display: block; }
 }
 </style>
-

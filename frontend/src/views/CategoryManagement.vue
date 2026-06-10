@@ -169,9 +169,14 @@
               v-for="item in flatDisplayedList"
               :key="item.id"
               class="mobile-card"
-              :style="{ paddingLeft: `${16 + (item.depth || 1) * 12}px`, borderLeftColor: depthColor(item.depth) }"
+              :class="{ 'is-expanded': isMobileExpanded(item), 'has-children': Boolean(item.children?.length) }"
+              :style="{
+                '--depth-color': depthColor(item.depth),
+                '--depth-offset': `${Math.max((item.depth || 1) - 1, 0) * 14}px`,
+              }"
             >
               <div class="mobile-card-left" @click="handleMobileCardClick(item)">
+                <div class="mobile-depth-rail" aria-hidden="true"></div>
                 <div class="icon-placeholder">
                   <el-icon><CollectionTag /></el-icon>
                 </div>
@@ -185,7 +190,18 @@
                     />
                   </div>
                   <div class="card-path">{{ item.path_name }}</div>
+                  <div v-if="item.children?.length" class="card-meta-line">
+                    <span>{{ item.children.length }} 个子类</span>
+                  </div>
                 </div>
+                <button
+                  v-if="item.children?.length"
+                  class="mobile-expand-indicator"
+                  type="button"
+                  :aria-label="isMobileExpanded(item) ? '收起子类' : '展开子类'"
+                >
+                  <el-icon><ArrowRight /></el-icon>
+                </button>
               </div>
               <div class="mobile-card-right">
                 <div class="mobile-drag-handle" v-if="authStore.isAdmin">
@@ -267,43 +283,25 @@
       </template>
     </el-dialog>
 
-    <!-- 移动端底部操作面板 -->
-    <el-drawer
+    <MobileActionSheet
       v-model="mobileDrawerVisible"
-      direction="btt"
-      :with-header="false"
-      size="auto"
-      class="mobile-action-drawer"
-    >
-      <div class="action-sheet-content">
-        <div class="sheet-header">
-          对 "{{ currentActionRow?.name }}" 进行操作
-        </div>
-        <div class="sheet-menu">
-          <div class="sheet-item" @click="handleMobileAddSub">
-            <el-icon><Plus /></el-icon> 新增子类
-          </div>
-          <div class="sheet-item" @click="handleMobileEdit">
-            <el-icon><Edit /></el-icon> 编辑品类
-          </div>
-          <div class="sheet-item danger" @click="handleMobileDelete">
-            <el-icon><Delete /></el-icon> 删除品类
-          </div>
-        </div>
-        <div class="sheet-cancel" @click="mobileDrawerVisible = false">取消</div>
-      </div>
-    </el-drawer>
+      :title="categoryActionSheetTitle"
+      :actions="categoryMobileActions"
+      @select="handleCategoryMobileAction"
+    />
 
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { Plus, Search, CollectionTag, Refresh, Loading, Top, MoreFilled, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, CollectionTag, Refresh, Loading, Top, MoreFilled, Edit, Delete, ArrowRight } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
+import MobileActionSheet from '@/components/MobileActionSheet.vue'
+import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import {  createCategory, updateCategory, deleteCategory, batchUpdateCategoryOrder } from '@/api/metadata'
 import type { Category } from '@/api/types'
 import Sortable from 'sortablejs'
@@ -342,79 +340,26 @@ const updateWindowWidth = () => {
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
 
-// 下拉刷新相关状态
 const scrollContainerRef = ref<HTMLElement | null>(null)
-const startY = ref(0)
-const pullDistance = ref(0)
-const isRefreshing = ref(false)
-const MAX_PULL = 80
-const TRIGGER_DIST = 50
 
-// ================== 核心修复逻辑开始 ==================
-
-const getScrollTop = () => {
-  return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0
-}
-
-const handleTouchStart = (e: TouchEvent) => {
-  if (!isMobile.value || isRefreshing.value || isSorting.value) return
-
-  // 核心修改：检测 window 的滚动高度，只有在页面最顶端时才记录触摸点
-  if (getScrollTop() > 0) {
-    startY.value = 0 // 确保非顶端时不记录有效起始点
-    return
-  }
-
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  startY.value = firstTouch.clientY
-}
-
-const handleTouchMove = (e: TouchEvent) => {
-  // 如果起始点无效（说明开始触摸时不在顶部），直接忽略
-  if (!isMobile.value || isRefreshing.value || isSorting.value || startY.value === 0) return
-
-  // 双重保险：移动过程中如果页面被卷下去了，也不处理
-  if (getScrollTop() > 0) return
-
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  const currentY = firstTouch.clientY
-  const distance = currentY - startY.value
-
-  if (distance > 0) {
-    // 只有在确定是下拉动作，且页面在顶部时，才阻止默认行为
-    if (e.cancelable) e.preventDefault()
-    pullDistance.value = Math.min(distance * 0.4, MAX_PULL)
-  } else {
-    pullDistance.value = 0
-  }
-}
-
-// ================== 核心修复逻辑结束 ==================
-
-const handleTouchEnd = async () => {
-  if (!isMobile.value || isRefreshing.value || isSorting.value) return
-  if (pullDistance.value >= TRIGGER_DIST) {
-    isRefreshing.value = true
-    pullDistance.value = TRIGGER_DIST
+const {
+  pullDistance,
+  isRefreshing,
+  handleTouchStart,
+  handleTouchMove,
+  handleTouchEnd,
+} = useMobilePullRefresh({
+  enabled: isMobile,
+  blocked: isSorting,
+  onRefresh: async () => {
     try {
       await fetchCategoryList(true)
       ElMessage.success('刷新成功')
     } catch {
       ElMessage.error('刷新失败')
-    } finally {
-      setTimeout(() => {
-        isRefreshing.value = false
-        pullDistance.value = 0
-        startY.value = 0
-      }, 500)
     }
-  } else {
-    pullDistance.value = 0
-    startY.value = 0
-  }
-}
+  },
+})
 
 const formData = ref({
   name: '',
@@ -773,6 +718,22 @@ const openMobileActions = (row: Category) => {
   mobileDrawerVisible.value = true
 }
 
+const categoryActionSheetTitle = computed(() => (
+  currentActionRow.value ? `对「${currentActionRow.value.name}」进行操作` : '品类操作'
+))
+
+const categoryMobileActions = computed(() => [
+  { key: 'add-sub', label: '新增子类', icon: Plus, tone: 'primary' as const },
+  { key: 'edit', label: '编辑品类', icon: Edit },
+  { key: 'delete', label: '删除品类', icon: Delete, tone: 'danger' as const },
+])
+
+const handleCategoryMobileAction = (key: string) => {
+  if (key === 'add-sub') handleMobileAddSub()
+  if (key === 'edit') handleMobileEdit()
+  if (key === 'delete') handleMobileDelete()
+}
+
 const isMobileExpanded = (row: CategoryNode) => expandedMobileIds.value.has(row.id)
 const toggleMobileExpand = (row: CategoryNode) => {
   if (!row.children || row.children.length === 0) return
@@ -1023,23 +984,33 @@ onUnmounted(() => {
 }
 
 .mobile-card {
-  background: #ffffff;
-  border-radius: 12px;
-  padding: 16px;
+  position: relative;
+  min-height: 74px;
+  background: rgba(255, 255, 255, 0.96);
+  border-radius: 16px;
+  padding: 14px 12px 14px calc(14px + var(--depth-offset, 0px));
   margin-bottom: 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-  transition: all 0.2s;
+  box-shadow:
+    0 10px 28px -20px rgba(17, 24, 39, 0.36),
+    0 3px 10px -8px rgba(212, 175, 55, 0.18);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
   cursor: pointer;
-  border: 1px solid #f2f3f5;
-  border-left: 3px solid #dcdfe6;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  overflow: hidden;
 }
 
 .mobile-card:active {
-  background-color: #fafafa;
   transform: scale(0.98);
+}
+
+.mobile-card.is-expanded {
+  border-color: rgba(212, 175, 55, 0.34);
+  box-shadow:
+    0 12px 30px -18px rgba(17, 24, 39, 0.34),
+    0 4px 14px rgba(212, 175, 55, 0.12);
 }
 
 .mobile-card:last-child {
@@ -1047,67 +1018,126 @@ onUnmounted(() => {
 }
 
 .mobile-card-left {
+  min-width: 0;
+  flex: 1;
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
+.mobile-depth-rail {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: max(8px, calc(8px + var(--depth-offset, 0px)));
+  width: 4px;
+  border-radius: 999px;
+  background: var(--depth-color, var(--primary-gold));
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.08);
+}
+
 .icon-placeholder {
   width: 40px;
   height: 40px;
-  background: #f0f2f5;
-  border-radius: 8px;
+  flex: 0 0 40px;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.14), rgba(162, 155, 254, 0.12));
+  border-radius: 12px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #8e7dff;
+  color: var(--primary-gold-dark);
   font-size: 20px;
 }
 
 .card-info {
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  gap: 4px;
 }
 
 .card-name {
   font-size: 16px;
-  font-weight: 600;
-  color: #333;
+  font-weight: 700;
+  color: var(--text-dark);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.card-id {
+.card-path {
   font-size: 12px;
-  color: #999;
-  margin-top: 2px;
+  color: var(--text-light);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-meta-line {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--primary-gold-dark);
+  font-size: 11px;
+  font-weight: 700;
 }
 
 .mobile-card-right {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #ccc;
+  color: var(--text-lighter);
   font-size: 18px;
+  flex-shrink: 0;
 }
 
 .mobile-drag-handle {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  height: 32px;
   border-radius: 999px;
-  border: 1px dashed #e4e7ed;
+  border: 1px dashed rgba(162, 155, 254, 0.44);
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #c0c4cc;
-  transition: color 0.2s;
+  color: var(--accent-purple-dark);
+  background: rgba(162, 155, 254, 0.08);
+  transition: color var(--transition-fast), background var(--transition-fast);
 }
 .mobile-drag-handle svg {
   display: block;
 }
 
 .mobile-more {
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
   display: flex;
   align-items: center;
   justify-content: center;
+  background: var(--secondary-gray);
+  color: var(--text-light);
+}
+
+.mobile-expand-indicator {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--primary-gold-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.mobile-card.is-expanded .mobile-expand-indicator {
+  transform: rotate(90deg);
+  background: rgba(212, 175, 55, 0.16);
 }
 
 /* 移动端拖拽动画效果 */
@@ -1124,58 +1154,6 @@ onUnmounted(() => {
   .mobile-list-container .mobile-card.sortable-ghost {
     opacity: 0.6;
   }
-}
-
-/* 底部动作面板样式 */
-.action-sheet-content {
-  background: #f8f8f8;
-  padding-bottom: env(safe-area-inset-bottom);
-}
-
-.sheet-header {
-  padding: 12px;
-  text-align: center;
-  font-size: 12px;
-  color: #909399;
-  background: #fff;
-  border-bottom: 1px solid #f0f0f0;
-}
-
-.sheet-menu {
-  background: #fff;
-}
-
-.sheet-item {
-  padding: 16px;
-  text-align: center;
-  font-size: 16px;
-  border-bottom: 1px solid #f5f5f5;
-  color: #333;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.sheet-item:active {
-  background: #f5f5f5;
-}
-
-.sheet-item.danger {
-  color: #f56c6c;
-}
-
-.sheet-cancel {
-  margin-top: 8px;
-  background: #fff;
-  padding: 16px;
-  text-align: center;
-  font-size: 16px;
-  color: #333;
-}
-
-.sheet-cancel:active {
-  background: #f5f5f5;
 }
 
 .color-picker-row {

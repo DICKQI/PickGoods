@@ -257,6 +257,7 @@
             v-for="item in sortedIpList"
             :key="item.id"
             class="ip-card-item"
+            :class="{ 'is-expanded': expandedIPs.includes(item.id) }"
             :data-index-anchor="firstIdByIndexKey[getIndexKey(item.name)] === item.id ? getIndexKey(item.name) : undefined"
           >
             <div
@@ -279,10 +280,14 @@
               </div>
 
               <div class="swipe-content" :style="getSwipeContentStyle(item.id)">
+                <div class="ip-card-spine" aria-hidden="true"></div>
                 <div class="card-main" @click="handleMobileCardClick(item.id)">
                   <div class="card-info">
                     <div class="name-row">
                       <h3 class="name-text">{{ item.name }}</h3>
+                      <span v-if="item.subject_type" class="subject-type-pill">
+                        {{ getSubjectTypeLabel(item.subject_type) }}
+                      </span>
                       <span class="character-count-badge">{{ item.character_count ?? (characterMap[item.id]?.length || 0) }}</span>
                     </div>
                     <div class="keyword-row">
@@ -299,9 +304,18 @@
                       <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
                     </svg>
                   </div>
+                  <button
+                    class="mobile-expand-indicator"
+                    type="button"
+                    :aria-label="expandedIPs.includes(item.id) ? '收起角色列表' : '展开角色列表'"
+                    @click.stop="handleMobileCardClick(item.id)"
+                  >
+                    <el-icon><ArrowRight /></el-icon>
+                  </button>
                 </div>
 
             <!-- 展开的角色列表 -->
+                <Transition name="mobile-expand">
                 <div
                   v-if="expandedIPs.includes(item.id)"
                   v-loading="characterLoadingMap[item.id]"
@@ -350,6 +364,7 @@
               </template>
               <el-empty v-else description="暂无角色" :image-size="60" />
                 </div>
+                </Transition>
               </div>
             </div>
           </div>
@@ -797,6 +812,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
+import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import {
   getIPList,
   getIPDetail,
@@ -857,19 +873,32 @@ const handleDocumentClick = (evt: MouseEvent) => {
 
 // 下拉刷新相关状态
 const scrollContainerRef = ref<HTMLElement | null>(null)
-const startY = ref(0)
-const pullDistance = ref(0)
-const isRefreshing = ref(false)
-const isDragging = ref(false)
-const MAX_PULL = 80
-const TRIGGER_DIST = 50
+const isSorting = ref(false)
+const {
+  pullDistance,
+  isRefreshing,
+  isDragging,
+  handleTouchStart,
+  handleTouchMove,
+  handleTouchEnd,
+} = useMobilePullRefresh({
+  enabled: isMobile,
+  blocked: isSorting,
+  onRefresh: async () => {
+    try {
+      await fetchIPList(true)
+      ElMessage.success('刷新成功')
+    } catch {
+      ElMessage.error('刷新失败')
+    }
+  },
+})
 
 // 拖拽排序相关
 const tableRef = ref()
 const mobileListRef = ref<HTMLElement | null>(null)
 let sortableTable: ReturnType<typeof Sortable.create> | null = null
 let sortableMobile: ReturnType<typeof Sortable.create> | null = null
-const isSorting = ref(false)
 
 // 移动端：侧滑操作（编辑/删除）
 const SWIPE_ACTION_WIDTH = 132 // px
@@ -882,11 +911,6 @@ const swipeTouch = reactive({
   dragging: false,
   moved: false,
 })
-
-// 修复：获取页面滚动高度的辅助函数
-const getScrollTop = () => {
-  return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0
-}
 
 const closeSwipe = (id?: number) => {
   const targetId = id ?? openSwipeId.value
@@ -993,68 +1017,6 @@ const getSwipeContentStyle = (id: number) => {
   return {
     transform: `translateX(${offset}px)`,
     transition: swipeTouch.id === id && swipeTouch.dragging ? 'none' : 'transform 0.22s ease',
-  }
-}
-
-// 下拉刷新逻辑
-const handleTouchStart = (e: TouchEvent) => {
-  if (!isMobile.value || isRefreshing.value || isSorting.value) return
-
-  // 核心修复：检查 window 的滚动高度，只有在页面最顶端时才记录触摸点
-  if (getScrollTop() > 0) {
-    startY.value = 0 // 确保非顶端时不记录有效起始点
-    return
-  }
-
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-
-  isDragging.value = true
-  startY.value = firstTouch.clientY
-}
-
-const handleTouchMove = (e: TouchEvent) => {
-  if (!isMobile.value || isRefreshing.value || isSorting.value || startY.value === 0 || !isDragging.value) return
-
-  // 双重保险：移动过程中如果页面被卷下去了，也不处理
-  if (getScrollTop() > 0) return
-
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  const currentY = firstTouch.clientY
-  const distance = currentY - startY.value
-
-  if (distance > 0) {
-    if (e.cancelable) e.preventDefault()
-    pullDistance.value = Math.min(distance * 0.4, MAX_PULL)
-  } else {
-    pullDistance.value = 0
-  }
-}
-
-const handleTouchEnd = async () => {
-  isDragging.value = false
-  if (!isMobile.value || isRefreshing.value || isSorting.value) return
-
-  if (pullDistance.value >= TRIGGER_DIST) {
-    isRefreshing.value = true
-    pullDistance.value = TRIGGER_DIST
-
-    try {
-      await fetchIPList(true)
-      ElMessage.success('刷新成功')
-    } catch (error) {
-      ElMessage.error('刷新失败')
-    } finally {
-      setTimeout(() => {
-        isRefreshing.value = false
-        pullDistance.value = 0
-        startY.value = 0
-      }, 500)
-    }
-  } else {
-    pullDistance.value = 0
-    startY.value = 0
   }
 }
 
@@ -2245,11 +2207,9 @@ const handleBGMClose = () => {
 
 /* 移动端现代化卡片设计 */
 .mobile-view {
-  /* 修复：移除内部滚动限制，让页面自然滚动 */
   display: none;
   flex-direction: column;
   position: relative;
-  /* 移除 overflow-y 和 max-height */
 }
 
 .mobile-view-inner {
@@ -2270,14 +2230,14 @@ const handleBGMClose = () => {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 6px 4px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.82);
-  border: 1px solid rgba(17, 24, 39, 0.06);
+  gap: 3px;
+  padding: 7px 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.9);
+  border: 1px solid rgba(212, 175, 55, 0.16);
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 8px 18px rgba(17, 24, 39, 0.08);
+  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.1);
 }
 
 .az-index-item {
@@ -2289,14 +2249,15 @@ const handleBGMClose = () => {
   border-radius: 8px;
   font-size: 11px;
   font-weight: 700;
-  color: #5a4bff;
+  color: var(--accent-purple-dark);
   user-select: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
 
 .az-index-item:active {
-  background: rgba(90, 75, 255, 0.10);
+  background: rgba(212, 175, 55, 0.14);
+  color: var(--primary-gold-dark);
 }
 
 /* 下拉刷新相关样式 */
@@ -2332,14 +2293,21 @@ const handleBGMClose = () => {
 }
 
 .ip-card-item {
-  background: #fff;
+  background: rgba(255, 255, 255, 0.96);
   border-radius: 16px;
   overflow: hidden;
   box-shadow:
-    0 10px 28px -18px rgba(17, 24, 39, 0.35),
-    0 3px 10px -8px rgba(17, 24, 39, 0.22);
-  border: 1px solid rgba(17, 24, 39, 0.04);
-  transition: transform 0.2s;
+    0 10px 28px -20px rgba(17, 24, 39, 0.36),
+    0 3px 10px -8px rgba(212, 175, 55, 0.18);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
+}
+
+.ip-card-item.is-expanded {
+  border-color: rgba(212, 175, 55, 0.34);
+  box-shadow:
+    0 14px 34px -22px rgba(17, 24, 39, 0.38),
+    0 4px 16px rgba(212, 175, 55, 0.12);
 }
 
 .ip-swipe-item {
@@ -2357,8 +2325,8 @@ const handleBGMClose = () => {
   width: 132px;
   display: flex;
   flex-direction: column;
-  border-left: 1px solid rgba(17, 24, 39, 0.06);
-  background: linear-gradient(180deg, #fafbff 0%, #f7f5ff 100%);
+  border-left: 1px solid rgba(212, 175, 55, 0.12);
+  background: linear-gradient(180deg, rgba(246, 244, 255, 0.98) 0%, rgba(234, 205, 163, 0.28) 100%);
 }
 
 .swipe-action-btn {
@@ -2369,11 +2337,12 @@ const handleBGMClose = () => {
   gap: 6px;
   border: none;
   background: transparent;
-  color: #5a4bff;
+  color: var(--accent-purple-dark);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 800;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: background var(--transition-fast), transform var(--transition-fast);
 }
 
 .swipe-action-btn .el-icon {
@@ -2381,15 +2350,15 @@ const handleBGMClose = () => {
 }
 
 .swipe-action-btn.edit {
-  border-bottom: 1px solid rgba(17, 24, 39, 0.06);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
 }
 
 .swipe-action-btn.delete {
-  color: #f56c6c;
+  color: #e5484d;
 }
 
 .swipe-action-btn:active {
-  background: rgba(90, 75, 255, 0.06);
+  background: rgba(162, 155, 254, 0.12);
 }
 
 .swipe-action-btn.delete:active {
@@ -2401,6 +2370,7 @@ const handleBGMClose = () => {
   z-index: 1;
   background: #fff;
   will-change: transform;
+  overflow: hidden;
 }
 
 .ip-card-item:active {
@@ -2408,14 +2378,27 @@ const handleBGMClose = () => {
 }
 
 .card-main {
-  padding: 14px 14px;
+  position: relative;
+  min-height: 84px;
+  padding: 15px 12px 15px 18px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.ip-card-spine {
+  position: absolute;
+  top: 12px;
+  bottom: 12px;
+  left: 0;
+  width: 4px;
+  border-radius: 0 999px 999px 0;
+  background: linear-gradient(180deg, var(--primary-gold), var(--accent-purple));
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.08);
 }
 
 .card-main:focus,
@@ -2423,50 +2406,93 @@ const handleBGMClose = () => {
   outline: none;
 }
 
-.name-row {
+.ip-card-item .card-info {
+  min-width: 0;
+  flex: 1;
   display: flex;
-  align-items: baseline;
+  flex-direction: column;
   gap: 8px;
-  margin-bottom: 8px;
+}
+
+.ip-card-item .name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
 
 .type-row {
   margin-bottom: 8px;
 }
 
-.name-text {
+.ip-card-item .name-text {
   margin: 0;
-  font-size: 17px;
-  color: #2c3e50;
-  font-weight: 600;
+  min-width: 0;
+  flex: 1;
+  font-size: 16px;
+  line-height: 1.28;
+  color: var(--text-dark);
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.character-count-badge {
+.subject-type-pill {
+  flex: 0 1 auto;
+  max-width: 92px;
+  min-height: 22px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--primary-gold-dark);
+  font-size: 11px;
+  font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ip-card-item .character-count-badge {
+  flex: 0 0 auto;
+  min-width: 28px;
+  min-height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-size: 12px;
-  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
+  font-weight: 800;
+  background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-purple-dark) 100%);
   color: #fff;
   padding: 2px 8px;
-  border-radius: 10px;
+  border-radius: 999px;
+  box-shadow: 0 4px 12px rgba(162, 155, 254, 0.22);
 }
 
-.keyword-row {
+.ip-card-item .keyword-row {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+  min-width: 0;
+  max-height: 48px;
+  overflow: hidden;
 }
 
-.mini-tag {
+.ip-card-item .mini-tag {
   font-size: 11px;
-  background: linear-gradient(135deg, #f6f4ff 0%, #ebe7ff 100%);
-  color: #5a4bff;
-  padding: 2px 8px;
-  border-radius: 4px;
-  border: 1px solid #d9d4ff;
+  line-height: 1.25;
+  background: rgba(162, 155, 254, 0.1);
+  color: var(--accent-purple-dark);
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(162, 155, 254, 0.2);
+  font-weight: 700;
 }
 
-.no-tag {
+.ip-card-item .no-tag {
   font-size: 12px;
-  color: #c0c4cc;
+  color: var(--text-lighter);
   font-style: italic;
 }
 
@@ -2507,19 +2533,43 @@ const handleBGMClose = () => {
 .card-drag-handle {
   width: 32px;
   height: 32px;
-  border-radius: 8px;
-  background: #f5f7fa;
+  flex: 0 0 32px;
+  border-radius: 999px;
+  background: rgba(162, 155, 254, 0.08);
+  border: 1px dashed rgba(162, 155, 254, 0.44);
+  color: var(--accent-purple-dark);
+  transition: background var(--transition-fast), color var(--transition-fast);
 }
 
 .mobile-drag-handle {
   touch-action: none;
 }
 
+.mobile-expand-indicator {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--primary-gold-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.ip-card-item.is-expanded .mobile-expand-indicator {
+  transform: rotate(90deg);
+  background: rgba(212, 175, 55, 0.16);
+}
+
 /* 角色列表展开区域（移动端） */
 .character-list {
-  padding: 12px 16px;
-  background: #fafbfc;
-  border-top: 1px solid #f2f6fc;
+  padding: 12px 14px 14px 18px;
+  background:
+    linear-gradient(180deg, rgba(245, 245, 247, 0.74), rgba(255, 255, 255, 0.92));
+  border-top: 1px solid rgba(212, 175, 55, 0.12);
 }
 
 .character-list-header {
@@ -2529,7 +2579,21 @@ const handleBGMClose = () => {
   margin-bottom: 12px;
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: var(--text-dark);
+}
+
+.mobile-expand-enter-active,
+.mobile-expand-leave-active {
+  overflow: hidden;
+  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), max-height 0.26s ease;
+  max-height: 420px;
+}
+
+.mobile-expand-enter-from,
+.mobile-expand-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
+  max-height: 0;
 }
 
 @media (max-width: 768px) {
@@ -2537,8 +2601,10 @@ const handleBGMClose = () => {
     gap: 8px;
   }
   .character-tile {
-    padding: 8px 10px;
-    border-radius: 10px;
+    padding: 9px 10px;
+    border-radius: 12px;
+    border-color: rgba(212, 175, 55, 0.1);
+    box-shadow: 0 6px 14px -12px rgba(17, 24, 39, 0.26);
   }
   .character-name-compact {
     font-size: 13px;

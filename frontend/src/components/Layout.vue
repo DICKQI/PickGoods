@@ -149,37 +149,49 @@
       </Transition>
 
       <Transition name="mobile-action-sheet">
-        <div v-if="mobileActionOpen && showMobileActionFab" class="mobile-action-sheet">
+        <div
+          v-if="mobileActionOpen && showMobileActionFab"
+          id="mobile-action-sheet"
+          class="mobile-action-sheet"
+          role="menu"
+          aria-label="首页快捷操作"
+        >
           <button
             v-if="showRefreshFab"
             type="button"
             class="mobile-action-item"
             :class="{ loading: refreshLoading }"
+            role="menuitem"
+            aria-label="刷新当前列表"
             @click="handleMobileRefresh"
           >
             <span class="mobile-action-icon">
               <el-icon v-if="!refreshLoading"><Refresh /></el-icon>
               <el-icon v-else class="is-loading"><Loading /></el-icon>
             </span>
-            <span>刷新</span>
+            <span class="mobile-action-label">刷新</span>
           </button>
           <button
             v-if="showAddFab"
             type="button"
             class="mobile-action-item primary"
+            role="menuitem"
+            aria-label="新增谷子"
             @click="handleMobileAdd"
           >
             <span class="mobile-action-icon"><el-icon><Plus /></el-icon></span>
-            <span>新增</span>
+            <span class="mobile-action-label">新增</span>
           </button>
           <button
             v-if="showMultiSelectFab"
             type="button"
             class="mobile-action-item"
+            role="menuitem"
+            aria-label="进入批量展示"
             @click="handleMobileSelectionEnter"
           >
             <span class="mobile-action-icon"><el-icon><Grid /></el-icon></span>
-            <span>批量展示</span>
+            <span class="mobile-action-label">批量展示</span>
           </button>
         </div>
       </Transition>
@@ -206,9 +218,13 @@
         class="mobile-action-fab"
         :class="{ 'is-open': mobileActionOpen }"
         @click="toggleMobileActions"
-        aria-label="打开操作"
+        aria-haspopup="menu"
+        :aria-expanded="mobileActionOpen ? 'true' : 'false'"
+        aria-controls="mobile-action-sheet"
+        :aria-label="mobileActionOpen ? '关闭快捷操作' : '打开快捷操作'"
       >
-        <el-icon><MoreFilled /></el-icon>
+        <el-icon v-if="mobileActionOpen"><Close /></el-icon>
+        <el-icon v-else><MoreFilled /></el-icon>
       </button>
     </div>
   </div>
@@ -884,77 +900,94 @@ onUnmounted(() => {
   .mobile-action-backdrop {
     position: fixed;
     inset: 0;
-    background: rgba(15, 23, 42, 0.18);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
+    background: rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
     pointer-events: auto;
   }
 
   .mobile-action-fab {
     position: fixed;
     right: 18px;
-    bottom: calc(82px + env(safe-area-inset-bottom));
-    width: 52px;
-    height: 52px;
-    border: 1px solid rgba(212, 175, 55, 0.42);
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    width: 54px;
+    height: 54px;
+    border: 1px solid rgba(255, 255, 255, 0.68);
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.94);
-    color: var(--primary-gold);
+    background: linear-gradient(135deg, var(--primary-gold), #e5c348);
+    color: #fff;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 24px;
     box-shadow:
-      0 14px 32px rgba(15, 23, 42, 0.16),
-      0 4px 14px rgba(212, 175, 55, 0.18);
+      0 16px 30px rgba(96, 78, 18, 0.24),
+      0 5px 14px rgba(212, 175, 55, 0.32);
     pointer-events: auto;
-    transition: transform 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
     -webkit-tap-highlight-color: transparent;
   }
 
   .mobile-action-fab.is-open {
-    transform: rotate(90deg) scale(0.96);
-    background: var(--primary-gold);
+    transform: scale(0.96);
+    background: #364152;
     color: #fff;
+    box-shadow:
+      0 14px 26px rgba(15, 23, 42, 0.22),
+      0 4px 12px rgba(15, 23, 42, 0.14);
   }
 
   .mobile-action-sheet {
     position: fixed;
-    left: 12px;
-    right: 12px;
-    bottom: calc(146px + env(safe-area-inset-bottom));
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+    right: 16px;
+    bottom: calc(150px + env(safe-area-inset-bottom));
+    width: min(248px, calc(100vw - 88px));
+    display: flex;
+    flex-direction: column;
     gap: 8px;
-    padding: 10px;
-    border-radius: 20px;
-    background: rgba(255, 255, 255, 0.96);
-    border: 1px solid rgba(212, 175, 55, 0.18);
-    box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
+    padding: 8px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    box-shadow:
+      0 18px 42px rgba(15, 23, 42, 0.16),
+      0 2px 10px rgba(212, 175, 55, 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
     pointer-events: auto;
   }
 
   .mobile-action-item {
-    min-height: 72px;
-    border: 0;
-    border-radius: 16px;
-    background: #f8fafc;
-    color: #475569;
+    min-height: 48px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 10px;
+    background: rgba(248, 250, 252, 0.94);
+    color: #334155;
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     align-items: center;
-    justify-content: center;
-    gap: 7px;
-    font-size: 12px;
-    font-weight: 700;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 12px;
+    font-size: 14px;
+    font-weight: 800;
+    text-align: left;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
     -webkit-tap-highlight-color: transparent;
   }
 
+  .mobile-action-item:active {
+    transform: scale(0.98);
+  }
+
   .mobile-action-item.primary {
-    background: linear-gradient(135deg, rgba(212, 175, 55, 0.95), rgba(234, 205, 163, 0.95));
+    background: linear-gradient(135deg, var(--primary-gold), #e6c75b);
+    border-color: rgba(212, 175, 55, 0.68);
     color: #ffffff;
+    box-shadow:
+      0 10px 20px rgba(212, 175, 55, 0.22),
+      0 1px 0 rgba(255, 255, 255, 0.32) inset;
   }
 
   .mobile-action-item.loading {
@@ -962,14 +995,29 @@ onUnmounted(() => {
   }
 
   .mobile-action-icon {
-    width: 30px;
-    height: 30px;
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
     border-radius: 50%;
-    background: rgba(255, 255, 255, 0.72);
+    background: #ffffff;
+    color: var(--primary-gold);
     display: inline-flex;
     align-items: center;
     justify-content: center;
     font-size: 18px;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-action-item.primary .mobile-action-icon {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: none;
+  }
+
+  .mobile-action-label {
+    min-width: 0;
+    line-height: 1.2;
+    white-space: nowrap;
   }
 
   .mobile-selection-dock {
@@ -1057,11 +1105,11 @@ onUnmounted(() => {
 
   @supports not (bottom: env(safe-area-inset-bottom)) {
     .mobile-action-fab {
-      bottom: 82px;
+      bottom: 86px;
     }
 
     .mobile-action-sheet {
-      bottom: 146px;
+      bottom: 150px;
     }
 
     .mobile-selection-dock {
