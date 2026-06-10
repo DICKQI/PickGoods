@@ -138,21 +138,21 @@
       <div class="overview-carousel" :class="{ 'is-mobile': isMobile }">
         <div class="overview-carousel-track" ref="overviewCarouselRef">
           <el-row :gutter="16" class="overview-row">
-            <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+            <el-col :xs="24" :sm="12" :md="8" class="overview-col" @click="scrollOverviewTo(0)">
               <el-card class="overview-card overview-card--goods" shadow="hover">
                 <div class="overview-label">谷子件数</div>
                 <div class="overview-value">{{ overview?.goods_count ?? 0 }}</div>
                 <div class="overview-sub">不同 Asset 记录数</div>
               </el-card>
             </el-col>
-            <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+            <el-col :xs="24" :sm="12" :md="8" class="overview-col" @click="scrollOverviewTo(1)">
               <el-card class="overview-card overview-card--quantity" shadow="hover">
                 <div class="overview-label">总数量</div>
                 <div class="overview-value">{{ overview?.quantity_sum ?? 0 }}</div>
                 <div class="overview-sub">合计 quantity</div>
               </el-card>
             </el-col>
-            <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+            <el-col :xs="24" :sm="12" :md="8" class="overview-col" @click="scrollOverviewTo(2)">
               <el-card class="overview-card overview-card--value" shadow="hover">
                 <div class="overview-label">估算总金额</div>
                 <div class="overview-value overview-value--money">
@@ -406,6 +406,18 @@ const overviewCarouselRef = ref<HTMLDivElement | null>(null)
 
 // 图表 Tab 切换（仅移动端）
 const chartTab = ref<'distribution' | 'ranking'>('distribution')
+
+const scrollOverviewTo = (index: number) => {
+  if (!isMobile.value) return
+  const el = overviewCarouselRef.value
+  if (!el) return
+  const target = el.querySelectorAll<HTMLElement>('.overview-col')[index]
+  if (!target) return
+  const trackPadding = parseFloat(getComputedStyle(el).paddingLeft) || 0
+  const left = target.offsetLeft - trackPadding
+  overviewActiveIndex.value = index
+  el.scrollTo({ left, behavior: 'smooth' })
+}
 
 const handleOverviewScroll = () => {
   const el = overviewCarouselRef.value
@@ -1138,12 +1150,15 @@ watch(chartTab, () => {
 
 /* 概览卡片轮播 */
 .overview-carousel.is-mobile .overview-carousel-track {
+  --overview-card-width: calc(80vw - 40px);
+  --overview-track-padding: 16px;
   overflow-x: auto;
   scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--overview-track-padding);
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
-  padding: 0 20px;
-  margin: 0 -20px;
+  padding: 0 var(--overview-track-padding);
+  margin: 0;
 }
 
 .overview-carousel.is-mobile .overview-carousel-track::-webkit-scrollbar {
@@ -1154,14 +1169,18 @@ watch(chartTab, () => {
   display: flex;
   flex-wrap: nowrap;
   gap: 12px;
+  margin-left: 0 !important;
+  margin-right: 0 !important;
 }
 
 .overview-carousel.is-mobile :deep(.overview-col) {
-  flex: 0 0 calc(80vw - 40px);
-  max-width: calc(80vw - 40px);
-  width: calc(80vw - 40px);
+  flex: 0 0 var(--overview-card-width);
+  max-width: var(--overview-card-width);
+  width: var(--overview-card-width);
   scroll-snap-align: center;
   padding: 0 !important;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .overview-carousel-dots {
