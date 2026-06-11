@@ -255,136 +255,187 @@
 
         <!-- 内容区域 -->
         <!-- 修改点：遍历 sortedIpList，保持顺序一致 -->
-        <div class="mobile-view-inner" ref="mobileListRef">
+        <div class="mobile-view-inner" ref="mobileListRef" :class="{ 'is-sorting': isSorting }">
           <div
             v-for="item in sortedIpList"
             :key="item.id"
             class="ip-card-item"
             :class="{ 'is-expanded': expandedIPs.includes(item.id) }"
+            :data-ip-id="item.id"
           >
-            <div
-              class="ip-swipe-item"
-              :class="{ open: openSwipeId === item.id, dragging: swipeTouch.id === item.id && swipeTouch.dragging }"
-              @touchstart="onCardTouchStart($event, item.id)"
-              @touchmove="onCardTouchMove($event)"
-              @touchend="onCardTouchEnd"
-              @touchcancel="onCardTouchEnd"
-            >
-              <div class="swipe-actions" v-if="authStore.isAdmin">
-                <button class="swipe-action-btn edit" type="button" @click.stop="handleEditIP(item)">
-                  <el-icon><Edit /></el-icon>
-                  <span>编辑</span>
-                </button>
-                <button class="swipe-action-btn delete" type="button" @click.stop="handleDeleteIP(item)">
-                  <el-icon><Delete /></el-icon>
-                  <span>删除</span>
-                </button>
-              </div>
+            <div class="ip-card-sticky-shell">
+              <div
+                class="ip-swipe-item"
+                :class="{ open: openSwipeId === item.id, dragging: swipeTouch.id === item.id && swipeTouch.dragging }"
+                @touchstart="onCardTouchStart($event, item.id)"
+                @touchmove="onCardTouchMove($event)"
+                @touchend="onCardTouchEnd"
+                @touchcancel="onCardTouchEnd"
+              >
+                <div class="swipe-actions" v-if="authStore.isAdmin">
+                  <button class="swipe-action-btn edit" type="button" @click.stop="handleEditIP(item)">
+                    <el-icon><Edit /></el-icon>
+                    <span>编辑</span>
+                  </button>
+                  <button class="swipe-action-btn delete" type="button" @click.stop="handleDeleteIP(item)">
+                    <el-icon><Delete /></el-icon>
+                    <span>删除</span>
+                  </button>
+                </div>
 
-              <div class="swipe-content" :style="getSwipeContentStyle(item.id)">
-                <div class="ip-card-spine" aria-hidden="true"></div>
-                <div class="card-main" @click="handleMobileCardClick(item.id)">
-                  <div class="card-info">
-                    <div class="name-row">
-                      <h3 class="name-text">{{ item.name }}</h3>
-                    </div>
-                    <div v-if="item.subject_type" class="meta-row">
-                      <span class="subject-type-pill">
-                        {{ getSubjectTypeLabel(item.subject_type) }}
-                      </span>
-                    </div>
-                    <div class="keyword-row">
-                      <span v-for="keyword in item.keywords || []" :key="keyword.id" class="mini-tag">
-                        {{ keyword.value }}
-                      </span>
-                      <span v-if="!item.keywords?.length" class="no-tag">暂无关键词</span>
-                    </div>
-                  </div>
-                  <div class="card-actions-panel">
-                    <div
-                      class="character-count-chip"
-                      :aria-label="`角色数量：${item.character_count ?? (characterMap[item.id]?.length || 0)}`"
-                    >
-                      <span class="count-value">{{ item.character_count ?? (characterMap[item.id]?.length || 0) }}</span>
-                      <span class="count-label">角色</span>
-                    </div>
-                    <div class="card-control-row">
-                      <div class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin" @click.stop>
-                        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                          <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                          <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                        </svg>
+                <div class="swipe-content" :style="getSwipeContentStyle(item.id)">
+                  <div class="ip-card-spine" aria-hidden="true"></div>
+                  <div class="card-main" @click="handleMobileCardClick(item.id)">
+                    <div class="card-info">
+                      <div class="name-row">
+                        <h3 class="name-text">{{ item.name }}</h3>
                       </div>
-                      <button
-                        class="mobile-expand-indicator"
-                        type="button"
-                        :aria-label="expandedIPs.includes(item.id) ? '收起角色列表' : '展开角色列表'"
-                        @click.stop="handleMobileCardClick(item.id)"
+                      <div v-if="item.subject_type" class="meta-row">
+                        <span class="subject-type-pill">
+                          {{ getSubjectTypeLabel(item.subject_type) }}
+                        </span>
+                      </div>
+                      <div class="keyword-row">
+                        <span v-for="keyword in item.keywords || []" :key="keyword.id" class="mini-tag">
+                          {{ keyword.value }}
+                        </span>
+                        <span v-if="!item.keywords?.length" class="no-tag">暂无关键词</span>
+                      </div>
+                    </div>
+                    <div class="card-actions-panel">
+                      <div
+                        class="character-count-chip"
+                        :aria-label="`角色数量：${item.character_count ?? (characterMap[item.id]?.length || 0)}`"
                       >
-                        <el-icon><ArrowRight /></el-icon>
-                      </button>
+                        <span class="count-value">{{ item.character_count ?? (characterMap[item.id]?.length || 0) }}</span>
+                        <span class="count-label">角色</span>
+                      </div>
+                      <div class="card-control-row">
+                        <div class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin" @click.stop>
+                          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                            <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                          </svg>
+                        </div>
+                        <button
+                          class="mobile-expand-indicator"
+                          type="button"
+                          :aria-label="expandedIPs.includes(item.id) ? '收起角色列表' : '展开角色列表'"
+                          @click.stop="handleMobileCardClick(item.id)"
+                        >
+                          <el-icon><ArrowRight /></el-icon>
+                        </button>
+                      </div>
                     </div>
                   </div>
                 </div>
-
-            <!-- 展开的角色列表 -->
-                <Transition name="mobile-expand">
-                <div
-                  v-if="expandedIPs.includes(item.id)"
-                  v-loading="characterLoadingMap[item.id]"
-                  class="character-list"
-                >
-              <div class="character-list-header">
-                <span>角色列表</span>
-                <el-button
-                  v-if="authStore.isAdmin"
-                  size="small"
-                  type="primary"
-                  text
-                  @click.stop="handleAddCharacterForIP(item)"
-                >
-                  <el-icon><Plus /></el-icon>
-                  添加角色
-                </el-button>
-              </div>
-              <template v-if="characterMap[item.id]?.length">
-                <div class="character-grid character-grid--mobile">
-                  <div
-                    v-for="char in characterMap[item.id]"
-                    :key="char.id"
-                    class="character-tile"
-                    :class="{ clickable: authStore.isAdmin }"
-                    @click="authStore.isAdmin && handleEditCharacter(char)"
-                  >
-                    <el-avatar :size="46" :src="char.avatar || undefined" shape="square" class="char-avatar tile-avatar">
-                      <el-icon><UserFilled /></el-icon>
-                    </el-avatar>
-                    <div class="character-name-compact" :title="char.name">{{ char.name }}</div>
-
-                    <el-button
-                      v-if="authStore.isAdmin"
-                      class="tile-delete-btn"
-                      size="small"
-                      text
-                      type="danger"
-                      @click.stop="handleDeleteCharacter(char)"
-                      title="删除"
-                    >
-                      <el-icon><Delete /></el-icon>
-                    </el-button>
-                  </div>
-                </div>
-              </template>
-              <el-empty v-else description="暂无角色" :image-size="60" />
-                </div>
-                </Transition>
               </div>
             </div>
+
+            <!-- 展开的角色列表 -->
+            <Transition name="mobile-expand">
+              <div
+                v-if="expandedIPs.includes(item.id)"
+                v-loading="characterLoadingMap[item.id]"
+                class="character-list"
+              >
+                <div class="character-list-header">
+                  <span>角色列表</span>
+                  <el-button
+                    v-if="authStore.isAdmin"
+                    size="small"
+                    type="primary"
+                    text
+                    @click.stop="handleAddCharacterForIP(item)"
+                  >
+                    <el-icon><Plus /></el-icon>
+                    添加角色
+                  </el-button>
+                </div>
+                <template v-if="characterMap[item.id]?.length">
+                  <div class="character-grid character-grid--mobile">
+                    <div
+                      v-for="char in characterMap[item.id]"
+                      :key="char.id"
+                      class="character-tile"
+                      :class="{ clickable: authStore.isAdmin }"
+                      @click="authStore.isAdmin && handleEditCharacter(char)"
+                    >
+                      <el-avatar :size="46" :src="char.avatar || undefined" shape="square" class="char-avatar tile-avatar">
+                        <el-icon><UserFilled /></el-icon>
+                      </el-avatar>
+                      <div class="character-name-compact" :title="char.name">{{ char.name }}</div>
+
+                      <el-button
+                        v-if="authStore.isAdmin"
+                        class="tile-delete-btn"
+                        size="small"
+                        text
+                        type="danger"
+                        @click.stop="handleDeleteCharacter(char)"
+                        title="删除"
+                      >
+                        <el-icon><Delete /></el-icon>
+                      </el-button>
+                    </div>
+                  </div>
+                </template>
+                <el-empty v-else description="暂无角色" :image-size="60" />
+              </div>
+            </Transition>
           </div>
         </div>
 
       </div>
+
+      <Transition name="mobile-sticky-ip">
+        <div
+          v-if="activeStickyIP"
+          class="mobile-sticky-ip-header ip-card-item is-expanded"
+          :style="{ top: mobileStickyTop }"
+          @click="handleMobileCardClick(activeStickyIP.id)"
+        >
+          <div class="ip-card-spine" aria-hidden="true"></div>
+          <div class="card-main">
+            <div class="card-info">
+              <div class="name-row">
+                <h3 class="name-text">{{ activeStickyIP.name }}</h3>
+              </div>
+              <div v-if="activeStickyIP.subject_type" class="meta-row">
+                <span class="subject-type-pill">
+                  {{ getSubjectTypeLabel(activeStickyIP.subject_type) }}
+                </span>
+              </div>
+              <div class="keyword-row">
+                <span v-for="keyword in activeStickyIP.keywords || []" :key="keyword.id" class="mini-tag">
+                  {{ keyword.value }}
+                </span>
+                <span v-if="!activeStickyIP.keywords?.length" class="no-tag">暂无关键词</span>
+              </div>
+            </div>
+            <div class="card-actions-panel">
+              <div
+                class="character-count-chip"
+                :aria-label="`角色数量：${activeStickyIP.character_count ?? (characterMap[activeStickyIP.id]?.length || 0)}`"
+              >
+                <span class="count-value">{{ activeStickyIP.character_count ?? (characterMap[activeStickyIP.id]?.length || 0) }}</span>
+                <span class="count-label">角色</span>
+              </div>
+              <div class="card-control-row">
+                <button
+                  class="mobile-expand-indicator"
+                  type="button"
+                  aria-label="收起角色列表"
+                  @click.stop="handleMobileCardClick(activeStickyIP.id)"
+                >
+                  <el-icon><ArrowRight /></el-icon>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </Transition>
 
       <el-empty v-if="!loading && ipList.length === 0" description="没有找到相关的作品" />
     </div>
@@ -850,11 +901,20 @@ const metadataStore = useMetadataStore()
 
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick, true)
+  window.addEventListener('scroll', queueUpdateMobileStickyHeader, { passive: true })
+  window.addEventListener('resize', queueUpdateMobileStickyHeader)
   fetchIPList()
+  nextTick(() => queueUpdateMobileStickyHeader())
 })
 
 onUnmounted(() => {
   document.removeEventListener('click', handleDocumentClick, true)
+  window.removeEventListener('scroll', queueUpdateMobileStickyHeader)
+  window.removeEventListener('resize', queueUpdateMobileStickyHeader)
+  if (mobileStickyRaf != null) {
+    window.cancelAnimationFrame(mobileStickyRaf)
+    mobileStickyRaf = null
+  }
   destroySortables()
 })
 
@@ -1079,12 +1139,83 @@ const sortedIpList = computed(() => {
   })
 })
 
+const activeStickyIPId = ref<number | null>(null)
+const mobileStickyTop = ref('calc(64px + env(safe-area-inset-top) + 8px)')
+const activeStickyIP = computed(() => (
+  sortedIpList.value.find((item) => item.id === activeStickyIPId.value) ?? null
+))
+let mobileStickyRaf: number | null = null
+
+const getMobileStickyTopOffset = () => {
+  const navbar = document.querySelector<HTMLElement>('.navbar')
+  const navBottom = navbar?.getBoundingClientRect().bottom ?? 64
+  return Math.max(64, Math.ceil(navBottom)) + 8
+}
+
+const updateMobileStickyHeader = () => {
+  if (!isMobile.value || isSorting.value || expandedIPs.value.length === 0) {
+    activeStickyIPId.value = null
+    return
+  }
+
+  const top = getMobileStickyTopOffset()
+  mobileStickyTop.value = `${top}px`
+  const expandedIds = new Set(expandedIPs.value)
+  const expandedCards = Array.from(
+    document.querySelectorAll<HTMLElement>('.mobile-view-inner .ip-card-item.is-expanded[data-ip-id]')
+  )
+
+  let nextActiveId: number | null = null
+
+  for (const card of expandedCards) {
+    const id = Number(card.dataset.ipId)
+    if (!Number.isFinite(id) || !expandedIds.has(id)) continue
+
+    const header = card.querySelector<HTMLElement>('.ip-card-sticky-shell')
+    if (!header) continue
+
+    const cardRect = card.getBoundingClientRect()
+    const headerRect = header.getBoundingClientRect()
+    const hasScrolledPastHeader = headerRect.top <= top
+    const hasRoomForHeader = cardRect.bottom > top + headerRect.height
+
+    if (hasScrolledPastHeader && hasRoomForHeader) {
+      nextActiveId = id
+    }
+  }
+
+  activeStickyIPId.value = nextActiveId
+}
+
+const queueUpdateMobileStickyHeader = () => {
+  if (typeof window === 'undefined') return
+  if (mobileStickyRaf != null) return
+
+  mobileStickyRaf = window.requestAnimationFrame(() => {
+    mobileStickyRaf = null
+    updateMobileStickyHeader()
+  })
+}
+
 watch(
   () => sortedIpList.value.map((x) => x.id).join(','),
   () => {
     // 筛选/刷新导致列表变化时，关闭已打开的侧滑，避免残留偏移
     if (openSwipeId.value != null) closeSwipe(openSwipeId.value)
   }
+)
+
+watch(
+  () => [
+    isMobile.value,
+    isSorting.value,
+    expandedIPs.value.join(','),
+    sortedIpList.value.map((x) => x.id).join(','),
+  ],
+  () => {
+    nextTick(() => queueUpdateMobileStickyHeader())
+  },
+  { flush: 'post' }
 )
 
 const destroySortables = () => {
@@ -1342,19 +1473,30 @@ const fetchIPCharacters = async (ipId: number) => {
 }
 
 const toggleExpand = async (ipId: number) => {
-  const index = expandedIPs.value.indexOf(ipId)
-  if (index > -1) {
-    expandedIPs.value.splice(index, 1)
-  } else {
-    expandedIPs.value.push(ipId)
-    await fetchIPCharacters(ipId)
+  if (expandedIPs.value.includes(ipId)) {
+    expandedIPs.value = []
+    activeStickyIPId.value = null
+    return
   }
+
+  expandedIPs.value = [ipId]
+  await fetchIPCharacters(ipId)
+  await nextTick()
+  queueUpdateMobileStickyHeader()
 }
 
 const handleTableExpandChange = async (row: IP, expandedRows: IP[]) => {
   const isExpanded = expandedRows.some((r) => r.id === row.id)
   if (isExpanded) {
+    for (const expandedRow of expandedRows) {
+      if (expandedRow.id !== row.id) {
+        tableRef.value?.toggleRowExpansion?.(expandedRow, false)
+      }
+    }
+    expandedIPs.value = [row.id]
     await fetchIPCharacters(row.id)
+  } else if (expandedIPs.value.includes(row.id)) {
+    expandedIPs.value = []
   }
 }
 
@@ -1620,9 +1762,7 @@ const handleSubmitCharacter = async () => {
           setIPCharacterCount(newIpId, (ipList.value.find((x) => x.id === newIpId)?.character_count || 0) + 1)
         }
         await fetchIPCharacters(newIpId)
-        if (!expandedIPs.value.includes(newIpId)) {
-          expandedIPs.value.push(newIpId)
-        }
+        expandedIPs.value = [newIpId]
       }
       ElMessage.success('保存成功')
       characterDialogVisible.value = false
@@ -2221,10 +2361,66 @@ const handleBGMClose = () => {
 }
 
 .ip-card-item.is-expanded {
+  overflow: visible;
   border-color: rgba(212, 175, 55, 0.34);
   box-shadow:
     0 14px 34px -22px rgba(17, 24, 39, 0.38),
     0 4px 16px rgba(212, 175, 55, 0.12);
+}
+
+.ip-card-sticky-shell {
+  position: relative;
+  z-index: 1;
+  background: #fff;
+  border-radius: 16px;
+}
+
+.ip-card-item.is-expanded > .ip-card-sticky-shell {
+  z-index: 2;
+  border-radius: 16px 16px 0 0;
+  box-shadow:
+    0 12px 28px -22px rgba(17, 24, 39, 0.48),
+    0 1px 0 rgba(212, 175, 55, 0.16);
+}
+
+.mobile-view-inner.is-sorting .ip-card-item.is-expanded > .ip-card-sticky-shell {
+  position: relative;
+  top: auto;
+  z-index: 1;
+}
+
+.ip-card-item.is-expanded > .ip-card-sticky-shell .ip-swipe-item {
+  border-radius: 16px 16px 0 0;
+}
+
+.mobile-sticky-ip-header {
+  display: none;
+  position: fixed;
+  left: 20px;
+  right: 20px;
+  z-index: 990;
+  background: #fff;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 14px 30px -20px rgba(17, 24, 39, 0.48),
+    0 4px 14px -10px rgba(212, 175, 55, 0.32);
+}
+
+.mobile-sticky-ip-header .card-main {
+  min-height: 88px;
+}
+
+.mobile-sticky-ip-enter-active,
+.mobile-sticky-ip-leave-active {
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.mobile-sticky-ip-enter-from,
+.mobile-sticky-ip-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 .ip-swipe-item {
@@ -2292,6 +2488,10 @@ const handleBGMClose = () => {
 
 .ip-card-item:active {
   transform: scale(0.98);
+}
+
+.ip-card-item.is-expanded:active {
+  transform: none;
 }
 
 .card-main {
@@ -2537,6 +2737,7 @@ const handleBGMClose = () => {
   background:
     linear-gradient(180deg, rgba(245, 245, 247, 0.74), rgba(255, 255, 255, 0.92));
   border-top: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 0 0 16px 16px;
 }
 
 .character-list-header {
@@ -2655,6 +2856,9 @@ const handleBGMClose = () => {
   .mobile-view {
     display: flex;
   }
+  .mobile-sticky-ip-header {
+    display: block;
+  }
   .hidden-xs-only {
     display: none !important;
   }
@@ -2696,17 +2900,22 @@ const handleBGMClose = () => {
     width: 100% !important;
   }
 
-  /* 移动端：弱化“搜索”按钮，把视觉重点留给“新增 / 导入” */
+  /* 移动端：搜索按钮圆润化，与输入框风格统一 */
   .search-btn {
-    background: transparent !important;
-    border: 1px solid #8e7dff !important;
-    color: #5a4bff !important;
-    box-shadow: none !important;
-    min-height: 32px;
+    border-radius: 10px !important;
+    height: 36px;
+    padding: 0 14px !important;
+    font-size: 13px;
+    background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(142, 125, 255, 0.25) !important;
+    transition: transform 0.2s, box-shadow 0.2s;
   }
 
   .search-btn:active {
-    background: rgba(90, 75, 255, 0.08) !important;
+    transform: scale(0.96);
+    box-shadow: 0 1px 4px rgba(142, 125, 255, 0.18) !important;
   }
 }
 
@@ -3329,6 +3538,12 @@ const handleBGMClose = () => {
     display: flex !important;
   }
 
+  .mobile-sticky-ip-header {
+    display: block;
+    left: 16px;
+    right: 16px;
+  }
+
   .hidden-xs-only {
     display: none !important;
   }
@@ -3373,15 +3588,20 @@ const handleBGMClose = () => {
   }
 
   .search-btn {
-    background: transparent !important;
-    border: 1px solid #8e7dff !important;
-    color: #5a4bff !important;
-    box-shadow: none !important;
-    min-height: 32px;
+    border-radius: 10px !important;
+    height: 36px;
+    padding: 0 14px !important;
+    font-size: 13px;
+    background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%) !important;
+    border: none !important;
+    color: #fff !important;
+    box-shadow: 0 2px 8px rgba(142, 125, 255, 0.25) !important;
+    transition: transform 0.2s, box-shadow 0.2s;
   }
 
   .search-btn:active {
-    background: rgba(90, 75, 255, 0.08) !important;
+    transform: scale(0.96);
+    box-shadow: 0 1px 4px rgba(142, 125, 255, 0.18) !important;
   }
 
   .character-grid--mobile {
