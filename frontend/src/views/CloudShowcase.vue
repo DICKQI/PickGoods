@@ -911,8 +911,7 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   .cloud-tabs :deep(.el-tabs__nav-wrap::after) {
-    height: 1px;
-    background-color: rgba(212, 175, 55, 0.14);
+    display: none;
   }
 
   .cloud-tabs :deep(.el-tabs__item) {
@@ -1301,8 +1300,7 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   .cloud-tabs :deep(.el-tabs__nav-wrap::after) {
-    height: 1px;
-    background-color: rgba(212, 175, 55, 0.14);
+    display: none;
   }
 
   .cloud-tabs :deep(.el-tabs__item) {
