@@ -1098,7 +1098,7 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   .goods-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 12px;
   }
 
@@ -1488,7 +1488,7 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   .goods-grid {
-    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    grid-template-columns: repeat(2, 1fr);
     gap: 12px;
   }
 
