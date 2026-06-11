@@ -3,10 +3,12 @@ from rest_framework.test import APIClient
 from rest_framework import status
 from datetime import date, timedelta
 from decimal import Decimal
+from PIL import Image
 
 from apps.users.models import User, Role
 from .models import Goods, IP, Character, Category, Theme
 from .similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
+from .utils import compress_image
 
 
 class SimilarityAlgorithmTestCase(TestCase):
@@ -352,4 +354,365 @@ class GoodsDraftFlowTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         data = response.json()
         self.assertIn("character_ids", data)
+
+
+class GoodsCRUDTestCase(TestCase):
+    """商品 CRUD 基本操作"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name='User')
+        self.user = User.objects.create(username='crud_user', password='testpass123', role=self.role)
+        self.client.force_authenticate(user=self.user)
+
+        self.ip = IP.objects.create(name='测试IP', subject_type=4)
+        self.category = Category.objects.create(name='测试品类')
+        self.character = Character.objects.create(ip=self.ip, name='测试角色', gender='female')
+
+    def test_create_goods_success(self):
+        """正常创建商品"""
+        payload = {
+            "name": "新谷子",
+            "ip_id": self.ip.id,
+            "category_id": self.category.id,
+            "character_ids": [self.character.id],
+            "quantity": 1,
+            "price": "99.00",
+        }
+        response = self.client.post('/api/goods/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        data = response.json()
+        self.assertEqual(data["name"], "新谷子")
+
+    def test_list_goods(self):
+        """列出用户自己的商品"""
+        Goods.objects.create(user=self.user, name='G1', ip=self.ip, category=self.category)
+        response = self.client.get('/api/goods/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        items = data.get("results", data)
+        self.assertGreaterEqual(len(items), 1)
+
+    def test_retrieve_goods(self):
+        """获取商品详情"""
+        goods = Goods.objects.create(user=self.user, name='Detail', ip=self.ip, category=self.category)
+        response = self.client.get(f'/api/goods/{goods.id}/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["name"], "Detail")
+
+    def test_update_goods(self):
+        """更新商品名称"""
+        goods = Goods.objects.create(
+            user=self.user, name='Old', ip=self.ip, category=self.category,
+            quantity=1
+        )
+        goods.characters.add(self.character)
+        response = self.client.patch(
+            f'/api/goods/{goods.id}/', {"name": "New"}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        goods.refresh_from_db()
+        self.assertEqual(goods.name, "New")
+
+    def test_delete_goods(self):
+        """删除商品"""
+        goods = Goods.objects.create(user=self.user, name='ToDelete', ip=self.ip, category=self.category)
+        response = self.client.delete(f'/api/goods/{goods.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Goods.objects.filter(id=goods.id).exists())
+
+    def test_other_user_cannot_see_goods(self):
+        """其他用户看不到别人的商品"""
+        Goods.objects.create(user=self.user, name='Private', ip=self.ip, category=self.category)
+        other_role, _ = Role.objects.get_or_create(name='User')
+        other = User.objects.create(username='other_user', role=other_role)
+        self.client.force_authenticate(user=other)
+        response = self.client.get('/api/goods/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        items = data.get("results", data)
+        names = [i["name"] for i in items]
+        self.assertNotIn("Private", names)
+
+
+class GoodsDuplicateDetectionTestCase(TestCase):
+    """商品重复检测与合并策略"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name='User')
+        self.user = User.objects.create(username='dup_user', password='testpass123', role=self.role)
+        self.client.force_authenticate(user=self.user)
+
+        self.ip = IP.objects.create(name='重复测试IP', subject_type=4)
+        self.category = Category.objects.create(name='重复测试品类')
+        self.character = Character.objects.create(ip=self.ip, name='重复角色', gender='female')
+
+        self.existing = Goods.objects.create(
+            user=self.user, name='已存在的谷子', ip=self.ip, category=self.category,
+            price=Decimal('50.00'), purchase_date=date(2025, 1, 1)
+        )
+        self.existing.characters.add(self.character)
+
+    def test_auto_merge_returns_409_with_candidates(self):
+        """auto 策略检测到重复时返回 409"""
+        payload = {
+            "name": "已存在的谷子",
+            "ip_id": self.ip.id,
+            "category_id": self.category.id,
+            "character_ids": [self.character.id],
+            "price": "50.00",
+            "purchase_date": "2025-01-01",
+            "quantity": 1,
+            "merge_strategy": "auto",
+        }
+        response = self.client.post('/api/goods/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_409_CONFLICT)
+        data = response.json()
+        self.assertIn("candidates", data)
+        self.assertGreater(len(data["candidates"]), 0)
+
+    def test_merge_strategy_merges_into_existing(self):
+        """merge 策略直接合并到已有商品"""
+        payload = {
+            "name": "已存在的谷子",
+            "ip_id": self.ip.id,
+            "category_id": self.category.id,
+            "character_ids": [self.character.id],
+            "price": "50.00",
+            "purchase_date": "2025-01-01",
+            "quantity": 2,
+            "merge_strategy": "merge",
+            "merge_target_id": str(self.existing.id),
+        }
+        response = self.client.post('/api/goods/', payload, format='json')
+        # merge 可能返回 200 或 201
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_201_CREATED])
+
+    def test_new_strategy_creates_despite_duplicate(self):
+        """new 策略强制新建即使有重复"""
+        payload = {
+            "name": "已存在的谷子",
+            "ip_id": self.ip.id,
+            "category_id": self.category.id,
+            "character_ids": [self.character.id],
+            "price": "50.00",
+            "purchase_date": "2025-01-01",
+            "quantity": 1,
+            "merge_strategy": "new",
+        }
+        response = self.client.post('/api/goods/', payload, format='json')
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        # 应该有两个同名商品
+        self.assertEqual(Goods.objects.filter(name='已存在的谷子').count(), 2)
+
+
+class GoodsMoveTestCase(TestCase):
+    """商品排序移动"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name='User')
+        self.user = User.objects.create(username='move_user', password='testpass123', role=self.role)
+        self.client.force_authenticate(user=self.user)
+
+        self.ip = IP.objects.create(name='移动测试IP', subject_type=4)
+        self.category = Category.objects.create(name='移动测试品类')
+
+        self.g1 = Goods.objects.create(user=self.user, name='G1', ip=self.ip, category=self.category, order=1000)
+        self.g2 = Goods.objects.create(user=self.user, name='G2', ip=self.ip, category=self.category, order=2000)
+        self.g3 = Goods.objects.create(user=self.user, name='G3', ip=self.ip, category=self.category, order=3000)
+
+    def test_move_goods_before_another(self):
+        """将 G3 移动到 G1 前面"""
+        response = self.client.post(
+            f'/api/goods/{self.g3.id}/move/',
+            {"anchor_id": self.g1.id, "position": "before"},
+            format='json'
+        )
+        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_204_NO_CONTENT])
+
+
+class GoodsStatsTestCase(TestCase):
+    """商品统计看板"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name='User')
+        self.user = User.objects.create(username='stats_user', password='testpass123', role=self.role)
+        self.client.force_authenticate(user=self.user)
+
+        self.ip = IP.objects.create(name='统计IP', subject_type=4)
+        self.category = Category.objects.create(name='统计品类')
+        for i in range(5):
+            Goods.objects.create(
+                user=self.user, name=f'S{i}', ip=self.ip, category=self.category,
+                price=Decimal(str(10 + i * 10)), quantity=i + 1
+            )
+
+    def test_stats_endpoint(self):
+        """统计接口返回正确结构"""
+        response = self.client.get('/api/goods/stats/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIn("overview", data)
+        overview = data["overview"]
+        self.assertIn("goods_count", overview)
+        self.assertEqual(overview["goods_count"], 5)
+
+
+class CategoryViewSetTestCase(TestCase):
+    """品类 CRUD + 树形结构 + 级联删除"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.admin_role, _ = Role.objects.get_or_create(name='Admin')
+        self.user_role, _ = Role.objects.get_or_create(name='User')
+        self.admin = User.objects.create(username='cat_admin', role=self.admin_role)
+        self.admin.set_password('pass123')
+        self.admin.save()
+        self.user = User.objects.create(username='cat_user', role=self.user_role)
+        self.client.force_authenticate(user=self.admin)
+
+    def test_create_category(self):
+        response = self.client.post(
+            '/api/categories/', {"name": "吧唧"}, format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+
+    def test_tree_endpoint(self):
+        """GET /api/categories/tree/ 返回扁平列表"""
+        Category.objects.create(name='A', path_name='A')
+        Category.objects.create(name='B', path_name='B')
+        response = self.client.get('/api/categories/tree/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertGreaterEqual(len(data), 2)
+
+    def test_destroy_empty_category(self):
+        """删除无关联商品的品类"""
+        cat = Category.objects.create(name='空品类')
+        response = self.client.delete(f'/api/categories/{cat.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Category.objects.filter(id=cat.id).exists())
+
+    def test_destroy_category_with_goods_blocked(self):
+        """有关联商品的品类不能删除"""
+        ip = IP.objects.create(name='测试IP')
+        cat = Category.objects.create(name='有商品')
+        user_role, _ = Role.objects.get_or_create(name='User')
+        u = User.objects.create(username='catgoodsuser', role=user_role)
+        Goods.objects.create(user=u, name='G', ip=ip, category=cat)
+        response = self.client.delete(f'/api/categories/{cat.id}/')
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_destroy_cascades_children(self):
+        """删除父品类时级联删除子品类"""
+        parent = Category.objects.create(name='父', path_name='父')
+        child = Category.objects.create(name='子', parent=parent, path_name='父/子')
+        response = self.client.delete(f'/api/categories/{parent.id}/')
+        self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Category.objects.filter(id=child.id).exists())
+
+    def test_batch_update_order(self):
+        """批量更新排序"""
+        c1 = Category.objects.create(name='C1', order=0)
+        c2 = Category.objects.create(name='C2', order=0)
+        response = self.client.post(
+            '/api/categories/batch-update-order/',
+            {"items": [{"id": c1.id, "order": 2000}, {"id": c2.id, "order": 1000}]},
+            format='json'
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        c1.refresh_from_db()
+        c2.refresh_from_db()
+        self.assertEqual(c1.order, 2000)
+        self.assertEqual(c2.order, 1000)
+
+    def test_normal_user_can_read_categories(self):
+        """普通用户可以读取品类"""
+        Category.objects.create(name='公开品类')
+        self.client.force_authenticate(user=self.user)
+        response = self.client.get('/api/categories/')
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_normal_user_cannot_create_category(self):
+        """普通用户不能创建品类"""
+        self.client.force_authenticate(user=self.user)
+        response = self.client.post('/api/categories/', {"name": "新"}, format='json')
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+
+
+class CompressImageTestCase(TestCase):
+    """goods.utils — compress_image 图片压缩"""
+
+    def _make_large_image(self, width=1000, height=1000, mode='RGB'):
+        """创建一个大于 300KB 的测试图片"""
+        import io
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+
+        img = Image.new(mode, (width, height), color=(255, 0, 0) if mode == 'RGB' else (255, 0, 0, 128))
+        buf = io.BytesIO()
+        save_mode = 'PNG' if mode in ('RGBA', 'P') else 'BMP'
+        img.save(buf, format=save_mode)
+        buf.seek(0)
+        size = buf.getbuffer().nbytes
+        return InMemoryUploadedFile(buf, 'ImageField', f'test.{save_mode.lower()}', f'image/{save_mode.lower()}', size, None)
+
+    def test_small_image_returns_none(self):
+        """小于目标大小的图片不需要压缩"""
+        import io
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+
+        img = Image.new('RGB', (10, 10), color=(0, 0, 0))
+        buf = io.BytesIO()
+        img.save(buf, format='PNG')
+        buf.seek(0)
+        size = buf.getbuffer().nbytes
+        f = InMemoryUploadedFile(buf, 'ImageField', 'tiny.png', 'image/png', size, None)
+        result = compress_image(f, max_size_kb=300)
+        self.assertIsNone(result)
+
+    def test_rgba_converted_to_rgb(self):
+        """RGBA 图片被转换为 RGB（JPEG 不支持透明度）"""
+        import io
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+
+        # 创建一个足够大的 RGBA BMP 图片
+        img = Image.new('RGBA', (2000, 2000), color=(255, 0, 0, 128))
+        buf = io.BytesIO()
+        img.save(buf, format='BMP')
+        buf.seek(0)
+        size = buf.getbuffer().nbytes
+        f = InMemoryUploadedFile(buf, 'ImageField', 'test.bmp', 'image/bmp', size, None)
+        result = compress_image(f, max_size_kb=300)
+        self.assertIsNotNone(result)
+        self.assertTrue(result.name.endswith('.jpg') or result.name.endswith('.jpeg'))
+
+    def test_compressed_within_size_limit(self):
+        """压缩后的图片不超过目标大小"""
+        f = self._make_large_image(width=2000, height=2000)
+        result = compress_image(f, max_size_kb=300)
+        self.assertIsNotNone(result)
+        result.seek(0, 2)
+        self.assertLessEqual(result.tell(), 300 * 1024)
+
+    def test_none_input_returns_none(self):
+        """None 输入返回 None"""
+        self.assertIsNone(compress_image(None))
+
+    def test_file_extension_normalized_to_jpg(self):
+        """非 jpg 扩展名被改为 .jpg"""
+        import io
+        from django.core.files.uploadedfile import InMemoryUploadedFile
+
+        img = Image.new('RGB', (800, 800), color=(128, 128, 128))
+        buf = io.BytesIO()
+        img.save(buf, format='BMP')
+        buf.seek(0)
+        size = buf.getbuffer().nbytes
+        f = InMemoryUploadedFile(buf, 'ImageField', 'photo.bmp', 'image/bmp', size, None)
+        result = compress_image(f, max_size_kb=300)
+        if result is not None:
+            self.assertTrue(result.name.endswith('.jpg'))
 
