@@ -21,8 +21,8 @@ describe('buildTree', () => {
     const nodes = [makeNode(1, '房间')]
     const tree = buildTree(nodes)
     expect(tree).toHaveLength(1)
-    expect(tree[0].label).toBe('房间')
-    expect(tree[0].children).toEqual([])
+    expect(tree[0]!.label).toBe('房间')
+    expect(tree[0]!.children).toEqual([])
   })
 
   it('父子关系正确建立', () => {
@@ -33,9 +33,9 @@ describe('buildTree', () => {
     ]
     const tree = buildTree(nodes)
     expect(tree).toHaveLength(1)
-    expect(tree[0].children).toHaveLength(1)
-    expect(tree[0].children![0].children).toHaveLength(1)
-    expect(tree[0].children![0].children![0].label).toBe('层1')
+    expect(tree[0]!.children).toHaveLength(1)
+    expect(tree[0]!.children![0]!.children).toHaveLength(1)
+    expect(tree[0]!.children![0]!.children![0]!.label).toBe('层1')
   })
 
   it('多个根节点', () => {
@@ -53,8 +53,8 @@ describe('buildTree', () => {
       makeNode(2, 'A', null, 1000),
     ]
     const tree = buildTree(nodes)
-    expect(tree[0].label).toBe('A')
-    expect(tree[1].label).toBe('B')
+    expect(tree[0]!.label).toBe('A')
+    expect(tree[1]!.label).toBe('B')
   })
 
   it('子节点也按 order 排序', () => {
@@ -64,14 +64,14 @@ describe('buildTree', () => {
       makeNode(3, 'A', 1, 1000),
     ]
     const tree = buildTree(nodes)
-    expect(tree[0].children![0].label).toBe('A')
-    expect(tree[0].children![1].label).toBe('B')
+    expect(tree[0]!.children![0]!.label).toBe('A')
+    expect(tree[0]!.children![1]!.label).toBe('B')
   })
 
   it('data 字段保存原始节点', () => {
     const node = makeNode(1, '房间', null)
     const tree = buildTree([node])
-    expect(tree[0].data).toBe(node)
+    expect(tree[0]!.data).toBe(node)
   })
 })
 

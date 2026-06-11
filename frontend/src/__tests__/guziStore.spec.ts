@@ -59,7 +59,7 @@ describe('useGuziStore', () => {
     await store.searchGuziImmediate()
 
     expect(store.guziList).toHaveLength(2)
-    expect(store.guziList[0].name).toBe('G1')
+    expect(store.guziList[0]!.name).toBe('G1')
     expect(store.pagination.count).toBe(2)
     expect(store.loading).toBe(false)
   })

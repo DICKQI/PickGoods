@@ -36,7 +36,7 @@ const makePayload = (): GoodsInput => ({
 } as any)
 
 describe('useDuplicateHandler', () => {
-  let onSuccess: ReturnType<typeof vi.fn>
+  let onSuccess: any
 
   beforeEach(() => {
     vi.clearAllMocks()

@@ -199,11 +199,11 @@
               </div>
             </div>
 
-            <!-- 加载更多按钮 -->
-            <div class="load-more-wrapper" v-if="hasMoreMobileData">
-              <el-button @click="loadMoreMobile" :loading="loadingMore">
-                继续加载
-              </el-button>
+            <!-- 哨兵元素：滚动到此处触发加载更多 -->
+            <div v-if="hasMoreMobileData" ref="sentinelRef" class="scroll-sentinel"></div>
+            <!-- 加载更多指示器 -->
+            <div class="load-more-wrapper" v-if="loadingMoreMobile">
+              加载中...
             </div>
 
             <el-empty v-if="!loading && mobileDisplayList.length === 0" description="暂无主题数据" />
@@ -420,6 +420,8 @@ const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
 
 const scrollContainerRef = ref<HTMLElement | null>(null)
+const sentinelRef = ref<HTMLElement | null>(null)
+let sentinelObserver: IntersectionObserver | null = null
 
 const sortBy = ref<string>('')
 const dateRange = ref<[string, string] | null>(null)
@@ -431,7 +433,7 @@ const tableHeight = ref(400)
 
 const mobilePageSize = 10
 const mobileDisplayList = ref<Theme[]>([])
-const loadingMore = ref(false)
+const loadingMoreMobile = ref(false)
 
 const {
   pullDistance,
@@ -560,13 +562,14 @@ const updateMobileDisplayList = () => {
 }
 
 const loadMoreMobile = () => {
-  loadingMore.value = true
-  setTimeout(() => {
-    const currentLength = mobileDisplayList.value.length
-    const nextBatch = filteredThemeList.value.slice(currentLength, currentLength + mobilePageSize)
-    mobileDisplayList.value = [...mobileDisplayList.value, ...nextBatch]
-    loadingMore.value = false
-  }, 300)
+  if (loadingMoreMobile.value || !hasMoreMobileData.value) return
+  loadingMoreMobile.value = true
+  const currentLength = mobileDisplayList.value.length
+  const nextBatch = filteredThemeList.value.slice(currentLength, currentLength + mobilePageSize)
+  mobileDisplayList.value = [...mobileDisplayList.value, ...nextBatch]
+  nextTick(() => {
+    loadingMoreMobile.value = false
+  })
 }
 
 const handleSizeChange = (val: number) => {
@@ -823,10 +826,32 @@ onMounted(() => {
   nextTick(() => {
     updateTableHeight()
   })
+
+  // 设置无限滚动哨兵观察器（仅移动端使用，但提前创建以保持简洁）
+  sentinelObserver = new IntersectionObserver((entries) => {
+    if (entries[0]?.isIntersecting) {
+      loadMoreMobile()
+    }
+  }, {
+    rootMargin: '100px',
+  })
+
+  // 监听哨兵元素挂载
+  watch(sentinelRef, (el, oldEl) => {
+    if (oldEl && sentinelObserver) {
+      sentinelObserver.unobserve(oldEl)
+    }
+    if (el && sentinelObserver) {
+      sentinelObserver.observe(el)
+    }
+  })
 })
 
 onUnmounted(() => {
   window.removeEventListener('resize', updateTableHeight)
+  if (sentinelObserver) {
+    sentinelObserver.disconnect()
+  }
   newThemePhotoFiles.value.forEach((p) => {
     if (p.preview) URL.revokeObjectURL(p.preview)
   })
@@ -1328,21 +1353,13 @@ onUnmounted(() => {
   display: flex;
   justify-content: center;
   padding: 22px 0 calc(22px + env(safe-area-inset-bottom));
+  color: var(--text-light, #909399);
+  font-size: 13px;
 }
 
-.load-more-wrapper .el-button {
-  min-width: 142px;
-  height: 40px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(246, 244, 255, 0.96), rgba(234, 205, 163, 0.26));
-  border-color: rgba(162, 155, 254, 0.26);
-  color: var(--accent-purple-dark);
-  font-weight: 800;
-}
-
-.load-more-wrapper .el-button:hover {
-  background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-purple-dark) 100%);
-  color: #fff;
+.scroll-sentinel {
+  height: 1px;
+  width: 100%;
 }
 
 /* 空结果筛选 */
@@ -1432,38 +1449,120 @@ onUnmounted(() => {
 
 /* 响应式断点控制 */
 @media (max-width: 768px) {
-  .theme-management-container { padding: 16px; }
+  .theme-management-container { padding: 12px; }
+
+  .header-section { margin-bottom: 10px; }
+
+  .page-title { font-size: 18px; }
+
+  .sub-title {
+    font-size: 11px;
+    display: block;
+    margin-top: 2px;
+    line-height: 1.4;
+    color: #909399;
+    max-width: 200px;
+  }
+
   .add-btn span { display: none; }
   .add-btn { width: 40px; height: 40px; border-radius: 50%; padding: 0; justify-content: center; }
 
-  .sub-title {
-    font-size: 12px;
-    display: block;
-    margin-top: 4px;
-    line-height: 1.4;
-    color: #909399;
-    max-width: 260px;
-  }
-
   .stats-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 12px 16px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    margin-bottom: 8px;
+    border-radius: 8px;
   }
 
-  .stat-divider {
-    display: none;
+  .stat-label { font-size: 11px; }
+  .stat-value { font-size: 15px; }
+  .stat-divider { height: 16px; margin: 0 10px; }
+
+  .search-card {
+    margin-bottom: 10px;
+    overflow: hidden;
+    border-radius: 8px;
   }
+
+  .search-card :deep(.el-card__body) { padding: 12px; }
+
+  .search-filter-container { gap: 8px; }
+
+  .search-row { gap: 6px; }
 
   .filter-row {
-    flex-direction: column;
-    align-items: stretch;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
 
-  .sort-select,
+  .sort-select {
+    width: 120px;
+    flex-shrink: 0;
+  }
+
   .date-picker {
     width: 100%;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  /* 移动端三大控件圆润化 */
+  .custom-search :deep(.el-input__wrapper),
+  .sort-select :deep(.el-select__wrapper) {
+    border-radius: 10px;
+    border-color: #e8e4f0;
+    background: #fbfaff;
+    box-shadow: none;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+
+  /* 日期区间选择器需独立处理 —— 其内部结构为 .el-date-editor--daterange.el-range-editor.el-input__wrapper */
+  .date-picker :deep(.el-input__wrapper) {
+    border-radius: 10px !important;
+    border: 1px solid #e8e4f0 !important;
+    background: #fbfaff !important;
+    box-shadow: none !important;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+
+  .date-picker :deep(.el-range-input) {
+    background: transparent;
+    font-size: 13px;
+  }
+
+  .date-picker :deep(.el-range-separator) {
+    color: #c0b8d0;
+    font-size: 12px;
+  }
+
+  .custom-search :deep(.el-input__wrapper:hover),
+  .sort-select :deep(.el-select__wrapper:hover) {
+    border-color: #c5b8f0;
+  }
+
+  .date-picker :deep(.el-input__wrapper:hover) {
+    border-color: #c5b8f0 !important;
+  }
+
+  .custom-search :deep(.el-input.is-focus .el-input__wrapper),
+  .sort-select :deep(.el-select.is-focus .el-select__wrapper) {
+    border-color: #8e7dff;
+    box-shadow: 0 0 0 3px rgba(142, 125, 255, 0.08);
+  }
+
+  .date-picker :deep(.is-active.el-input__wrapper) {
+    border-color: #8e7dff !important;
+    box-shadow: 0 0 0 3px rgba(142, 125, 255, 0.08) !important;
+  }
+
+  .search-btn {
+    border-radius: 10px;
+    height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
   }
 
   .hidden-xs-only { display: none !important; }
@@ -1490,13 +1589,13 @@ onUnmounted(() => {
 }
 
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  .theme-management-container {
-    padding: 16px;
-  }
+  .theme-management-container { padding: 12px; }
 
-  .add-btn span {
-    display: none;
-  }
+  .header-section { margin-bottom: 10px; }
+
+  .page-title { font-size: 18px; }
+
+  .add-btn span { display: none; }
 
   .add-btn {
     width: 40px;
@@ -1507,33 +1606,110 @@ onUnmounted(() => {
   }
 
   .sub-title {
-    font-size: 12px;
+    font-size: 11px;
     display: block;
-    margin-top: 4px;
+    margin-top: 2px;
     line-height: 1.4;
     color: #909399;
-    max-width: 260px;
+    max-width: 200px;
   }
 
   .stats-bar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-    padding: 12px 16px;
+    flex-direction: row;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 12px;
+    margin-bottom: 8px;
+    border-radius: 8px;
   }
 
-  .stat-divider {
-    display: none;
+  .stat-label { font-size: 11px; }
+  .stat-value { font-size: 15px; }
+  .stat-divider { height: 16px; margin: 0 10px; }
+
+  .search-card {
+    margin-bottom: 10px;
+    overflow: hidden;
+    border-radius: 8px;
   }
+
+  .search-card :deep(.el-card__body) { padding: 12px; }
+
+  .search-filter-container { gap: 8px; }
+
+  .search-row { gap: 6px; }
 
   .filter-row {
-    flex-direction: column;
-    align-items: stretch;
+    gap: 6px;
+    flex-wrap: nowrap;
+    overflow: hidden;
   }
 
-  .sort-select,
+  .sort-select {
+    width: 120px;
+    flex-shrink: 0;
+  }
+
   .date-picker {
     width: 100%;
+    min-width: 0;
+    flex-shrink: 1;
+  }
+
+  /* 移动端三大控件圆润化 */
+  .custom-search :deep(.el-input__wrapper),
+  .sort-select :deep(.el-select__wrapper) {
+    border-radius: 10px;
+    border-color: #e8e4f0;
+    background: #fbfaff;
+    box-shadow: none;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+
+  /* 日期区间选择器需独立处理 —— 其内部结构为 .el-date-editor--daterange.el-range-editor.el-input__wrapper */
+  .date-picker :deep(.el-input__wrapper) {
+    border-radius: 10px !important;
+    border: 1px solid #e8e4f0 !important;
+    background: #fbfaff !important;
+    box-shadow: none !important;
+    transition: border-color 0.25s, box-shadow 0.25s;
+  }
+
+  .date-picker :deep(.el-range-input) {
+    background: transparent;
+    font-size: 13px;
+  }
+
+  .date-picker :deep(.el-range-separator) {
+    color: #c0b8d0;
+    font-size: 12px;
+  }
+
+  .custom-search :deep(.el-input__wrapper:hover),
+  .sort-select :deep(.el-select__wrapper:hover) {
+    border-color: #c5b8f0;
+  }
+
+  .date-picker :deep(.el-input__wrapper:hover) {
+    border-color: #c5b8f0 !important;
+  }
+
+  .custom-search :deep(.el-input.is-focus .el-input__wrapper),
+  .sort-select :deep(.el-select.is-focus .el-select__wrapper) {
+    border-color: #8e7dff;
+    box-shadow: 0 0 0 3px rgba(142, 125, 255, 0.08);
+  }
+
+  .date-picker :deep(.is-active.el-input__wrapper) {
+    border-color: #8e7dff !important;
+    box-shadow: 0 0 0 3px rgba(142, 125, 255, 0.08) !important;
+  }
+
+  .search-btn {
+    border-radius: 10px;
+    height: 36px;
+    padding: 0 14px;
+    font-size: 13px;
   }
 
   .hidden-xs-only,

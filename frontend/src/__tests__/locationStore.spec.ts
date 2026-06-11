@@ -59,8 +59,8 @@ describe('useLocationStore', () => {
     await store.fetchNodes()
 
     expect(store.treeData).toHaveLength(1) // 1 个根节点
-    expect(store.treeData[0].label).toBe('房间')
-    expect(store.treeData[0].children).toHaveLength(1)
+    expect(store.treeData[0]!.label).toBe('房间')
+    expect(store.treeData[0]!.children).toHaveLength(1)
   })
 
   it('getPathById 返回正确路径', async () => {
