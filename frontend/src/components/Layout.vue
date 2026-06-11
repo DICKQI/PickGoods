@@ -231,20 +231,21 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { Capacitor } from '@capacitor/core'
 import MobileBottomNav from './MobileBottomNav.vue'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 
 const router = useRouter()
 const route = useRoute()
 const guziStore = useGuziStore()
 const authStore = useAuthStore()
+const { isMobile } = useResponsiveDevice()
 
-const isMobile = ref(window.innerWidth < 768)
 const refreshLoading = ref(false)
 const mobileActionOpen = ref(false)
 const isNativePlatform = ref(Capacitor.isNativePlatform())
@@ -367,13 +368,6 @@ const handleMobileRefresh = async () => {
   await handleRefresh()
 }
 
-const handleResize = () => {
-  isMobile.value = window.innerWidth < 768
-  if (!isMobile.value) {
-    closeMobileActions()
-  }
-}
-
 const handleShowcaseTabChanged = (e: Event) => {
   const ce = e as CustomEvent<{ tab?: 'showcase' | 'barn' | 'stats' }>
   showcaseActiveTab.value = ce.detail?.tab ?? null
@@ -381,7 +375,6 @@ const handleShowcaseTabChanged = (e: Event) => {
 }
 
 onMounted(() => {
-  window.addEventListener('resize', handleResize)
   window.addEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
 
   // 在原生平台上，尝试获取状态栏高度并设置 padding（作为 CSS env() 的后备方案）
@@ -411,8 +404,13 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
   window.removeEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
+})
+
+watch(isMobile, (mobile) => {
+  if (!mobile) {
+    closeMobileActions()
+  }
 })
 </script>
 
@@ -1121,6 +1119,215 @@ onUnmounted(() => {
   .main-content {
     min-height: 100vh;
     padding-top: calc(64px + env(safe-area-inset-top));
+  }
+
+  @supports not (padding-top: env(safe-area-inset-top)) {
+    .main-content {
+      padding-top: 64px;
+    }
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .navbar-content {
+    padding: 0 12px;
+    grid-template-columns: 1fr auto;
+  }
+
+  .brand-text {
+    font-size: 20px;
+  }
+
+  .nav-actions {
+    justify-self: end;
+  }
+
+  .settings-btn {
+    font-size: 22px;
+    padding: 6px;
+  }
+
+  .fab-group {
+    bottom: 20px;
+    right: 20px;
+  }
+
+  .fab-group.fab-mobile {
+    bottom: calc(84px + env(safe-area-inset-bottom));
+  }
+
+  .fab-btn {
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+
+  .mobile-action-layer {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 1002;
+    pointer-events: none;
+  }
+
+  .mobile-action-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.08);
+    backdrop-filter: blur(1px);
+    -webkit-backdrop-filter: blur(1px);
+    pointer-events: auto;
+  }
+
+  .mobile-action-fab {
+    position: fixed;
+    right: 18px;
+    bottom: calc(86px + env(safe-area-inset-bottom));
+    width: 54px;
+    height: 54px;
+    border: 1px solid rgba(255, 255, 255, 0.68);
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-gold), #e5c348);
+    color: #fff;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    box-shadow:
+      0 16px 30px rgba(96, 78, 18, 0.24),
+      0 5px 14px rgba(212, 175, 55, 0.32);
+    pointer-events: auto;
+    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-action-fab.is-open {
+    transform: scale(0.96);
+    background: #364152;
+    color: #fff;
+    box-shadow:
+      0 14px 26px rgba(15, 23, 42, 0.22),
+      0 4px 12px rgba(15, 23, 42, 0.14);
+  }
+
+  .mobile-action-sheet {
+    position: fixed;
+    right: 16px;
+    bottom: calc(150px + env(safe-area-inset-bottom));
+    width: min(248px, calc(100vw - 88px));
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 8px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid rgba(226, 232, 240, 0.92);
+    box-shadow:
+      0 18px 42px rgba(15, 23, 42, 0.16),
+      0 2px 10px rgba(212, 175, 55, 0.08);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    pointer-events: auto;
+  }
+
+  .mobile-action-item {
+    min-height: 48px;
+    border: 1px solid rgba(226, 232, 240, 0.9);
+    border-radius: 10px;
+    background: rgba(248, 250, 252, 0.94);
+    color: #334155;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 10px;
+    padding: 0 12px;
+    font-size: 14px;
+    font-weight: 800;
+    text-align: left;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.72) inset;
+    transition: transform 0.16s ease, background 0.16s ease, border-color 0.16s ease;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-action-item.primary {
+    background: linear-gradient(135deg, var(--primary-gold), #e6c75b);
+    border-color: rgba(212, 175, 55, 0.68);
+    color: #ffffff;
+    box-shadow:
+      0 10px 20px rgba(212, 175, 55, 0.22),
+      0 1px 0 rgba(255, 255, 255, 0.32) inset;
+  }
+
+  .mobile-action-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    border-radius: 50%;
+    background: #ffffff;
+    color: var(--primary-gold);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 4px 10px rgba(15, 23, 42, 0.08);
+  }
+
+  .mobile-action-item.primary .mobile-action-icon {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.2);
+    box-shadow: none;
+  }
+
+  .mobile-action-label {
+    min-width: 0;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  .mobile-selection-dock {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: calc(76px + env(safe-area-inset-bottom));
+    min-height: 58px;
+    padding: 8px;
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    box-shadow: 0 16px 38px rgba(15, 23, 42, 0.18);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    display: grid;
+    grid-template-columns: 44px 1fr minmax(92px, auto);
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+  }
+
+  .main-content {
+    min-height: 100dvh;
+    padding-top: calc(64px + env(safe-area-inset-top));
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  @supports not (bottom: env(safe-area-inset-bottom)) {
+    .fab-group.fab-mobile {
+      bottom: 84px;
+    }
+
+    .mobile-action-fab {
+      bottom: 86px;
+    }
+
+    .mobile-action-sheet {
+      bottom: 150px;
+    }
+
+    .mobile-selection-dock {
+      bottom: 76px;
+    }
   }
 
   @supports not (padding-top: env(safe-area-inset-top)) {

@@ -214,6 +214,7 @@ import { ElMessage } from 'element-plus'
 import { ArrowDown, RefreshLeft, List, MagicStick } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useLocationStore } from '@/stores/location'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getIPList, getCharacterList, getCategoryTree, getThemeList } from '@/api/metadata'
 import type { GoodsSearchParams, IP, Character, Category, GoodsStatus, Theme } from '@/api/types'
 
@@ -232,6 +233,7 @@ interface CategoryTreeNode {
 
 const guziStore = useGuziStore()
 const locationStore = useLocationStore()
+const { isMobile } = useResponsiveDevice()
 
 const props = withDefaults(defineProps<{
   forceExpanded?: boolean
@@ -242,7 +244,6 @@ const props = withDefaults(defineProps<{
 const forceExpanded = computed(() => props.forceExpanded)
 
 // 设备类型 & 折叠状态（PC 默认展开，移动端默认收起）
-const isMobile = ref(false)
 const collapsed = ref(false)
 // 统一由 CSS 控制 Card 内边距，避免动画过程中布局突变
 const cardBodyStyle = computed(() => ({}))
@@ -419,8 +420,7 @@ watch(
 )
 
 onMounted(async () => {
-  // 根据当前窗口宽度决定默认展开/收起
-  isMobile.value = window.innerWidth < 768
+  // 根据统一设备判定决定默认展开/收起
   collapsed.value = forceExpanded.value ? false : isMobile.value
 
   // 从 store 同步初始筛选条件到本地状态
@@ -470,6 +470,14 @@ watch(forceExpanded, (value) => {
   if (value) {
     collapsed.value = false
   }
+})
+
+watch(isMobile, (mobile) => {
+  if (forceExpanded.value) {
+    collapsed.value = false
+    return
+  }
+  collapsed.value = mobile
 })
 onUnmounted(() => {})
 </script>
@@ -937,8 +945,71 @@ onUnmounted(() => {})
 }
 
 /* 输入类控件的高度/圆角已在上方统一变量中设置 */
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .filter-panel {
+    --filter-control-height: 36px;
+    margin-bottom: 12px;
+  }
+
+  .filter-content {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .status-group {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+    margin-left: 0 !important;
+    width: 100%;
+  }
+
+  .filter-item--status :deep(.el-checkbox-button__inner) {
+    width: 100%;
+    padding: 0 8px !important;
+    font-size: 13px !important;
+    border: 1px solid var(--el-border-color-light) !important;
+    border-radius: var(--filter-control-radius) !important;
+    background-color: #f9fafb !important;
+    box-shadow: none !important;
+    transition: all 0.2s ease;
+    height: var(--filter-control-height);
+    min-height: var(--filter-control-height);
+  }
+
+  .filter-item--status :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
+  .filter-item--status :deep(.el-checkbox-button:last-child .el-checkbox-button__inner) {
+    border-radius: var(--filter-control-radius) !important;
+  }
+
+  .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
+    padding: 0 8px !important;
+  }
+
+  .toggle-option {
+    padding: 4px 8px;
+    font-size: 12px;
+    gap: 2px;
+  }
+
+  .toggle-option .el-icon {
+    font-size: 13px;
+  }
+
+  .toggle-slider {
+    padding: 2px;
+  }
+
+  .slider-bg {
+    top: 2px;
+    left: 2px;
+    width: calc(50% - 3px);
+    height: calc(100% - 4px);
+  }
+
+  .toggle-slider.is-similar .slider-bg {
+    transform: translateX(calc(100% + 1px));
+  }
+}
 </style>
-
-
-
 

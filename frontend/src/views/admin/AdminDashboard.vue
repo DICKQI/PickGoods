@@ -92,7 +92,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   User,
@@ -106,13 +106,14 @@ import {
   Expand
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
 const isSidebarCollapsed = ref(false)
-const isMobile = ref(window.innerWidth < 768)
+const { isMobile } = useResponsiveDevice()
 
 const activeMenu = computed(() => {
   const path = route.path
@@ -158,21 +159,15 @@ const goToSettings = () => {
   router.push('/settings')
 }
 
-const handleResize = () => {
-  isMobile.value = window.innerWidth < 768
-  if (isMobile.value) {
-    isSidebarCollapsed.value = true
-  }
-}
-
-onMounted(() => {
-  window.addEventListener('resize', handleResize)
-  handleResize()
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', handleResize)
-})
+watch(
+  isMobile,
+  (mobile) => {
+    if (mobile) {
+      isSidebarCollapsed.value = true
+    }
+  },
+  { immediate: true }
+)
 </script>
 
 <style scoped>
@@ -391,6 +386,41 @@ onUnmounted(() => {
     margin-left: 0;
   }
 
+  .admin-sidebar.collapsed + .admin-main {
+    margin-left: 0;
+  }
+
+  .sidebar-overlay {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 220px;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 99;
+  }
+
+  .admin-content {
+    padding: 16px;
+  }
+
+  .admin-header {
+    padding: 0 16px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .admin-sidebar {
+    width: 220px;
+  }
+
+  .admin-sidebar.collapsed {
+    width: 0;
+    overflow: hidden;
+  }
+
+  .admin-main,
   .admin-sidebar.collapsed + .admin-main {
     margin-left: 0;
   }

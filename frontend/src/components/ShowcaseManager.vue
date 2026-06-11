@@ -254,16 +254,12 @@ import GoodsDrawer from '@/components/GoodsDrawer.vue'
 import ShowcaseListView from '@/components/showcase/ShowcaseListView.vue'
 import ShowcaseDetailView from '@/components/showcase/ShowcaseDetailView.vue'
 import { useShowcaseStore } from '@/stores/showcase'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getGoodsList } from '@/api/goods'
 import { uploadShowcaseCoverImage } from '@/api/showcase'
 import type { GoodsListItem, PaginatedResponse } from '@/api/types'
 
-const isMobile = ref(window.innerWidth < 768)
-const handleResize = () => {
-  isMobile.value = window.innerWidth < 768
-}
-onMounted(() => window.addEventListener('resize', handleResize))
-onUnmounted(() => window.removeEventListener('resize', handleResize))
+const { isMobile } = useResponsiveDevice()
 
 const showcaseStore = useShowcaseStore()
 const viewMode = ref<'list' | 'detail'>('list')
@@ -1265,5 +1261,64 @@ watch(
     background: var(--c-bg);
   }
 }
-</style>
 
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .showcase-manager {
+    min-height: calc(100dvh - 50px);
+    height: calc(100dvh - 50px);
+  }
+
+  .layout {
+    gap: 0;
+    padding: 0;
+    display: block;
+    height: 100%;
+  }
+
+  .left-panel,
+  .right-panel,
+  .full-panel {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    align-self: unset;
+  }
+
+  .panel-container {
+    height: 100%;
+  }
+
+  .glass-card {
+    border-radius: 0;
+    border: none;
+    box-shadow: none;
+  }
+
+  .adaptive-card {
+    height: 100%;
+    max-height: none;
+  }
+
+  .detail-info-banner {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+  }
+
+  .add-goods-btn {
+    width: 100%;
+  }
+
+  .goods-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+
+  .right-panel {
+    z-index: 10;
+    background: var(--c-bg);
+  }
+}
+</style>

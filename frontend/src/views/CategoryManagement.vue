@@ -302,6 +302,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import {  createCategory, updateCategory, deleteCategory, batchUpdateCategoryOrder } from '@/api/metadata'
 import type { Category } from '@/api/types'
 import Sortable from 'sortablejs'
@@ -326,16 +327,11 @@ const isSorting = ref(false)
 const componentKey = ref(0)
 
 // 窗口宽度响应式
-const windowWidth = ref(window.innerWidth)
-const isMobile = computed(() => windowWidth.value < 768)
+const { isMobile } = useResponsiveDevice()
 
 // 移动端操作相关
 const mobileDrawerVisible = ref(false)
 const currentActionRow = ref<Category | null>(null)
-
-const updateWindowWidth = () => {
-  windowWidth.value = window.innerWidth
-}
 
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
@@ -792,12 +788,10 @@ const handleSubmit = async () => {
 }
 
 onMounted(() => {
-  window.addEventListener('resize', updateWindowWidth)
   fetchCategoryList()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateWindowWidth)
   if (sortableInstance) {
     sortableInstance.destroy()
     sortableInstance = null
@@ -1214,5 +1208,60 @@ onUnmounted(() => {
 
 @media (min-width: 769px) {
   .visible-xs-only { display: none !important; }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .category-management-container {
+    padding: 16px;
+  }
+
+  .add-btn span {
+    display: none;
+  }
+
+  .add-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sub-title {
+    font-size: 12px;
+    display: block;
+    margin-top: 4px;
+    line-height: 1.4;
+    color: #909399;
+    max-width: 260px;
+  }
+
+  .hidden-xs-only {
+    display: none !important;
+  }
+
+  .visible-xs-only {
+    display: block !important;
+  }
+
+  .category-list-wrapper {
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0;
+    min-height: auto;
+  }
+
+  .mobile-list-container .mobile-card {
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .mobile-list-container .mobile-card.sortable-chosen {
+    transform: scale(0.98);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  }
+
+  .mobile-list-container .mobile-card.sortable-ghost {
+    opacity: 0.6;
+  }
 }
 </style>

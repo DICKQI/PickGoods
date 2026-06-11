@@ -252,13 +252,12 @@
 
         <!-- 内容区域 -->
         <!-- 修改点：遍历 sortedIpList，保持顺序一致 -->
-        <div class="mobile-view-inner" ref="mobileListRef" :class="{ 'has-index-bar': showIndexBar }">
+        <div class="mobile-view-inner" ref="mobileListRef">
           <div
             v-for="item in sortedIpList"
             :key="item.id"
             class="ip-card-item"
             :class="{ 'is-expanded': expandedIPs.includes(item.id) }"
-            :data-index-anchor="firstIdByIndexKey[getIndexKey(item.name)] === item.id ? getIndexKey(item.name) : undefined"
           >
             <div
               class="ip-swipe-item"
@@ -370,16 +369,6 @@
           </div>
         </div>
 
-        <div v-if="showIndexBar" class="az-index-bar">
-          <div
-            v-for="k in indexBarKeys"
-            :key="k"
-            class="az-index-item"
-            @click.stop="scrollToIndexKey(k)"
-          >
-            {{ k }}
-          </div>
-        </div>
       </div>
 
       <el-empty v-if="!loading && ipList.length === 0" description="没有找到相关的作品" />
@@ -789,7 +778,6 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, reactive, watch } from 'vue'
-import { pinyin } from 'pinyin-pro'
 import {
   Plus,
   Edit,
@@ -813,6 +801,7 @@ import type { FormInstance, FormRules, UploadFile } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import {
   getIPList,
   getIPDetail,
@@ -839,25 +828,17 @@ import type {
   BGMSubject,
 } from '@/api/types'
 
-// 窗口宽度响应式
-const windowWidth = ref(window.innerWidth)
-const isMobile = computed(() => windowWidth.value < 768)
-
-const updateWindowWidth = () => {
-  windowWidth.value = window.innerWidth
-}
+const { isMobile } = useResponsiveDevice()
 
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
 
 onMounted(() => {
-  window.addEventListener('resize', updateWindowWidth)
   document.addEventListener('click', handleDocumentClick, true)
   fetchIPList()
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateWindowWidth)
   document.removeEventListener('click', handleDocumentClick, true)
   destroySortables()
 })
@@ -1022,7 +1003,7 @@ const getSwipeContentStyle = (id: number) => {
 
 // 弹窗宽度计算
 const dialogWidth = computed(() => {
-  if (windowWidth.value <= 768) {
+  if (isMobile.value) {
     return '90%'
   }
   return '600px'
@@ -1030,7 +1011,7 @@ const dialogWidth = computed(() => {
 
 // BGM导入弹窗需要更宽
 const bgmDialogWidth = computed(() => {
-  if (windowWidth.value <= 768) {
+  if (isMobile.value) {
     return '90%'
   }
   return '800px'
@@ -1082,53 +1063,6 @@ const sortedIpList = computed(() => {
     return sortState.value.order === 'descending' ? -result : result
   })
 })
-
-// 移动端：A-Z 索引条（按拼音首字母）
-const INDEX_BAR_THRESHOLD = 30
-const showIndexBar = computed(() => isMobile.value && sortedIpList.value.length > INDEX_BAR_THRESHOLD)
-
-const getIndexKey = (name: string) => {
-  const raw = (name || '').trim()
-  if (!raw) return '#'
-  const first = raw.charAt(0)
-  if (/[A-Za-z]/.test(first)) return first.toUpperCase()
-  if (/[0-9]/.test(first)) return '#'
-
-  try {
-    const py = pinyin(raw, { pattern: 'first', toneType: 'none' })
-    const letter = (py || '').trim().replace(/\s+/g, '')[0]
-    if (letter && /[A-Za-z]/.test(letter)) return letter.toUpperCase()
-  } catch {}
-  return '#'
-}
-
-const firstIdByIndexKey = computed(() => {
-  const map: Record<string, number> = {}
-  for (const item of sortedIpList.value) {
-    const key = getIndexKey(item.name)
-    if (map[key] == null) map[key] = item.id
-  }
-  return map
-})
-
-const indexBarKeys = computed(() => {
-  const present = new Set(Object.keys(firstIdByIndexKey.value))
-  const keys: string[] = []
-  if (present.has('#')) keys.push('#')
-  for (let i = 0; i < 26; i++) {
-    const k = String.fromCharCode(65 + i)
-    if (present.has(k)) keys.push(k)
-  }
-  return keys
-})
-
-const scrollToIndexKey = async (key: string) => {
-  if (!showIndexBar.value) return
-  await nextTick()
-  const el = document.querySelector(`[data-index-anchor="${key}"]`) as HTMLElement | null
-  if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
-}
 
 watch(
   () => sortedIpList.value.map((x) => x.id).join(','),
@@ -2218,48 +2152,6 @@ const handleBGMClose = () => {
   gap: 14px;
 }
 
-.mobile-view-inner.has-index-bar {
-  padding-right: 22px;
-}
-
-.az-index-bar {
-  position: fixed;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  z-index: 20;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  padding: 7px 4px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(212, 175, 55, 0.16);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 10px 24px rgba(17, 24, 39, 0.1);
-}
-
-.az-index-item {
-  width: 18px;
-  height: 18px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--accent-purple-dark);
-  user-select: none;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.az-index-item:active {
-  background: rgba(212, 175, 55, 0.14);
-  color: var(--primary-gold-dark);
-}
-
 /* 下拉刷新相关样式 */
 .pull-indicator {
   position: relative;
@@ -2380,11 +2272,11 @@ const handleBGMClose = () => {
 .card-main {
   position: relative;
   min-height: 84px;
-  padding: 15px 12px 15px 18px;
+  padding: 15px 14px 15px 18px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  gap: 10px;
+  align-items: flex-start;
+  gap: 12px;
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
@@ -2415,9 +2307,10 @@ const handleBGMClose = () => {
 }
 
 .ip-card-item .name-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px 10px;
   min-width: 0;
 }
 
@@ -2439,8 +2332,10 @@ const handleBGMClose = () => {
 }
 
 .subject-type-pill {
+  grid-column: 1;
+  justify-self: start;
   flex: 0 1 auto;
-  max-width: 92px;
+  max-width: 100%;
   min-height: 22px;
   padding: 2px 8px;
   border-radius: 999px;
@@ -2455,6 +2350,9 @@ const handleBGMClose = () => {
 }
 
 .ip-card-item .character-count-badge {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: start;
   flex: 0 0 auto;
   min-width: 28px;
   min-height: 24px;
@@ -2534,6 +2432,7 @@ const handleBGMClose = () => {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
+  margin-top: 1px;
   border-radius: 999px;
   background: rgba(162, 155, 254, 0.08);
   border: 1px dashed rgba(162, 155, 254, 0.44);
@@ -2549,6 +2448,7 @@ const handleBGMClose = () => {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
+  margin-top: 1px;
   border: 0;
   border-radius: 999px;
   background: rgba(212, 175, 55, 0.1);
@@ -3296,6 +3196,120 @@ const handleBGMClose = () => {
   /* 移动端列表高度自动适配 */
   .bgm-subjects-list {
     max-height: 60vh;
+  }
+
+  .results-actions-top {
+    flex-wrap: wrap;
+  }
+
+  .selected-count {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .character-list-container {
+    max-height: 300px;
+  }
+
+  .refresh-fab {
+    bottom: 20px;
+    right: 20px;
+    width: 50px;
+    height: 50px;
+    font-size: 24px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .ip-character-management-container {
+    padding: 16px;
+  }
+
+  .desktop-view {
+    display: none !important;
+  }
+
+  .mobile-view {
+    display: flex !important;
+  }
+
+  .hidden-xs-only {
+    display: none !important;
+  }
+
+  .header-section {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-actions {
+    width: 100%;
+  }
+
+  .header-actions :deep(.el-dropdown) {
+    width: 100%;
+  }
+
+  .action-dropdown-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .page-title {
+    font-size: 18px;
+  }
+
+  .search-filter-container {
+    gap: 10px;
+  }
+
+  .search-flex,
+  .filter-flex {
+    flex-direction: column;
+  }
+
+  .filter-select {
+    width: 100% !important;
+  }
+
+  .search-btn {
+    background: transparent !important;
+    border: 1px solid #8e7dff !important;
+    color: #5a4bff !important;
+    box-shadow: none !important;
+  }
+
+  .search-btn:active {
+    background: rgba(90, 75, 255, 0.08) !important;
+  }
+
+  .character-grid--mobile {
+    gap: 8px;
+  }
+
+  .character-tile {
+    padding: 9px 10px;
+    border-radius: 12px;
+    border-color: rgba(212, 175, 55, 0.1);
+    box-shadow: 0 6px 14px -12px rgba(17, 24, 39, 0.26);
+  }
+
+  .character-name-compact {
+    font-size: 13px;
+  }
+
+  .form-layout {
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .bgm-dialog :deep(.el-dialog) {
+    width: 95% !important;
+  }
+
+  .bgm-subjects-list {
+    grid-template-columns: 1fr;
+    max-height: 60dvh;
   }
 
   .results-actions-top {

@@ -11,10 +11,22 @@ vi.mock('@capacitor/core', () => ({
   },
 }))
 
-const mountMobileLayout = async () => {
+const mountMobileLayout = async ({
+  width = 390,
+  height = 844,
+  maxTouchPoints = 0,
+} = {}) => {
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
-    value: 390,
+    value: width,
+  })
+  Object.defineProperty(window, 'innerHeight', {
+    configurable: true,
+    value: height,
+  })
+  Object.defineProperty(navigator, 'maxTouchPoints', {
+    configurable: true,
+    value: maxTouchPoints,
   })
 
   const router = createRouter({
@@ -92,5 +104,21 @@ describe('Layout mobile action menu', () => {
       '新增谷子',
       '进入批量展示',
     ])
+  })
+
+  it('uses the mobile action tray on a 1200 x 2670 coarse pointer portrait viewport', async () => {
+    const wrapper = await mountMobileLayout({
+      width: 1200,
+      height: 2670,
+      maxTouchPoints: 1,
+    })
+
+    const fab = wrapper.get('button.mobile-action-fab')
+    expect(fab.attributes('aria-expanded')).toBe('false')
+    expect(wrapper.findComponent({ name: 'MobileBottomNav' }).exists()).toBe(true)
+
+    await fab.trigger('click')
+
+    expect(wrapper.get('#mobile-action-sheet').attributes('role')).toBe('menu')
   })
 })

@@ -595,4 +595,121 @@ onBeforeUnmount(() => clearLongPressTimer())
     opacity: 0;
   }
 }
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .goods-card {
+    border-radius: 20px;
+    border-color: rgba(15, 23, 42, 0.04);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    transform: none;
+  }
+
+  .goods-card:hover {
+    transform: none;
+    border-color: rgba(212, 175, 55, 0.18);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+  }
+
+  .goods-card:active {
+    transform: scale(0.985);
+  }
+
+  .card-image-wrapper {
+    width: calc(100% - 16px);
+    margin: 8px 8px 0;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
+  }
+
+  .main-image,
+  .image-placeholder {
+    border-radius: inherit;
+  }
+
+  .attr-tag {
+    top: 8px;
+    left: 8px;
+    min-height: 28px;
+    padding: 4px 9px;
+    border-radius: 9px;
+    font-size: 12px;
+    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
+  }
+
+  .quantity-badge {
+    bottom: 8px;
+    right: 8px;
+    border-radius: 999px;
+    padding: 3px 7px;
+  }
+
+  .card-content {
+    padding: 10px 10px 12px;
+  }
+
+  .goods-title {
+    margin-bottom: 6px;
+    font-size: 15px;
+    line-height: 1.32;
+    line-clamp: 1;
+    -webkit-line-clamp: 1;
+  }
+
+  .info-meta {
+    display: block;
+    margin-bottom: 8px;
+    color: #64748b;
+    font-size: 12px;
+    line-height: 1.5;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .info-row {
+    display: inline;
+    font-size: inherit;
+  }
+
+  .info-row + .info-row::before {
+    content: ' / ';
+    color: #cbd5e1;
+  }
+
+  .info-label {
+    display: none;
+  }
+
+  .info-value,
+  .truncate {
+    display: inline;
+    color: inherit;
+    overflow: visible;
+    white-space: inherit;
+    text-overflow: clip;
+  }
+
+  .card-footer {
+    padding-top: 8px;
+    border-top: 0;
+    justify-content: flex-start;
+  }
+
+  .category-tag {
+    min-height: 28px;
+    padding: 4px 9px;
+    border-radius: 8px;
+    font-size: 12px;
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .location-box {
+    display: none;
+  }
+
+  .menu-button {
+    opacity: 0;
+  }
+}
 </style>

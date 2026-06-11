@@ -240,12 +240,14 @@ import GoodsDrawer from '@/components/GoodsDrawer.vue'
 import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import type { GoodsListItem } from '@/api/types'
 import { deleteGoods, getGoodsList, moveGoods } from '@/api/goods'
 
 const router = useRouter()
 const guziStore = useGuziStore()
 const showcaseStore = useShowcaseStore()
+const { isMobile } = useResponsiveDevice()
 
 const activeTab = ref<'showcase' | 'barn' | 'stats'>('barn')
 
@@ -264,7 +266,6 @@ const showcaseRefreshing = ref(false)
 const statsRefreshing = ref(false)
 
 // 移动端检测
-const isMobile = ref(window.innerWidth < 768)
 const mobileFilterVisible = ref(false)
 const sentinelRef = ref<HTMLElement | null>(null)
 let sentinelObserver: IntersectionObserver | null = null
@@ -667,7 +668,6 @@ const handleShowcaseRefresh = async () => {
 }
 
 const handleResize = () => {
-  isMobile.value = window.innerWidth < 768
   if (!isMobile.value) {
     closeMobileFilter()
   }
@@ -729,6 +729,12 @@ watch(
     window.dispatchEvent(new CustomEvent('cloud-showcase:tab-changed', { detail: { tab } }))
   },
 )
+
+watch(isMobile, (mobile) => {
+  if (!mobile) {
+    closeMobileFilter()
+  }
+})
 
 watch(mobileFilterVisible, (visible) => {
   if (visible) {
@@ -1265,6 +1271,263 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   /* 兼容不支持 safe-area-inset-bottom 的环境 */
+  @supports not (bottom: env(safe-area-inset-bottom)) {
+    .page-size-float {
+      bottom: 80px;
+    }
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .cloud-showcase {
+    padding: 12px 10px 128px;
+    min-height: calc(100dvh - 64px);
+  }
+
+  .cloud-tabs {
+    position: sticky;
+    top: calc(64px + env(safe-area-inset-top));
+    z-index: 30;
+    margin: 0 -10px 12px;
+    padding: 0 10px 8px;
+    background: rgba(247, 248, 250, 0.92);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+  }
+
+  .cloud-tabs :deep(.el-tabs__header) {
+    margin: 0;
+  }
+
+  .cloud-tabs :deep(.el-tabs__nav-wrap::after) {
+    height: 1px;
+    background-color: rgba(212, 175, 55, 0.14);
+  }
+
+  .cloud-tabs :deep(.el-tabs__item) {
+    height: 44px;
+    padding: 0 18px;
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .barn-discovery {
+    margin-bottom: 12px;
+    padding: 10px;
+    border: 1px solid rgba(212, 175, 55, 0.22);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+
+  .search-section {
+    margin-bottom: 10px;
+  }
+
+  .barn-discovery :deep(.search-bar) {
+    margin-bottom: 0;
+  }
+
+  .barn-discovery :deep(.search-input) {
+    max-width: none;
+  }
+
+  .barn-discovery :deep(.el-input__wrapper) {
+    min-height: 42px;
+    border-radius: 999px;
+    box-shadow: none;
+    background: #ffffff;
+  }
+
+  .mobile-filter-strip {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .mobile-filter-trigger {
+    flex: 0 0 auto;
+    min-width: 86px;
+    height: 36px;
+    border: 1px solid rgba(212, 175, 55, 0.42);
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(234, 205, 163, 0.24));
+    color: var(--primary-gold-dark);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 14px;
+    font-weight: 700;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-filter-trigger .el-icon {
+    font-size: 16px;
+  }
+
+  .mobile-filter-trigger strong {
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--primary-gold);
+    color: #fff;
+    font-size: 11px;
+    line-height: 18px;
+  }
+
+  .mobile-filter-chips {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-filter-chips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .mobile-filter-chip {
+    flex: 0 0 auto;
+    max-width: 96px;
+    height: 30px;
+    padding: 0 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 28px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .mobile-filter-host {
+    display: block;
+  }
+
+  .mobile-filter-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1300;
+    background: rgba(15, 23, 42, 0.34);
+    backdrop-filter: blur(2px);
+    -webkit-backdrop-filter: blur(2px);
+  }
+
+  .mobile-filter-sheet {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 1301;
+    max-height: min(82dvh, 720px);
+    padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
+    border-radius: 24px 24px 0 0;
+    background: #ffffff;
+    box-shadow: 0 -18px 48px rgba(15, 23, 42, 0.22);
+    transform: translateY(104%);
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      transform 0.28s cubic-bezier(0.22, 1, 0.36, 1),
+      visibility 0.28s;
+  }
+
+  .mobile-filter-sheet.is-open {
+    transform: translateY(0);
+    visibility: visible;
+    pointer-events: auto;
+  }
+
+  .mobile-filter-sheet-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 2px 2px 12px;
+    color: var(--text-dark);
+    font-size: 16px;
+    font-weight: 800;
+  }
+
+  .mobile-filter-close {
+    width: 36px;
+    height: 36px;
+    border: 0;
+    border-radius: 50%;
+    background: #f3f4f6;
+    color: #64748b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-filter-sheet-body {
+    max-height: calc(min(82dvh, 720px) - 62px);
+    overflow-y: auto;
+    padding-bottom: 4px;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .mobile-filter-sheet-body :deep(.filter-panel) {
+    margin-bottom: 0;
+  }
+
+  .goods-grid {
+    grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+    gap: 12px;
+  }
+
+  .selection-status-bar {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .selection-hint {
+    line-height: 1.4;
+  }
+
+  .page-size-float {
+    bottom: calc(80px + env(safe-area-inset-bottom));
+    right: 70px;
+  }
+
+  .page-size-wrapper {
+    padding: 6px 10px;
+    border-radius: 12px;
+  }
+
+  .page-size-select {
+    width: 85px;
+  }
+
+  .page-size-select :deep(.el-select__selected-item) {
+    font-size: 13px;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  @supports not (top: env(safe-area-inset-top)) {
+    .cloud-tabs {
+      top: 64px;
+    }
+  }
+
   @supports not (bottom: env(safe-area-inset-bottom)) {
     .page-size-float {
       bottom: 80px;

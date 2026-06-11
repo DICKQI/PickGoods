@@ -358,6 +358,7 @@ import { applyCircleMaskToBlob, applyEllipseMaskToBlob, applyRoundedRectMaskToBl
 import { applyPerspectiveAndRotateToBlob } from '@/views/goods-form/imageTransform'
 import { useCropHistory } from '@/views/goods-form/composables/useCropHistory'
 import { useLivePreview } from '@/views/goods-form/composables/useLivePreview'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 
 const props = defineProps<{
   visible: boolean
@@ -376,17 +377,7 @@ const dialogVisible = computed({
   set: (v) => emit('update:visible', v),
 })
 
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const isMobile = computed(() => windowWidth.value < 768)
-
-const syncWindowWidth = () => {
-  if (typeof window !== 'undefined') {
-    windowWidth.value = window.innerWidth
-  }
-}
-if (typeof window !== 'undefined') {
-  window.addEventListener('resize', syncWindowWidth)
-}
+const { isMobile } = useResponsiveDevice()
 
 const cropImageSrc = computed(() => props.imageSrc)
 const cropImageFile = computed(() => props.imageFile)
@@ -969,6 +960,59 @@ const handleCropDialogClose = () => {
   .crop-history-actions :deep(.el-button) { flex: 1; }
   .dialog-footer { gap: 8px; }
   .dialog-footer :deep(.el-button) { flex: 1; }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .crop-layout-inner {
+    flex-direction: column;
+  }
+
+  .crop-left-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .crop-dialog :deep(.el-dialog) {
+    margin: 5dvh auto 0;
+    max-height: 90dvh;
+  }
+
+  .crop-dialog :deep(.el-dialog__body) {
+    padding: 14px 14px 18px;
+    max-height: calc(90dvh - 120px);
+    overflow-y: auto;
+  }
+
+  .ratio-label {
+    font-size: 13px;
+    margin-bottom: 10px;
+  }
+
+  .crop-glass-panel {
+    padding: 14px 14px 16px;
+    border-radius: 16px;
+  }
+
+  .crop-header-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .crop-history-actions {
+    width: 100%;
+  }
+
+  .crop-history-actions :deep(.el-button) {
+    flex: 1;
+  }
+
+  .dialog-footer {
+    gap: 8px;
+  }
+
+  .dialog-footer :deep(.el-button) {
+    flex: 1;
+  }
 }
 
 .dialog-footer { display: flex; justify-content: flex-end; gap: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.26); }

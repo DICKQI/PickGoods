@@ -378,6 +378,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import {
   getThemeList,
   getThemeDetail,
@@ -410,15 +411,10 @@ const isEdit = ref(false)
 const editingId = ref<number | null>(null)
 const formRef = ref<FormInstance>()
 
-const windowWidth = ref(window.innerWidth)
-const isMobile = computed(() => windowWidth.value < 768)
+const { isMobile } = useResponsiveDevice()
 
 const mobileDrawerVisible = ref(false)
 const currentActionRow = ref<Theme | null>(null)
-
-const updateWindowWidth = () => {
-  windowWidth.value = window.innerWidth
-}
 
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
@@ -555,6 +551,10 @@ watch(filteredThemeList, () => {
   updateMobileDisplayList()
 }, { immediate: false })
 
+watch(isMobile, () => {
+  nextTick(updateTableHeight)
+})
+
 const updateMobileDisplayList = () => {
   mobileDisplayList.value = filteredThemeList.value.slice(0, mobilePageSize)
 }
@@ -594,7 +594,7 @@ const clearFilters = () => {
 }
 
 const updateTableHeight = () => {
-  if (tableContainerRef.value && windowWidth.value >= 768) {
+  if (tableContainerRef.value && !isMobile.value) {
     const containerRect = tableContainerRef.value.getBoundingClientRect()
     const windowHeight = window.innerHeight
     const headerHeight = 64
@@ -818,7 +818,6 @@ const handleSubmit = async () => {
 }
 
 onMounted(() => {
-  window.addEventListener('resize', updateWindowWidth)
   window.addEventListener('resize', updateTableHeight)
   fetchThemeList()
   nextTick(() => {
@@ -827,7 +826,6 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
-  window.removeEventListener('resize', updateWindowWidth)
   window.removeEventListener('resize', updateTableHeight)
   newThemePhotoFiles.value.forEach((p) => {
     if (p.preview) URL.revokeObjectURL(p.preview)
@@ -1489,5 +1487,85 @@ onUnmounted(() => {
 @media (min-width: 769px) {
   .visible-xs-only { display: none !important; }
   .desktop-view { display: block; }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .theme-management-container {
+    padding: 16px;
+  }
+
+  .add-btn span {
+    display: none;
+  }
+
+  .add-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .sub-title {
+    font-size: 12px;
+    display: block;
+    margin-top: 4px;
+    line-height: 1.4;
+    color: #909399;
+    max-width: 260px;
+  }
+
+  .stats-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 12px 16px;
+  }
+
+  .stat-divider {
+    display: none;
+  }
+
+  .filter-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .sort-select,
+  .date-picker {
+    width: 100%;
+  }
+
+  .hidden-xs-only,
+  .desktop-view {
+    display: none !important;
+  }
+
+  .visible-xs-only,
+  .mobile-list-container {
+    display: block !important;
+  }
+
+  .theme-list-wrapper {
+    box-shadow: none !important;
+    background: transparent !important;
+    padding: 0;
+    min-height: auto;
+  }
+
+  .existing-theme-photos,
+  .new-theme-photos {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 12px;
+  }
+
+  .theme-photo-preview {
+    height: 100px;
+  }
+
+  .theme-photo-upload :deep(.el-upload--picture-card) {
+    width: 100px;
+    height: 100px;
+  }
 }
 </style>

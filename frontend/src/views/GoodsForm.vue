@@ -339,9 +339,11 @@ import OcrFillDialog from '@/views/goods-form/components/OcrFillDialog.vue'
 import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFormMetadata'
 import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 const router = useRouter()
 const route = useRoute()
 const locationStore = useLocationStore()
+const { isMobile } = useResponsiveDevice()
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
@@ -589,10 +591,8 @@ const handleReEditMainPhoto = async () => {
 
 // ── Mobile / camera helpers ──
 
-const windowWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1024)
-const isMobile = computed(() => windowWidth.value < 768)
-const isH5Mobile = computed(() => !Capacitor.isNativePlatform() && windowWidth.value < 768)
-const isNativeMobile = computed(() => Capacitor.isNativePlatform() && windowWidth.value < 768)
+const isH5Mobile = computed(() => !Capacitor.isNativePlatform() && isMobile.value)
+const isNativeMobile = computed(() => Capacitor.isNativePlatform() && isMobile.value)
 const isMobileUploadActionSheet = computed(() => isNativeMobile.value || isH5Mobile.value)
 
 const cameraInputRef = ref<HTMLInputElement | null>(null)
@@ -658,8 +658,7 @@ const checkMobileFormDockScroll = () => {
   mobileFormDockVisible.value = (documentHeight - (scrollTop + windowHeight)) <= MOBILE_FORM_DOCK_BOTTOM_THRESHOLD_PX
 }
 
-const syncWindowWidth = () => {
-  if (typeof window !== 'undefined') windowWidth.value = window.innerWidth
+const handleViewportChangeForDock = () => {
   void nextTick(() => checkMobileFormDockScroll())
 }
 
@@ -752,8 +751,8 @@ const goDrafts = () => router.push({ name: 'GoodsDrafts' })
 // ── Lifecycle ──
 
 onMounted(async () => {
-  syncWindowWidth()
-  window.addEventListener('resize', syncWindowWidth)
+  handleViewportChangeForDock()
+  window.addEventListener('resize', handleViewportChangeForDock)
   window.addEventListener('scroll', handleWindowScrollForDock, { passive: true })
 
   try { await loadMetadata() } catch { ElMessage.error('加载基础数据失败') }
@@ -797,7 +796,7 @@ onMounted(async () => {
 const handleWindowScrollForDock = () => { checkMobileFormDockScroll() }
 
 onUnmounted(() => {
-  window.removeEventListener('resize', syncWindowWidth)
+  window.removeEventListener('resize', handleViewportChangeForDock)
   window.removeEventListener('scroll', handleWindowScrollForDock)
   cleanupNewPhotos()
   if (cropImageSrc.value && cropImageSrc.value.startsWith('blob:')) {
@@ -915,6 +914,44 @@ onUnmounted(() => {
 .duplicate-dialog-footer .duplicate-merge-btn { background-color: #E2C04A; border-color: #E2C04A; color: #1a1a1a; }
 .duplicate-dialog-footer .duplicate-merge-btn:hover, .duplicate-dialog-footer .duplicate-merge-btn:focus { background-color: #D9B83D; border-color: #D9B83D; color: #1a1a1a; }
 .duplicate-dialog-footer .duplicate-merge-btn:disabled { background-color: var(--el-fill-color); border-color: var(--el-border-color-lighter); color: var(--el-text-color-placeholder); }
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .goods-form {
+    padding: 16px;
+  }
+
+  .goods-form--mobile-dock {
+    padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .sticky-action-inner {
+    justify-content: center;
+  }
+
+  .sticky-action-inner :deep(.el-button) {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  .mobile-form-dock-wrap {
+    bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+
+  .mobile-form-dock-stack {
+    max-width: 1200px;
+    padding: 0 16px 10px;
+  }
+
+  .existing-photos,
+  .new-photos {
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 12px;
+  }
+
+  .photo-preview {
+    height: 100px;
+  }
+}
 
 .ocr-upload-area { width: 100%; }
 .ocr-threshold-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }

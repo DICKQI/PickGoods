@@ -218,9 +218,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { Picture, Close, Collection } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getGoodsList } from '@/api/goods'
 import type { GoodsDetail, GoodsListItem } from '@/api/types'
 
@@ -235,6 +236,7 @@ const emit = defineEmits<{
 }>()
 
 const guziStore = useGuziStore()
+const { isMobile, viewportHeight } = useResponsiveDevice()
 const detail = ref<GoodsDetail | null>(null)
 const loading = ref(false)
 // 添加请求标识，用于防止竞态条件
@@ -246,7 +248,6 @@ const sameThemeLoading = ref(false)
 const sameThemeExpanded = ref<string[]>([])
 
 // --- 移动端状态管理 ---
-const isMobile = ref(false)
 const isDragging = ref(false) // 是否正在拖拽中
 const sheetState = ref<'half' | 'full'>('half') // 当前吸附状态
 const currentDrawerHeight = ref<number | string>('65%') // 实时高度
@@ -268,10 +269,9 @@ const visible = computed({
   set: (val) => emit('update:modelValue', val),
 })
 
-const checkMobile = () => {
-  isMobile.value = window.innerWidth < 768
+const syncWindowHeight = () => {
   if (isMobile.value) {
-    windowHeight = window.innerHeight
+    windowHeight = viewportHeight.value || window.innerHeight
   }
 }
 
@@ -444,7 +444,7 @@ function handleClose() {}
 function handleMobileClose() {
   visible.value = false
 }
-function handleOpen() { checkMobile() }
+function handleOpen() { syncWindowHeight() }
 
 // ---------------- 核心：移动端跟随拖拽逻辑 ----------------
 
@@ -453,7 +453,7 @@ function handleTouchStart(e: TouchEvent) {
   
   isDragging.value = true // 开启拖拽模式（禁用CSS过渡）
   startY = e.touches[0]!.clientY
-  windowHeight = window.innerHeight
+  windowHeight = viewportHeight.value || window.innerHeight
   
   // 获取当前Drawer的实际像素高度
   // 如果当前是百分比，转化为像素
@@ -608,13 +608,8 @@ function handleContentTouchEnd(e: TouchEvent) {
   isContentScrolling = false
 }
 
-onMounted(() => {
-  checkMobile()
-  window.addEventListener('resize', checkMobile)
-})
-
-onUnmounted(() => {
-  window.removeEventListener('resize', checkMobile)
+watch([isMobile, viewportHeight], () => {
+  syncWindowHeight()
 })
 </script>
 
@@ -906,11 +901,39 @@ onUnmounted(() => {
   padding: 0 !important;
   display: flex;
   flex-direction: column;
+  max-height: 100dvh;
 }
 .is-mobile :deep(.el-drawer) {
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
   overflow: visible;
+  max-height: 100dvh;
+}
+
+.is-mobile .drawer-container {
+  max-height: 100dvh;
+}
+
+.is-mobile .scrollable-content {
+  padding-bottom: calc(40px + env(safe-area-inset-bottom));
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .is-mobile .main-image-wrapper {
+    height: 38dvh;
+    max-height: 450px;
+    min-height: 250px;
+  }
+
+  .is-mobile :deep(.el-drawer__body),
+  .is-mobile :deep(.el-drawer),
+  .is-mobile .drawer-container {
+    max-height: 100dvh;
+  }
+
+  .is-mobile .scrollable-content {
+    padding-bottom: calc(40px + env(safe-area-inset-bottom));
+  }
 }
 
 /* 
@@ -921,4 +944,3 @@ onUnmounted(() => {
   transition: none !important;
 }
 </style>
-

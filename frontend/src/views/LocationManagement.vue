@@ -189,6 +189,7 @@ import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue'
 import { Plus, Edit, Delete, ArrowRight, Close, Loading, Top } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox, ElSkeleton, ElEmpty } from 'element-plus'
 import { useLocationStore } from '@/stores/location'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import {
   createLocationNode,
   patchLocationNode,
@@ -259,13 +260,9 @@ const NodeDetailContent = defineComponent({
 })
 
 const locationStore = useLocationStore()
+const { isMobile } = useResponsiveDevice()
 const treeRef = ref()
 const scrollContainerRef = ref<HTMLElement | null>(null) // 滚动容器引用
-
-// 响应式
-const windowWidth = ref(window.innerWidth)
-const isMobile = computed(() => windowWidth.value < 768)
-const updateWidth = () => windowWidth.value = window.innerWidth
 
 // 基础数据
 const selectedNode = ref<StorageNode | null>(null)
@@ -509,13 +506,10 @@ const handleDialogClose = () => {
 const handleGuziClick = (goods: any) => {}
 
 onMounted(async () => {
-  window.addEventListener('resize', updateWidth)
   await locationStore.fetchNodes()
 })
 
-onUnmounted(() => {
-  window.removeEventListener('resize', updateWidth)
-})
+onUnmounted(() => {})
 </script>
 
 <style scoped>
@@ -761,5 +755,63 @@ onUnmounted(() => {
 
 .loading-skeleton {
   padding: 12px 4px;
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .location-management {
+    padding: 10px;
+    height: calc(100dvh - 50px);
+  }
+
+  .main-layout {
+    height: 100%;
+    margin: 0 !important;
+  }
+
+  .tree-col {
+    flex: 0 0 100%;
+    max-width: 100%;
+    height: 100%;
+    padding: 0 !important;
+  }
+
+  .detail-col,
+  .hidden-xs-only {
+    display: none !important;
+  }
+
+  .node-arrow.hidden-sm-and-up {
+    display: inline-flex !important;
+  }
+
+  .mobile-action-bar.hidden-sm-and-up {
+    display: flex !important;
+  }
+
+  :deep(.el-tree-node__content) {
+    height: 56px;
+    margin-bottom: 4px;
+    background: #fff;
+    border-bottom: 0.5px solid #f0f0f0;
+  }
+
+  .node-label {
+    font-weight: 500;
+    color: var(--text-dark);
+  }
+
+  .pull-indicator {
+    background: linear-gradient(to bottom, #f5f7fa, transparent);
+  }
+
+  :deep(.guzi-grid) {
+    grid-template-columns: repeat(3, 1fr) !important;
+    gap: 8px !important;
+  }
+
+  :deep(.el-drawer.btt) {
+    border-radius: 20px 20px 0 0 !important;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
+  }
 }
 </style>

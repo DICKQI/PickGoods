@@ -265,6 +265,7 @@ import { getGoodsStats } from '@/api/goods'
 import { getIPList, getCategoryTree } from '@/api/metadata'
 import { useLocationStore } from '@/stores/location'
 import StatsFilterControls from '@/components/StatsFilterControls.vue'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import type {
   GoodsStatsOverview,
   GoodsStatsParams,
@@ -279,8 +280,7 @@ const statsData = ref<GoodsStatsResponse | null>(null)
 const DEFAULT_STATS_TOP = 10
 
 // 筛选面板折叠状态（PC 默认展开，移动端默认收起，与谷仓页一致）
-const isMobile = ref(false)
-const isStatsFilterMobile = ref(false)
+const { isMobile } = useResponsiveDevice()
 const collapsed = ref(false)
 const statsFilterCardBodyStyle = computed(() => ({}))
 const toggleStatsFilterCollapsed = () => {
@@ -539,7 +539,7 @@ const updateCharts = () => {
   if (!statsData.value) return
 
   const { distributions } = statsData.value
-  const isMobile = typeof window !== 'undefined' && window.innerWidth <= 768
+  const mobileChartLayout = isMobile.value
 
   const theme = {
     text: getCssVar('--text-dark', '#303133'),
@@ -697,12 +697,12 @@ const updateCharts = () => {
   const ipTopChart = initChart(ipTopChartRef.value)
   if (ipTopChart) {
     const items = (distributions.ip_top || []).slice().reverse()
-    const yAxisLabelMaxLen = isMobile ? 6 : undefined
+    const yAxisLabelMaxLen = mobileChartLayout ? 6 : undefined
     ipTopChart.setOption({
       color: palette,
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
-      grid: isMobile
+      grid: mobileChartLayout
         ? { left: '38%', right: '10%', top: 16, bottom: 16, containLabel: false }
         : { left: 110, right: 18, top: 24, bottom: 24, containLabel: true },
       xAxis: {
@@ -711,7 +711,7 @@ const updateCharts = () => {
         splitLine: { lineStyle: { color: 'rgba(0,0,0,0.05)' } },
         axisLabel: {
           color: theme.textSub,
-          fontSize: isMobile ? 10 : undefined,
+          fontSize: mobileChartLayout ? 10 : undefined,
         },
       },
       yAxis: {
@@ -721,7 +721,7 @@ const updateCharts = () => {
         axisTick: { show: false },
         axisLabel: {
           color: theme.textSub,
-          fontSize: isMobile ? 10 : undefined,
+          fontSize: mobileChartLayout ? 10 : undefined,
           formatter: yAxisLabelMaxLen
             ? (value: string) =>
                 value.length > yAxisLabelMaxLen ? value.slice(0, yAxisLabelMaxLen) + '…' : value
@@ -732,7 +732,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
-          barMaxWidth: isMobile ? 16 : 18,
+          barMaxWidth: mobileChartLayout ? 16 : 18,
           itemStyle: { borderRadius: [0, 10, 10, 0] },
         },
       ],
@@ -743,12 +743,12 @@ const updateCharts = () => {
   const categoryTopChart = initChart(categoryTopChartRef.value)
   if (categoryTopChart) {
     const items = (distributions.category_top || []).slice().reverse()
-    const yAxisLabelMaxLen = isMobile ? 8 : undefined
+    const yAxisLabelMaxLen = mobileChartLayout ? 8 : undefined
     categoryTopChart.setOption({
       color: palette,
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
-      grid: isMobile
+      grid: mobileChartLayout
         ? { left: '42%', right: '10%', top: 16, bottom: 16, containLabel: false }
         : { left: 130, right: 18, top: 24, bottom: 24, containLabel: true },
       xAxis: {
@@ -757,7 +757,7 @@ const updateCharts = () => {
         splitLine: { lineStyle: { color: 'rgba(0,0,0,0.05)' } },
         axisLabel: {
           color: theme.textSub,
-          fontSize: isMobile ? 10 : undefined,
+          fontSize: mobileChartLayout ? 10 : undefined,
         },
       },
       yAxis: {
@@ -767,7 +767,7 @@ const updateCharts = () => {
         axisTick: { show: false },
         axisLabel: {
           color: theme.textSub,
-          fontSize: isMobile ? 10 : undefined,
+          fontSize: mobileChartLayout ? 10 : undefined,
           formatter: yAxisLabelMaxLen
             ? (value: string) =>
                 value.length > yAxisLabelMaxLen ? value.slice(0, yAxisLabelMaxLen) + '…' : value
@@ -778,7 +778,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
-          barMaxWidth: isMobile ? 16 : 18,
+          barMaxWidth: mobileChartLayout ? 16 : 18,
           itemStyle: { borderRadius: [0, 10, 10, 0] },
         },
       ],
@@ -872,10 +872,6 @@ const handleResize = () => {
   if (resizeTimer !== null) window.clearTimeout(resizeTimer)
   resizeTimer = window.setTimeout(() => {
     resizeTimer = null
-    isMobile.value = window.innerWidth < 768
-    if (!isMobile.value) {
-      closeMobileStatsFilter()
-    }
     updateCharts()
   }, 150)
 }
@@ -887,8 +883,6 @@ const handleStatsRefresh = async () => {
 }
 
 onMounted(async () => {
-  isMobile.value = window.innerWidth < 768
-  isStatsFilterMobile.value = isMobile.value
   collapsed.value = isMobile.value
   syncMobileDraftFromAppliedFilters()
   await initMetadata()
@@ -930,6 +924,16 @@ watch(
     })
   },
 )
+
+watch(isMobile, (mobile) => {
+  if (!mobile) {
+    closeMobileStatsFilter()
+  }
+  collapsed.value = mobile
+  requestAnimationFrame(() => {
+    updateCharts()
+  })
+})
 
 // 筛选条件变更时自动刷新数据（带简单防抖）
 let autoFetchTimer: number | null = null
@@ -1573,5 +1577,72 @@ watch(chartTab, () => {
 .mobile-stats-filter-apply {
   background: var(--accent-purple) !important;
   border-color: var(--accent-purple) !important;
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .overview-row {
+    margin-bottom: 4px;
+  }
+
+  .overview-card :deep(.el-card__body) {
+    padding: 16px 14px;
+  }
+
+  .overview-label {
+    font-size: 12px;
+    margin-bottom: 4px;
+  }
+
+  .overview-value {
+    font-size: 22px;
+    margin-bottom: 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .overview-card::before {
+    width: 96px;
+    height: 96px;
+    right: -16px;
+    bottom: -18px;
+    opacity: 0.06;
+  }
+
+  .overview-sub {
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .charts-row {
+    row-gap: 12px;
+  }
+
+  .chart-container {
+    height: 280px;
+  }
+
+  .chart-container--wide {
+    height: 420px;
+  }
+
+  .chart-skeleton {
+    height: 240px;
+  }
+
+  .chart-skeleton--wide {
+    height: 380px;
+  }
+
+  .mobile-stats-filter-sheet {
+    max-height: min(82dvh, 720px);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+  }
+
+  .mobile-stats-filter-sheet-body {
+    max-height: calc(min(82dvh, 720px) - 130px);
+  }
 }
 </style>
