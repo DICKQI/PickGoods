@@ -25,7 +25,10 @@
         >
           <template #prefix><el-icon><Search /></el-icon></template>
         </el-input>
-        <el-button class="search-btn" type="primary" @click="handleSearch">搜索</el-button>
+        <el-button class="search-btn" type="primary" @click="handleSearch">
+          <el-icon><Search /></el-icon>
+          <span>搜索</span>
+        </el-button>
         <div class="hidden-xs-only">
           <el-button plain @click="expandAll">全部展开</el-button>
         </div>
@@ -165,60 +168,23 @@
 
           <!-- 【移动端视图】 -->
           <div class="visible-xs-only mobile-list-container" :key="componentKey">
-            <div
-              v-for="item in flatDisplayedList"
-              :key="item.id"
-              class="mobile-card"
-              :class="{ 'is-expanded': isMobileExpanded(item), 'has-children': Boolean(item.children?.length) }"
-              :style="{
-                '--depth-color': depthColor(item.depth),
-                '--depth-offset': `${Math.max((item.depth || 1) - 1, 0) * 14}px`,
-              }"
-            >
-              <div class="mobile-card-left" @click="handleMobileCardClick(item)">
-                <div class="mobile-depth-rail" aria-hidden="true"></div>
-                <div class="icon-placeholder">
-                  <el-icon><CollectionTag /></el-icon>
-                </div>
-                <div class="card-info">
-                  <div class="card-name">
-                    {{ item.name }}
-                    <span
-                      v-if="item.color_tag"
-                      class="color-dot"
-                      :style="{ backgroundColor: item.color_tag || '#a3a3a3' }"
-                    />
-                  </div>
-                  <div class="card-path">{{ item.path_name }}</div>
-                  <div v-if="item.children?.length" class="card-meta-line">
-                    <span>{{ item.children.length }} 个子类</span>
-                  </div>
-                </div>
-                <button
-                  v-if="item.children?.length"
-                  class="mobile-expand-indicator"
-                  type="button"
-                  :aria-label="isMobileExpanded(item) ? '收起子类' : '展开子类'"
-                >
-                  <el-icon><ArrowRight /></el-icon>
-                </button>
-              </div>
-              <div class="mobile-card-right">
-                <div class="mobile-drag-handle" v-if="authStore.isAdmin">
-                  <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                    <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  </svg>
-                </div>
-                <div class="mobile-more" v-if="authStore.isAdmin" @click.stop="openMobileActions(item)">
-                  <el-icon><MoreFilled /></el-icon>
-                </div>
-              </div>
+            <div class="mobile-sortable-group mobile-root-group" data-parent-id="root">
+              <CategoryMobileNode
+                v-for="item in displayedTree"
+                :key="item.id"
+                :node="item"
+                :auth-is-admin="authStore.isAdmin"
+                :expanded-ids="effectiveExpandedMobileIds"
+                :depth-color="depthColor"
+                @toggle="toggleMobileExpand"
+                @add-sub="handleAddSub"
+                @edit="openMobileActions"
+                @delete="handleDelete"
+              />
             </div>
           </div>
 
-          <el-empty v-if="!loading && flatDisplayedList.length === 0" description="暂无品类数据" />
+          <el-empty v-if="!loading && displayedTree.length === 0" description="暂无品类数据" />
         </div>
       </div>
     </div>
@@ -294,8 +260,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
-import { Plus, Search, CollectionTag, Refresh, Loading, Top, MoreFilled, Edit, Delete, ArrowRight } from '@element-plus/icons-vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { Plus, Search, CollectionTag, Refresh, Loading, Top, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -306,6 +272,7 @@ import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import {  createCategory, updateCategory, deleteCategory, batchUpdateCategoryOrder } from '@/api/metadata'
 import type { Category } from '@/api/types'
 import Sortable from 'sortablejs'
+import CategoryMobileNode from '@/components/CategoryMobileNode.vue'
 
 type CategoryNode = Category & { children?: CategoryNode[]; depth?: number }
 
@@ -323,6 +290,7 @@ const tableRef = ref()
 const expandedIds = ref<Set<number>>(new Set())
 const expandedMobileIds = ref<Set<number>>(new Set())
 let sortableInstance: any | null = null
+let mobileSortableInstances: any[] = []
 const isSorting = ref(false)
 const componentKey = ref(0)
 
@@ -433,13 +401,36 @@ const flattenTree = (nodes: CategoryNode[]) => {
   return arr
 }
 
-// 将拖拽初始化逻辑提取为独立函数
-const initDragSort = () => {
-  // 先销毁旧实例
+const destroySortables = () => {
   if (sortableInstance) {
     sortableInstance.destroy()
     sortableInstance = null
   }
+  mobileSortableInstances.forEach((instance) => instance.destroy())
+  mobileSortableInstances = []
+}
+
+const findNodeById = (nodes: CategoryNode[], id: number): CategoryNode | null => {
+  for (const node of nodes) {
+    if (node.id === id) return node
+    if (node.children?.length) {
+      const found = findNodeById(node.children, id)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+const getMobileSiblingSource = (parentId: string | undefined) => {
+  if (!parentId || parentId === 'root') return displayedTree.value
+  const parent = findNodeById(displayedTree.value, Number(parentId))
+  return parent?.children || []
+}
+
+// 将拖拽初始化逻辑提取为独立函数
+const initDragSort = () => {
+  // 先销毁旧实例
+  destroySortables()
 
   // 仅在浏览器环境下初始化，且仅管理员可排序
   if (typeof window === 'undefined' || !authStore.isAdmin) return
@@ -462,21 +453,21 @@ const initDragSort = () => {
       })
     }
   } else {
-    // 移动端：对卡片列表启用拖拽
-    const mobileList = document.querySelector('.mobile-list-container') as HTMLElement | null
-    if (mobileList) {
-      sortableInstance = Sortable.create(mobileList, {
-        handle: '.mobile-drag-handle',
-        animation: 150,
-        onStart: () => {
-          isSorting.value = true
-        },
-        onEnd: (evt: any) => {
-          isSorting.value = false
-          handleRowReorder(flatDisplayedList.value, evt.oldIndex ?? 0, evt.newIndex ?? 0)
-        },
-      })
-    }
+    // 移动端：每个同父级列表单独排序，避免跨层级拖拽
+    const groups = document.querySelectorAll<HTMLElement>('.mobile-sortable-group')
+    mobileSortableInstances = Array.from(groups).map((group) => Sortable.create(group, {
+      handle: '.mobile-drag-handle',
+      draggable: '.mobile-category-node',
+      animation: 150,
+      onStart: () => {
+        isSorting.value = true
+      },
+      onEnd: (evt: any) => {
+        isSorting.value = false
+        const source = getMobileSiblingSource((evt.from as HTMLElement).dataset.parentId)
+        handleRowReorder(source, evt.oldIndex ?? 0, evt.newIndex ?? 0)
+      },
+    }))
   }
 }
 
@@ -547,26 +538,31 @@ const displayedTree = computed<CategoryNode[]>(() => {
   return filterTreeByKeyword(tree, searchText.value.trim())
 })
 
-const flattenForMobile = (nodes: CategoryNode[]) => {
-  const arr: CategoryNode[] = []
+const autoExpandedMobileIds = computed(() => {
+  const ids = new Set<number>()
+  if (!searchText.value.trim()) return ids
   const walk = (list: CategoryNode[]) => {
     list.forEach((item) => {
-      arr.push(item)
-      if (item.children && item.children.length && expandedMobileIds.value.has(item.id)) {
+      if (item.children?.length) {
+        ids.add(item.id)
         walk(item.children)
       }
     })
   }
-  walk(nodes)
-  return arr
-}
+  walk(displayedTree.value)
+  return ids
+})
 
-const flatDisplayedList = computed(() => flattenForMobile(displayedTree.value))
+const effectiveExpandedMobileIds = computed(() => {
+  const ids = new Set(expandedMobileIds.value)
+  autoExpandedMobileIds.value.forEach((id) => ids.add(id))
+  return ids
+})
 
 const depthColor = (depth?: number) => {
   if (!depth || depth <= 1) return '#dcdfe6'
   const palette = ['#8e7dff', '#33C3F0', '#FFC300', '#67C23A', '#E6A23C', '#F56C6C']
-  return palette[(depth - 2) % palette.length]
+  return palette[(depth - 2) % palette.length] ?? '#8e7dff'
 }
 
 const rowClassName = ({ row }: { row: CategoryNode }) => {
@@ -730,15 +726,13 @@ const handleCategoryMobileAction = (key: string) => {
   if (key === 'delete') handleMobileDelete()
 }
 
-const isMobileExpanded = (row: CategoryNode) => expandedMobileIds.value.has(row.id)
 const toggleMobileExpand = (row: CategoryNode) => {
   if (!row.children || row.children.length === 0) return
-  const next = !isMobileExpanded(row)
+  const next = !expandedMobileIds.value.has(row.id)
   expandedMobileIds.value[next ? 'add' : 'delete'](row.id)
-}
-
-const handleMobileCardClick = (row: CategoryNode) => {
-  toggleMobileExpand(row)
+  nextTick(() => {
+    initDragSort()
+  })
 }
 
 const handleMobileAddSub = () => {
@@ -787,15 +781,17 @@ const handleSubmit = async () => {
   })
 }
 
+watch(displayedTree, async () => {
+  await nextTick()
+  initDragSort()
+})
+
 onMounted(() => {
   fetchCategoryList()
 })
 
 onUnmounted(() => {
-  if (sortableInstance) {
-    sortableInstance.destroy()
-    sortableInstance = null
-  }
+  destroySortables()
 })
 </script>
 
@@ -811,13 +807,27 @@ onUnmounted(() => {
 .page-title { font-size: 22px; font-weight: 600; color: #303133; margin: 0; }
 .sub-title { font-size: 13px; color: #909399; margin-top: 4px; display: block; }
 
-.search-card { border-radius: 12px; border: none; margin-bottom: 20px; }
+.search-card {
+  border-radius: 16px;
+  border: 1px solid rgba(212, 175, 55, 0.08);
+  margin-bottom: 18px;
+  box-shadow: 0 8px 22px -18px rgba(17, 24, 39, 0.28);
+}
+.search-card :deep(.el-card__body) { padding: 20px; }
 .search-flex { display: flex; gap: 8px; }
 .custom-search { flex: 1; }
 
 .add-btn, .search-btn, .submit-btn {
   background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
   border: none; border-radius: 8px;
+}
+
+.search-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 86px;
 }
 
 .header-actions { display: flex; align-items: center; gap: 8px; }
@@ -975,179 +985,15 @@ onUnmounted(() => {
   padding: 0;
   background-color: transparent;
   border-radius: 0;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 
-.mobile-card {
-  position: relative;
-  min-height: 74px;
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 16px;
-  padding: 14px 12px 14px calc(14px + var(--depth-offset, 0px));
-  margin-bottom: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  box-shadow:
-    0 10px 28px -20px rgba(17, 24, 39, 0.36),
-    0 3px 10px -8px rgba(212, 175, 55, 0.18);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
-  cursor: pointer;
-  border: 1px solid rgba(212, 175, 55, 0.12);
-  overflow: hidden;
-}
-
-.mobile-card:active {
-  transform: scale(0.98);
-}
-
-.mobile-card.is-expanded {
-  border-color: rgba(212, 175, 55, 0.34);
-  box-shadow:
-    0 12px 30px -18px rgba(17, 24, 39, 0.34),
-    0 4px 14px rgba(212, 175, 55, 0.12);
-}
-
-.mobile-card:last-child {
-  margin-bottom: 0;
-}
-
-.mobile-card-left {
+.mobile-sortable-group {
   min-width: 0;
-  flex: 1;
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
-.mobile-depth-rail {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: max(8px, calc(8px + var(--depth-offset, 0px)));
-  width: 4px;
-  border-radius: 999px;
-  background: var(--depth-color, var(--primary-gold));
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.08);
-}
-
-.icon-placeholder {
-  width: 40px;
-  height: 40px;
-  flex: 0 0 40px;
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.14), rgba(162, 155, 254, 0.12));
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--primary-gold-dark);
-  font-size: 20px;
-}
-
-.card-info {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  gap: 4px;
-}
-
-.card-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-dark);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-path {
-  font-size: 12px;
-  color: var(--text-light);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.card-meta-line {
-  display: inline-flex;
-  align-items: center;
-  width: fit-content;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--primary-gold-dark);
-  font-size: 11px;
-  font-weight: 700;
-}
-
-.mobile-card-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-lighter);
-  font-size: 18px;
-  flex-shrink: 0;
-}
-
-.mobile-drag-handle {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  border: 1px dashed rgba(162, 155, 254, 0.44);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--accent-purple-dark);
-  background: rgba(162, 155, 254, 0.08);
-  transition: color var(--transition-fast), background var(--transition-fast);
-}
-.mobile-drag-handle svg {
+.mobile-root-group {
   display: block;
-}
-
-.mobile-more {
-  width: 32px;
-  height: 32px;
-  border-radius: 999px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--secondary-gray);
-  color: var(--text-light);
-}
-
-.mobile-expand-indicator {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--primary-gold-dark);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform var(--transition-fast), background var(--transition-fast);
-}
-
-.mobile-card.is-expanded .mobile-expand-indicator {
-  transform: rotate(90deg);
-  background: rgba(212, 175, 55, 0.16);
-}
-
-/* 移动端拖拽动画效果 */
-@media (max-width: 768px) {
-  .mobile-list-container .mobile-card {
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-  }
-
-  .mobile-list-container .mobile-card.sortable-chosen {
-    transform: scale(0.98);
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
-  }
-
-  .mobile-list-container .mobile-card.sortable-ghost {
-    opacity: 0.6;
-  }
 }
 
 .color-picker-row {

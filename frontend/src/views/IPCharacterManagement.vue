@@ -58,7 +58,10 @@
               <el-icon><Search /></el-icon>
             </template>
           </el-input>
-          <el-button class="search-btn" type="primary" @click="handleSearch">搜索</el-button>
+          <el-button class="search-btn" type="primary" @click="handleSearch">
+            <el-icon><Search /></el-icon>
+            <span>搜索</span>
+          </el-button>
         </div>
         <div class="filter-flex">
           <el-select
@@ -284,10 +287,11 @@
                   <div class="card-info">
                     <div class="name-row">
                       <h3 class="name-text">{{ item.name }}</h3>
-                      <span v-if="item.subject_type" class="subject-type-pill">
+                    </div>
+                    <div v-if="item.subject_type" class="meta-row">
+                      <span class="subject-type-pill">
                         {{ getSubjectTypeLabel(item.subject_type) }}
                       </span>
-                      <span class="character-count-badge">{{ item.character_count ?? (characterMap[item.id]?.length || 0) }}</span>
                     </div>
                     <div class="keyword-row">
                       <span v-for="keyword in item.keywords || []" :key="keyword.id" class="mini-tag">
@@ -296,21 +300,32 @@
                       <span v-if="!item.keywords?.length" class="no-tag">暂无关键词</span>
                     </div>
                   </div>
-                  <div class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin" @click.stop>
-                    <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                      <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                      <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                      <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                    </svg>
+                  <div class="card-actions-panel">
+                    <div
+                      class="character-count-chip"
+                      :aria-label="`角色数量：${item.character_count ?? (characterMap[item.id]?.length || 0)}`"
+                    >
+                      <span class="count-value">{{ item.character_count ?? (characterMap[item.id]?.length || 0) }}</span>
+                      <span class="count-label">角色</span>
+                    </div>
+                    <div class="card-control-row">
+                      <div class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin" @click.stop>
+                        <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                          <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                          <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                        </svg>
+                      </div>
+                      <button
+                        class="mobile-expand-indicator"
+                        type="button"
+                        :aria-label="expandedIPs.includes(item.id) ? '收起角色列表' : '展开角色列表'"
+                        @click.stop="handleMobileCardClick(item.id)"
+                      >
+                        <el-icon><ArrowRight /></el-icon>
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    class="mobile-expand-indicator"
-                    type="button"
-                    :aria-label="expandedIPs.includes(item.id) ? '收起角色列表' : '展开角色列表'"
-                    @click.stop="handleMobileCardClick(item.id)"
-                  >
-                    <el-icon><ArrowRight /></el-icon>
-                  </button>
                 </div>
 
             <!-- 展开的角色列表 -->
@@ -1820,10 +1835,14 @@ const handleBGMClose = () => {
 
 /* 搜索框美化 */
 .search-card {
-  margin-bottom: 20px;
-  border-radius: 12px;
-  border: none;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  margin-bottom: 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(212, 175, 55, 0.08);
+  box-shadow: 0 8px 22px -18px rgba(17, 24, 39, 0.28);
+}
+
+.search-card :deep(.el-card__body) {
+  padding: 20px;
 }
 
 .search-filter-container {
@@ -1865,6 +1884,11 @@ const handleBGMClose = () => {
   background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
   border: none;
   border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 86px;
   padding: 10px 20px;
 }
 
@@ -2150,6 +2174,7 @@ const handleBGMClose = () => {
   display: flex;
   flex-direction: column;
   gap: 14px;
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 
 /* 下拉刷新相关样式 */
@@ -2271,12 +2296,12 @@ const handleBGMClose = () => {
 
 .card-main {
   position: relative;
-  min-height: 84px;
-  padding: 15px 14px 15px 18px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 12px;
+  min-height: 96px;
+  padding: 16px 13px 15px 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 78px;
+  align-items: center;
+  gap: 14px;
   cursor: pointer;
   outline: none;
   -webkit-tap-highlight-color: transparent;
@@ -2303,14 +2328,20 @@ const handleBGMClose = () => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
 }
 
 .ip-card-item .name-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 8px 10px;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.ip-card-item .meta-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -2332,8 +2363,6 @@ const handleBGMClose = () => {
 }
 
 .subject-type-pill {
-  grid-column: 1;
-  justify-self: start;
   flex: 0 1 auto;
   max-width: 100%;
   min-height: 22px;
@@ -2349,23 +2378,52 @@ const handleBGMClose = () => {
   white-space: nowrap;
 }
 
-.ip-card-item .character-count-badge {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  align-self: start;
+.card-actions-panel {
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ip-card-item .character-count-chip {
   flex: 0 0 auto;
-  min-width: 28px;
-  min-height: 24px;
+  min-width: 62px;
+  height: 28px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-purple-dark) 100%);
-  color: #fff;
-  padding: 2px 8px;
+  gap: 4px;
+  padding: 3px 9px;
   border-radius: 999px;
-  box-shadow: 0 4px 12px rgba(162, 155, 254, 0.22);
+  border: 1px solid rgba(162, 155, 254, 0.24);
+  background: rgba(162, 155, 254, 0.12);
+  color: var(--accent-purple-dark);
+  box-shadow: 0 5px 14px -12px rgba(162, 155, 254, 0.9);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.character-count-chip .count-value {
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 800;
+}
+
+.character-count-chip .count-label {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 800;
+  color: rgba(90, 75, 255, 0.72);
+}
+
+.card-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
 }
 
 .ip-card-item .keyword-row {
@@ -2429,15 +2487,14 @@ const handleBGMClose = () => {
 }
 
 .card-drag-handle {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  margin-top: 1px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
   border-radius: 999px;
-  background: rgba(162, 155, 254, 0.08);
-  border: 1px dashed rgba(162, 155, 254, 0.44);
-  color: var(--accent-purple-dark);
-  transition: background var(--transition-fast), color var(--transition-fast);
+  background: rgba(162, 155, 254, 0.06);
+  border: 1px solid rgba(162, 155, 254, 0.18);
+  color: rgba(90, 75, 255, 0.72);
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
 }
 
 .mobile-drag-handle {
@@ -2445,10 +2502,10 @@ const handleBGMClose = () => {
 }
 
 .mobile-expand-indicator {
-  width: 32px;
-  height: 32px;
-  flex: 0 0 32px;
-  margin-top: 1px;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  padding: 0;
   border: 0;
   border-radius: 999px;
   background: rgba(212, 175, 55, 0.1);
@@ -2457,6 +2514,16 @@ const handleBGMClose = () => {
   align-items: center;
   justify-content: center;
   transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.card-drag-handle:active {
+  background: rgba(162, 155, 254, 0.12);
+  border-color: rgba(162, 155, 254, 0.3);
+  color: var(--accent-purple-dark);
+}
+
+.mobile-expand-indicator:active {
+  background: rgba(212, 175, 55, 0.18);
 }
 
 .ip-card-item.is-expanded .mobile-expand-indicator {
@@ -2616,6 +2683,10 @@ const handleBGMClose = () => {
     gap: 10px;
   }
 
+  .search-card :deep(.el-card__body) {
+    padding: 18px 20px;
+  }
+
   .search-flex,
   .filter-flex {
     flex-direction: column;
@@ -2631,10 +2702,35 @@ const handleBGMClose = () => {
     border: 1px solid #8e7dff !important;
     color: #5a4bff !important;
     box-shadow: none !important;
+    min-height: 32px;
   }
 
   .search-btn:active {
     background: rgba(90, 75, 255, 0.08) !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .card-main {
+    grid-template-columns: minmax(0, 1fr) 70px;
+    gap: 10px;
+    padding-right: 11px;
+  }
+
+  .ip-card-item .character-count-chip {
+    min-width: 56px;
+    padding-inline: 7px;
+  }
+
+  .card-control-row {
+    gap: 6px;
+  }
+
+  .card-drag-handle,
+  .mobile-expand-indicator {
+    width: 28px;
+    height: 28px;
+    flex-basis: 28px;
   }
 }
 
@@ -3263,6 +3359,10 @@ const handleBGMClose = () => {
     gap: 10px;
   }
 
+  .search-card :deep(.el-card__body) {
+    padding: 18px 20px;
+  }
+
   .search-flex,
   .filter-flex {
     flex-direction: column;
@@ -3277,6 +3377,7 @@ const handleBGMClose = () => {
     border: 1px solid #8e7dff !important;
     color: #5a4bff !important;
     box-shadow: none !important;
+    min-height: 32px;
   }
 
   .search-btn:active {
