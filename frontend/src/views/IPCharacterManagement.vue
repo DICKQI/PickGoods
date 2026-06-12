@@ -8,7 +8,7 @@
       </div>
 
       <!-- 合并后的操作按钮 -->
-      <div class="header-actions" v-if="authStore.isAdmin">
+      <div class="header-actions desktop-create-actions" v-if="authStore.isAdmin">
         <el-dropdown trigger="click" @command="handleActionCommand">
           <el-button type="primary" class="action-dropdown-btn">
             <el-icon class="icon-left"><Plus /></el-icon>
@@ -40,7 +40,28 @@
           </template>
         </el-dropdown>
       </div>
+
+      <div class="mobile-create-actions" v-if="authStore.isAdmin">
+        <el-button
+          type="primary"
+          class="mobile-add-btn"
+          circle
+          title="新增 / 导入"
+          aria-label="新增 / 导入"
+          @click="openMobileAddSheet"
+        >
+          <el-icon><Plus /></el-icon>
+        </el-button>
+      </div>
     </div>
+
+    <MobileActionSheet
+      v-if="authStore.isAdmin"
+      v-model="mobileAddSheetVisible"
+      title="新增 / 导入"
+      :actions="ipMobileCreateActions"
+      @select="handleMobileCreateAction"
+    />
 
     <!-- 搜索与筛选卡片 -->
     <el-card class="search-card" shadow="never">
@@ -828,6 +849,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import {
   getIPList,
   getIPDetail,
@@ -858,6 +880,13 @@ const { isMobile } = useResponsiveDevice()
 
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
+const mobileAddSheetVisible = ref(false)
+
+const ipMobileCreateActions = [
+  { key: 'bgm', label: '从 Bangumi 导入', icon: Search },
+  { key: 'ip', label: '新增作品 (IP)', icon: Collection, tone: 'primary' as const },
+  { key: 'character', label: '新增角色', icon: UserFilled },
+]
 
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick, true)
@@ -1435,6 +1464,14 @@ const handleActionCommand = (command: string) => {
   }
 }
 
+const openMobileAddSheet = () => {
+  mobileAddSheetVisible.value = true
+}
+
+const handleMobileCreateAction = (command: string) => {
+  handleActionCommand(command)
+}
+
 const fetchIPList = async (force = false) => {
   loading.value = true
   try {
@@ -1935,6 +1972,10 @@ const handleBGMClose = () => {
   gap: 12px;
 }
 
+.title-wrapper {
+  min-width: 0;
+}
+
 .page-title {
   font-size: 22px;
   font-weight: 600;
@@ -1945,6 +1986,14 @@ const handleBGMClose = () => {
 .sub-title {
   font-size: 13px;
   color: #909399;
+}
+
+.desktop-create-actions {
+  display: flex;
+}
+
+.mobile-create-actions {
+  display: none;
 }
 
 /* 聚合操作按钮 */
@@ -1973,6 +2022,21 @@ const handleBGMClose = () => {
 .action-dropdown-btn .icon-right {
   margin-left: 8px;
   font-size: 12px;
+}
+
+.mobile-add-btn {
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
+  font-size: 20px;
+  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
+  box-shadow: 0 8px 18px rgba(142, 125, 255, 0.28);
+}
+
+.mobile-add-btn:active {
+  transform: scale(0.96);
 }
 
 /* 下拉菜单内容样式 */
@@ -2029,6 +2093,10 @@ const handleBGMClose = () => {
 .custom-search :deep(.el-input__wrapper) {
   border-radius: 8px;
   box-shadow: 0 0 0 1px #e4e7ed inset;
+}
+
+.custom-search {
+  min-width: 0;
 }
 
 /* 品牌色按钮（用于弹窗提交等主操作） */
@@ -2867,49 +2935,80 @@ const handleBGMClose = () => {
     display: none !important;
   }
   .header-section {
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .header-actions {
-    width: 100%;
-  }
-  /* 让下拉组件宽度占满 */
-  .header-actions :deep(.el-dropdown) {
-    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    align-items: start;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 
-  .action-dropdown-btn {
-    width: 100%;
-    justify-content: center;
+  .desktop-create-actions {
+    display: none !important;
+  }
+
+  .mobile-create-actions {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .page-title {
     font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .sub-title {
+    display: block;
+    margin-top: 4px;
+    max-width: 260px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .search-card {
+    margin-bottom: 12px;
+    border-radius: 14px;
+    box-shadow: 0 8px 18px -18px rgba(17, 24, 39, 0.24);
   }
 
   .search-filter-container {
-    gap: 10px;
+    display: grid;
+    gap: 8px;
   }
 
   .search-card :deep(.el-card__body) {
-    padding: 18px 20px;
+    padding: 12px;
   }
 
-  .search-flex,
+  .search-flex {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
   .filter-flex {
-    flex-direction: column;
+    display: block;
+    grid-row: 2;
   }
 
   .filter-select {
     width: 100% !important;
   }
 
+  .custom-search :deep(.el-input__wrapper),
+  .filter-select :deep(.el-select__wrapper) {
+    min-height: 34px;
+    border-radius: 9px;
+  }
+
   /* 移动端：搜索按钮圆润化，与输入框风格统一 */
   .search-btn {
-    border-radius: 10px !important;
-    height: 36px;
-    padding: 0 14px !important;
+    min-width: 72px;
+    border-radius: 9px !important;
+    height: 34px;
+    padding: 0 12px !important;
     font-size: 13px;
+    white-space: nowrap;
     background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%) !important;
     border: none !important;
     color: #fff !important;
@@ -3547,49 +3646,79 @@ const handleBGMClose = () => {
   }
 
   .header-section {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 40px;
+    align-items: start;
+    gap: 10px;
+    margin-bottom: 12px;
   }
 
-  .header-actions {
-    width: 100%;
+  .desktop-create-actions {
+    display: none !important;
   }
 
-  .header-actions :deep(.el-dropdown) {
-    width: 100%;
-  }
-
-  .action-dropdown-btn {
-    width: 100%;
-    justify-content: center;
+  .mobile-create-actions {
+    display: flex;
+    justify-content: flex-end;
   }
 
   .page-title {
     font-size: 18px;
+    line-height: 1.2;
+  }
+
+  .sub-title {
+    display: block;
+    margin-top: 4px;
+    max-width: 260px;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .search-card {
+    margin-bottom: 12px;
+    border-radius: 14px;
+    box-shadow: 0 8px 18px -18px rgba(17, 24, 39, 0.24);
   }
 
   .search-filter-container {
-    gap: 10px;
+    display: grid;
+    gap: 8px;
   }
 
   .search-card :deep(.el-card__body) {
-    padding: 18px 20px;
+    padding: 12px;
   }
 
-  .search-flex,
+  .search-flex {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 8px;
+  }
+
   .filter-flex {
-    flex-direction: column;
+    display: block;
+    grid-row: 2;
   }
 
   .filter-select {
     width: 100% !important;
   }
 
+  .custom-search :deep(.el-input__wrapper),
+  .filter-select :deep(.el-select__wrapper) {
+    min-height: 34px;
+    border-radius: 9px;
+  }
+
   .search-btn {
-    border-radius: 10px !important;
-    height: 36px;
-    padding: 0 14px !important;
+    min-width: 72px;
+    border-radius: 9px !important;
+    height: 34px;
+    padding: 0 12px !important;
     font-size: 13px;
+    white-space: nowrap;
     background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%) !important;
     border: none !important;
     color: #fff !important;

@@ -71,4 +71,24 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).not.toContain('expandedIPs.value.push(ipId)')
     expect(source).not.toContain('expandedIPs.value.push(newIpId)')
   })
+
+  it('uses a compact mobile create button with a bottom action sheet', () => {
+    expect(source).toContain("import MobileActionSheet from '@/components/MobileActionSheet.vue'")
+    expect(source).toContain('const mobileAddSheetVisible = ref(false)')
+    expect(source).toContain('const ipMobileCreateActions = [')
+    expect(source).toContain('class="header-actions desktop-create-actions"')
+    expect(source).toContain('class="mobile-create-actions"')
+    expect(source).toContain('class="mobile-add-btn"')
+    expect(source).toContain('@click="openMobileAddSheet"')
+    expect(source).toContain('v-model="mobileAddSheetVisible"')
+    expect(source).toContain('@select="handleMobileCreateAction"')
+  })
+
+  it('keeps the mobile search button inline and compacts the filter card', () => {
+    expect(source).toContain('.search-card {')
+    expect(source).toContain('.search-flex {')
+    expect(source).toContain('grid-template-columns: minmax(0, 1fr) auto;')
+    expect(source).toContain('grid-row: 2;')
+    expect(source).not.toContain('.search-flex,\n  .filter-flex {\n    flex-direction: column;')
+  })
 })
