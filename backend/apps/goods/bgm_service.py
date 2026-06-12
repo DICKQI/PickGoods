@@ -4,12 +4,13 @@ BGM API 服务模块
 支持按作品类型（动画、游戏、书籍等）筛选
 """
 import html
+import os
 import urllib.parse
 import requests
 
 # --- 配置部分 ---
-# 请在这里填入你的 Access Token
-ACCESS_TOKEN = "4H4xs6oRhS6AJ6p8WNWZxEJvTEalqPlH3OZMGR5P"
+# 请在这里填入你的 Access Token，或设置环境变量 BGM_ACCESS_TOKEN
+ACCESS_TOKEN = os.environ.get("BGM_ACCESS_TOKEN", "")
 # 指定的 User-Agent
 USER_AGENT = "DSCWWW/ShiGu(https://github.com/DICKQI/ShiGu_backend)"
 
@@ -32,7 +33,7 @@ def get_headers():
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
-    if ACCESS_TOKEN and "你的个人令牌" not in ACCESS_TOKEN:
+    if ACCESS_TOKEN:
         headers["Authorization"] = f"Bearer {ACCESS_TOKEN}"
     return headers
 

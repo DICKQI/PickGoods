@@ -10,17 +10,32 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/6.0/ref/settings/
 """
 
+import os
 from pathlib import Path
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# Load .env file if present (before any settings are read)
+_dotenv_path = BASE_DIR / ".env"
+if _dotenv_path.exists():
+    with open(_dotenv_path, encoding="utf-8") as _dotenv_file:
+        for _line in _dotenv_file:
+            _line = _line.strip()
+            if not _line or _line.startswith("#") or "=" not in _line:
+                continue
+            _key, _sep, _val = _line.partition("=")
+            _key = _key.strip()
+            _val = _val.strip().strip('"').strip("'")  # strip optional quotes
+            if _key and _key not in os.environ:  # don't override existing env vars
+                os.environ[_key] = _val
 
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-f%+#8su7(x_9id-@aenew84-(a3b$%rugnrvid+yk$e#y(ls#x'
+SECRET_KEY = os.environ["DJANGO_SECRET_KEY"]
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -165,7 +180,7 @@ REST_FRAMEWORK = {
 }
 
 # JWT 配置
-JWT_SECRET = SECRET_KEY
+JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
 JWT_ACCESS_TTL_SECONDS = 7 * 24 * 3600
 SPECTACULAR_SETTINGS = {
     'TITLE': 'SHIGU API',
