@@ -260,10 +260,18 @@
             v-for="item in sortedIpList"
             :key="item.id"
             class="ip-card-item"
-            :class="{ 'is-expanded': expandedIPs.includes(item.id) }"
+            :class="{
+              'is-expanded': expandedIPs.includes(item.id),
+              'is-sticky-active': activeStickyIPId === item.id,
+            }"
             :data-ip-id="item.id"
+            :style="getMobileStickyCardStyle(item.id)"
           >
-            <div class="ip-card-sticky-shell">
+            <div
+              class="ip-card-sticky-shell"
+              :class="{ 'is-stuck': activeStickyIPId === item.id }"
+              :style="getMobileStickyShellStyle(item.id)"
+            >
               <div
                 class="ip-swipe-item"
                 :class="{ open: openSwipeId === item.id, dragging: swipeTouch.id === item.id && swipeTouch.dragging }"
@@ -388,55 +396,6 @@
         </div>
 
       </div>
-
-      <Transition name="mobile-sticky-ip">
-        <div
-          v-if="activeStickyIP"
-          class="mobile-sticky-ip-header ip-card-item is-expanded"
-          :style="{ top: mobileStickyTop }"
-          @click="handleMobileCardClick(activeStickyIP.id)"
-        >
-          <div class="ip-card-spine" aria-hidden="true"></div>
-          <div class="card-main">
-            <div class="card-info">
-              <div class="name-row">
-                <h3 class="name-text">{{ activeStickyIP.name }}</h3>
-              </div>
-              <div v-if="activeStickyIP.subject_type" class="meta-row">
-                <span class="subject-type-pill">
-                  {{ getSubjectTypeLabel(activeStickyIP.subject_type) }}
-                </span>
-              </div>
-              <div class="keyword-row">
-                <span v-for="keyword in activeStickyIP.keywords || []" :key="keyword.id" class="mini-tag">
-                  {{ keyword.value }}
-                </span>
-                <span v-if="!activeStickyIP.keywords?.length" class="no-tag">暂无关键词</span>
-              </div>
-            </div>
-            <div class="card-actions-panel">
-              <div
-                class="character-count-chip"
-                :aria-label="`角色数量：${activeStickyIP.character_count ?? (characterMap[activeStickyIP.id]?.length || 0)}`"
-              >
-                <span class="count-value">{{ activeStickyIP.character_count ?? (characterMap[activeStickyIP.id]?.length || 0) }}</span>
-                <span class="count-label">角色</span>
-              </div>
-              <div class="card-control-row">
-                <button
-                  class="mobile-expand-indicator"
-                  type="button"
-                  aria-label="收起角色列表"
-                  @click.stop="handleMobileCardClick(activeStickyIP.id)"
-                >
-                  <el-icon><ArrowRight /></el-icon>
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </Transition>
-
       <el-empty v-if="!loading && ipList.length === 0" description="没有找到相关的作品" />
     </div>
 
@@ -844,6 +803,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, reactive, watch } from 'vue'
+import type { CSSProperties } from 'vue'
 import {
   Plus,
   Edit,
@@ -1139,12 +1099,21 @@ const sortedIpList = computed(() => {
   })
 })
 
+type MobileStickyState = {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
 const activeStickyIPId = ref<number | null>(null)
-const mobileStickyTop = ref('calc(64px + env(safe-area-inset-top) + 8px)')
-const activeStickyIP = computed(() => (
-  sortedIpList.value.find((item) => item.id === activeStickyIPId.value) ?? null
-))
+const stickyHeaderState = ref<Record<number, MobileStickyState>>({})
 let mobileStickyRaf: number | null = null
+
+const resetMobileStickyHeader = () => {
+  activeStickyIPId.value = null
+  stickyHeaderState.value = {}
+}
 
 const getMobileStickyTopOffset = () => {
   const navbar = document.querySelector<HTMLElement>('.navbar')
@@ -1154,17 +1123,16 @@ const getMobileStickyTopOffset = () => {
 
 const updateMobileStickyHeader = () => {
   if (!isMobile.value || isSorting.value || expandedIPs.value.length === 0) {
-    activeStickyIPId.value = null
+    resetMobileStickyHeader()
     return
   }
 
   const top = getMobileStickyTopOffset()
-  mobileStickyTop.value = `${top}px`
   const expandedIds = new Set(expandedIPs.value)
   const expandedCards = Array.from(
     document.querySelectorAll<HTMLElement>('.mobile-view-inner .ip-card-item.is-expanded[data-ip-id]')
   )
-
+  const nextStates: Record<number, MobileStickyState> = {}
   let nextActiveId: number | null = null
 
   for (const card of expandedCards) {
@@ -1175,16 +1143,46 @@ const updateMobileStickyHeader = () => {
     if (!header) continue
 
     const cardRect = card.getBoundingClientRect()
-    const headerRect = header.getBoundingClientRect()
-    const hasScrolledPastHeader = headerRect.top <= top
-    const hasRoomForHeader = cardRect.bottom > top + headerRect.height
+    const headerHeight = header.offsetHeight || header.getBoundingClientRect().height
 
-    if (hasScrolledPastHeader && hasRoomForHeader) {
-      nextActiveId = id
+    if (cardRect.top > top || cardRect.bottom <= top + headerHeight) continue
+
+    nextStates[id] = {
+      top,
+      left: Math.round(cardRect.left),
+      width: Math.round(cardRect.width),
+      height: Math.ceil(headerHeight),
     }
+    nextActiveId = id
   }
 
-  activeStickyIPId.value = nextActiveId
+  applyMobileStickyState(nextActiveId, nextStates)
+}
+
+const isSameMobileStickyState = (
+  current: Record<number, MobileStickyState>,
+  next: Record<number, MobileStickyState>
+) => {
+  const currentKeys = Object.keys(current)
+  const nextKeys = Object.keys(next)
+  if (currentKeys.length !== nextKeys.length) return false
+
+  return nextKeys.every((key) => {
+    const id = Number(key)
+    const a = current[id]
+    const b = next[id]
+    return !!a && !!b && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
+  })
+}
+
+const applyMobileStickyState = (nextActiveId: number | null, nextStates: Record<number, MobileStickyState>) => {
+  if (activeStickyIPId.value !== nextActiveId) {
+    activeStickyIPId.value = nextActiveId
+  }
+
+  if (!isSameMobileStickyState(stickyHeaderState.value, nextStates)) {
+    stickyHeaderState.value = nextStates
+  }
 }
 
 const queueUpdateMobileStickyHeader = () => {
@@ -1195,6 +1193,28 @@ const queueUpdateMobileStickyHeader = () => {
     mobileStickyRaf = null
     updateMobileStickyHeader()
   })
+}
+
+const getMobileStickyShellStyle = (ipId: number): CSSProperties | undefined => {
+  const state = stickyHeaderState.value[ipId]
+  if (!state) return undefined
+
+  return {
+    position: 'fixed',
+    top: `${state.top}px`,
+    left: `${state.left}px`,
+    width: `${state.width}px`,
+    transform: 'none',
+  }
+}
+
+const getMobileStickyCardStyle = (ipId: number): CSSProperties | undefined => {
+  const state = stickyHeaderState.value[ipId]
+  if (!state) return undefined
+
+  return {
+    '--mobile-sticky-shell-height': `${state.height}px`,
+  } as CSSProperties
 }
 
 watch(
@@ -1475,7 +1495,7 @@ const fetchIPCharacters = async (ipId: number) => {
 const toggleExpand = async (ipId: number) => {
   if (expandedIPs.value.includes(ipId)) {
     expandedIPs.value = []
-    activeStickyIPId.value = null
+    resetMobileStickyHeader()
     return
   }
 
@@ -2368,6 +2388,10 @@ const handleBGMClose = () => {
     0 4px 16px rgba(212, 175, 55, 0.12);
 }
 
+.ip-card-item.is-sticky-active {
+  padding-top: var(--mobile-sticky-shell-height, 0px);
+}
+
 .ip-card-sticky-shell {
   position: relative;
   z-index: 1;
@@ -2376,30 +2400,15 @@ const handleBGMClose = () => {
 }
 
 .ip-card-item.is-expanded > .ip-card-sticky-shell {
-  z-index: 2;
+  z-index: 20;
   border-radius: 16px 16px 0 0;
   box-shadow:
     0 12px 28px -22px rgba(17, 24, 39, 0.48),
     0 1px 0 rgba(212, 175, 55, 0.16);
 }
 
-.mobile-view-inner.is-sorting .ip-card-item.is-expanded > .ip-card-sticky-shell {
-  position: relative;
-  top: auto;
-  z-index: 1;
-}
-
-.ip-card-item.is-expanded > .ip-card-sticky-shell .ip-swipe-item {
-  border-radius: 16px 16px 0 0;
-}
-
-.mobile-sticky-ip-header {
-  display: none;
-  position: fixed;
-  left: 20px;
-  right: 20px;
+.ip-card-item.is-expanded > .ip-card-sticky-shell.is-stuck {
   z-index: 990;
-  background: #fff;
   border: 1px solid rgba(212, 175, 55, 0.28);
   border-radius: 16px;
   overflow: hidden;
@@ -2408,19 +2417,17 @@ const handleBGMClose = () => {
     0 4px 14px -10px rgba(212, 175, 55, 0.32);
 }
 
-.mobile-sticky-ip-header .card-main {
-  min-height: 88px;
+.mobile-view-inner.is-sorting .ip-card-item.is-expanded > .ip-card-sticky-shell {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: auto;
+  transform: none !important;
+  z-index: 1;
 }
 
-.mobile-sticky-ip-enter-active,
-.mobile-sticky-ip-leave-active {
-  transition: opacity 0.18s ease, transform 0.18s ease;
-}
-
-.mobile-sticky-ip-enter-from,
-.mobile-sticky-ip-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
+.ip-card-item.is-expanded > .ip-card-sticky-shell .ip-swipe-item {
+  border-radius: 16px 16px 0 0;
 }
 
 .ip-swipe-item {
@@ -2855,9 +2862,6 @@ const handleBGMClose = () => {
   }
   .mobile-view {
     display: flex;
-  }
-  .mobile-sticky-ip-header {
-    display: block;
   }
   .hidden-xs-only {
     display: none !important;
@@ -3536,12 +3540,6 @@ const handleBGMClose = () => {
 
   .mobile-view {
     display: flex !important;
-  }
-
-  .mobile-sticky-ip-header {
-    display: block;
-    left: 16px;
-    right: 16px;
   }
 
   .hidden-xs-only {
