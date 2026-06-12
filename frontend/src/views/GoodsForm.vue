@@ -1,7 +1,13 @@
 <template>
-  <div class="goods-form" :class="{ 'goods-form--mobile-dock': isMobile }">
+  <div class="goods-form" :class="{ 'goods-form--mobile-dock': isMobile, 'goods-form--create-wizard': useCreateWizard }">
     <div class="goods-form-header" :class="{ 'goods-form-header--mobile': isMobile }">
-      <div class="goods-form-title">{{ formTitle }}</div>
+      <div class="goods-form-title-block">
+        <div class="goods-form-title">{{ formTitle }}</div>
+        <div v-if="useCreateWizard" class="create-wizard-heading">
+          <span class="create-wizard-heading__step">{{ currentWizardStep.title }}</span>
+          <span class="create-wizard-heading__count">{{ wizardProgressText }}</span>
+        </div>
+      </div>
       <div v-if="isMobile" class="goods-form-header-actions">
         <el-button text type="primary" class="header-drafts-btn" @click="goDrafts">草稿箱</el-button>
         <el-dropdown trigger="click" @command="handleMobileMoreCommand">
@@ -16,102 +22,131 @@
       </div>
     </div>
 
+    <div v-if="useCreateWizard" class="create-wizard-progress" aria-label="创建进度">
+      <div
+        v-for="(step, index) in createWizardSteps"
+        :key="step.key"
+        class="create-wizard-progress__item"
+        :class="{
+          'is-active': index === currentWizardStepIndex,
+          'is-done': index < currentWizardStepIndex,
+        }"
+      >
+        <span class="create-wizard-progress__dot">{{ index + 1 }}</span>
+        <span class="create-wizard-progress__label">{{ step.title }}</span>
+      </div>
+    </div>
+
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px" label-position="top" class="goods-el-form">
       <!-- 基础信息分区 -->
-      <section class="form-section form-section--basic">
-        <div class="form-section-header">
-          <h3 class="form-section-title">基础信息</h3>
-          <p class="form-section-subtitle">IP、角色与品类等核心信息</p>
-        </div>
-        <el-row :gutter="20">
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="谷子名称" prop="name" class="is-required">
-              <el-input v-model="formData.name" placeholder="请输入谷子名称" />
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="IP作品" prop="ip" class="is-required">
-              <el-select v-model="formData.ip" placeholder="选择IP" filterable @change="handleIpChange" style="width: 100%">
-                <el-option v-for="ip in ipOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="角色" prop="characters" class="is-required">
-              <el-select v-model="formData.characters" placeholder="选择角色（可多选）" filterable multiple :disabled="!formData.ip" style="width: 100%">
-                <el-option v-for="char in filteredCharacters" :key="char.id" :label="char.name" :value="char.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="品类" prop="category" class="is-required">
-              <el-tree-select v-model="formData.category" :data="categoryTreeOptions" :props="{ label: 'name', value: 'id', children: 'children' }" placeholder="选择品类" style="width: 100%" clearable filterable check-strictly />
-              <div v-if="selectedCategory" class="category-chip">
-                <span class="color-dot" v-if="selectedCategory.color_tag" :style="{ backgroundColor: selectedCategory.color_tag || '#a3a3a3' }"></span>
-                <span class="chip-text">{{ selectedCategory.path_name || selectedCategory.name }}</span>
-              </div>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="主题">
-              <el-select v-model="formData.theme" placeholder="选择或创建主题" filterable allow-create default-first-option :reserve-keyword="true" @change="handleThemeChange" @create="handleThemeCreate" style="width: 100%" clearable>
-                <el-option v-for="theme in themeOptions" :key="theme.id" :label="theme.name" :value="theme.id" />
-              </el-select>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="状态" prop="status" class="is-required">
-              <el-radio-group v-model="formData.status" class="status-segmented">
-                <el-radio-button label="draft">草稿</el-radio-button>
-                <el-radio-button label="in_cabinet">在馆</el-radio-button>
-                <el-radio-button label="outdoor">出街中</el-radio-button>
-                <el-radio-button label="sold">已售出</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="24" :sm="12">
-            <el-form-item label="位置" prop="location">
-              <el-tree-select v-model="formData.location" :data="locationStore.treeData" placeholder="选择位置" clearable style="width: 100%" :props="{ label: 'label', value: 'id', children: 'children' }" check-strictly />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </section>
+      <Transition name="create-wizard-section" appear>
+        <section v-show="shouldShowFormSection('basic')" class="form-section form-section--basic create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'basic'">
+          <div class="form-section-header" :class="{ 'form-section-header--stacked': useCreateWizard }">
+            <span class="form-section-header-bar" aria-hidden="true"></span>
+            <div class="form-section-header-body">
+              <h3 class="form-section-title"><span class="form-section-title-text">基础信息</span></h3>
+              <p class="form-section-subtitle form-section-header-copy">IP、角色与品类等核心信息</p>
+            </div>
+          </div>
+          <el-row :gutter="20">
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="谷子名称" prop="name" class="is-required">
+                <el-input v-model="formData.name" placeholder="请输入谷子名称" />
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="IP作品" prop="ip" class="is-required">
+                <el-select v-model="formData.ip" placeholder="选择IP" filterable @change="handleIpChange" style="width: 100%">
+                  <el-option v-for="ip in ipOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="角色" prop="characters" class="is-required">
+                <el-select v-model="formData.characters" placeholder="选择角色（可多选）" filterable multiple :disabled="!formData.ip" style="width: 100%">
+                  <el-option v-for="char in filteredCharacters" :key="char.id" :label="char.name" :value="char.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="品类" prop="category" class="is-required">
+                <el-tree-select v-model="formData.category" :data="categoryTreeOptions" :props="{ label: 'name', value: 'id', children: 'children' }" placeholder="选择品类" style="width: 100%" clearable filterable check-strictly />
+                <div v-if="selectedCategory" class="category-chip">
+                  <span class="color-dot" v-if="selectedCategory.color_tag" :style="{ backgroundColor: selectedCategory.color_tag || '#a3a3a3' }"></span>
+                  <span class="chip-text">{{ selectedCategory.path_name || selectedCategory.name }}</span>
+                </div>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="主题">
+                <el-select v-model="formData.theme" placeholder="选择或创建主题" filterable allow-create default-first-option :reserve-keyword="true" @change="handleThemeChange" @create="handleThemeCreate" style="width: 100%" clearable>
+                  <el-option v-for="theme in themeOptions" :key="theme.id" :label="theme.name" :value="theme.id" />
+                </el-select>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="状态" prop="status" class="is-required">
+                <el-radio-group v-model="formData.status" class="status-segmented">
+                  <el-radio-button label="draft">草稿</el-radio-button>
+                  <el-radio-button label="in_cabinet">在馆</el-radio-button>
+                  <el-radio-button label="outdoor">出街中</el-radio-button>
+                  <el-radio-button label="sold">已售出</el-radio-button>
+                </el-radio-group>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="24" :sm="12">
+              <el-form-item label="位置" prop="location">
+                <el-tree-select v-model="formData.location" :data="locationStore.treeData" placeholder="选择位置" clearable style="width: 100%" :props="{ label: 'label', value: 'id', children: 'children' }" check-strictly />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </section>
+      </Transition>
 
       <!-- 数量与购入信息分区 -->
-      <section class="form-section form-section--meta">
-        <div class="form-section-header">
-          <h3 class="form-section-title">数量与购入</h3>
-          <p class="form-section-subtitle">记录数量、价格与购买时间</p>
-        </div>
-        <el-row :gutter="20">
-          <el-col :xs="12" :sm="12">
-            <el-form-item label="数量" prop="quantity" class="is-required">
-              <div class="field-with-icon"><span class="field-icon">📦</span><el-input-number v-model="formData.quantity" :min="1" style="width: 100%" /></div>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="12" :sm="12">
-            <el-form-item label="购入价格">
-              <div class="field-with-icon"><span class="field-icon">￥</span><el-input-number v-model="formData.price" :precision="2" :min="0" placeholder="请输入价格" style="width: 100%" /></div>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="12" :sm="12">
-            <el-form-item label="入手日期">
-              <div class="field-with-icon"><span class="field-icon">📅</span><el-date-picker v-model="formData.purchase_date" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" /></div>
-            </el-form-item>
-          </el-col>
-          <el-col :xs="12" :sm="12">
-            <el-form-item label="是否官谷">
-              <el-switch v-model="formData.is_official" active-text="是" inactive-text="否" inline-prompt />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </section>
+      <Transition name="create-wizard-section" appear>
+        <section v-show="shouldShowFormSection('meta')" class="form-section form-section--meta create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'meta'">
+          <div class="form-section-header" :class="{ 'form-section-header--stacked': useCreateWizard }">
+            <span class="form-section-header-bar" aria-hidden="true"></span>
+            <div class="form-section-header-body">
+              <h3 class="form-section-title"><span class="form-section-title-text">数量与购入</span></h3>
+              <p class="form-section-subtitle form-section-header-copy">记录数量、价格与购买时间</p>
+            </div>
+          </div>
+          <el-row :gutter="20">
+            <el-col :xs="12" :sm="12">
+              <el-form-item label="数量" prop="quantity" class="is-required">
+                <div class="field-with-icon"><span class="field-icon">📦</span><el-input-number v-model="formData.quantity" :min="1" style="width: 100%" /></div>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="12" :sm="12">
+              <el-form-item label="购入价格">
+                <div class="field-with-icon"><span class="field-icon">￥</span><el-input-number v-model="formData.price" :precision="2" :min="0" placeholder="请输入价格" style="width: 100%" /></div>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="12" :sm="12">
+              <el-form-item label="入手日期">
+                <div class="field-with-icon"><span class="field-icon">📅</span><el-date-picker v-model="formData.purchase_date" type="date" placeholder="选择日期" style="width: 100%" value-format="YYYY-MM-DD" /></div>
+              </el-form-item>
+            </el-col>
+            <el-col :xs="12" :sm="12">
+              <el-form-item label="是否官谷">
+                <el-switch v-model="formData.is_official" active-text="是" inactive-text="否" inline-prompt />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </section>
+      </Transition>
 
       <!-- 图片分区 -->
-      <section class="form-section form-section--images">
-        <div class="form-section-header">
-          <h3 class="form-section-title">图片</h3>
-          <p class="form-section-subtitle">主图与细节图会直接影响云展柜观感</p>
+      <Transition name="create-wizard-section" appear>
+        <section v-show="shouldShowFormSection('images')" class="form-section form-section--images create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'images'">
+        <div class="form-section-header" :class="{ 'form-section-header--stacked': useCreateWizard }">
+          <span class="form-section-header-bar" aria-hidden="true"></span>
+          <div class="form-section-header-body">
+            <h3 class="form-section-title"><span class="form-section-title-text">图片</span></h3>
+            <p class="form-section-subtitle form-section-header-copy">主图与细节图会直接影响云展柜观感</p>
+          </div>
         </div>
         <el-row :gutter="20">
           <el-col :xs="24" :sm="10" :md="8">
@@ -204,22 +239,28 @@
             </el-form-item>
           </el-col>
         </el-row>
-      </section>
+        </section>
+      </Transition>
 
       <!-- 备注分区 -->
-      <section class="form-section form-section--notes">
-        <div class="form-section-header">
-          <h3 class="form-section-title">备注</h3>
-          <p class="form-section-subtitle">可以记录店铺、工艺、画师等细节</p>
-        </div>
-        <el-row :gutter="20">
-          <el-col :xs="24">
-            <el-form-item label="备注">
-              <el-input v-model="formData.notes" type="textarea" :rows="4" placeholder="请输入备注信息" />
-            </el-form-item>
-          </el-col>
-        </el-row>
-      </section>
+      <Transition name="create-wizard-section" appear>
+        <section v-show="shouldShowFormSection('notes')" class="form-section form-section--notes create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'notes'">
+          <div class="form-section-header" :class="{ 'form-section-header--stacked': useCreateWizard }">
+            <span class="form-section-header-bar" aria-hidden="true"></span>
+            <div class="form-section-header-body">
+              <h3 class="form-section-title"><span class="form-section-title-text">备注</span></h3>
+              <p class="form-section-subtitle form-section-header-copy">可以记录店铺、工艺、画师等细节</p>
+            </div>
+          </div>
+          <el-row :gutter="20">
+            <el-col :xs="24">
+              <el-form-item label="备注">
+                <el-input v-model="formData.notes" type="textarea" :rows="4" placeholder="请输入备注信息" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </section>
+      </Transition>
     </el-form>
 
     <!-- 底部：桌面端五按钮 -->
@@ -234,12 +275,19 @@
     </div>
 
     <!-- 移动端：底部渐变遮罩 + 双按钮 -->
-    <div v-if="isMobile" class="mobile-form-dock-wrap" :class="{ 'mobile-form-dock-wrap--visible': mobileFormDockVisible }" aria-label="表单主操作">
+    <div v-if="isMobile" class="mobile-form-dock-wrap" :class="{ 'mobile-form-dock-wrap--visible': useCreateWizard || mobileFormDockVisible, 'mobile-form-dock-wrap--wizard': useCreateWizard }" aria-label="表单主操作">
       <div class="mobile-form-dock-stack">
         <div class="mobile-form-dock-fade" aria-hidden="true" />
         <div class="mobile-form-dock-actions">
-          <el-button class="mobile-form-dock-btn mobile-form-dock-btn--draft" @click="submitByMode('draft')" :loading="submitting">保存草稿</el-button>
-          <el-button type="primary" class="mobile-form-dock-btn mobile-form-dock-btn--publish" @click="submitByMode('publish')" :loading="submitting">{{ isEditMode ? '保存修改' : '发布' }}</el-button>
+          <template v-if="useCreateWizard">
+            <el-button v-if="!isFirstWizardStep" class="mobile-form-dock-btn mobile-form-dock-btn--back" @click="goPreviousWizardStep">上一步</el-button>
+            <el-button v-if="isLastWizardStep" class="mobile-form-dock-btn mobile-form-dock-btn--draft" @click="submitByMode('draft')" :loading="submitting">保存草稿</el-button>
+            <el-button type="primary" class="mobile-form-dock-btn mobile-form-dock-btn--publish mobile-form-dock-btn--subtle" @click="handleWizardPrimaryAction" :loading="submitting">{{ isLastWizardStep ? '发布' : '下一步' }}</el-button>
+          </template>
+          <template v-else>
+            <el-button class="mobile-form-dock-btn mobile-form-dock-btn--draft" @click="submitByMode('draft')" :loading="submitting">保存草稿</el-button>
+            <el-button type="primary" class="mobile-form-dock-btn mobile-form-dock-btn--publish" @click="submitByMode('publish')" :loading="submitting">{{ isEditMode ? '保存修改' : '发布' }}</el-button>
+          </template>
         </div>
       </div>
     </div>
@@ -331,7 +379,7 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
 import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
-import type { GoodsCreateResponse, GoodsDetail, GoodsInput, GoodsStatus, OcrResult } from '@/api/types'
+import type { GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult } from '@/api/types'
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
@@ -349,6 +397,29 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const isEditMode = computed(() => Boolean(route.params.id))
 const formTitle = computed(() => (route.params.id ? '编辑谷子' : '新增谷子'))
+
+type CreateWizardStepKey = 'basic' | 'meta' | 'images' | 'notes'
+
+interface CreateWizardStep {
+  key: CreateWizardStepKey
+  title: string
+  validationFields: string[]
+}
+
+const createWizardSteps: CreateWizardStep[] = [
+  { key: 'basic', title: '基础信息', validationFields: ['name', 'ip', 'characters', 'category', 'status'] },
+  { key: 'meta', title: '数量与购入', validationFields: ['quantity'] },
+  { key: 'images', title: '图片与识别', validationFields: [] },
+  { key: 'notes', title: '备注与发布', validationFields: [] },
+]
+
+const currentWizardStepIndex = ref(0)
+const useCreateWizard = computed(() => isMobile.value && !isEditMode.value)
+const currentWizardStep = computed<CreateWizardStep>(() => createWizardSteps[currentWizardStepIndex.value] ?? createWizardSteps[0]!)
+const wizardProgressText = computed(() => `${currentWizardStepIndex.value + 1}/${createWizardSteps.length}`)
+const isFirstWizardStep = computed(() => currentWizardStepIndex.value === 0)
+const isLastWizardStep = computed(() => currentWizardStepIndex.value === createWizardSteps.length - 1)
+const shouldShowFormSection = (section: CreateWizardStepKey) => !useCreateWizard.value || currentWizardStep.value.key === section
 
 const formData = ref({
   name: '',
@@ -662,6 +733,65 @@ const handleViewportChangeForDock = () => {
   void nextTick(() => checkMobileFormDockScroll())
 }
 
+// ── Mobile create wizard behavior ──
+
+const scrollWizardToTop = () => {
+  if (typeof window === 'undefined') return
+  void nextTick(() => {
+    const formElement = document.querySelector('.goods-form')
+    const elementTop = formElement
+      ? formElement.getBoundingClientRect().top + window.scrollY
+      : 0
+    try {
+      window.scrollTo({
+        top: Math.max(0, elementTop - 12),
+        behavior: 'smooth',
+      })
+    } catch {
+      try {
+        window.scrollTo(0, Math.max(0, elementTop - 12))
+      } catch {
+        // Some embedded WebViews and test environments do not implement scrollTo.
+      }
+    }
+  })
+}
+
+const validateCurrentWizardStep = async () => {
+  const fields = currentWizardStep.value.validationFields
+  if (fields.length === 0 || !formRef.value) return true
+
+  try {
+    await formRef.value.validateField(fields)
+    return true
+  } catch {
+    return false
+  }
+}
+
+const goPreviousWizardStep = () => {
+  if (!useCreateWizard.value || isFirstWizardStep.value) return
+  currentWizardStepIndex.value -= 1
+  scrollWizardToTop()
+}
+
+const goNextWizardStep = async () => {
+  if (!useCreateWizard.value || isLastWizardStep.value) return
+  const valid = await validateCurrentWizardStep()
+  if (!valid) return
+  currentWizardStepIndex.value += 1
+  scrollWizardToTop()
+}
+
+const handleWizardPrimaryAction = async () => {
+  if (isLastWizardStep.value) {
+    await submitByMode('publish')
+    return
+  }
+
+  await goNextWizardStep()
+}
+
 // ── Submit logic ──
 
 const runDraftValidation = () => {
@@ -673,7 +803,19 @@ const runDraftValidation = () => {
 
 const buildSubmitData = async (mode: 'draft' | 'publish'): Promise<GoodsInput> => {
   const themeId = await ensureThemeCreated()
-  const { main_photo, theme, ...restForm } = formData.value
+  const restForm = {
+    name: formData.value.name,
+    ip: formData.value.ip,
+    characters: formData.value.characters,
+    category: formData.value.category,
+    status: formData.value.status,
+    location: formData.value.location,
+    quantity: formData.value.quantity,
+    price: formData.value.price,
+    purchase_date: formData.value.purchase_date,
+    is_official: formData.value.is_official,
+    notes: formData.value.notes,
+  }
   const effectiveStatus: GoodsStatus = mode === 'draft' ? 'draft' : (restForm.status === 'draft' ? 'in_cabinet' : restForm.status)
   const submitData: GoodsInput = {
     ...restForm, status: effectiveStatus,
@@ -731,6 +873,7 @@ const handleReset = async () => {
   try {
     await ElMessageBox.confirm('确定要重置表单吗？当前填写内容将恢复为进入页面时的状态（未保存的修改会丢失）。', '重置表单', { type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消' })
     formRef.value?.resetFields()
+    if (useCreateWizard.value) currentWizardStepIndex.value = 0
   } catch { /* user cancelled */ }
 }
 
@@ -813,11 +956,24 @@ onUnmounted(() => {
 .goods-form--mobile-dock { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 .goods-form-header { margin-bottom: 16px; }
 .goods-form-header--mobile { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.goods-form-header--mobile .goods-form-title { flex: 1; min-width: 0; }
+.goods-form-title-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.goods-form-header--mobile .goods-form-title-block { flex: 1; }
 .goods-form-header-actions { display: flex; align-items: center; gap: 4px; flex-shrink: 0; }
 .header-drafts-btn { padding: 6px 10px; font-size: 14px; }
 .header-more-btn { font-size: 20px; }
 .goods-form-title { font-size: 20px; font-weight: 600; color: var(--primary-gold); }
+.create-wizard-heading { display: flex; align-items: center; gap: 8px; min-width: 0; color: #909399; font-size: 12px; line-height: 1.2; }
+.create-wizard-heading__step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.create-wizard-heading__count { flex-shrink: 0; padding: 2px 7px; border-radius: 999px; background: rgba(212,175,55,0.1); color: var(--primary-gold-dark); font-weight: 700; }
+.create-wizard-progress { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; padding: 8px; border-radius: 14px; background: rgba(255,255,255,0.96); border: 1px solid rgba(212,175,55,0.14); box-shadow: var(--shadow-sm); }
+.create-wizard-progress__item { position: relative; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; color: #a8abb2; }
+.create-wizard-progress__item:not(:last-child)::after { content: ''; position: absolute; top: 12px; left: calc(50% + 13px); width: calc(100% - 20px); height: 1px; background: #e8eaf2; }
+.create-wizard-progress__item.is-done:not(:last-child)::after, .create-wizard-progress__item.is-active:not(:last-child)::after { background: rgba(212,175,55,0.38); }
+.create-wizard-progress__dot { position: relative; z-index: 1; width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: #f3f4f8; color: #9ca3af; font-size: 12px; font-weight: 800; }
+.create-wizard-progress__label { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; line-height: 1.2; }
+.create-wizard-progress__item.is-active .create-wizard-progress__dot { color: #ffffff; background: linear-gradient(135deg, var(--primary-gold), var(--primary-gold-light)); box-shadow: 0 4px 12px rgba(212,175,55,0.26); }
+.create-wizard-progress__item.is-active .create-wizard-progress__label { color: var(--primary-gold-dark); font-weight: 700; }
+.create-wizard-progress__item.is-done .create-wizard-progress__dot { color: var(--primary-gold-dark); background: rgba(212,175,55,0.14); }
 .goods-el-form { margin-top: 4px; }
 .sticky-action-bar { margin-top: 12px; padding-bottom: env(safe-area-inset-bottom, 0); }
 .sticky-action-inner { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
@@ -833,17 +989,31 @@ onUnmounted(() => {
 .mobile-form-dock-actions { position: relative; z-index: 1; display: flex; align-items: stretch; gap: 10px; width: 100%; pointer-events: auto; background: transparent; }
 .mobile-form-dock-btn { flex: 1; min-height: 44px; margin: 0; border-radius: 999px !important; font-size: 14px; font-weight: 600; }
 .goods-form .mobile-form-dock-wrap :deep(.mobile-form-dock-btn.el-button) { border-radius: 999px !important; }
+.mobile-form-dock-btn--back { flex: 3; color: #606266 !important; background: #ffffff !important; border: 1px solid #e6e8ef !important; box-shadow: none !important; }
+.mobile-form-dock-btn--back:hover, .mobile-form-dock-btn--back:focus { color: var(--primary-gold-dark) !important; background: #fffaf0 !important; border-color: rgba(212,175,55,0.4) !important; }
 .mobile-form-dock-btn--draft { flex: 4; color: #a289ff !important; background: #f7f3ff !important; border: none !important; box-shadow: none !important; }
 .mobile-form-dock-btn--draft:hover, .mobile-form-dock-btn--draft:focus { color: #a289ff !important; background: rgba(162,137,255,0.12) !important; border: none !important; }
 .mobile-form-dock-btn--publish { flex: 6; --el-button-bg-color: var(--primary-gold); --el-button-border-color: var(--primary-gold); --el-button-hover-bg-color: var(--primary-gold-dark); --el-button-hover-border-color: var(--primary-gold-dark); --el-button-active-bg-color: var(--primary-gold-dark); --el-button-active-border-color: var(--primary-gold-dark); color: #ffffff !important; background-color: var(--primary-gold) !important; border-color: var(--primary-gold) !important; }
 .mobile-form-dock-btn--publish:hover, .mobile-form-dock-btn--publish:focus { color: #ffffff !important; background-color: var(--primary-gold-dark) !important; border-color: var(--primary-gold-dark) !important; }
+.mobile-form-dock-btn--subtle { color: var(--primary-gold-dark) !important; background: linear-gradient(180deg, rgba(255,255,255,0.94) 0%, rgba(251,247,238,0.9) 100%) !important; border: 1px solid rgba(212,175,55,0.38) !important; box-shadow: 0 8px 20px rgba(31,41,55,0.08), inset 0 1px 0 rgba(255,255,255,0.72) !important; text-shadow: none !important; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+.mobile-form-dock-btn--subtle:hover, .mobile-form-dock-btn--subtle:focus { color: var(--primary-gold-dark) !important; background: linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(249,241,221,0.94) 100%) !important; border-color: rgba(212,175,55,0.48) !important; box-shadow: 0 9px 22px rgba(31,41,55,0.1), inset 0 1px 0 rgba(255,255,255,0.78) !important; }
+.mobile-form-dock-btn--subtle:active { transform: translateY(1px) scale(0.99); box-shadow: 0 5px 14px rgba(31,41,55,0.08), inset 0 1px 0 rgba(255,255,255,0.62) !important; }
+.mobile-form-dock-wrap--wizard { bottom: calc(64px + env(safe-area-inset-bottom, 0px) + 6px); }
+.mobile-form-dock-wrap--wizard .mobile-form-dock-stack { padding-bottom: 8px; }
+.mobile-form-dock-wrap--wizard .mobile-form-dock-fade { height: min(164px, 34vh); min-height: 116px; }
+.mobile-form-dock-wrap--wizard .mobile-form-dock-actions { gap: 8px; }
+.mobile-form-dock-wrap--wizard .mobile-form-dock-btn { min-height: 48px; }
 @supports not (bottom: env(safe-area-inset-bottom)) { .mobile-form-dock-wrap { bottom: 72px; } }
 .form-section { margin-bottom: 20px; padding: 16px 18px 18px; border-radius: 16px; background: #ffffff; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(17,24,39,0.04); }
 .form-section--images { background: radial-gradient(circle at top left, #ffffff, #fafbff); }
-.form-section-header { margin-bottom: 12px; display: flex; align-items: baseline; gap: 8px; }
-.form-section-title { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: #303133; }
-.form-section-subtitle { margin: 0; font-size: 12px; color: #909399; }
-.form-section-header::before { content: ''; width: 3px; height: 20px; border-radius: 999px; background: linear-gradient(180deg, var(--primary-gold), #d9c18a); align-self: center; }
+.form-section-header { margin-bottom: 12px; display: flex; align-items: flex-start; gap: 10px; }
+.form-section-header::before { content: none; }
+.form-section-header-bar { flex: 0 0 3px; width: 3px; height: 20px; margin-top: 2px; border-radius: 999px; background: linear-gradient(180deg, var(--primary-gold), #d9c18a); }
+.form-section-header-body { min-width: 0; display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; }
+.form-section-title { margin: 0; font-size: 18px; line-height: 1.25; font-weight: 600; color: #303133; }
+.form-section-title-text { display: block; white-space: nowrap; word-break: keep-all; }
+.form-section-subtitle { min-width: 0; margin: 0; font-size: 12px; line-height: 1.45; color: #909399; }
+.form-section-header--stacked .form-section-header-body { flex-direction: column; align-items: flex-start; gap: 4px; }
 .goods-form :deep(.el-form-item) { margin-bottom: 26px; }
 .goods-form :deep(.el-input__wrapper), .goods-form :deep(.el-textarea__inner), .goods-form :deep(.el-select .el-input__wrapper), .goods-form :deep(.el-input-number__decrease), .goods-form :deep(.el-input-number__increase), .goods-form :deep(.el-date-editor.el-input__wrapper), .goods-form :deep(.el-date-editor.el-input) { border-radius: 10px; border-color: #e5e5e5; background-color: #ffffff; transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease; }
 .goods-form :deep(.el-input__wrapper:hover), .goods-form :deep(.el-textarea__inner:hover), .goods-form :deep(.el-select .el-input__wrapper:hover), .goods-form :deep(.el-date-editor.el-input__wrapper:hover) { border-color: #d0d0d7; box-shadow: 0 0 0 1px rgba(208,208,215,0.3); }
@@ -950,6 +1120,191 @@ onUnmounted(() => {
 
   .photo-preview {
     height: 100px;
+  }
+}
+
+.goods-form--create-wizard {
+  --mobile-main-photo-size: min(44vw, 168px);
+  padding: 12px 16px calc(130px + env(safe-area-inset-bottom, 0px));
+}
+
+.goods-form--create-wizard .goods-form-header {
+  margin-bottom: 10px;
+}
+
+.goods-form--create-wizard .goods-el-form {
+  position: relative;
+  margin-top: 0;
+}
+
+.goods-form--create-wizard .create-wizard-section-stage {
+  transform-origin: top center;
+  will-change: opacity, transform, filter;
+}
+
+.goods-form--create-wizard .create-wizard-section-enter-active,
+.goods-form--create-wizard .create-wizard-section-leave-active {
+  transition:
+    opacity 0.28s ease,
+    transform 0.34s cubic-bezier(0.22, 1, 0.36, 1),
+    filter 0.3s ease;
+}
+
+.goods-form--create-wizard .create-wizard-section-leave-active {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.goods-form--create-wizard .create-wizard-section-enter-from {
+  opacity: 0;
+  transform: translate3d(18px, 10px, 0) scale(0.985);
+  filter: blur(8px);
+}
+
+.goods-form--create-wizard .create-wizard-section-leave-to {
+  opacity: 0;
+  transform: translate3d(-12px, -8px, 0) scale(0.985);
+  filter: blur(6px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goods-form--create-wizard .create-wizard-section-enter-active,
+  .goods-form--create-wizard .create-wizard-section-leave-active {
+    transition: opacity 0.12s ease;
+  }
+
+  .goods-form--create-wizard .create-wizard-section-enter-from,
+  .goods-form--create-wizard .create-wizard-section-leave-to {
+    transform: none;
+    filter: none;
+  }
+}
+
+.goods-form--create-wizard .form-section {
+  margin-bottom: 12px;
+  padding: 16px 18px 20px;
+  border-radius: var(--card-radius);
+  box-shadow: var(--shadow-sm);
+}
+
+.goods-form--create-wizard .form-section-header {
+  margin-bottom: 16px;
+  align-items: flex-start;
+}
+
+.goods-form--create-wizard .form-section-title {
+  font-size: 17px;
+  line-height: 1.3;
+}
+
+.goods-form--create-wizard .form-section-subtitle {
+  width: 100%;
+  margin-left: 0;
+  line-height: 1.45;
+}
+
+.goods-form--create-wizard :deep(.el-form-item) {
+  margin-bottom: 20px;
+}
+
+.goods-form--create-wizard :deep(.el-form-item__error) {
+  position: static;
+  margin-top: 5px;
+  padding-top: 0;
+  line-height: 1.35;
+  white-space: normal;
+}
+
+.goods-form--create-wizard .form-section :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.goods-form--create-wizard .main-photo-card-shell,
+.goods-form--create-wizard .main-photo-actions,
+.goods-form--create-wizard .main-photo-uploader :deep(.el-upload-list--picture-card) {
+  width: var(--mobile-main-photo-size);
+}
+
+.goods-form--create-wizard .main-photo-uploader :deep(.el-upload--picture-card),
+.goods-form--create-wizard .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: var(--mobile-main-photo-size);
+  height: var(--mobile-main-photo-size);
+  border-radius: 14px;
+}
+
+.goods-form--create-wizard .additional-photo-upload :deep(.el-upload--picture-card) {
+  width: 104px;
+  height: 104px;
+}
+
+.goods-form--create-wizard .existing-photos,
+.goods-form--create-wizard .new-photos {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.goods-form--create-wizard .photo-preview {
+  height: 104px;
+}
+
+.goods-form--create-wizard .ocr-upload-trigger {
+  min-height: 48px;
+  padding: 12px 14px;
+}
+
+.goods-form--create-wizard .ocr-upload-trigger span {
+  min-width: 0;
+  line-height: 1.4;
+  white-space: normal;
+}
+
+.goods-form--create-wizard .ocr-threshold-row {
+  justify-content: space-between;
+}
+
+.goods-form--create-wizard .ocr-upload-hint {
+  line-height: 1.5;
+}
+
+@media (max-width: 430px) {
+  .goods-form--create-wizard .create-wizard-progress {
+    gap: 4px;
+    padding: 8px 6px;
+  }
+
+  .goods-form--create-wizard .create-wizard-progress__label {
+    font-size: 10px;
+  }
+
+  .goods-form--create-wizard .form-section {
+    padding: 16px 16px 20px;
+  }
+}
+
+@media (max-width: 380px) {
+  .goods-form--create-wizard {
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .goods-form--create-wizard .create-wizard-progress__dot {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .goods-form--create-wizard .create-wizard-progress__item:not(:last-child)::after {
+    top: 11px;
+    left: calc(50% + 12px);
+  }
+
+  .goods-form--create-wizard .mobile-form-dock-btn {
+    min-height: 46px;
+    font-size: 13px;
   }
 }
 
