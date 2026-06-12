@@ -106,7 +106,7 @@
 /* Toast (ElMessage) 美化与适配 - 精致胶囊风 */
 /* ========================================= */
 
-.el-message {
+html body .el-message {
   /* 核心改动：宽度自适应，不再强制撑满 */
   min-width: unset !important;
   width: fit-content !important;
@@ -116,84 +116,139 @@
   display: flex !important;
   justify-content: center !important;
   align-items: center !important;
+  position: fixed !important;
   
   /* 间距与形状：更紧凑的胶囊形 */
   padding: 10px 24px !important;
-  border-radius: 50px !important; /* 全圆角/胶囊状 */
-  border-width: 1px !important;
-  
-  /* 阴影与背景：保持高级感，但更轻盈 */
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08), 
-              0 0 10px rgba(212, 175, 55, 0.1) !important;
-  
-  background-color: rgba(255, 255, 255, 0.9) !important;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  border-radius: 999px !important; /* 全圆角/胶囊状 */
+  border: 1px solid var(--toast-glass-border, rgba(255, 255, 255, 0.72)) !important;
+  overflow: visible !important;
+  isolation: isolate;
+
+  /* 玻璃效果：父级保持透明，模糊与雾化层交给伪元素处理 */
+  background: rgba(255, 255, 255, 0.12) !important;
+  box-shadow:
+    0 18px 42px rgba(43, 36, 24, 0.16),
+    0 6px 18px rgba(43, 36, 24, 0.1),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.18) !important;
+  backdrop-filter: blur(36px) saturate(190%);
+  -webkit-backdrop-filter: blur(36px) saturate(190%);
+  color: var(--toast-glass-text, #2f2a20) !important;
   
   /* 字体优化 */
   font-weight: 500;
   font-size: 14px;
 }
 
+html body .el-message::before {
+  content: '';
+  position: absolute;
+  inset: -12px;
+  z-index: 0;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 50% 50%, var(--toast-glass-glow, rgba(212, 175, 55, 0.2)), transparent 64%),
+    rgba(255, 255, 255, 0.18);
+  filter: blur(14px);
+  opacity: 0.82;
+  pointer-events: none;
+}
+
+html body .el-message::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: 1;
+  border-radius: inherit;
+  background:
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.2) 48%, rgba(255, 255, 255, 0.08)),
+    var(--toast-glass-tint, rgba(212, 175, 55, 0.06));
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.86),
+    inset 0 -10px 24px rgba(255, 255, 255, 0.16);
+  backdrop-filter: blur(36px) saturate(190%);
+  -webkit-backdrop-filter: blur(36px) saturate(190%);
+  pointer-events: none;
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  html body .el-message::after {
+    background:
+      linear-gradient(to bottom, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0.62)),
+      var(--toast-glass-tint, rgba(212, 175, 55, 0.06));
+  }
+}
+
 /* 确保文字不换行（短语时），长文自动换行 */
-.el-message .el-message__content {
+html body .el-message .el-message__content {
+  position: relative;
+  z-index: 2;
   text-align: center;
   word-break: break-word;
 }
 
 /* 图标大小与间距微调 */
-.el-message .el-message__icon {
+html body .el-message .el-message__icon {
+  position: relative;
+  z-index: 2;
   font-size: 16px !important;
   margin-right: 8px !important;
+  color: currentColor !important;
+  opacity: 0.92;
 }
 
 /* 关闭按钮（如果有） */
-.el-message .el-message__closeBtn {
+html body .el-message .el-message__closeBtn {
+  position: relative;
+  z-index: 2;
   margin-left: 12px !important;
 }
 
 /* --- 针对不同类型的配色优化 (保持香槟风格) --- */
 
 /* 1. 普通信息 (Info) */
-.el-message--info {
-  border-color: rgba(212, 175, 55, 0.3) !important;
-  color: #303133 !important;
-}
-.el-message--info .el-message__icon {
-  color: var(--el-color-primary) !important;
+html body .el-message.el-message--info {
+  --toast-glass-border: rgba(212, 175, 55, 0.34);
+  --toast-glass-tint: linear-gradient(135deg, rgba(212, 175, 55, 0.1), rgba(255, 255, 255, 0.02));
+  --toast-glass-glow: rgba(212, 175, 55, 0.24);
+  --toast-glass-text: #6f5611;
 }
 
 /* 2. 成功 (Success) - 保持淡雅 */
-.el-message--success {
-  background: linear-gradient(to bottom, #f0f9eb, #ffffff) !important;
-  border-color: #e1f3d8 !important;
-  color: #67c23a !important;
+html body .el-message.el-message--success {
+  --toast-glass-border: rgba(103, 194, 58, 0.38);
+  --toast-glass-tint: linear-gradient(135deg, rgba(103, 194, 58, 0.12), rgba(255, 255, 255, 0.02));
+  --toast-glass-glow: rgba(103, 194, 58, 0.26);
+  --toast-glass-text: #3f8f2f;
 }
 
 /* 3. 警告 (Warning) */
-.el-message--warning {
-  background: linear-gradient(to bottom, #fdf6ec, #ffffff) !important;
-  border-color: #faecd8 !important;
-  color: #e6a23c !important;
+html body .el-message.el-message--warning {
+  --toast-glass-border: rgba(230, 162, 60, 0.4);
+  --toast-glass-tint: linear-gradient(135deg, rgba(230, 162, 60, 0.13), rgba(255, 255, 255, 0.02));
+  --toast-glass-glow: rgba(230, 162, 60, 0.26);
+  --toast-glass-text: #9b6818;
 }
 
 /* 4. 错误 (Error) */
-.el-message--error {
-  background: linear-gradient(to bottom, #fef0f0, #ffffff) !important;
-  border-color: #fde2e2 !important;
-  color: #f56c6c !important;
+html body .el-message.el-message--error {
+  --toast-glass-border: rgba(245, 108, 108, 0.38);
+  --toast-glass-tint: linear-gradient(135deg, rgba(245, 108, 108, 0.12), rgba(255, 255, 255, 0.02));
+  --toast-glass-glow: rgba(245, 108, 108, 0.24);
+  --toast-glass-text: #c24f4f;
 }
 
 /* --- 位置与响应式适配 --- */
 
 /* 默认 PC 端 */
-.el-message {
+html body .el-message {
   top: 30px !important;
 }
 
 /* 移动端适配 */
 @media screen and (max-width: 768px) {
-  .el-message {
+  html body .el-message {
     /* 移动端顶部避让 */
     top: calc(70px + env(safe-area-inset-top, 0px)) !important;
     
@@ -201,4 +256,3 @@
     padding: 8px 20px !important;
   }
 }
-
