@@ -73,9 +73,9 @@ describe('ThemeManagement infinite scroll – source structure', () => {
 // ============================================================
 describe('ThemeManagement infinite scroll – loadMoreMobile logic', () => {
   // Simulate the core reactive state from ThemeManagement.vue
-  let mobileDisplayList = ref<any[]>([])
-  let loadingMoreMobile = ref(false)
-  let filteredThemeList = ref<any[]>([])
+  const mobileDisplayList = ref<any[]>([])
+  const loadingMoreMobile = ref(false)
+  const filteredThemeList = ref<any[]>([])
   const mobilePageSize = 10
 
   const hasMoreMobileData = () =>

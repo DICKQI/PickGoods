@@ -216,7 +216,7 @@
         v-if="showMobileActionFab"
         type="button"
         class="mobile-action-fab"
-        :class="{ 'is-open': mobileActionOpen }"
+        :class="{ 'is-open': mobileActionOpen, 'fab-dimmed': fabDimmed }"
         @click="toggleMobileActions"
         aria-haspopup="menu"
         :aria-expanded="mobileActionOpen ? 'true' : 'false'"
@@ -248,6 +248,7 @@ const { isMobile } = useResponsiveDevice()
 
 const refreshLoading = ref(false)
 const mobileActionOpen = ref(false)
+const fabDimmed = ref(false)
 const isNativePlatform = ref(Capacitor.isNativePlatform())
 const statusBarHeight = ref(0)
 const navbarRef = ref<HTMLElement | null>(null)
@@ -308,7 +309,22 @@ const closeMobileActions = () => {
 
 const toggleMobileActions = () => {
   mobileActionOpen.value = !mobileActionOpen.value
+  fabDimmed.value = false
 }
+
+const handleFabScrollDim = (() => {
+  let ticking = false
+  return () => {
+    if (ticking) return
+    ticking = true
+    requestAnimationFrame(() => {
+      if (isMobile.value && !fabDimmed.value) {
+        fabDimmed.value = true
+      }
+      ticking = false
+    })
+  }
+})()
 
 const handleMobileAdd = () => {
   closeMobileActions()
@@ -376,6 +392,7 @@ const handleShowcaseTabChanged = (e: Event) => {
 
 onMounted(() => {
   window.addEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
+  window.addEventListener('scroll', handleFabScrollDim, { passive: true })
 
   // 在原生平台上，尝试获取状态栏高度并设置 padding（作为 CSS env() 的后备方案）
   if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
@@ -405,6 +422,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   window.removeEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
+  window.removeEventListener('scroll', handleFabScrollDim)
 })
 
 watch(isMobile, (mobile) => {
@@ -922,17 +940,21 @@ watch(isMobile, (mobile) => {
       0 16px 30px rgba(96, 78, 18, 0.24),
       0 5px 14px rgba(212, 175, 55, 0.32);
     pointer-events: auto;
-    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, opacity 0.25s ease;
     -webkit-tap-highlight-color: transparent;
   }
 
   .mobile-action-fab.is-open {
     transform: scale(0.96);
-    background: #364152;
+    background: linear-gradient(135deg, var(--accent-purple-dark), var(--accent-purple));
     color: #fff;
     box-shadow:
-      0 14px 26px rgba(15, 23, 42, 0.22),
-      0 4px 12px rgba(15, 23, 42, 0.14);
+      0 14px 26px rgba(162, 155, 254, 0.28),
+      0 4px 12px rgba(153, 128, 250, 0.18);
+  }
+
+  .mobile-action-fab.fab-dimmed {
+    opacity: 0.45;
   }
 
   .mobile-action-sheet {
@@ -1197,17 +1219,21 @@ watch(isMobile, (mobile) => {
       0 16px 30px rgba(96, 78, 18, 0.24),
       0 5px 14px rgba(212, 175, 55, 0.32);
     pointer-events: auto;
-    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
+    transition: transform 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, opacity 0.25s ease;
     -webkit-tap-highlight-color: transparent;
   }
 
   .mobile-action-fab.is-open {
     transform: scale(0.96);
-    background: #364152;
+    background: linear-gradient(135deg, var(--accent-purple-dark), var(--accent-purple));
     color: #fff;
     box-shadow:
-      0 14px 26px rgba(15, 23, 42, 0.22),
-      0 4px 12px rgba(15, 23, 42, 0.14);
+      0 14px 26px rgba(162, 155, 254, 0.28),
+      0 4px 12px rgba(153, 128, 250, 0.18);
+  }
+
+  .mobile-action-fab.fab-dimmed {
+    opacity: 0.45;
   }
 
   .mobile-action-sheet {
