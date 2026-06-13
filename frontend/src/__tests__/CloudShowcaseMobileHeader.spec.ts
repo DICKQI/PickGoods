@@ -44,29 +44,48 @@ const createTouchEvent = (type: string, clientY: number) => {
   return event
 }
 
-const mountMobileCloudShowcase = async ({
-  goodsResults = [],
-}: {
-  goodsResults?: GoodsListItem[]
-} = {}) => {
+const sampleGoods: GoodsListItem = {
+  id: 'goods-1',
+  name: 'Sample Goods',
+  main_photo: '',
+  is_official: true,
+  quantity: 1,
+  ip: { id: 1, name: 'IP' },
+  characters: [{ id: 1, name: 'Character', ip: { id: 1, name: 'IP' }, gender: 'other' }],
+  category: { id: 1, name: 'Category', parent: null, path_name: 'Category', color_tag: '#D4AF37', order: 1 },
+  location_path: '',
+  status: 'in_cabinet',
+}
+
+const setViewport = (viewport: 'mobile' | 'desktop') => {
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
-    value: 390,
+    value: viewport === 'mobile' ? 390 : 1440,
   })
   Object.defineProperty(window, 'innerHeight', {
     configurable: true,
-    value: 844,
+    value: viewport === 'mobile' ? 844 : 900,
   })
   Object.defineProperty(navigator, 'maxTouchPoints', {
     configurable: true,
-    value: 1,
+    value: viewport === 'mobile' ? 1 : 0,
   })
   window.matchMedia = vi.fn().mockImplementation((query: string) => ({
-    matches: query === '(pointer: coarse)',
+    matches: viewport === 'mobile' && query === '(pointer: coarse)',
     media: query,
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }))
+}
+
+const mountCloudShowcase = async ({
+  goodsResults = [],
+  viewport = 'mobile',
+}: {
+  goodsResults?: GoodsListItem[]
+  viewport?: 'mobile' | 'desktop'
+} = {}) => {
+  setViewport(viewport)
   setWindowScrollY(0)
   getGoodsListMock.mockResolvedValue({
     results: goodsResults,
@@ -111,6 +130,12 @@ const mountMobileCloudShowcase = async ({
   return wrapper
 }
 
+const mountMobileCloudShowcase = (options: { goodsResults?: GoodsListItem[] } = {}) =>
+  mountCloudShowcase({ ...options, viewport: 'mobile' })
+
+const mountDesktopCloudShowcase = (options: { goodsResults?: GoodsListItem[] } = {}) =>
+  mountCloudShowcase({ ...options, viewport: 'desktop' })
+
 describe('CloudShowcase mobile compact header', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -132,6 +157,21 @@ describe('CloudShowcase mobile compact header', () => {
 
     expect(wrapper.find('[data-test="search-bar"]').exists()).toBe(true)
     expect(wrapper.get('.mobile-search-trigger').attributes('aria-expanded')).toBe('true')
+  })
+
+  it('defines an expand transition for the mobile search panel', () => {
+    expect(cloudShowcaseSource).toContain('<Transition name="mobile-search-expand">')
+    expect(cloudShowcaseSource).toContain('.mobile-search-expand-enter-active')
+    expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-active')
+    expect(cloudShowcaseSource).toContain('.mobile-search-expand-enter-from')
+    expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-to')
+  })
+
+  it('does not render the desktop floating page-size selector', async () => {
+    const wrapper = await mountDesktopCloudShowcase({ goodsResults: [sampleGoods] })
+    await flushPromises()
+
+    expect(wrapper.find('.page-size-float').exists()).toBe(false)
   })
 
   it('keeps pull gestures for refresh instead of revealing the search bar', async () => {

@@ -35,13 +35,15 @@
           <div class="barn-pull-refresh-content" :style="barnPullRefreshStyle">
       <div class="barn-discovery" :class="{ 'is-search-expanded': mobileSearchExpanded }">
         <!-- 搜索栏 -->
-        <div
-          v-if="!isMobile || mobileSearchExpanded"
-          class="search-section"
-          :class="{ 'search-section--mobile': isMobile }"
-        >
-          <SearchBar />
-        </div>
+        <Transition name="mobile-search-expand">
+          <div
+            v-if="!isMobile || mobileSearchExpanded"
+            class="search-section"
+            :class="{ 'search-section--mobile': isMobile }"
+          >
+            <SearchBar />
+          </div>
+        </Transition>
 
         <div v-if="isMobile" class="mobile-filter-strip">
           <button
@@ -150,27 +152,6 @@
       <div v-else-if="!guziStore.hasMore && guziStore.guziList.length > 0" class="no-more">
         已加载全部 {{ guziStore.pagination.count }} 项
       </div>
-      <!-- 每页数量选择器 -->
-      <div
-        v-if="!isMobile && guziStore.guziList.length > 0 && guziStore.viewMode === 'standard'"
-        class="page-size-float"
-      >
-        <div class="page-size-wrapper">
-          <el-select
-            v-model="pageSize"
-            class="page-size-select"
-            @change="handleSizeChange"
-          >
-            <el-option
-              v-for="size in [12, 18, 24, 30, 36, 42]"
-              :key="size"
-              :label="`${size}项/页`"
-              :value="size"
-            />
-          </el-select>
-        </div>
-      </div>
-
       <!-- 详情抽屉 -->
       <GoodsDrawer v-model="drawerVisible" :goods-id="selectedGoodsId" />
 
@@ -391,11 +372,6 @@ const barnPullRefreshStyle = computed(() => (
     : undefined
 ))
 
-const pageSize = computed({
-  get: () => guziStore.pagination.page_size,
-  set: (val) => guziStore.setPageSize(val),
-})
-
 const contextMenuIndex = computed(() => {
   if (!contextMenuGoods.value) return -1
   return guziStore.guziList.findIndex(item => item.id === contextMenuGoods.value?.id)
@@ -483,10 +459,6 @@ const handleSelectionExit = async () => {
   }
 
   guziStore.exitSelectionMode(true)
-}
-
-const handleSizeChange = () => {
-  window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
 const toggleMobileSearch = () => {
@@ -1315,93 +1287,6 @@ watch(mobileFilterVisible, (visible) => {
   font-size: 13px;
 }
 
-/* 每页数量选择器 - 悬浮固定在右下角 */
-.page-size-float {
-  position: fixed;
-  bottom: 24px;
-  right: 90px;
-  z-index: 100;
-}
-
-.page-size-wrapper {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 8px 12px;
-  box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.1), 0 -2px 8px rgba(0, 0, 0, 0.05);
-  border: 1px solid rgba(255, 255, 255, 0.8);
-  pointer-events: auto;
-  transition: all var(--transition-normal);
-  display: inline-flex;
-  align-items: center;
-}
-
-.page-size-wrapper:hover {
-  box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.12), 0 -4px 12px rgba(0, 0, 0, 0.08);
-  transform: translateY(-2px);
-}
-
-.page-size-select {
-  width: 90px;
-}
-
-/* 去掉 el-select 2.8.x 的边框（box-shadow inset 方式）和背景 */
-.page-size-select :deep(.el-select__wrapper) {
-  background-color: transparent !important;
-  box-shadow: none !important;
-  border-radius: 8px;
-  padding: 0 4px;
-  height: 32px;
-}
-
-/* 所有状态下都不显示框 */
-.page-size-select :deep(.el-select__wrapper.is-focused),
-.page-size-select :deep(.el-select__wrapper.is-hovering),
-.page-size-select :deep(.el-select__wrapper:hover) {
-  box-shadow: none !important;
-}
-
-.page-size-select :deep(.el-select__placeholder) {
-  color: var(--text-dark);
-}
-
-.page-size-select :deep(.el-select__caret) {
-  color: var(--text-secondary, #909399);
-}
-
-.page-size-select :deep(.el-select__selected-item) {
-  font-size: 14px;
-  color: var(--text-dark);
-}
-
-@media (max-width: 768px) {
-  .page-size-float {
-    bottom: calc(80px + env(safe-area-inset-bottom));
-    right: 70px;
-  }
-
-  .page-size-wrapper {
-    padding: 6px 10px;
-    border-radius: 12px;
-  }
-
-  .page-size-select {
-    width: 85px;
-  }
-
-  .page-size-select :deep(.el-select__selected-item) {
-    font-size: 13px;
-  }
-
-  /* 兼容不支持 safe-area-inset-bottom 的环境 */
-  @supports not (bottom: env(safe-area-inset-bottom)) {
-    .page-size-float {
-      bottom: 80px;
-    }
-  }
-}
-
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .cloud-showcase {
     padding: 12px 10px 128px;
@@ -1625,23 +1510,6 @@ watch(mobileFilterVisible, (visible) => {
     line-height: 1.4;
   }
 
-  .page-size-float {
-    bottom: calc(80px + env(safe-area-inset-bottom));
-    right: 70px;
-  }
-
-  .page-size-wrapper {
-    padding: 6px 10px;
-    border-radius: 12px;
-  }
-
-  .page-size-select {
-    width: 85px;
-  }
-
-  .page-size-select :deep(.el-select__selected-item) {
-    font-size: 13px;
-  }
 }
 
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
@@ -1651,11 +1519,6 @@ watch(mobileFilterVisible, (visible) => {
     }
   }
 
-  @supports not (bottom: env(safe-area-inset-bottom)) {
-    .page-size-float {
-      bottom: 80px;
-    }
-  }
 }
 
 @media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
@@ -1691,6 +1554,31 @@ watch(mobileFilterVisible, (visible) => {
 
   .search-section {
     margin-bottom: 6px;
+  }
+
+  .mobile-search-expand-enter-active,
+  .mobile-search-expand-leave-active {
+    overflow: hidden;
+    transition:
+      opacity 0.2s ease,
+      transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+      max-height 0.24s ease,
+      margin-bottom 0.24s ease;
+  }
+
+  .mobile-search-expand-enter-from,
+  .mobile-search-expand-leave-to {
+    opacity: 0;
+    transform: translateY(-6px);
+    max-height: 0;
+    margin-bottom: 0;
+  }
+
+  .mobile-search-expand-enter-to,
+  .mobile-search-expand-leave-from {
+    opacity: 1;
+    transform: translateY(0);
+    max-height: 56px;
   }
 
   .barn-discovery :deep(.el-input__wrapper) {
