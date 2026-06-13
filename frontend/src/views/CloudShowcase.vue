@@ -14,13 +14,46 @@
       </div>
 
       <div v-else-if="activeTab === 'barn'" key="barn" class="barn-section">
-      <div class="barn-discovery">
+        <div
+          class="barn-pull-refresh-wrapper"
+          @touchstart.capture.passive="handleBarnPullStart"
+          @touchmove="handleBarnPullMove"
+          @touchend="handleBarnPullEnd"
+          @touchcancel="resetBarnPullRefresh"
+        >
+          <div
+            v-if="isMobile"
+            class="pull-indicator"
+            :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
+          >
+            <div class="pull-indicator-content">
+              <el-icon v-if="isRefreshing" class="is-loading"><Loading /></el-icon>
+              <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
+              <span>{{ isRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
+            </div>
+          </div>
+          <div class="barn-pull-refresh-content" :style="barnPullRefreshStyle">
+      <div class="barn-discovery" :class="{ 'is-search-expanded': mobileSearchExpanded }">
         <!-- 搜索栏 -->
-        <div class="search-section">
+        <div
+          v-if="!isMobile || mobileSearchExpanded"
+          class="search-section"
+          :class="{ 'search-section--mobile': isMobile }"
+        >
           <SearchBar />
         </div>
 
         <div v-if="isMobile" class="mobile-filter-strip">
+          <button
+            class="mobile-search-trigger"
+            :class="{ 'is-active': mobileSearchExpanded || !!guziStore.filters.search }"
+            type="button"
+            :aria-expanded="mobileSearchExpanded ? 'true' : 'false'"
+            @click="toggleMobileSearch"
+          >
+            <el-icon><Search /></el-icon>
+            <span>{{ mobileSearchExpanded ? '收起' : '搜索' }}</span>
+          </button>
           <button class="mobile-filter-trigger" type="button" @click="openMobileFilter">
             <el-icon><List /></el-icon>
             <span>筛选</span>
@@ -28,7 +61,7 @@
           </button>
           <div class="mobile-filter-chips" aria-label="当前筛选">
             <span
-              v-for="chip in activeFilterChips"
+              v-for="chip in visibleMobileFilterChips"
               :key="chip"
               class="mobile-filter-chip"
             >
@@ -40,29 +73,6 @@
 
       <!-- 筛选面板：桌面端仍为卡片，移动端放入底部面板 -->
       <FilterPanel v-if="!isMobile" />
-
-      <div v-if="isMobile" class="mobile-filter-host">
-        <div
-          v-show="mobileFilterVisible"
-          class="mobile-filter-backdrop"
-          @click="closeMobileFilter"
-        ></div>
-        <section
-          class="mobile-filter-sheet"
-          :class="{ 'is-open': mobileFilterVisible }"
-          :aria-hidden="!mobileFilterVisible"
-        >
-          <div class="mobile-filter-sheet-header">
-            <span>筛选谷子</span>
-            <button class="mobile-filter-close" type="button" @click="closeMobileFilter" aria-label="关闭筛选">
-              <el-icon><Close /></el-icon>
-            </button>
-          </div>
-          <div class="mobile-filter-sheet-body">
-            <FilterPanel force-expanded />
-          </div>
-        </section>
-      </div>
 
       <Transition name="selection-bar" appear>
         <div v-if="guziStore.selectionMode" class="selection-status-bar">
@@ -217,6 +227,30 @@
           </div>
         </div>
       </div>
+          </div>
+        </div>
+        <div v-if="isMobile" class="mobile-filter-host">
+          <div
+            v-show="mobileFilterVisible"
+            class="mobile-filter-backdrop"
+            @click="closeMobileFilter"
+          ></div>
+          <section
+            class="mobile-filter-sheet"
+            :class="{ 'is-open': mobileFilterVisible }"
+            :aria-hidden="!mobileFilterVisible"
+          >
+            <div class="mobile-filter-sheet-header">
+              <span>筛选谷子</span>
+              <button class="mobile-filter-close" type="button" @click="closeMobileFilter" aria-label="关闭筛选">
+                <el-icon><Close /></el-icon>
+              </button>
+            </div>
+            <div class="mobile-filter-sheet-body">
+              <FilterPanel force-expanded />
+            </div>
+          </section>
+        </div>
     </div>
 
       <div v-else key="stats" class="stats-section" v-loading="statsRefreshing">
@@ -230,7 +264,7 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close, Search } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useShowcaseStore } from '@/stores/showcase'
 import SearchBar from '@/components/SearchBar.vue'
@@ -241,6 +275,7 @@ import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import type { GoodsListItem } from '@/api/types'
 import { deleteGoods, getGoodsList, moveGoods } from '@/api/goods'
 
@@ -267,9 +302,13 @@ const statsRefreshing = ref(false)
 
 // 移动端检测
 const mobileFilterVisible = ref(false)
+const mobileSearchExpanded = ref(false)
 const sentinelRef = ref<HTMLElement | null>(null)
 let sentinelObserver: IntersectionObserver | null = null
 let bodyOverflowBeforeFilter = ''
+let lastScrollY = 0
+
+const SCROLL_COLLAPSE_DISTANCE = 48
 
 const statusLabelMap: Record<string, string> = {
   in_cabinet: '在馆',
@@ -312,13 +351,44 @@ const activeFilterChips = computed(() => {
   if (filters.location) chips.push('位置')
   if (filters.group_by) chips.push('分组')
 
-  return chips.length > 0 ? chips.slice(0, 5) : ['全部']
+  return chips.slice(0, 5)
 })
 
-const activeFilterCount = computed(() => (
-  activeFilterChips.value.length === 1 && activeFilterChips.value[0] === '全部'
-    ? 0
-    : activeFilterChips.value.length
+const visibleMobileFilterChips = computed(() =>
+  activeFilterChips.value.filter(chip => chip !== statusLabelMap.in_cabinet),
+)
+
+const activeFilterCount = computed(() => activeFilterChips.value.length)
+
+const refreshBarnList = async () => {
+  guziStore.pagination.page = 1
+  await guziStore.searchGuziImmediate(guziStore.filters)
+}
+
+const {
+  pullDistance,
+  isRefreshing,
+  handleTouchStart: handleBarnPullStart,
+  handleTouchMove: handleBarnPullMove,
+  handleTouchEnd: handleBarnPullEnd,
+  reset: resetBarnPullRefresh,
+} = useMobilePullRefresh({
+  enabled: computed(() => isMobile.value && activeTab.value === 'barn'),
+  blocked: () => (
+    mobileFilterVisible.value ||
+    mobileSearchExpanded.value ||
+    drawerVisible.value ||
+    contextMenuVisible.value ||
+    multiDisplayVisible.value ||
+    guziStore.selectionMode
+  ),
+  onRefresh: refreshBarnList,
+})
+
+const barnPullRefreshStyle = computed(() => (
+  isMobile.value && pullDistance.value > 0
+    ? { transform: `translateY(${pullDistance.value}px)` }
+    : undefined
 ))
 
 const pageSize = computed({
@@ -407,7 +477,7 @@ const handleSelectionExit = async () => {
           type: 'warning',
         },
       )
-    } catch (error) {
+    } catch {
       return
     }
   }
@@ -417,6 +487,14 @@ const handleSelectionExit = async () => {
 
 const handleSizeChange = () => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
+}
+
+const toggleMobileSearch = () => {
+  mobileSearchExpanded.value = !mobileSearchExpanded.value
+}
+
+const collapseMobileSearch = () => {
+  mobileSearchExpanded.value = false
 }
 
 const openMobileFilter = () => {
@@ -633,8 +711,7 @@ let statsRefreshCompleteHandler: (() => void) | null = null
 const handleShowcaseRefresh = async () => {
   try {
     if (activeTab.value === 'barn') {
-      // 重新应用当前的筛选条件进行搜索
-      await guziStore.searchGuziImmediate(guziStore.filters)
+      await refreshBarnList()
       return
     }
     if (activeTab.value === 'showcase') {
@@ -670,7 +747,18 @@ const handleShowcaseRefresh = async () => {
 const handleResize = () => {
   if (!isMobile.value) {
     closeMobileFilter()
+    collapseMobileSearch()
   }
+}
+
+const handleWindowScroll = () => {
+  const currentScrollY = Math.max(window.scrollY || 0, 0)
+
+  if (isMobile.value && currentScrollY > lastScrollY && currentScrollY >= SCROLL_COLLAPSE_DISTANCE) {
+    collapseMobileSearch()
+  }
+
+  lastScrollY = currentScrollY
 }
 
 onMounted(() => {
@@ -698,7 +786,9 @@ onMounted(() => {
     }
   }, { immediate: true })
 
+  lastScrollY = Math.max(window.scrollY || 0, 0)
   window.addEventListener('resize', handleResize)
+  window.addEventListener('scroll', handleWindowScroll, { passive: true })
 
   // 监听右下角"刷新"按钮事件，按当前 Tab 执行对应刷新
   window.addEventListener('cloud-showcase:refresh', handleShowcaseRefresh as EventListener)
@@ -713,6 +803,7 @@ onUnmounted(() => {
   }
   document.body.style.overflow = bodyOverflowBeforeFilter
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('scroll', handleWindowScroll)
   window.removeEventListener('cloud-showcase:refresh', handleShowcaseRefresh as EventListener)
   window.removeEventListener('cloud-showcase:selection-enter', handleSelectionEnter as EventListener)
   window.removeEventListener('cloud-showcase:selection-confirm', handleSelectionConfirm as EventListener)
@@ -726,6 +817,9 @@ watch(
   () => activeTab.value,
   (tab) => {
     closeMobileFilter()
+    if (tab !== 'barn') {
+      collapseMobileSearch()
+    }
     window.dispatchEvent(new CustomEvent('cloud-showcase:tab-changed', { detail: { tab } }))
   },
 )
@@ -733,6 +827,7 @@ watch(
 watch(isMobile, (mobile) => {
   if (!mobile) {
     closeMobileFilter()
+    collapseMobileSearch()
   }
 })
 
@@ -763,6 +858,36 @@ watch(mobileFilterVisible, (visible) => {
 
 .barn-discovery {
   margin-bottom: 20px;
+}
+
+.barn-pull-refresh-wrapper {
+  position: relative;
+}
+
+.pull-indicator {
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  color: #909399;
+  pointer-events: none;
+}
+
+.pull-indicator-content {
+  height: 50px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding-bottom: 10px;
+  font-size: 14px;
+}
+
+.pull-indicator-content .el-icon {
+  font-size: 18px;
+  transition: transform 0.3s;
 }
 
 .mobile-filter-strip,
@@ -1530,6 +1655,115 @@ watch(mobileFilterVisible, (visible) => {
     .page-size-float {
       bottom: 80px;
     }
+  }
+}
+
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  .cloud-showcase {
+    padding-top: 8px;
+  }
+
+  .barn-pull-refresh-content {
+    will-change: transform;
+  }
+
+  .cloud-tabs {
+    margin: 0 -10px 8px;
+    padding: 0 10px 4px;
+  }
+
+  .cloud-tabs :deep(.el-tabs__item) {
+    height: 38px;
+    padding: 0 14px;
+    font-size: 15px;
+  }
+
+  .barn-discovery {
+    margin-bottom: 8px;
+    padding: 6px;
+    border-radius: 14px;
+    box-shadow: 0 6px 18px rgba(15, 23, 42, 0.05);
+  }
+
+  .barn-discovery.is-search-expanded {
+    padding-top: 8px;
+  }
+
+  .search-section {
+    margin-bottom: 6px;
+  }
+
+  .barn-discovery :deep(.el-input__wrapper) {
+    min-height: 38px;
+  }
+
+  .mobile-filter-strip {
+    gap: 6px;
+  }
+
+  .mobile-search-trigger,
+  .mobile-filter-trigger {
+    height: 32px;
+    min-width: 0;
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    font-size: 13px;
+    font-weight: 700;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  .mobile-search-trigger {
+    flex: 0 0 72px;
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    background: #ffffff;
+    color: #64748b;
+  }
+
+  .mobile-search-trigger.is-active {
+    border-color: rgba(212, 175, 55, 0.42);
+    background: rgba(212, 175, 55, 0.12);
+    color: var(--primary-gold-dark);
+  }
+
+  .mobile-filter-trigger {
+    flex: 0 0 76px;
+    border-color: rgba(212, 175, 55, 0.38);
+  }
+
+  .mobile-search-trigger .el-icon,
+  .mobile-filter-trigger .el-icon {
+    font-size: 15px;
+  }
+
+  .mobile-filter-trigger strong {
+    min-width: 16px;
+    height: 16px;
+    padding: 0 4px;
+    font-size: 10px;
+    line-height: 16px;
+  }
+
+  .mobile-filter-chips {
+    gap: 5px;
+  }
+
+  .mobile-filter-chips:empty {
+    display: none;
+  }
+
+  .mobile-filter-chip {
+    max-width: 84px;
+    height: 26px;
+    padding: 0 8px;
+    font-size: 11px;
+    line-height: 24px;
+  }
+
+  .list-section {
+    margin-top: 14px;
   }
 }
 

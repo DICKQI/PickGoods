@@ -157,21 +157,6 @@
           aria-label="首页快捷操作"
         >
           <button
-            v-if="showRefreshFab"
-            type="button"
-            class="mobile-action-item"
-            :class="{ loading: refreshLoading }"
-            role="menuitem"
-            aria-label="刷新当前列表"
-            @click="handleMobileRefresh"
-          >
-            <span class="mobile-action-icon">
-              <el-icon v-if="!refreshLoading"><Refresh /></el-icon>
-              <el-icon v-else class="is-loading"><Loading /></el-icon>
-            </span>
-            <span class="mobile-action-label">刷新</span>
-          </button>
-          <button
             v-if="showAddFab"
             type="button"
             class="mobile-action-item primary"
@@ -295,7 +280,7 @@ const showMultiSelectFab = computed(() => showFab.value && showcaseActiveTab.val
 const showSelectionConfirmFab = computed(() => showSelectionControls.value)
 const showSelectionExitFab = computed(() => showSelectionControls.value)
 const showMobileActionFab = computed(() => !showSelectionControls.value && (
-  showRefreshFab.value || showAddFab.value || showMultiSelectFab.value
+  showAddFab.value || showMultiSelectFab.value
 ))
 const showMobileSelectionDock = computed(() => showSelectionControls.value)
 
@@ -377,11 +362,6 @@ const handleRefresh = async () => {
       refreshLoading.value = false
     }
   }
-}
-
-const handleMobileRefresh = async () => {
-  closeMobileActions()
-  await handleRefresh()
 }
 
 const handleShowcaseTabChanged = (e: Event) => {
