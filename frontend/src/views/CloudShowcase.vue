@@ -157,8 +157,6 @@
       <div v-else-if="!guziStore.hasMore && guziStore.guziList.length > 0" class="no-more">
         已加载全部 {{ guziStore.pagination.count }} 项
       </div>
-      <!-- 详情抽屉 -->
-      <GoodsDrawer v-model="drawerVisible" :goods-id="selectedGoodsId" />
 
       <GoodsMultiDisplayDialog
         v-model="multiDisplayVisible"
@@ -237,6 +235,9 @@
             </div>
           </section>
         </div>
+
+        <!-- 详情抽屉 - 放在 barn-section 内，但位于下拉刷新容器之外 -->
+        <GoodsDrawer v-model="drawerVisible" :goods-id="selectedGoodsId" />
     </div>
 
       <div v-else key="stats" class="stats-section" v-loading="statsRefreshing">
