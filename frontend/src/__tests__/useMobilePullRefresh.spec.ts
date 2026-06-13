@@ -8,6 +8,13 @@ const touchEvent = (clientY: number) => ({
   preventDefault: vi.fn(),
 } as unknown as TouchEvent)
 
+const flushRaf = async () => {
+  await new Promise<void>(resolve => {
+    requestAnimationFrame(() => resolve())
+  })
+  await nextTick()
+}
+
 describe('useMobilePullRefresh', () => {
   it('triggers refresh only after pulling past the threshold at the top', async () => {
     const onRefresh = vi.fn().mockResolvedValue(undefined)
@@ -24,6 +31,8 @@ describe('useMobilePullRefresh', () => {
     refresh.handleTouchMove(move)
 
     expect(move.preventDefault).toHaveBeenCalled()
+
+    await flushRaf()
     expect(refresh.pullDistance.value).toBe(60)
 
     await refresh.handleTouchEnd()

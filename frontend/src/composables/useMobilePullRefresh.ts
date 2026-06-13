@@ -24,6 +24,10 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
   const pullDistance = ref(0)
   const isRefreshing = ref(false)
   const isDragging = ref(false)
+  const isAnimating = ref(false)
+
+  let rafId = 0
+  let pendingDistance = 0
 
   const maxPull = options.maxPull ?? 80
   const triggerDistance = options.triggerDistance ?? 50
@@ -38,10 +42,23 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
       : unref(options.blocked)
   }
 
+  const flushRaf = () => {
+    if (rafId) {
+      cancelAnimationFrame(rafId)
+      rafId = 0
+    }
+  }
+
   const reset = () => {
+    flushRaf()
+    isAnimating.value = true
     pullDistance.value = 0
     startY.value = 0
     isDragging.value = false
+  }
+
+  const clearAnimating = () => {
+    isAnimating.value = false
   }
 
   const handleTouchStart = (e: TouchEvent) => {
@@ -56,6 +73,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
     if (!firstTouch) return
 
     isDragging.value = true
+    isAnimating.value = false
     startY.value = firstTouch.clientY
   }
 
@@ -69,14 +87,22 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
 
     if (distance > 0) {
       if (e.cancelable) e.preventDefault()
-      pullDistance.value = Math.min(distance * resistance, maxPull)
+      pendingDistance = Math.min(distance * resistance, maxPull)
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          pullDistance.value = pendingDistance
+          rafId = 0
+        })
+      }
       return
     }
 
+    flushRaf()
     pullDistance.value = 0
   }
 
   const handleTouchEnd = async () => {
+    flushRaf()
     isDragging.value = false
     if (!isEnabled() || isRefreshing.value || isBlocked()) {
       reset()
@@ -89,6 +115,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
     }
 
     isRefreshing.value = true
+    isAnimating.value = true
     pullDistance.value = triggerDistance
 
     try {
@@ -111,6 +138,8 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
     pullDistance,
     isRefreshing,
     isDragging,
+    isAnimating,
+    clearAnimating,
     handleTouchStart,
     handleTouchMove,
     handleTouchEnd,

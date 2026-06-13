@@ -182,6 +182,8 @@ describe('CloudShowcase mobile compact header', () => {
     const pullWrapper = wrapper.get('.barn-pull-refresh-wrapper')
     await pullWrapper.trigger('touchstart', { touches: [{ clientY: 10 }] })
     await pullWrapper.trigger('touchmove', { touches: [{ clientY: 160 }] })
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    await wrapper.vm.$nextTick()
 
     expect(wrapper.find('[data-test="search-bar"]').exists()).toBe(false)
     expect(wrapper.get('.pull-indicator').text()).toContain('释放刷新')
@@ -217,6 +219,7 @@ describe('CloudShowcase mobile compact header', () => {
 
     card.dispatchEvent(createTouchEvent('touchstart', 10))
     card.dispatchEvent(createTouchEvent('touchmove', 160))
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     await wrapper.vm.$nextTick()
 
     expect(wrapper.get('.pull-indicator').text()).toContain('释放刷新')

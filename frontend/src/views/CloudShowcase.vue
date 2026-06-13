@@ -14,6 +14,47 @@
       </div>
 
       <div v-else-if="activeTab === 'barn'" key="barn" class="barn-section">
+        <div class="barn-discovery" :class="{ 'is-search-expanded': mobileSearchExpanded }">
+          <Transition name="mobile-search-expand">
+            <div
+              v-if="!isMobile || mobileSearchExpanded"
+              class="search-section"
+              :class="{ 'search-section--mobile': isMobile }"
+            >
+              <SearchBar />
+            </div>
+          </Transition>
+
+          <div v-if="isMobile" class="mobile-filter-strip">
+            <button
+              class="mobile-search-trigger"
+              :class="{ 'is-active': mobileSearchExpanded || !!guziStore.filters.search }"
+              type="button"
+              :aria-expanded="mobileSearchExpanded ? 'true' : 'false'"
+              @click="toggleMobileSearch"
+            >
+              <el-icon><Search /></el-icon>
+              <span>{{ mobileSearchExpanded ? '收起' : '搜索' }}</span>
+            </button>
+            <button class="mobile-filter-trigger" type="button" @click="openMobileFilter">
+              <el-icon><List /></el-icon>
+              <span>筛选</span>
+              <strong v-if="activeFilterCount > 0">{{ activeFilterCount }}</strong>
+            </button>
+            <div class="mobile-filter-chips" aria-label="当前筛选">
+              <span
+                v-for="chip in visibleMobileFilterChips"
+                :key="chip"
+                class="mobile-filter-chip"
+              >
+                {{ chip }}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <FilterPanel v-if="!isMobile" />
+
         <div
           class="barn-pull-refresh-wrapper"
           @touchstart.capture.passive="handleBarnPullStart"
@@ -24,6 +65,7 @@
           <div
             v-if="isMobile"
             class="pull-indicator"
+            :class="{ 'is-animating': isAnimating }"
             :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
           >
             <div class="pull-indicator-content">
@@ -32,49 +74,12 @@
               <span>{{ isRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
             </div>
           </div>
-          <div class="barn-pull-refresh-content" :style="barnPullRefreshStyle">
-      <div class="barn-discovery" :class="{ 'is-search-expanded': mobileSearchExpanded }">
-        <!-- 搜索栏 -->
-        <Transition name="mobile-search-expand">
           <div
-            v-if="!isMobile || mobileSearchExpanded"
-            class="search-section"
-            :class="{ 'search-section--mobile': isMobile }"
+            class="barn-pull-refresh-content"
+            :class="{ 'is-animating': isAnimating }"
+            :style="barnPullRefreshStyle"
+            @transitionend="clearAnimating"
           >
-            <SearchBar />
-          </div>
-        </Transition>
-
-        <div v-if="isMobile" class="mobile-filter-strip">
-          <button
-            class="mobile-search-trigger"
-            :class="{ 'is-active': mobileSearchExpanded || !!guziStore.filters.search }"
-            type="button"
-            :aria-expanded="mobileSearchExpanded ? 'true' : 'false'"
-            @click="toggleMobileSearch"
-          >
-            <el-icon><Search /></el-icon>
-            <span>{{ mobileSearchExpanded ? '收起' : '搜索' }}</span>
-          </button>
-          <button class="mobile-filter-trigger" type="button" @click="openMobileFilter">
-            <el-icon><List /></el-icon>
-            <span>筛选</span>
-            <strong v-if="activeFilterCount > 0">{{ activeFilterCount }}</strong>
-          </button>
-          <div class="mobile-filter-chips" aria-label="当前筛选">
-            <span
-              v-for="chip in visibleMobileFilterChips"
-              :key="chip"
-              class="mobile-filter-chip"
-            >
-              {{ chip }}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <!-- 筛选面板：桌面端仍为卡片，移动端放入底部面板 -->
-      <FilterPanel v-if="!isMobile" />
 
       <Transition name="selection-bar" appear>
         <div v-if="guziStore.selectionMode" class="selection-status-bar">
@@ -344,11 +349,14 @@ const activeFilterCount = computed(() => activeFilterChips.value.length)
 const refreshBarnList = async () => {
   guziStore.pagination.page = 1
   await guziStore.searchGuziImmediate(guziStore.filters)
+  if (isMobile.value) ElMessage.success('刷新成功')
 }
 
 const {
   pullDistance,
   isRefreshing,
+  isAnimating,
+  clearAnimating,
   handleTouchStart: handleBarnPullStart,
   handleTouchMove: handleBarnPullMove,
   handleTouchEnd: handleBarnPullEnd,
@@ -368,7 +376,7 @@ const {
 
 const barnPullRefreshStyle = computed(() => (
   isMobile.value && pullDistance.value > 0
-    ? { transform: `translateY(${pullDistance.value}px)` }
+    ? { transform: `translate3d(0, ${pullDistance.value}px, 0)` }
     : undefined
 ))
 
@@ -844,6 +852,10 @@ watch(mobileFilterVisible, (visible) => {
   justify-content: center;
   color: #909399;
   pointer-events: none;
+}
+
+.pull-indicator.is-animating {
+  transition: height 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 .pull-indicator-content {
@@ -1528,6 +1540,10 @@ watch(mobileFilterVisible, (visible) => {
 
   .barn-pull-refresh-content {
     will-change: transform;
+  }
+
+  .barn-pull-refresh-content.is-animating {
+    transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   }
 
   .cloud-tabs {
