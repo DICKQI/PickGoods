@@ -62,6 +62,41 @@
       </el-select>
     </div>
 
+    <div class="stats-filter-item stats-filter-item--character-stats">
+      <label>角色厨力</label>
+      <div class="character-stats-control">
+        <el-select
+          :model-value="characterStatsTargetId"
+          placeholder="搜索角色名"
+          clearable
+          filterable
+          remote
+          reserve-keyword
+          size="small"
+          :remote-method="searchCharacterStatsOptions"
+          :loading="characterStatsLoading"
+          @update:model-value="$emit('update:characterStatsTargetId', $event)"
+        >
+          <el-option
+            v-for="character in characterStatsOptions"
+            :key="character.id"
+            :label="`${character.name} · ${character.ip.name}`"
+            :value="character.id"
+          />
+        </el-select>
+        <el-button
+          type="primary"
+          size="small"
+          class="character-stats-button"
+          :disabled="!characterStatsTargetId"
+          @click="$emit('openCharacterStats')"
+        >
+          <el-icon><Top /></el-icon>
+          <span>查看厨力</span>
+        </el-button>
+      </div>
+    </div>
+
     <div class="stats-filter-item">
       <label>品类</label>
       <el-tree-select
@@ -107,7 +142,8 @@
 </template>
 
 <script setup lang="ts">
-import type { GoodsStatus, IP } from '@/api/types'
+import { Top } from '@element-plus/icons-vue'
+import type { Character, GoodsStatus, IP } from '@/api/types'
 
 interface CategoryTreeNode {
   id: number
@@ -125,6 +161,10 @@ defineProps<{
   createdDateRange: [string, string] | null
   ipOptions: IP[]
   categoryTreeData: CategoryTreeNode[]
+  characterStatsTargetId?: number
+  characterStatsOptions: Character[]
+  characterStatsLoading: boolean
+  searchCharacterStatsOptions: (keyword: string) => void | Promise<void>
 }>()
 
 defineEmits<{
@@ -135,6 +175,8 @@ defineEmits<{
   'update:category': [value: number | undefined]
   'update:purchaseDateRange': [value: [string, string] | null]
   'update:createdDateRange': [value: [string, string] | null]
+  'update:characterStatsTargetId': [value: number | undefined]
+  openCharacterStats: []
 }>()
 </script>
 
@@ -191,6 +233,17 @@ defineEmits<{
   gap: 6px;
 }
 
+.character-stats-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.character-stats-button {
+  flex-shrink: 0;
+}
+
 .stats-filter-item :deep(.el-select),
 .stats-filter-item :deep(.el-tree-select),
 .stats-filter-item :deep(.el-date-editor) {
@@ -214,6 +267,10 @@ defineEmits<{
 
   .stats-filter-item--range {
     grid-column: span 1;
+  }
+
+  .character-stats-control {
+    grid-template-columns: 1fr;
   }
 }
 </style>

@@ -4,6 +4,7 @@ from rest_framework import status
 from datetime import date, timedelta
 from decimal import Decimal
 from PIL import Image
+from django.utils import timezone
 
 from apps.users.models import User, Role
 from .models import Goods, IP, Character, Category, Theme
@@ -559,6 +560,156 @@ class GoodsStatsTestCase(TestCase):
         overview = data["overview"]
         self.assertIn("goods_count", overview)
         self.assertEqual(overview["goods_count"], 5)
+
+
+class GoodsCharacterStatsTestCase(TestCase):
+    """角色厨力统计页接口"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.user_role, _ = Role.objects.get_or_create(name='User')
+        self.admin_role, _ = Role.objects.get_or_create(name='Admin')
+        self.user = User.objects.create(username='character_stats_user', role=self.user_role)
+        self.other_user = User.objects.create(username='other_stats_user', role=self.user_role)
+        self.third_user = User.objects.create(username='third_stats_user', role=self.user_role)
+        self.admin = User.objects.create(username='character_stats_admin', role=self.admin_role)
+
+        self.ip = IP.objects.create(name='厨力测试IP', subject_type=4)
+        self.whale_ip = IP.objects.create(name='单人重氪IP', subject_type=4)
+        self.category_badge = Category.objects.create(name='徽章', path_name='徽章')
+        self.category_stand = Category.objects.create(name='立牌', path_name='立牌')
+        self.category_card = Category.objects.create(name='卡片', path_name='卡片')
+
+        self.character = Character.objects.create(ip=self.ip, name='本命角色', gender='female')
+        self.partner = Character.objects.create(ip=self.ip, name='搭档角色', gender='female')
+        self.rival = Character.objects.create(ip=self.ip, name='同IP角色', gender='other')
+        self.whale_character = Character.objects.create(ip=self.whale_ip, name='重氪角色', gender='male')
+
+        self.user_target_a = self._goods(
+            self.user, '本命徽章', self.ip, self.category_badge,
+            price='100.00', quantity=2, status='in_cabinet', is_official=True,
+        )
+        self.user_target_a.characters.add(self.character)
+
+        self.user_target_b = self._goods(
+            self.user, '本命双人立牌', self.ip, self.category_stand,
+            price='50.00', quantity=1, status='sold', is_official=False,
+        )
+        self.user_target_b.characters.add(self.character, self.partner)
+
+        self.user_rival = self._goods(
+            self.user, '同IP角色卡', self.ip, self.category_card,
+            price='30.00', quantity=1,
+        )
+        self.user_rival.characters.add(self.rival)
+
+        self.other_target = self._goods(
+            self.other_user, '他人本命吧唧', self.ip, self.category_badge,
+            price='1000.00', quantity=5,
+        )
+        self.other_target.characters.add(self.character)
+
+        self.third_rival = self._goods(
+            self.third_user, '第三用户同IP', self.ip, self.category_card,
+            price='20.00', quantity=1,
+        )
+        self.third_rival.characters.add(self.rival)
+
+        self.whale_goods = self._goods(
+            self.other_user, '单人重氪', self.whale_ip, self.category_badge,
+            price='10000.00', quantity=100,
+        )
+        self.whale_goods.characters.add(self.whale_character)
+        Goods.objects.filter(id=self.whale_goods.id).update(
+            created_at=timezone.now() - timedelta(days=45)
+        )
+
+        self.client.force_authenticate(user=self.user)
+
+    def _goods(self, owner, name, ip, category, *, price, quantity, status='in_cabinet', is_official=True):
+        return Goods.objects.create(
+            user=owner,
+            name=name,
+            ip=ip,
+            category=category,
+            price=Decimal(price),
+            quantity=quantity,
+            status=status,
+            is_official=is_official,
+            purchase_date=date(2026, 1, 1),
+        )
+
+    def test_regular_user_stats_exclude_other_users_but_platform_heat_uses_all_users(self):
+        response = self.client.get(f'/api/characters/{self.character.id}/stats/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['character']['id'], self.character.id)
+        self.assertEqual(data['overview']['goods_count'], 2)
+        self.assertEqual(data['overview']['quantity_sum'], 3)
+        self.assertEqual(data['overview']['value_sum'], '250.00')
+        self.assertEqual(data['overview']['category_count'], 2)
+        self.assertEqual(data['ip_heat']['platform_heat']['raw_metrics']['collectors_count'], 3)
+        self.assertEqual(data['ip_heat']['my_heat']['raw_metrics']['quantity_sum'], 4)
+        self.assertNotIn('other_stats_user', str(data))
+
+    def test_admin_stats_include_all_users_for_character(self):
+        self.client.force_authenticate(user=self.admin)
+
+        response = self.client.get(f'/api/characters/{self.character.id}/stats/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['overview']['goods_count'], 3)
+        self.assertEqual(data['overview']['quantity_sum'], 8)
+        self.assertEqual(data['overview']['value_sum'], '5250.00')
+
+    def test_multi_character_goods_count_for_each_related_character(self):
+        response = self.client.get(f'/api/characters/{self.partner.id}/stats/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['overview']['goods_count'], 1)
+        self.assertEqual(data['overview']['quantity_sum'], 1)
+        self.assertEqual(data['overview']['value_sum'], '50.00')
+
+    def test_platform_ip_heat_coverage_priority_beats_single_user_whale_ip(self):
+        response = self.client.get(f'/api/characters/{self.character.id}/stats/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        platform_heat = data['ip_heat']['platform_heat']
+        self.assertEqual(platform_heat['rank'], 1)
+        self.assertGreater(
+            platform_heat['components']['collectors']['contribution'],
+            platform_heat['components']['total_value']['contribution'],
+        )
+        self.assertEqual(platform_heat['raw_metrics']['recent_goods_count'], 5)
+
+    def test_empty_visible_character_stats_return_zeroes(self):
+        hidden = Character.objects.create(ip=self.ip, name='别人家的角色', gender='other')
+        hidden_goods = self._goods(
+            self.other_user, '别人家的谷', self.ip, self.category_badge,
+            price='40.00', quantity=1,
+        )
+        hidden_goods.characters.add(hidden)
+
+        response = self.client.get(f'/api/characters/{hidden.id}/stats/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['overview']['goods_count'], 0)
+        self.assertEqual(data['overview']['quantity_sum'], 0)
+        self.assertEqual(data['overview']['value_sum'], '0.00')
+        self.assertEqual(data['oshi_power']['score'], 0)
+        self.assertEqual(data['oshi_power']['level'], '未开厨')
+
+    def test_character_stats_requires_authentication(self):
+        self.client.force_authenticate(user=None)
+
+        response = self.client.get(f'/api/characters/{self.character.id}/stats/')
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
 
 
 class CategoryViewSetTestCase(TestCase):

@@ -9,6 +9,7 @@ import type {
   MoveGoodsResponse,
   GoodsStatsParams,
   GoodsStatsResponse,
+  CharacterStatsResponse,
   OcrResult,
 } from './types'
 
@@ -25,6 +26,11 @@ export function getSimilarRandomGoodsList(params?: GoodsSearchParams) {
 // 获取谷子统计图表数据（Dashboard）
 export function getGoodsStats(params?: GoodsStatsParams) {
   return request.get<GoodsStatsResponse>('/api/goods/stats/', { params })
+}
+
+// 获取角色厨力统计页数据
+export function getCharacterStats(id: number) {
+  return request.get<CharacterStatsResponse>(`/api/characters/${id}/stats/`)
 }
 
 // 获取谷子详情

@@ -300,6 +300,79 @@ export interface GoodsStatsResponse {
   trends: GoodsStatsTrends
 }
 
+export interface StatComponentScore {
+  percentile: number
+  weight: number
+  contribution: number
+}
+
+export interface CharacterStatsOverview {
+  goods_count: number
+  quantity_sum: number
+  value_sum: string
+  category_count: number
+}
+
+export interface OshiPower {
+  score: number
+  level: string
+  rank: number | null
+  total_characters: number
+  components: Record<string, StatComponentScore>
+  raw_metrics: CharacterStatsOverview
+}
+
+export interface IPHeatStats {
+  score: number
+  level: string
+  rank: number | null
+  total_ips: number
+  components: Record<string, StatComponentScore>
+  raw_metrics: {
+    goods_count: number
+    quantity_sum: number
+    value_sum: string
+    recent_goods_count: number
+    collectors_count?: number
+    character_count?: number
+    category_count?: number
+  }
+}
+
+export interface CharacterRankingItem {
+  id: number
+  name: string
+  ip_name: string
+  score: number
+  goods_count: number
+  quantity_sum: number
+  value_sum: string
+}
+
+export interface CharacterStatsResponse {
+  character: Character
+  overview: CharacterStatsOverview
+  oshi_power: OshiPower
+  ip_heat: {
+    ip: Pick<IP, 'id' | 'name' | 'subject_type'>
+    platform_heat: IPHeatStats
+    my_heat: IPHeatStats
+  }
+  distributions: {
+    status: GoodsStatusDistributionItem[]
+    is_official: GoodsOfficialDistributionItem[]
+    category_top: GoodsCategoryTopItem[]
+  }
+  trends: {
+    purchase_date: GoodsTrendBucket[]
+    created_at: GoodsTrendBucket[]
+  }
+  rankings: {
+    global_top: CharacterRankingItem[]
+    current: CharacterRankingItem | null
+  }
+}
+
 // 创建/更新谷子的输入类型（字段可以是 ID 或对象）
 export interface GoodsInput {
   name?: string

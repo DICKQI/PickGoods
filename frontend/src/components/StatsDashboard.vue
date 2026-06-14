@@ -70,6 +70,10 @@
               :created-date-range="createdDateRange"
               :ip-options="ipOptions"
               :category-tree-data="categoryTreeData"
+              :character-stats-target-id="characterStatsTargetId"
+              :character-stats-options="characterStatsOptions"
+              :character-stats-loading="characterStatsLoading"
+              :search-character-stats-options="searchCharacterStatsOptions"
               @update:top="filters.top = $event"
               @update:is-official="filters.is_official = $event"
               @update:selected-statuses="selectedStatuses = $event"
@@ -77,6 +81,8 @@
               @update:category="filters.category = $event"
               @update:purchase-date-range="purchaseDateRange = $event"
               @update:created-date-range="createdDateRange = $event"
+              @update:character-stats-target-id="characterStatsTargetId = $event"
+              @open-character-stats="goToCharacterStats"
             />
           </div>
         </div>
@@ -113,6 +119,10 @@
               :created-date-range="mobileDraftCreatedDateRange"
               :ip-options="ipOptions"
               :category-tree-data="categoryTreeData"
+              :character-stats-target-id="characterStatsTargetId"
+              :character-stats-options="characterStatsOptions"
+              :character-stats-loading="characterStatsLoading"
+              :search-character-stats-options="searchCharacterStatsOptions"
               @update:top="mobileDraftFilters.top = $event"
               @update:is-official="mobileDraftFilters.is_official = $event"
               @update:selected-statuses="mobileDraftSelectedStatuses = $event"
@@ -120,6 +130,8 @@
               @update:category="mobileDraftFilters.category = $event"
               @update:purchase-date-range="mobileDraftPurchaseDateRange = $event"
               @update:created-date-range="mobileDraftCreatedDateRange = $event"
+              @update:character-stats-target-id="characterStatsTargetId = $event"
+              @open-character-stats="goToCharacterStats"
             />
           </div>
         </div>
@@ -258,11 +270,12 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { RefreshLeft, ArrowDown, List, Close } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getGoodsStats } from '@/api/goods'
-import { getIPList, getCategoryTree } from '@/api/metadata'
+import { getIPList, getCategoryTree, getCharacterList } from '@/api/metadata'
 import { useLocationStore } from '@/stores/location'
 import StatsFilterControls from '@/components/StatsFilterControls.vue'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -273,8 +286,10 @@ import type {
   GoodsStatus,
   IP,
   Category,
+  Character,
 } from '@/api/types'
 
+const router = useRouter()
 const loading = ref(false)
 const statsData = ref<GoodsStatsResponse | null>(null)
 const DEFAULT_STATS_TOP = 10
@@ -298,6 +313,9 @@ const mobileDraftFilters = reactive<GoodsStatsParams>({
 const mobileDraftSelectedStatuses = ref<GoodsStatus[]>([])
 const mobileDraftPurchaseDateRange = ref<[string, string] | null>(null)
 const mobileDraftCreatedDateRange = ref<[string, string] | null>(null)
+const characterStatsTargetId = ref<number | undefined>()
+const characterStatsOptions = ref<Character[]>([])
+const characterStatsLoading = ref(false)
 
 const setStatsFilterDefaults = (target: GoodsStatsParams) => {
   target.top = DEFAULT_STATS_TOP
@@ -359,6 +377,34 @@ const applyMobileStatsFilter = () => {
   mobileFilterVisible.value = false
   syncMobileDraftFromAppliedFilters()
   fetchStats()
+}
+
+const searchCharacterStatsOptions = async (keyword: string) => {
+  const trimmed = keyword.trim()
+  if (!trimmed) {
+    characterStatsOptions.value = []
+    return
+  }
+
+  characterStatsLoading.value = true
+  try {
+    characterStatsOptions.value = await getCharacterList({ search: trimmed, ip: filters.ip })
+  } catch (err: any) {
+    console.error('搜索角色失败', err)
+    characterStatsOptions.value = []
+    ElMessage.error(err?.message || '搜索角色失败')
+  } finally {
+    characterStatsLoading.value = false
+  }
+}
+
+const goToCharacterStats = () => {
+  if (!characterStatsTargetId.value) return
+  if (mobileFilterVisible.value) {
+    mobileFilterVisible.value = false
+    restoreBodyOverflowForStatsFilter()
+  }
+  router.push({ name: 'CharacterStats', params: { id: characterStatsTargetId.value } })
 }
 
 const statusLabelMap: Record<string, string> = {

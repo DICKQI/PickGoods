@@ -45,6 +45,15 @@ const routes: RouteRecordRaw[] = [
       requiresAuth: true,
     },
   },
+  {
+    path: '/characters/:id/stats',
+    name: 'CharacterStats',
+    component: () => import('@/views/CharacterStats.vue'),
+    meta: {
+      title: '角色厨力统计',
+      requiresAuth: true,
+    },
+  },
   // 兼容旧路径，重定向到新路径
   {
     path: '/ip',
