@@ -4,14 +4,20 @@ import CharacterStats from '@/views/CharacterStats.vue'
 import { getCharacterStats } from '@/api/goods'
 
 const routerPush = vi.hoisted(() => vi.fn())
+const routerReplace = vi.hoisted(() => vi.fn())
+const routerBack = vi.hoisted(() => vi.fn())
 const routeId = vi.hoisted(() => ({ value: '10' }))
+const routeQuery = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => ({
     params: { id: routeId.value },
+    query: routeQuery.value,
   }),
   useRouter: () => ({
     push: routerPush,
+    replace: routerReplace,
+    back: routerBack,
   }),
 }))
 
@@ -143,7 +149,14 @@ const mountView = async () => {
 describe('CharacterStats', () => {
   beforeEach(() => {
     routeId.value = '10'
+    routeQuery.value = {}
+    Object.defineProperty(window.history, 'length', {
+      configurable: true,
+      value: 2,
+    })
     routerPush.mockReset()
+    routerReplace.mockReset()
+    routerBack.mockReset()
     vi.mocked(getCharacterStats).mockReset()
   })
 
@@ -190,5 +203,43 @@ describe('CharacterStats', () => {
     const wrapper = await mountView()
 
     expect(wrapper.text()).toContain('角色厨力统计加载失败')
+  })
+
+  it('returns to the source page when returnTo is a safe local path', async () => {
+    routeQuery.value = { returnTo: '/showcase?tab=stats' }
+    vi.mocked(getCharacterStats).mockResolvedValue(makeStats() as any)
+
+    const wrapper = await mountView()
+    await wrapper.get('.back-button').trigger('click')
+
+    expect(routerReplace).toHaveBeenCalledWith('/showcase?tab=stats')
+    expect(routerBack).not.toHaveBeenCalled()
+    expect(routerPush).not.toHaveBeenCalled()
+  })
+
+  it('ignores unsafe returnTo values and falls back to browser history', async () => {
+    routeQuery.value = { returnTo: 'https://evil.test/path' }
+    vi.mocked(getCharacterStats).mockResolvedValue(makeStats() as any)
+
+    const wrapper = await mountView()
+    await wrapper.get('.back-button').trigger('click')
+
+    expect(routerReplace).not.toHaveBeenCalled()
+    expect(routerBack).toHaveBeenCalled()
+    expect(routerPush).not.toHaveBeenCalled()
+  })
+
+  it('falls back to character management when browser history is unavailable', async () => {
+    Object.defineProperty(window.history, 'length', {
+      configurable: true,
+      value: 1,
+    })
+    vi.mocked(getCharacterStats).mockResolvedValue(makeStats() as any)
+
+    const wrapper = await mountView()
+    await wrapper.get('.back-button').trigger('click')
+
+    expect(routerBack).not.toHaveBeenCalled()
+    expect(routerPush).toHaveBeenCalledWith('/ipcharacter')
   })
 })

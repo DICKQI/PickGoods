@@ -239,13 +239,23 @@ const statusBarHeight = ref(0)
 const navbarRef = ref<HTMLElement | null>(null)
 const showcaseActiveTab = ref<'showcase' | 'barn' | 'stats' | null>(route.path.startsWith('/showcase') ? 'barn' : null)
 
+const isCharacterStatsFromShowcase = computed(() => {
+  const returnTo = route.query.returnTo
+  return typeof returnTo === 'string' && returnTo.startsWith('/showcase')
+})
+
 const activeMenu = computed(() => {
-  const path = route.path
-  if (path.startsWith('/showcase')) return '/showcase'
-  if (path.startsWith('/location')) return '/location'
-  if (path.startsWith('/ipcharacter') || path.startsWith('/ip') || path.startsWith('/character')) return '/ipcharacter'
-  if (path.startsWith('/category')) return '/category'
-  if (path.startsWith('/theme')) return '/theme'
+  const currentPath = route.path
+  if (currentPath.startsWith('/showcase')) return '/showcase'
+  if (currentPath.startsWith('/characters/') && isCharacterStatsFromShowcase.value) return '/showcase'
+  if (currentPath.startsWith('/location')) return '/location'
+  if (
+    currentPath.startsWith('/ipcharacter') ||
+    currentPath.startsWith('/ip') ||
+    (currentPath.startsWith('/character') && !isCharacterStatsFromShowcase.value)
+  ) return '/ipcharacter'
+  if (currentPath.startsWith('/category')) return '/category'
+  if (currentPath.startsWith('/theme')) return '/theme'
   return '/showcase'
 })
 

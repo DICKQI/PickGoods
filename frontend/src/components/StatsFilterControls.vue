@@ -62,7 +62,7 @@
       </el-select>
     </div>
 
-    <div class="stats-filter-item stats-filter-item--character-stats">
+    <div v-if="showCharacterStatsEntry" class="stats-filter-item stats-filter-item--character-stats">
       <label>角色厨力</label>
       <div class="character-stats-control">
         <el-select
@@ -151,7 +151,7 @@ interface CategoryTreeNode {
   children?: CategoryTreeNode[]
 }
 
-defineProps<{
+withDefaults(defineProps<{
   top?: number
   isOfficial?: boolean
   selectedStatuses: GoodsStatus[]
@@ -165,7 +165,10 @@ defineProps<{
   characterStatsOptions: Character[]
   characterStatsLoading: boolean
   searchCharacterStatsOptions: (keyword: string) => void | Promise<void>
-}>()
+  showCharacterStatsEntry?: boolean
+}>(), {
+  showCharacterStatsEntry: true,
+})
 
 defineEmits<{
   'update:top': [value: number]

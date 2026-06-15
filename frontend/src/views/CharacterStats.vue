@@ -203,7 +203,23 @@ const scoreRingStyle = computed<Record<string, string>>(() => ({
   '--score': String(oshiPercent.value),
 }))
 
+const getSafeReturnTo = () => {
+  const returnTo = route.query.returnTo
+  if (typeof returnTo !== 'string') return ''
+  if (!returnTo.startsWith('/') || returnTo.startsWith('//')) return ''
+  return returnTo
+}
+
 const goBack = () => {
+  const safeReturnTo = getSafeReturnTo()
+  if (safeReturnTo) {
+    router.replace(safeReturnTo)
+    return
+  }
+  if (window.history.length > 1) {
+    router.back()
+    return
+  }
   router.push('/ipcharacter')
 }
 

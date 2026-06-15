@@ -16,6 +16,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { Grid, FolderOpened, Collection, Box, Star } from '@element-plus/icons-vue'
 
@@ -56,16 +57,21 @@ const navItems: NavItem[] = [
   }
 ]
 
+const isCharacterStatsFromShowcase = computed(() => {
+  const returnTo = route.query.returnTo
+  return typeof returnTo === 'string' && returnTo.startsWith('/showcase')
+})
+
 const isActive = (path: string): boolean => {
   const currentPath = route.path
   if (path === '/showcase') {
-    return currentPath.startsWith('/showcase')
+    return currentPath.startsWith('/showcase') || (currentPath.startsWith('/characters/') && isCharacterStatsFromShowcase.value)
   }
   if (path === '/location') {
     return currentPath.startsWith('/location')
   }
   if (path === '/ipcharacter') {
-    return currentPath.startsWith('/ipcharacter') || currentPath.startsWith('/ip') || currentPath.startsWith('/character')
+    return currentPath.startsWith('/ipcharacter') || currentPath.startsWith('/ip') || (currentPath.startsWith('/character') && !isCharacterStatsFromShowcase.value)
   }
   if (path === '/category') {
     return currentPath.startsWith('/category')
@@ -184,4 +190,3 @@ const handleNavClick = (path: string) => {
   }
 }
 </style>
-

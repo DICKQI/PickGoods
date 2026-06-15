@@ -16,6 +16,44 @@
       </div>
     </div>
 
+    <!-- 移动端独立厨力入口 -->
+    <section v-if="isMobile" class="mobile-character-stats-entry" aria-label="查看角色厨力">
+      <div class="mobile-character-stats-copy">
+        <span>角色厨力</span>
+        <strong>直达角色厨力档案</strong>
+      </div>
+      <div class="mobile-character-stats-control">
+        <el-select
+          v-model="characterStatsTargetId"
+          placeholder="搜索角色查看厨力"
+          clearable
+          filterable
+          remote
+          reserve-keyword
+          size="small"
+          :remote-method="searchCharacterStatsOptions"
+          :loading="characterStatsLoading"
+        >
+          <el-option
+            v-for="character in characterStatsOptions"
+            :key="character.id"
+            :label="`${character.name} · ${character.ip.name}`"
+            :value="character.id"
+          />
+        </el-select>
+        <el-button
+          type="primary"
+          size="small"
+          class="mobile-character-stats-button"
+          :disabled="!characterStatsTargetId"
+          @click="goToCharacterStats"
+        >
+          <el-icon><Top /></el-icon>
+          <span>查看厨力</span>
+        </el-button>
+      </div>
+    </section>
+
     <!-- 桌面端筛选卡片 -->
     <el-card
       v-if="!isMobile"
@@ -123,6 +161,7 @@
               :character-stats-options="characterStatsOptions"
               :character-stats-loading="characterStatsLoading"
               :search-character-stats-options="searchCharacterStatsOptions"
+              :show-character-stats-entry="false"
               @update:top="mobileDraftFilters.top = $event"
               @update:is-official="mobileDraftFilters.is_official = $event"
               @update:selected-statuses="mobileDraftSelectedStatuses = $event"
@@ -272,7 +311,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { RefreshLeft, ArrowDown, List, Close } from '@element-plus/icons-vue'
+import { RefreshLeft, ArrowDown, List, Close, Top } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getGoodsStats } from '@/api/goods'
 import { getIPList, getCategoryTree, getCharacterList } from '@/api/metadata'
@@ -293,6 +332,7 @@ const router = useRouter()
 const loading = ref(false)
 const statsData = ref<GoodsStatsResponse | null>(null)
 const DEFAULT_STATS_TOP = 10
+const CHARACTER_STATS_RETURN_TO_STATS = '/showcase?tab=stats'
 
 // 筛选面板折叠状态（PC 默认展开，移动端默认收起，与谷仓页一致）
 const { isMobile } = useResponsiveDevice()
@@ -404,7 +444,11 @@ const goToCharacterStats = () => {
     mobileFilterVisible.value = false
     restoreBodyOverflowForStatsFilter()
   }
-  router.push({ name: 'CharacterStats', params: { id: characterStatsTargetId.value } })
+  router.push({
+    name: 'CharacterStats',
+    params: { id: characterStatsTargetId.value },
+    query: { returnTo: CHARACTER_STATS_RETURN_TO_STATS },
+  })
 }
 
 const statusLabelMap: Record<string, string> = {
@@ -1519,6 +1563,79 @@ watch(chartTab, () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* 移动端独立厨力入口 */
+.mobile-character-stats-entry {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid rgba(162, 155, 254, 0.28);
+  border-radius: 18px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(246, 243, 255, 0.9)),
+    radial-gradient(circle at right top, rgba(212, 175, 55, 0.16), transparent 42%);
+  box-shadow:
+    0 12px 28px rgba(15, 23, 42, 0.07),
+    0 4px 14px rgba(162, 155, 254, 0.08);
+  overflow: hidden;
+}
+
+.mobile-character-stats-copy {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+.mobile-character-stats-copy span {
+  color: var(--primary-gold-dark);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.mobile-character-stats-copy strong {
+  min-width: 0;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-character-stats-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.mobile-character-stats-control :deep(.el-select) {
+  width: 100%;
+}
+
+.mobile-character-stats-control :deep(.el-select__wrapper) {
+  min-height: 36px;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
+}
+
+.mobile-character-stats-button {
+  min-width: 100px;
+  height: 36px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent-purple), var(--primary-gold)) !important;
+  border-color: transparent !important;
+  color: #ffffff !important;
+  font-weight: 800;
+}
+
+.mobile-character-stats-button :deep(.el-icon) {
+  font-size: 15px;
 }
 
 /* 移动端筛选底部面板 */

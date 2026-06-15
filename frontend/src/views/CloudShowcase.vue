@@ -249,7 +249,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close, Search } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
@@ -267,11 +267,17 @@ import type { GoodsListItem } from '@/api/types'
 import { deleteGoods, getGoodsList, moveGoods } from '@/api/goods'
 
 const router = useRouter()
+const route = useRoute()
 const guziStore = useGuziStore()
 const showcaseStore = useShowcaseStore()
 const { isMobile } = useResponsiveDevice()
 
-const activeTab = ref<'showcase' | 'barn' | 'stats'>('barn')
+type CloudShowcaseTab = 'showcase' | 'barn' | 'stats'
+
+const isCloudShowcaseTab = (value: unknown): value is CloudShowcaseTab =>
+  value === 'showcase' || value === 'barn' || value === 'stats'
+
+const activeTab = ref<CloudShowcaseTab>(isCloudShowcaseTab(route.query.tab) ? route.query.tab : 'barn')
 
 const drawerVisible = ref(false)
 const selectedGoodsId = ref<string>('')
@@ -793,6 +799,14 @@ onUnmounted(() => {
     window.removeEventListener('cloud-showcase:stats-refresh-complete', statsRefreshCompleteHandler)
   }
 })
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    if (!isCloudShowcaseTab(tab) || activeTab.value === tab) return
+    activeTab.value = tab
+  },
+)
 
 watch(
   () => activeTab.value,

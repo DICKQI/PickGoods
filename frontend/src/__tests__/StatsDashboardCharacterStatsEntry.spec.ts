@@ -8,6 +8,8 @@ const ipCharacterSource = readFileSync(resolve(process.cwd(), 'src/views/IPChara
 
 describe('StatsDashboard character stats entry', () => {
   it('renders a searchable character stats entry in the stats filter controls', () => {
+    expect(statsFilterControlsSource).toContain('showCharacterStatsEntry: true')
+    expect(statsFilterControlsSource).toContain('v-if="showCharacterStatsEntry"')
     expect(statsFilterControlsSource).toContain('<label>角色厨力</label>')
     expect(statsFilterControlsSource).toContain('placeholder="搜索角色名"')
     expect(statsFilterControlsSource).toContain('remote')
@@ -26,8 +28,16 @@ describe('StatsDashboard character stats entry', () => {
     expect(statsDashboardSource).toContain('const characterStatsLoading = ref(false)')
     expect(statsDashboardSource).toContain('const searchCharacterStatsOptions = async (keyword: string) => {')
     expect(statsDashboardSource).toContain('getCharacterList({ search: trimmed, ip: filters.ip })')
-    expect(statsDashboardSource).toContain("router.push({ name: 'CharacterStats', params: { id: characterStatsTargetId.value } })")
+    expect(statsDashboardSource).toContain("query: { returnTo: CHARACTER_STATS_RETURN_TO_STATS }")
     expect(statsDashboardSource).not.toContain('character: characterStatsTargetId')
+  })
+
+  it('adds a first-screen mobile character stats shortcut and removes the duplicate sheet entry', () => {
+    expect(statsDashboardSource).toContain('class="mobile-character-stats-entry"')
+    expect(statsDashboardSource).toContain('移动端独立厨力入口')
+    expect(statsDashboardSource).toContain('placeholder="搜索角色查看厨力"')
+    expect(statsDashboardSource).toContain(':show-character-stats-entry="false"')
+    expect(statsDashboardSource).toContain('mobile-character-stats-button')
   })
 
   it('keeps the character management page free of the old stats shortcut', () => {

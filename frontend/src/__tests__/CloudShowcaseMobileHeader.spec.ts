@@ -10,8 +10,12 @@ const cloudShowcaseSource = readFileSync(resolve(process.cwd(), 'src/views/Cloud
 
 const routerPush = vi.hoisted(() => vi.fn())
 const getGoodsListMock = vi.hoisted(() => vi.fn())
+const routeQuery = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
 
 vi.mock('vue-router', () => ({
+  useRoute: () => ({
+    query: routeQuery.value,
+  }),
   useRouter: () => ({
     push: routerPush,
   }),
@@ -109,7 +113,7 @@ const mountCloudShowcase = async ({
         GoodsCard: { template: '<article class="goods-card-stub" @touchstart.stop />' },
         GoodsDrawer: { template: '<aside />' },
         GoodsMultiDisplayDialog: { template: '<aside />' },
-        StatsDashboard: { template: '<section />' },
+        StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
         ShowcaseManager: { template: '<section />' },
         'el-alert': { template: '<div />' },
         'el-button': { template: '<button><slot /></button>' },
@@ -139,6 +143,7 @@ const mountDesktopCloudShowcase = (options: { goodsResults?: GoodsListItem[] } =
 describe('CloudShowcase mobile compact header', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
+    routeQuery.value = {}
     getGoodsListMock.mockReset()
     vi.stubGlobal('IntersectionObserver', class {
       observe = vi.fn()
@@ -237,5 +242,14 @@ describe('CloudShowcase mobile compact header', () => {
     )?.[0] ?? ''
 
     expect(globalPullContentRule).not.toContain('will-change: transform')
+  })
+
+  it('opens the stats tab when the route query requests it', async () => {
+    routeQuery.value = { tab: 'stats' }
+
+    const wrapper = await mountMobileCloudShowcase()
+
+    expect(wrapper.find('[data-test="stats-dashboard"]').exists()).toBe(true)
+    expect(wrapper.find('.barn-section').exists()).toBe(false)
   })
 })
