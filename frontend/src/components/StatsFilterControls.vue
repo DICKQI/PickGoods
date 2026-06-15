@@ -266,10 +266,33 @@ defineEmits<{
 @media (max-width: 480px) {
   .stats-filter-grid {
     grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .stats-filter-item {
+    gap: 6px;
   }
 
   .stats-filter-item--range {
     grid-column: span 1;
+  }
+
+  .stats-filter-item label {
+    font-size: 11px;
+  }
+
+  .topn-control {
+    gap: 8px;
+  }
+
+  .status-group {
+    gap: 4px;
+  }
+
+  .stats-filter-item :deep(.el-select__wrapper),
+  .stats-filter-item :deep(.el-tree-select__wrapper),
+  .stats-filter-item :deep(.el-date-editor) {
+    min-height: 30px;
   }
 
   .character-stats-control {

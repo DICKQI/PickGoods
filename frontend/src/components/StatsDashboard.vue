@@ -16,41 +16,47 @@
       </div>
     </div>
 
-    <!-- 移动端独立厨力入口 -->
-    <section v-if="isMobile" class="mobile-character-stats-entry" aria-label="查看角色厨力">
-      <div class="mobile-character-stats-copy">
-        <span>角色厨力</span>
-        <strong>直达角色厨力档案</strong>
-      </div>
-      <div class="mobile-character-stats-control">
-        <el-select
-          v-model="characterStatsTargetId"
-          placeholder="搜索角色查看厨力"
-          clearable
-          filterable
-          remote
-          reserve-keyword
-          size="small"
-          :remote-method="searchCharacterStatsOptions"
-          :loading="characterStatsLoading"
-        >
-          <el-option
-            v-for="character in characterStatsOptions"
-            :key="character.id"
-            :label="`${character.name} · ${character.ip.name}`"
-            :value="character.id"
-          />
-        </el-select>
-        <el-button
-          type="primary"
-          size="small"
-          class="mobile-character-stats-button"
-          :disabled="!characterStatsTargetId"
-          @click="goToCharacterStats"
-        >
-          <el-icon><Top /></el-icon>
-          <span>查看厨力</span>
-        </el-button>
+    <!-- 移动端紧凑厨力入口 -->
+    <section
+      v-if="isMobile"
+      class="mobile-character-stats-entry mobile-character-stats-entry--compact"
+      aria-label="查看角色厨力"
+    >
+      <div class="mobile-character-stats-inline">
+        <div class="mobile-character-stats-copy">
+          <span>角色厨力</span>
+          <strong>直达厨力档案</strong>
+        </div>
+        <div class="mobile-character-stats-control">
+          <el-select
+            v-model="characterStatsTargetId"
+            placeholder="搜索角色查看厨力"
+            clearable
+            filterable
+            remote
+            reserve-keyword
+            size="small"
+            :remote-method="searchCharacterStatsOptions"
+            :loading="characterStatsLoading"
+          >
+            <el-option
+              v-for="character in characterStatsOptions"
+              :key="character.id"
+              :label="`${character.name} · ${character.ip.name}`"
+              :value="character.id"
+            />
+          </el-select>
+          <el-button
+            type="primary"
+            size="small"
+            class="mobile-character-stats-button"
+            :disabled="!characterStatsTargetId"
+            @click="goToCharacterStats"
+          >
+            <el-icon><Top /></el-icon>
+            <span>查看</span>
+          </el-button>
+        </div>
       </div>
     </section>
 
@@ -186,44 +192,52 @@
     </div>
 
     <div class="stats-content" v-loading="loading">
-      <div class="overview-carousel" :class="{ 'is-mobile': isMobile }">
-        <div class="overview-carousel-track" ref="overviewCarouselRef">
-          <el-row :gutter="16" class="overview-row">
-            <el-col :xs="24" :sm="12" :md="8" class="overview-col" @click="scrollOverviewTo(0)">
-              <el-card class="overview-card overview-card--goods" shadow="hover">
-                <div class="overview-label">谷子件数</div>
-                <div class="overview-value">{{ overview?.goods_count ?? 0 }}</div>
-                <div class="overview-sub">不同 Asset 记录数</div>
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8" class="overview-col" @click="scrollOverviewTo(1)">
-              <el-card class="overview-card overview-card--quantity" shadow="hover">
-                <div class="overview-label">总数量</div>
-                <div class="overview-value">{{ overview?.quantity_sum ?? 0 }}</div>
-                <div class="overview-sub">合计 quantity</div>
-              </el-card>
-            </el-col>
-            <el-col :xs="24" :sm="12" :md="8" class="overview-col" @click="scrollOverviewTo(2)">
-              <el-card class="overview-card overview-card--value" shadow="hover">
-                <div class="overview-label">估算总金额</div>
-                <div class="overview-value overview-value--money">
-                  <span class="overview-currency">¥</span>
-                  <span class="overview-amount">{{ formattedValueSum }}</span>
-                </div>
-                <div class="overview-sub">price×quantity 汇总</div>
-              </el-card>
-            </el-col>
-          </el-row>
+      <div v-if="isMobile" class="overview-kpi-grid">
+        <div class="overview-kpi-card overview-kpi-card--goods">
+          <span class="overview-kpi-label">谷子件数</span>
+          <strong class="overview-kpi-value">{{ overview?.goods_count ?? 0 }}</strong>
+          <small class="overview-kpi-sub">Asset 记录</small>
         </div>
-        <div v-if="isMobile" class="overview-carousel-dots">
-          <span
-            v-for="i in 3"
-            :key="i"
-            class="overview-carousel-dot"
-            :class="{ 'is-active': overviewActiveIndex === i - 1 }"
-          />
+        <div class="overview-kpi-card overview-kpi-card--quantity">
+          <span class="overview-kpi-label">总数量</span>
+          <strong class="overview-kpi-value">{{ overview?.quantity_sum ?? 0 }}</strong>
+          <small class="overview-kpi-sub">quantity</small>
+        </div>
+        <div class="overview-kpi-card overview-kpi-card--value">
+          <span class="overview-kpi-label">估算总金额</span>
+          <strong class="overview-kpi-value overview-kpi-value--money">
+            <span class="overview-currency">¥</span>
+            <span class="overview-amount">{{ formattedValueSum }}</span>
+          </strong>
+          <small class="overview-kpi-sub">price×quantity</small>
         </div>
       </div>
+      <el-row v-else :gutter="16" class="overview-row">
+        <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+          <el-card class="overview-card overview-card--goods" shadow="hover">
+            <div class="overview-label">谷子件数</div>
+            <div class="overview-value">{{ overview?.goods_count ?? 0 }}</div>
+            <div class="overview-sub">不同 Asset 记录数</div>
+          </el-card>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+          <el-card class="overview-card overview-card--quantity" shadow="hover">
+            <div class="overview-label">总数量</div>
+            <div class="overview-value">{{ overview?.quantity_sum ?? 0 }}</div>
+            <div class="overview-sub">合计 quantity</div>
+          </el-card>
+        </el-col>
+        <el-col :xs="24" :sm="12" :md="8" class="overview-col">
+          <el-card class="overview-card overview-card--value" shadow="hover">
+            <div class="overview-label">估算总金额</div>
+            <div class="overview-value overview-value--money">
+              <span class="overview-currency">¥</span>
+              <span class="overview-amount">{{ formattedValueSum }}</span>
+            </div>
+            <div class="overview-sub">price×quantity 汇总</div>
+          </el-card>
+        </el-col>
+      </el-row>
 
       <!-- 移动端图表 Tab 切换 -->
       <div v-if="isMobile" class="chart-tabs">
@@ -246,30 +260,30 @@
       <!-- 分布图组：桌面端始终可见，移动端按 tab 切换 -->
       <div v-show="!isMobile || chartTab === 'distribution'" class="chart-group">
         <el-row :gutter="16" class="charts-row">
-          <el-col :xs="24" :sm="12" :md="8">
+          <el-col :xs="12" :sm="12" :md="8" class="chart-col chart-col--half-mobile">
             <el-card shadow="hover" class="chart-card">
               <div v-if="loading && !statsData" class="chart-skeleton" />
               <template v-else>
                 <div class="chart-title">状态分布</div>
-                <div ref="statusChartRef" class="chart-container" />
+                <div ref="statusChartRef" class="chart-container chart-container--compact-pie" />
               </template>
             </el-card>
           </el-col>
-          <el-col :xs="24" :sm="12" :md="8">
+          <el-col :xs="12" :sm="12" :md="8" class="chart-col chart-col--half-mobile">
             <el-card shadow="hover" class="chart-card">
               <div v-if="loading && !statsData" class="chart-skeleton" />
               <template v-else>
                 <div class="chart-title">官谷 / 同人</div>
-                <div ref="officialChartRef" class="chart-container" />
+                <div ref="officialChartRef" class="chart-container chart-container--compact-pie" />
               </template>
             </el-card>
           </el-col>
-          <el-col :xs="24" :md="8">
+          <el-col :xs="24" :md="8" class="chart-col chart-col--full-mobile">
             <el-card shadow="hover" class="chart-card">
               <div v-if="loading && !statsData" class="chart-skeleton" />
               <template v-else>
                 <div class="chart-title">作品类型结构</div>
-                <div ref="subjectChartRef" class="chart-container" />
+                <div ref="subjectChartRef" class="chart-container chart-container--compact-bar" />
               </template>
             </el-card>
           </el-col>
@@ -279,21 +293,21 @@
       <!-- 排行榜组：桌面端始终可见，移动端按 tab 切换 -->
       <div v-show="!isMobile || chartTab === 'ranking'" class="chart-group">
         <el-row :gutter="16" class="charts-row">
-          <el-col :xs="24" :md="12">
+          <el-col :xs="24" :md="12" class="chart-col chart-col--full-mobile">
             <el-card shadow="hover" class="chart-card">
               <div v-if="loading && !statsData" class="chart-skeleton chart-skeleton--wide" />
               <template v-else>
                 <div class="chart-title">IP Top {{ filters.top }}</div>
-                <div ref="ipTopChartRef" class="chart-container chart-container--wide" />
+                <div ref="ipTopChartRef" class="chart-container chart-container--wide chart-container--compact-rank" />
               </template>
             </el-card>
           </el-col>
-          <el-col :xs="24" :md="12">
+          <el-col :xs="24" :md="12" class="chart-col chart-col--full-mobile">
             <el-card shadow="hover" class="chart-card">
               <div v-if="loading && !statsData" class="chart-skeleton chart-skeleton--wide" />
               <template v-else>
                 <div class="chart-title">品类 Top {{ filters.top }}</div>
-                <div ref="categoryTopChartRef" class="chart-container chart-container--wide" />
+                <div ref="categoryTopChartRef" class="chart-container chart-container--wide chart-container--compact-rank" />
               </template>
             </el-card>
           </el-col>
@@ -490,43 +504,8 @@ const activeStatsFilterCount = computed(() => {
   return chips.length
 })
 
-// 概览卡片轮播
-const overviewActiveIndex = ref(0)
-const overviewCarouselRef = ref<HTMLDivElement | null>(null)
-
 // 图表 Tab 切换（仅移动端）
 const chartTab = ref<'distribution' | 'ranking'>('distribution')
-
-const scrollOverviewTo = (index: number) => {
-  if (!isMobile.value) return
-  const el = overviewCarouselRef.value
-  if (!el) return
-  const target = el.querySelectorAll<HTMLElement>('.overview-col')[index]
-  if (!target) return
-  const trackPadding = parseFloat(getComputedStyle(el).paddingLeft) || 0
-  const left = target.offsetLeft - trackPadding
-  overviewActiveIndex.value = index
-  el.scrollTo({ left, behavior: 'smooth' })
-}
-
-const handleOverviewScroll = () => {
-  const el = overviewCarouselRef.value
-  if (!el) return
-  const cols = el.querySelectorAll('.overview-col')
-  if (!cols.length) return
-  const trackCenter = el.getBoundingClientRect().left + el.clientWidth / 2
-  let closest = 0
-  let minDist = Infinity
-  cols.forEach((col, i) => {
-    const rect = col.getBoundingClientRect()
-    const dist = Math.abs(rect.left + rect.width / 2 - trackCenter)
-    if (dist < minDist) {
-      minDist = dist
-      closest = i
-    }
-  })
-  overviewActiveIndex.value = closest
-}
 
 const filters = reactive<GoodsStatsParams>({
   top: DEFAULT_STATS_TOP,
@@ -672,6 +651,18 @@ const updateCharts = () => {
     confine: false,
     renderMode: 'html',
   }
+  const compactPieLabel = mobileChartLayout
+    ? { show: false }
+    : { color: theme.textSub }
+  const compactPieLegend = mobileChartLayout
+    ? {
+        ...baseLegend,
+        bottom: -2,
+        itemWidth: 8,
+        itemHeight: 8,
+        textStyle: { color: theme.textSub, fontSize: 10 },
+      }
+    : baseLegend
 
   // 状态分布饼图
   const statusChart = initChart(statusChartRef.value)
@@ -684,14 +675,15 @@ const updateCharts = () => {
       color: palette,
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'item' },
-      legend: baseLegend,
+      legend: compactPieLegend,
       series: [
         {
           type: 'pie',
-          radius: ['40%', '70%'],
+          radius: mobileChartLayout ? ['48%', '72%'] : ['40%', '70%'],
+          center: mobileChartLayout ? ['50%', '44%'] : ['50%', '50%'],
           avoidLabelOverlap: false,
           data,
-          label: { color: theme.textSub },
+          label: compactPieLabel,
           itemStyle: { borderColor: 'rgba(255,255,255,0.7)', borderWidth: 1 },
         },
       ],
@@ -709,13 +701,14 @@ const updateCharts = () => {
       color: palette,
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'item' },
-      legend: baseLegend,
+      legend: compactPieLegend,
       series: [
         {
           type: 'pie',
-          radius: ['40%', '70%'],
+          radius: mobileChartLayout ? ['48%', '72%'] : ['40%', '70%'],
+          center: mobileChartLayout ? ['50%', '44%'] : ['50%', '50%'],
           data,
-          label: { color: theme.textSub },
+          label: compactPieLabel,
           itemStyle: { borderColor: 'rgba(255,255,255,0.7)', borderWidth: 1 },
         },
       ],
@@ -746,13 +739,19 @@ const updateCharts = () => {
           ].join('')
         },
       },
-      grid: { left: 36, right: 18, top: 24, bottom: 48, containLabel: true },
+      grid: mobileChartLayout
+        ? { left: 34, right: 8, top: 16, bottom: 34, containLabel: true }
+        : { left: 36, right: 18, top: 24, bottom: 48, containLabel: true },
       xAxis: {
         type: 'category',
         data: items.map((i) => i.label),
         axisLine: { lineStyle: { color: theme.grid } },
         axisTick: { alignWithLabel: true },
-        axisLabel: { interval: 0, color: theme.textSub },
+        axisLabel: {
+          interval: 0,
+          color: theme.textSub,
+          fontSize: mobileChartLayout ? 10 : undefined,
+        },
       },
       yAxis: {
         type: 'log',
@@ -762,6 +761,7 @@ const updateCharts = () => {
         splitLine: { lineStyle: { color: 'rgba(0,0,0,0.05)' } },
         axisLabel: {
           color: theme.textSub,
+          fontSize: mobileChartLayout ? 10 : undefined,
           formatter: (val: number) => {
             const v = Number(val)
             if (!Number.isFinite(v) || v <= 0) return ''
@@ -776,7 +776,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: logCounts,
-          barMaxWidth: 28,
+          barMaxWidth: mobileChartLayout ? 20 : 28,
           itemStyle: { borderRadius: [8, 8, 0, 0] },
         },
       ],
@@ -793,7 +793,7 @@ const updateCharts = () => {
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
       grid: mobileChartLayout
-        ? { left: '38%', right: '10%', top: 16, bottom: 16, containLabel: false }
+        ? { left: '34%', right: '8%', top: 10, bottom: 8, containLabel: false }
         : { left: 110, right: 18, top: 24, bottom: 24, containLabel: true },
       xAxis: {
         type: 'value',
@@ -822,7 +822,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
-          barMaxWidth: mobileChartLayout ? 16 : 18,
+          barMaxWidth: mobileChartLayout ? 14 : 18,
           itemStyle: { borderRadius: [0, 10, 10, 0] },
         },
       ],
@@ -839,7 +839,7 @@ const updateCharts = () => {
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
       grid: mobileChartLayout
-        ? { left: '42%', right: '10%', top: 16, bottom: 16, containLabel: false }
+        ? { left: '36%', right: '8%', top: 10, bottom: 8, containLabel: false }
         : { left: 130, right: 18, top: 24, bottom: 24, containLabel: true },
       xAxis: {
         type: 'value',
@@ -868,7 +868,7 @@ const updateCharts = () => {
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
-          barMaxWidth: mobileChartLayout ? 16 : 18,
+          barMaxWidth: mobileChartLayout ? 14 : 18,
           itemStyle: { borderRadius: [0, 10, 10, 0] },
         },
       ],
@@ -979,11 +979,6 @@ onMounted(async () => {
   await fetchStats()
   window.addEventListener('resize', handleResize)
   window.addEventListener('cloud-showcase:stats-refresh', handleStatsRefresh as EventListener)
-
-  const carousel = overviewCarouselRef.value
-  if (carousel) {
-    carousel.addEventListener('scroll', handleOverviewScroll, { passive: true })
-  }
 })
 
 onBeforeUnmount(() => {
@@ -998,11 +993,6 @@ onBeforeUnmount(() => {
   if (autoFetchTimer !== null) {
     window.clearTimeout(autoFetchTimer)
     autoFetchTimer = null
-  }
-
-  const carousel = overviewCarouselRef.value
-  if (carousel) {
-    carousel.removeEventListener('scroll', handleOverviewScroll)
   }
 })
 
@@ -1242,98 +1232,70 @@ watch(chartTab, () => {
   color: var(--text-light);
 }
 
-/* 概览卡片轮播 */
-.overview-carousel.is-mobile .overview-carousel-track {
-  --overview-card-width: calc(80vw - 40px);
-  --overview-track-padding: 16px;
-  overflow-x: auto;
-  scroll-snap-type: x mandatory;
-  scroll-padding-inline: var(--overview-track-padding);
-  scrollbar-width: none;
-  -webkit-overflow-scrolling: touch;
-  padding: 0 var(--overview-track-padding);
-  margin: 0;
+.overview-kpi-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
 }
 
-.overview-carousel.is-mobile .overview-carousel-track::-webkit-scrollbar {
-  display: none;
-}
-
-.overview-carousel.is-mobile .overview-row {
+.overview-kpi-card {
+  min-width: 0;
+  min-height: 74px;
+  padding: 10px 9px;
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.05);
   display: flex;
-  flex-wrap: nowrap;
-  gap: 12px;
-  margin-left: 0 !important;
-  margin-right: 0 !important;
-}
-
-.overview-carousel.is-mobile :deep(.overview-col) {
-  flex: 0 0 var(--overview-card-width);
-  max-width: var(--overview-card-width);
-  width: var(--overview-card-width);
-  scroll-snap-align: center;
-  padding: 0 !important;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.overview-carousel-dots {
-  display: flex;
+  flex-direction: column;
   justify-content: center;
-  gap: 6px;
-  margin-top: 12px;
+  gap: 3px;
+  overflow: hidden;
 }
 
-.overview-carousel-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--text-lighter);
-  transition: background var(--transition-fast), transform var(--transition-fast);
+.overview-kpi-card--quantity {
+  border-color: rgba(162, 155, 254, 0.24);
 }
 
-.overview-carousel-dot.is-active {
-  background: var(--primary-gold);
-  transform: scale(1.5);
+.overview-kpi-card--value {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(255, 249, 234, 0.9));
 }
 
-/* 移动端：概览卡片紧凑样式 */
-@media (max-width: 768px) {
-  .overview-row {
-    margin-bottom: 4px;
-  }
+.overview-kpi-label,
+.overview-kpi-sub {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .overview-card :deep(.el-card__body) {
-    padding: 16px 14px;
-  }
+.overview-kpi-label {
+  color: var(--text-light);
+  font-size: 11px;
+  font-weight: 700;
+}
 
-  .overview-label {
-    font-size: 12px;
-    margin-bottom: 4px;
-  }
+.overview-kpi-value {
+  min-width: 0;
+  color: var(--text-dark);
+  font-size: 20px;
+  font-weight: 800;
+  line-height: 1.12;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 
-  .overview-value {
-    font-size: 22px;
-    margin-bottom: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.overview-kpi-value--money {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 2px;
+}
 
-  .overview-card::before {
-    width: 96px;
-    height: 96px;
-    right: -16px;
-    bottom: -18px;
-    opacity: 0.06;
-  }
-
-  .overview-sub {
-    font-size: 11px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.overview-kpi-sub {
+  color: var(--text-light);
+  font-size: 10px;
 }
 
 .overview-progress-group {
@@ -1356,6 +1318,10 @@ watch(chartTab, () => {
 
 .charts-row {
   margin-bottom: 4px;
+}
+
+.chart-col {
+  min-width: 0;
 }
 
 .chart-card {
@@ -1464,24 +1430,54 @@ watch(chartTab, () => {
 }
 
 @media (max-width: 768px) {
+  .stats-dashboard,
+  .stats-content {
+    gap: 10px;
+  }
+
   .charts-row {
-    row-gap: 12px;
+    row-gap: 10px;
+  }
+
+  .chart-col--half-mobile :deep(.el-card__body) {
+    padding: 12px 8px 10px;
+  }
+
+  .chart-col--full-mobile :deep(.el-card__body) {
+    padding: 14px 12px 12px;
+  }
+
+  .chart-title {
+    margin-bottom: 4px;
+    font-size: 13px;
   }
 
   .chart-container {
-    height: 280px;
+    height: 220px;
+  }
+
+  .chart-container--compact-pie {
+    height: 158px;
+  }
+
+  .chart-container--compact-bar {
+    height: 210px;
   }
 
   .chart-container--wide {
-    height: 420px;
+    height: 300px;
+  }
+
+  .chart-container--compact-rank {
+    height: 300px;
   }
 
   .chart-skeleton {
-    height: 240px;
+    height: 180px;
   }
 
   .chart-skeleton--wide {
-    height: 380px;
+    height: 280px;
   }
 }
 
@@ -1491,9 +1487,9 @@ watch(chartTab, () => {
   align-items: center;
   gap: 8px;
   min-width: 0;
-  padding: 10px;
+  padding: 8px;
   border: 1px solid rgba(212, 175, 55, 0.22);
-  border-radius: 18px;
+  border-radius: 16px;
   background: rgba(255, 255, 255, 0.82);
   box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
   backdrop-filter: blur(12px);
@@ -1502,8 +1498,8 @@ watch(chartTab, () => {
 
 .mobile-stats-filter-trigger {
   flex: 0 0 auto;
-  min-width: 86px;
-  height: 36px;
+  min-width: 82px;
+  height: 32px;
   border: 1px solid rgba(212, 175, 55, 0.42);
   border-radius: 999px;
   background: linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(234, 205, 163, 0.24));
@@ -1512,7 +1508,7 @@ watch(chartTab, () => {
   align-items: center;
   justify-content: center;
   gap: 6px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
   -webkit-tap-highlight-color: transparent;
   cursor: pointer;
@@ -1551,21 +1547,21 @@ watch(chartTab, () => {
 .mobile-stats-filter-chip {
   flex: 0 0 auto;
   max-width: 96px;
-  height: 30px;
-  padding: 0 10px;
+  height: 28px;
+  padding: 0 9px;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   background: #f8fafc;
   color: #64748b;
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  line-height: 28px;
+  line-height: 26px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-/* 移动端独立厨力入口 */
+/* 移动端紧凑厨力入口 */
 .mobile-character-stats-entry {
   display: grid;
   gap: 10px;
@@ -1581,17 +1577,31 @@ watch(chartTab, () => {
   overflow: hidden;
 }
 
+.mobile-character-stats-entry--compact {
+  gap: 0;
+  padding: 9px 10px;
+  border-radius: 16px;
+}
+
+.mobile-character-stats-inline {
+  display: grid;
+  grid-template-columns: minmax(72px, 92px) minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
 .mobile-character-stats-copy {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 10px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
   min-width: 0;
 }
 
 .mobile-character-stats-copy span {
   color: var(--primary-gold-dark);
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1599,10 +1609,9 @@ watch(chartTab, () => {
 .mobile-character-stats-copy strong {
   min-width: 0;
   color: #64748b;
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 700;
   overflow: hidden;
-  text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -1619,15 +1628,15 @@ watch(chartTab, () => {
 }
 
 .mobile-character-stats-control :deep(.el-select__wrapper) {
-  min-height: 36px;
-  border-radius: 12px;
+  min-height: 32px;
+  border-radius: 10px;
   box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
 }
 
 .mobile-character-stats-button {
-  min-width: 100px;
-  height: 36px;
-  border-radius: 12px;
+  min-width: 58px;
+  height: 32px;
+  border-radius: 10px;
   background: linear-gradient(135deg, var(--accent-purple), var(--primary-gold)) !important;
   border-color: transparent !important;
   color: #ffffff !important;
@@ -1635,7 +1644,7 @@ watch(chartTab, () => {
 }
 
 .mobile-character-stats-button :deep(.el-icon) {
-  font-size: 15px;
+  font-size: 14px;
 }
 
 /* 移动端筛选底部面板 */
@@ -1658,9 +1667,9 @@ watch(chartTab, () => {
   right: 0;
   bottom: 0;
   z-index: 1301;
-  max-height: min(82dvh, 720px);
-  padding: 12px 12px calc(16px + env(safe-area-inset-bottom));
-  border-radius: 24px 24px 0 0;
+  max-height: min(84dvh, 720px);
+  padding: 10px 12px calc(12px + env(safe-area-inset-bottom));
+  border-radius: 20px 20px 0 0;
   background: #ffffff;
   box-shadow: 0 -18px 48px rgba(15, 23, 42, 0.22);
   transform: translateY(104%);
@@ -1682,15 +1691,15 @@ watch(chartTab, () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 2px 2px 12px;
+  padding: 0 2px 8px;
   color: var(--text-dark);
   font-size: 16px;
   font-weight: 800;
 }
 
 .mobile-stats-filter-close {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
   border: 0;
   border-radius: 50%;
   background: #f3f4f6;
@@ -1704,7 +1713,7 @@ watch(chartTab, () => {
 }
 
 .mobile-stats-filter-sheet-body {
-  max-height: calc(min(82dvh, 720px) - 130px);
+  max-height: calc(min(84dvh, 720px) - 112px);
   overflow-y: auto;
   padding-bottom: 4px;
   -webkit-overflow-scrolling: touch;
@@ -1713,21 +1722,21 @@ watch(chartTab, () => {
 .mobile-stats-filter-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .mobile-stats-filter-sheet-footer {
   display: flex;
-  gap: 12px;
-  padding-top: 12px;
+  gap: 10px;
+  padding-top: 10px;
   border-top: 1px solid rgba(212, 175, 55, 0.18);
 }
 
 .mobile-stats-filter-sheet-footer .el-button {
   flex: 1;
-  height: 44px;
-  border-radius: 12px;
-  font-size: 15px;
+  height: 40px;
+  border-radius: 11px;
+  font-size: 14px;
   font-weight: 600;
 }
 
@@ -1780,32 +1789,52 @@ watch(chartTab, () => {
   }
 
   .charts-row {
-    row-gap: 12px;
+    row-gap: 10px;
+  }
+
+  .chart-col--half-mobile :deep(.el-card__body) {
+    padding: 12px 8px 10px;
+  }
+
+  .chart-col--full-mobile :deep(.el-card__body) {
+    padding: 14px 12px 12px;
   }
 
   .chart-container {
-    height: 280px;
+    height: 220px;
+  }
+
+  .chart-container--compact-pie {
+    height: 158px;
+  }
+
+  .chart-container--compact-bar {
+    height: 210px;
   }
 
   .chart-container--wide {
-    height: 420px;
+    height: 300px;
+  }
+
+  .chart-container--compact-rank {
+    height: 300px;
   }
 
   .chart-skeleton {
-    height: 240px;
+    height: 180px;
   }
 
   .chart-skeleton--wide {
-    height: 380px;
+    height: 280px;
   }
 
   .mobile-stats-filter-sheet {
-    max-height: min(82dvh, 720px);
-    padding-bottom: calc(16px + env(safe-area-inset-bottom));
+    max-height: min(84dvh, 720px);
+    padding-bottom: calc(12px + env(safe-area-inset-bottom));
   }
 
   .mobile-stats-filter-sheet-body {
-    max-height: calc(min(82dvh, 720px) - 130px);
+    max-height: calc(min(84dvh, 720px) - 112px);
   }
 }
 </style>

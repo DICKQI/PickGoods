@@ -32,9 +32,11 @@ describe('StatsDashboard character stats entry', () => {
     expect(statsDashboardSource).not.toContain('character: characterStatsTargetId')
   })
 
-  it('adds a first-screen mobile character stats shortcut and removes the duplicate sheet entry', () => {
-    expect(statsDashboardSource).toContain('class="mobile-character-stats-entry"')
-    expect(statsDashboardSource).toContain('移动端独立厨力入口')
+  it('adds a compact first-screen mobile character stats shortcut and removes the duplicate sheet entry', () => {
+    expect(statsDashboardSource).toContain('class="mobile-character-stats-entry mobile-character-stats-entry--compact"')
+    expect(statsDashboardSource).toContain('移动端紧凑厨力入口')
+    expect(statsDashboardSource).toContain('mobile-character-stats-entry--compact')
+    expect(statsDashboardSource).toContain('mobile-character-stats-inline')
     expect(statsDashboardSource).toContain('placeholder="搜索角色查看厨力"')
     expect(statsDashboardSource).toContain(':show-character-stats-entry="false"')
     expect(statsDashboardSource).toContain('mobile-character-stats-button')
