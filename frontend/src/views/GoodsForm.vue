@@ -1,5 +1,5 @@
 <template>
-  <div class="goods-form" :class="{ 'goods-form--mobile-dock': isMobile, 'goods-form--create-wizard': useCreateWizard }">
+  <div class="goods-form" :class="{ 'goods-form--mobile-dock': isMobile, 'goods-form--create-wizard': useCreateWizard, 'goods-form--desktop-workbench': !isMobile }">
     <div class="goods-form-header" :class="{ 'goods-form-header--mobile': isMobile }">
       <div class="goods-form-title-block">
         <div class="goods-form-title">{{ formTitle }}</div>
@@ -38,6 +38,8 @@
     </div>
 
     <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px" label-position="top" class="goods-el-form">
+      <div class="goods-form-workbench">
+        <div class="goods-form-main-column">
       <!-- 基础信息分区 -->
       <Transition name="create-wizard-section" appear>
         <section v-show="shouldShowFormSection('basic')" class="form-section form-section--basic create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'basic'">
@@ -113,7 +115,7 @@
               <p class="form-section-subtitle form-section-header-copy">记录数量、价格与购买时间</p>
             </div>
           </div>
-          <el-row :gutter="20">
+          <el-row :gutter="20" class="meta-field-grid">
             <el-col :xs="12" :sm="12">
               <el-form-item label="数量" prop="quantity" class="is-required">
                 <div class="field-with-icon"><span class="field-icon">📦</span><el-input-number v-model="formData.quantity" :min="1" style="width: 100%" /></div>
@@ -138,6 +140,28 @@
         </section>
       </Transition>
 
+      <!-- 备注分区 -->
+      <Transition name="create-wizard-section" appear>
+        <section v-show="shouldShowFormSection('notes')" class="form-section form-section--notes create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'notes'">
+          <div class="form-section-header" :class="{ 'form-section-header--stacked': useCreateWizard }">
+            <span class="form-section-header-bar" aria-hidden="true"></span>
+            <div class="form-section-header-body">
+              <h3 class="form-section-title"><span class="form-section-title-text">备注</span></h3>
+              <p class="form-section-subtitle form-section-header-copy">可以记录店铺、工艺、画师等细节</p>
+            </div>
+          </div>
+          <el-row :gutter="20">
+            <el-col :xs="24">
+              <el-form-item label="备注">
+                <el-input v-model="formData.notes" type="textarea" :rows="4" placeholder="请输入备注信息" />
+              </el-form-item>
+            </el-col>
+          </el-row>
+        </section>
+      </Transition>
+        </div>
+
+        <aside class="goods-form-side-column" aria-label="图片与订单识别">
       <!-- 图片分区 -->
       <Transition name="create-wizard-section" appear>
         <section v-show="shouldShowFormSection('images')" class="form-section form-section--images create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'images'">
@@ -148,8 +172,8 @@
             <p class="form-section-subtitle form-section-header-copy">主图与细节图会直接影响云展柜观感</p>
           </div>
         </div>
-        <el-row :gutter="20">
-          <el-col :xs="24" :sm="10" :md="8">
+        <div class="goods-form-media-stack">
+          <div class="goods-form-main-photo-pane">
             <el-form-item label="主图">
               <div class="main-photo-card-shell">
                 <el-upload v-model:file-list="mainPhotoList" list-type="picture-card" :auto-upload="false" :limit="1" :on-change="handleMainPhotoChange" :on-remove="handleMainPhotoRemove" :on-preview="handlePictureCardPreview" :http-request="dummyUpload" :show-file-list="true" class="main-photo-uploader" :class="{ 'hide-upload-trigger': mainPhotoList.length >= 1 }" :open-file-dialog-on-click="!isMobileUploadActionSheet" accept="image/*">
@@ -165,9 +189,9 @@
               <input v-if="isH5Mobile" ref="cameraInputRef" type="file" accept="image/*" capture="environment" style="display: none" @change="handleH5MainPhotoPicked" />
               <input v-if="isH5Mobile" ref="albumInputRef" type="file" accept="image/*" style="display: none" @change="handleH5MainPhotoPicked" />
             </el-form-item>
-          </el-col>
+          </div>
 
-          <el-col :xs="24" :sm="14" :md="16">
+          <div class="goods-form-additional-photos-pane">
             <el-form-item label="附件图片">
               <div class="additional-photos-section">
                 <div v-if="existingAdditionalPhotos.length > 0" class="existing-photos">
@@ -197,8 +221,8 @@
                 </el-upload>
               </div>
             </el-form-item>
-          </el-col>
-        </el-row>
+          </div>
+        </div>
 
         <!-- OCR 订单截图识别 -->
         <el-row :gutter="20" style="margin-top: 16px">
@@ -239,40 +263,22 @@
             </el-form-item>
           </el-col>
         </el-row>
-        </section>
-      </Transition>
-
-      <!-- 备注分区 -->
-      <Transition name="create-wizard-section" appear>
-        <section v-show="shouldShowFormSection('notes')" class="form-section form-section--notes create-wizard-section-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'notes'">
-          <div class="form-section-header" :class="{ 'form-section-header--stacked': useCreateWizard }">
-            <span class="form-section-header-bar" aria-hidden="true"></span>
-            <div class="form-section-header-body">
-              <h3 class="form-section-title"><span class="form-section-title-text">备注</span></h3>
-              <p class="form-section-subtitle form-section-header-copy">可以记录店铺、工艺、画师等细节</p>
-            </div>
+        <div v-if="!isMobile" class="desktop-action-footer" aria-label="桌面端表单操作">
+          <div class="desktop-action-footer__minor">
+            <el-button :icon="Close" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="handleCancel">取消</el-button>
+            <el-button :icon="Refresh" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="handleReset">重置</el-button>
+            <el-button :icon="FolderOpened" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="goDrafts">草稿箱</el-button>
           </div>
-          <el-row :gutter="20">
-            <el-col :xs="24">
-              <el-form-item label="备注">
-                <el-input v-model="formData.notes" type="textarea" :rows="4" placeholder="请输入备注信息" />
-              </el-form-item>
-            </el-col>
-          </el-row>
+          <div class="desktop-action-footer__primary">
+            <el-button :icon="DocumentChecked" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--draft" @click="submitByMode('draft')" :loading="submitting">保存草稿</el-button>
+            <el-button :icon="Promotion" type="primary" class="sticky-btn sticky-btn--primary desktop-action-btn desktop-action-btn--publish" @click="submitByMode('publish')" :loading="submitting">{{ isEditMode ? '保存修改' : '发布' }}</el-button>
+          </div>
+        </div>
         </section>
       </Transition>
-    </el-form>
-
-    <!-- 底部：桌面端五按钮 -->
-    <div v-if="!isMobile" class="sticky-action-bar">
-      <div class="sticky-action-inner">
-        <el-button class="sticky-btn sticky-btn--secondary" @click="handleCancel">取消</el-button>
-        <el-button class="sticky-btn sticky-btn--secondary" @click="handleReset">重置</el-button>
-        <el-button class="sticky-btn sticky-btn--secondary" @click="goDrafts">草稿箱</el-button>
-        <el-button class="sticky-btn sticky-btn--secondary" @click="submitByMode('draft')" :loading="submitting">保存草稿</el-button>
-        <el-button type="primary" class="sticky-btn sticky-btn--primary" @click="submitByMode('publish')" :loading="submitting">{{ isEditMode ? '保存修改' : '发布' }}</el-button>
+        </aside>
       </div>
-    </div>
+    </el-form>
 
     <!-- 移动端：底部渐变遮罩 + 双按钮 -->
     <div v-if="isMobile" class="mobile-form-dock-wrap" :class="{ 'mobile-form-dock-wrap--visible': useCreateWizard || mobileFormDockVisible, 'mobile-form-dock-wrap--wizard': useCreateWizard }" aria-label="表单主操作">
@@ -374,7 +380,20 @@
 import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
-import { Plus, Delete, Picture, Camera as CameraIcon, Edit, MoreFilled, Loading } from '@element-plus/icons-vue'
+import {
+  Plus,
+  Delete,
+  Picture,
+  Camera as CameraIcon,
+  Edit,
+  MoreFilled,
+  Loading,
+  Close,
+  Refresh,
+  FolderOpened,
+  DocumentChecked,
+  Promotion,
+} from '@element-plus/icons-vue'
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
@@ -953,6 +972,7 @@ onUnmounted(() => {
 
 <style scoped>
 .goods-form { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.goods-form--desktop-workbench { max-width: 1320px; padding: 20px 24px 24px; }
 .goods-form--mobile-dock { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 .goods-form-header { margin-bottom: 16px; }
 .goods-form-header--mobile { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
@@ -962,6 +982,10 @@ onUnmounted(() => {
 .header-drafts-btn { padding: 6px 10px; font-size: 14px; }
 .header-more-btn { font-size: 20px; }
 .goods-form-title { font-size: 20px; font-weight: 600; color: var(--primary-gold); }
+.goods-form--desktop-workbench .goods-form-header { margin-bottom: 14px; }
+.goods-form-workbench { min-width: 0; }
+.goods-form-main-column,
+.goods-form-side-column { min-width: 0; display: flex; flex-direction: column; gap: 16px; }
 .create-wizard-heading { display: flex; align-items: center; gap: 8px; min-width: 0; color: #909399; font-size: 12px; line-height: 1.2; }
 .create-wizard-heading__step { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .create-wizard-heading__count { flex-shrink: 0; padding: 2px 7px; border-radius: 999px; background: rgba(212,175,55,0.1); color: var(--primary-gold-dark); font-weight: 700; }
@@ -978,6 +1002,61 @@ onUnmounted(() => {
 .sticky-action-bar { margin-top: 12px; padding-bottom: env(safe-area-inset-bottom, 0); }
 .sticky-action-inner { display: flex; flex-wrap: wrap; gap: 8px; justify-content: flex-end; align-items: center; }
 .sticky-action-inner :deep(.el-button) { margin: 0; }
+.goods-form--desktop-workbench .desktop-action-footer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 14px -16px -16px;
+  padding: 12px 16px 14px;
+  border-top: 1px solid rgba(17,24,39,0.06);
+  background: rgba(250,250,252,0.72);
+}
+.goods-form--desktop-workbench .desktop-action-footer__minor,
+.goods-form--desktop-workbench .desktop-action-footer__primary {
+  display: grid;
+  gap: 8px;
+}
+.goods-form--desktop-workbench .desktop-action-footer__minor {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.goods-form--desktop-workbench .desktop-action-footer__primary {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.goods-form--desktop-workbench .desktop-action-btn {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  font-weight: 600;
+}
+.goods-form--desktop-workbench .desktop-action-btn--minor {
+  min-height: 32px;
+  padding-right: 8px;
+  padding-left: 8px;
+  color: #606266;
+  background: rgba(255,255,255,0.58);
+  border-color: #e5e7ef;
+}
+.goods-form--desktop-workbench .desktop-action-btn--minor:hover,
+.goods-form--desktop-workbench .desktop-action-btn--minor:focus {
+  color: var(--primary-gold-dark);
+  background: rgba(255,250,240,0.82);
+  border-color: rgba(212,175,55,0.34);
+}
+.goods-form--desktop-workbench .desktop-action-btn--draft,
+.goods-form--desktop-workbench .desktop-action-btn--publish {
+  min-height: 38px;
+}
+.goods-form--desktop-workbench .desktop-action-btn--draft {
+  color: var(--primary-gold-dark);
+  background: #fffaf0;
+  border-color: rgba(212,175,55,0.32);
+}
+.goods-form--desktop-workbench .desktop-action-btn--draft:hover,
+.goods-form--desktop-workbench .desktop-action-btn--draft:focus {
+  color: var(--primary-gold-dark);
+  background: #fff4dc;
+  border-color: rgba(212,175,55,0.48);
+}
 @media (max-width: 768px) {
   .sticky-action-inner { justify-content: center; }
   .sticky-action-inner :deep(.el-button) { padding: 8px 12px; font-size: 12px; }
@@ -1005,6 +1084,13 @@ onUnmounted(() => {
 .mobile-form-dock-wrap--wizard .mobile-form-dock-btn { min-height: 48px; }
 @supports not (bottom: env(safe-area-inset-bottom)) { .mobile-form-dock-wrap { bottom: 72px; } }
 .form-section { margin-bottom: 20px; padding: 16px 18px 18px; border-radius: 16px; background: #ffffff; box-shadow: 0 4px 16px rgba(0,0,0,0.04); border: 1px solid rgba(17,24,39,0.04); }
+.goods-form--desktop-workbench .form-section {
+  margin-bottom: 0;
+  padding: 14px 16px 16px;
+  border-radius: 14px;
+  border-color: rgba(17,24,39,0.06);
+  box-shadow: 0 3px 14px rgba(15,23,42,0.04);
+}
 .form-section--images { background: radial-gradient(circle at top left, #ffffff, #fafbff); }
 .form-section-header { margin-bottom: 12px; display: flex; align-items: flex-start; gap: 10px; }
 .form-section-header::before { content: none; }
@@ -1013,8 +1099,26 @@ onUnmounted(() => {
 .form-section-title { margin: 0; font-size: 18px; line-height: 1.25; font-weight: 600; color: #303133; }
 .form-section-title-text { display: block; white-space: nowrap; word-break: keep-all; }
 .form-section-subtitle { min-width: 0; margin: 0; font-size: 12px; line-height: 1.45; color: #909399; }
+.goods-form--desktop-workbench .form-section-header { margin-bottom: 10px; }
+.goods-form--desktop-workbench .form-section-header-bar { height: 18px; }
+.goods-form--desktop-workbench .form-section-title { font-size: 17px; }
 .form-section-header--stacked .form-section-header-body { flex-direction: column; align-items: flex-start; gap: 4px; }
 .goods-form :deep(.el-form-item) { margin-bottom: 26px; }
+.goods-form--desktop-workbench :deep(.el-form-item) { margin-bottom: 20px; }
+.goods-form--desktop-workbench .form-section :deep(.el-form-item:last-child) { margin-bottom: 0; }
+.goods-form--desktop-workbench :deep(.el-form-item__error) {
+  position: static;
+  margin-top: 4px;
+  padding-top: 0;
+  line-height: 1.35;
+  white-space: normal;
+}
+.goods-form--desktop-workbench .meta-field-grid {
+  row-gap: 18px;
+}
+.goods-form--desktop-workbench .meta-field-grid :deep(.el-form-item) {
+  margin-bottom: 0;
+}
 .goods-form :deep(.el-input__wrapper), .goods-form :deep(.el-textarea__inner), .goods-form :deep(.el-select .el-input__wrapper), .goods-form :deep(.el-input-number__decrease), .goods-form :deep(.el-input-number__increase), .goods-form :deep(.el-date-editor.el-input__wrapper), .goods-form :deep(.el-date-editor.el-input) { border-radius: 10px; border-color: #e5e5e5; background-color: #ffffff; transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease; }
 .goods-form :deep(.el-input__wrapper:hover), .goods-form :deep(.el-textarea__inner:hover), .goods-form :deep(.el-select .el-input__wrapper:hover), .goods-form :deep(.el-date-editor.el-input__wrapper:hover) { border-color: #d0d0d7; box-shadow: 0 0 0 1px rgba(208,208,215,0.3); }
 .goods-form :deep(.el-input.is-focus .el-input__wrapper), .goods-form :deep(.el-select .el-input.is-focus .el-input__wrapper), .goods-form :deep(.el-textarea__inner:focus), .goods-form :deep(.el-date-editor.el-input__wrapper.is-active) { border-color: var(--primary-gold); box-shadow: 0 0 0 1px rgba(195,160,80,0.35), 0 10px 18px rgba(0,0,0,0.06); }
@@ -1022,22 +1126,83 @@ onUnmounted(() => {
 .goods-form :deep(.el-form-item__label) { color: #606266; font-weight: 500; font-size: 13px; }
 .goods-form :deep(.el-form-item__label .el-form-item__required-star) { color: #f56c6c; font-size: 12px; margin-left: 2px; }
 .goods-form :deep(.el-form-item.is-required .el-form-item__label) { position: relative; }
+.goods-form--desktop-workbench .form-section--images {
+  overflow: hidden;
+}
+.goods-form-media-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.goods-form-main-photo-pane,
+.goods-form-additional-photos-pane {
+  min-width: 0;
+}
+.goods-form--desktop-workbench .form-section--images :deep(.el-row) {
+  margin-right: 0 !important;
+  margin-left: 0 !important;
+}
+.goods-form--desktop-workbench .form-section--images :deep(.el-col) {
+  padding-right: 0 !important;
+  padding-left: 0 !important;
+}
+@media (min-width: 1100px) {
+  .goods-form--desktop-workbench .goods-form-workbench {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+    gap: 20px;
+    align-items: start;
+  }
+
+  .goods-form--desktop-workbench .goods-form-side-column {
+    position: sticky;
+    top: 84px;
+    align-self: start;
+    max-height: calc(100vh - 108px);
+    overflow-y: auto;
+    padding-right: 4px;
+  }
+}
+@media (min-width: 1440px) {
+  .goods-form--desktop-workbench .goods-form-workbench {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 440px);
+  }
+}
 .field-with-icon { display: flex; align-items: center; gap: 8px; }
 .field-icon { flex-shrink: 0; font-size: 16px; color: #909399; }
 .category-chip { margin-top: 6px; display: inline-flex; align-items: center; gap: 8px; padding: 6px 10px; border-radius: 8px; background: #f7f7fb; border: 1px solid #ebeef5; font-size: 12px; color: #606266; }
 .color-dot { width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 0 1px #e0e0e0; }
 .chip-text { white-space: nowrap; }
 .main-photo-card-shell { display: block; width: 220px; }
+.goods-form--desktop-workbench .main-photo-card-shell {
+  width: min(220px, 100%);
+}
 .hide-upload-trigger :deep(.el-upload--picture-card) { display: none; }
 .main-photo-trigger { display: inline-flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
 .main-photo-actions { width: 220px; margin-top: 14px; display: flex; justify-content: center; }
+.goods-form--desktop-workbench .main-photo-actions {
+  width: min(220px, 100%);
+}
 .main-photo-uploader :deep(.el-upload--picture-card) { width: 220px; height: 220px; border-radius: 16px; border: 1px dashed #e0e3f0; border-color: #e0e3f0; background: #fafbff; transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease, transform 0.16s ease; }
 .main-photo-uploader :deep(.el-upload--picture-card:hover) { border-color: var(--primary-gold); background: #fdfaf3; box-shadow: 0 8px 18px rgba(0,0,0,0.06); transform: translateY(-1px); }
 .main-photo-uploader :deep(.el-upload--picture-card .el-icon) { font-size: 26px; color: #b1b5c6; }
 .main-photo-uploader :deep(.el-upload-list--picture-card) { display: block; width: 220px; }
 .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) { width: 220px; height: 220px; margin: 0; border-radius: 16px; }
 .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item-thumbnail) { width: 100%; height: 100%; object-fit: cover; }
+.goods-form--desktop-workbench .main-photo-uploader :deep(.el-upload--picture-card),
+.goods-form--desktop-workbench .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) {
+  width: min(220px, 100%);
+  height: auto;
+  aspect-ratio: 1;
+}
+.goods-form--desktop-workbench .main-photo-uploader :deep(.el-upload-list--picture-card) {
+  width: min(220px, 100%);
+}
 .additional-photo-upload :deep(.el-upload--picture-card) { width: 120px; height: 120px; border-radius: 12px; border-style: dashed; border-width: 1px; border-color: #e7e9f4; background-color: #fbfbff; }
+.goods-form--desktop-workbench .additional-photo-upload :deep(.el-upload--picture-card) {
+  width: 120px;
+  height: 120px;
+}
 :deep(.el-upload--picture-card) { border-color: var(--border-color); }
 :deep(.el-upload--picture-card:hover) { border-color: var(--primary-gold); }
 .additional-photos-section { width: 100%; }

@@ -220,6 +220,8 @@ describe('GoodsForm mobile create wizard', () => {
       maxTouchPoints: 1,
     })
 
+    expect(wrapper.classes()).not.toContain('goods-form--desktop-workbench')
+    expect(wrapper.find('.desktop-action-footer').exists()).toBe(false)
     expect(wrapper.text()).toContain('基础信息')
     expect(wrapper.text()).toContain('1/4')
     expect(wrapper.text()).toContain('下一步')
@@ -282,11 +284,82 @@ describe('GoodsForm mobile create wizard', () => {
     })
 
     expect(wrapper.text()).toContain('新增谷子')
+    expect(wrapper.classes()).toContain('goods-form--desktop-workbench')
+    expect(wrapper.find('.goods-form-workbench').exists()).toBe(true)
+    expect(wrapper.find('.goods-form-main-column').exists()).toBe(true)
+    expect(wrapper.find('.goods-form-side-column').exists()).toBe(true)
     expect(wrapper.text()).toContain('基础信息')
     expect(wrapper.text()).toContain('数量与购入')
     expect(wrapper.text()).toContain('图片')
     expect(wrapper.text()).toContain('备注')
     expect(wrapper.text()).not.toContain('1/4')
+  })
+
+  it('submits a desktop draft through the image card action footer', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+
+    await fillRequiredBasicFields(wrapper)
+
+    const actionFooter = wrapper.get('.form-section--images .desktop-action-footer')
+    const actionButtons = actionFooter.findAll('.sticky-btn--secondary')
+    expect(actionButtons).toHaveLength(4)
+
+    await actionButtons[3]!.trigger('click')
+    await nextTick()
+    await Promise.resolve()
+
+    expect(vi.mocked(createGoods)).toHaveBeenCalledWith(expect.objectContaining({
+      name: '亚克力立牌',
+      ip_id: 1,
+      category_id: 100,
+      status: 'draft',
+    }))
+    expect(vi.mocked(createGoods)).toHaveBeenCalledWith(expect.not.objectContaining({
+      merge_strategy: 'auto',
+    }))
+  })
+
+  it('renders desktop actions as an image card footer', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+
+    const actionFooter = wrapper.get('.form-section--images .desktop-action-footer')
+    expect(actionFooter.find('.desktop-action-footer__minor').exists()).toBe(true)
+    expect(actionFooter.find('.desktop-action-footer__primary').exists()).toBe(true)
+    expect(wrapper.find('.sticky-action-bar--side-dock').exists()).toBe(false)
+    expect(wrapper.find('.goods-el-form + .sticky-action-bar').exists()).toBe(false)
+  })
+
+  it('stacks desktop image upload zones inside the right rail', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+
+    const mediaStack = wrapper.get('.goods-form-side-column .goods-form-media-stack')
+    expect(mediaStack.find('.goods-form-main-photo-pane').exists()).toBe(true)
+    expect(mediaStack.find('.goods-form-additional-photos-pane').exists()).toBe(true)
+    expect(mediaStack.find('.main-photo-card-shell').exists()).toBe(true)
+    expect(mediaStack.find('.additional-photos-section').exists()).toBe(true)
+  })
+
+  it('uses a desktop metadata field grid with row spacing hook', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+
+    const metaSection = wrapper.get('.form-section--meta')
+    expect(metaSection.find('.meta-field-grid').exists()).toBe(true)
   })
 
   it('does not advance from the basic step when required fields are missing', async () => {
