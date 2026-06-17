@@ -379,3 +379,24 @@ class GoodsMoveSerializer(serializers.Serializer):
         required=True,
         help_text="移动位置：before(之前) / after(之后)",
     )
+
+
+class GoodsImageClassifyRequestSerializer(serializers.Serializer):
+    """图片分类请求序列化器"""
+
+    image = serializers.ImageField(required=True)
+
+    def validate_image(self, value):
+        max_size = 10 * 1024 * 1024
+        if value.size > max_size:
+            raise serializers.ValidationError(f"图片大小不能超过 {max_size // 1024 // 1024}MB")
+        return value
+
+
+class GoodsImageClassifyResponseSerializer(serializers.Serializer):
+    """图片分类响应序列化器"""
+
+    shape_type = serializers.ChoiceField(choices=["round", "rectangle"], allow_null=True)
+    confidence = serializers.FloatField()
+    suggestions = serializers.ListField(child=serializers.DictField())
+    detail = serializers.CharField(required=False)

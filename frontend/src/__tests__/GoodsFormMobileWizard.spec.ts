@@ -2,7 +2,7 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import GoodsForm from '@/views/GoodsForm.vue'
-import { createGoods } from '@/api/goods'
+import { classifyGoodsImage, createGoods } from '@/api/goods'
 
 const pushMock = vi.fn()
 let routeParams: Record<string, string | undefined> = {}
@@ -66,6 +66,11 @@ vi.mock('@/api/goods', () => ({
   })),
   uploadMainPhoto: vi.fn(async () => ({})),
   recognizeOrderImage: vi.fn(async () => ({})),
+  classifyGoodsImage: vi.fn(async () => ({
+    shape_type: 'round',
+    confidence: 0.82,
+    suggestions: [{ id: 100, name: '吧唧', path_name: '吧唧' }],
+  })),
 }))
 
 vi.mock('@/stores/location', () => ({
@@ -186,6 +191,7 @@ const mountGoodsForm = async ({
         ElImage: passthroughStub('ElImage'),
         ElImageViewer: passthroughStub('ElImageViewer'),
         ElIcon: passthroughStub('ElIcon', 'i'),
+        ElTag: passthroughStub('ElTag', 'span'),
         ImageCropper: true,
         OcrBatchImportDialog: true,
         OcrFillDialog: true,
@@ -205,6 +211,12 @@ const fillRequiredBasicFields = async (wrapper: any) => {
   vm.formData.category = 100
   vm.formData.status = 'in_cabinet'
   await nextTick()
+}
+
+const flushAsyncWork = async () => {
+  await Promise.resolve()
+  await nextTick()
+  await Promise.resolve()
 }
 
 describe('GoodsForm mobile create wizard', () => {
@@ -274,6 +286,58 @@ describe('GoodsForm mobile create wizard', () => {
     expect(wrapper.text()).toContain('图片')
     expect(wrapper.text()).toContain('备注')
     expect(wrapper.text()).not.toContain('1/4')
+  })
+
+  it('编辑已有谷子确认主图时不触发图片品类识别', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+      params: { id: 'existing-id' },
+    })
+    vi.mocked(classifyGoodsImage).mockClear()
+
+    const file = new File(['image'], 'main.png', { type: 'image/png' })
+    ;(wrapper.vm as any).handleCropDialogConfirm(file, 'blob:preview')
+    await flushAsyncWork()
+
+    expect(vi.mocked(classifyGoodsImage)).not.toHaveBeenCalled()
+  })
+
+  it('新建时已有品类不会再次触发图片品类识别', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.category = 100
+    await nextTick()
+
+    const file = new File(['image'], 'main.png', { type: 'image/png' })
+    vm.handleCropDialogConfirm(file, 'blob:preview')
+    await flushAsyncWork()
+
+    expect(vi.mocked(classifyGoodsImage)).not.toHaveBeenCalled()
+  })
+
+  it('移除主图时清空图片品类识别建议', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+
+    const file = new File(['image'], 'main.png', { type: 'image/png' })
+    vm.handleCropDialogConfirm(file, 'blob:preview')
+    await flushAsyncWork()
+
+    expect(vm.classifyResult?.suggestions?.length).toBe(1)
+    vm.handleMainPhotoRemove()
+    await nextTick()
+
+    expect(vm.classifyResult).toBeNull()
   })
 
   it('keeps desktop creation as the full single-page form', async () => {

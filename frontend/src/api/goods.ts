@@ -11,6 +11,7 @@ import type {
   GoodsStatsResponse,
   CharacterStatsResponse,
   OcrResult,
+  ClassifyResult,
 } from './types'
 
 // 获取谷子列表
@@ -134,4 +135,13 @@ export function moveGoods(
   },
 ) {
   return request.post<MoveGoodsResponse>(`/api/goods/${id}/move/`, data)
+}
+
+/** 对谷子主图进行品类形状分类 */
+export function classifyGoodsImage(file: File) {
+  const formData = new FormData()
+  formData.append('image', file)
+  return request.post<ClassifyResult>('/api/goods/classify-image/', formData, {
+    suppressGlobalError: true,
+  })
 }

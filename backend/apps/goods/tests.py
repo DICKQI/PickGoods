@@ -1,9 +1,12 @@
 from django.test import TestCase
+from django.urls import reverse
 from rest_framework.test import APIClient
 from rest_framework import status
 from datetime import date, timedelta
 from decimal import Decimal
-from PIL import Image
+import io
+
+from PIL import Image, ImageDraw
 from django.utils import timezone
 
 from apps.users.models import User, Role
@@ -866,4 +869,166 @@ class CompressImageTestCase(TestCase):
         result = compress_image(f, max_size_kb=300)
         if result is not None:
             self.assertTrue(result.name.endswith('.jpg'))
+
+
+from .classifier import classify_goods_image
+
+
+class GoodsImageClassifierTests(TestCase):
+    """图片形状分类器测试"""
+
+    def setUp(self):
+        # 圆形测试图
+        self.round_img = Image.new('RGB', (200, 200), color='white')
+        draw = ImageDraw.Draw(self.round_img)
+        draw.ellipse([20, 20, 180, 180], fill='black')
+        buf = io.BytesIO()
+        self.round_img.save(buf, format='JPEG')
+        self.round_bytes = buf.getvalue()
+
+        # 矩形测试图
+        self.rect_img = Image.new('RGB', (200, 200), color='white')
+        draw2 = ImageDraw.Draw(self.rect_img)
+        draw2.rectangle([20, 40, 180, 160], fill='black')
+        buf2 = io.BytesIO()
+        self.rect_img.save(buf2, format='JPEG')
+        self.rect_bytes = buf2.getvalue()
+
+        # 无清晰形状
+        self.noise_img = Image.new('RGB', (200, 200), color='gray')
+        buf3 = io.BytesIO()
+        self.noise_img.save(buf3, format='JPEG')
+        self.noise_bytes = buf3.getvalue()
+
+    def test_classify_round_image(self):
+        result = classify_goods_image(self.round_bytes)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "round")
+        self.assertGreaterEqual(result["confidence"], 0.5)
+
+    def test_classify_rectangle_image(self):
+        result = classify_goods_image(self.rect_bytes)
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "rectangle")
+        self.assertGreater(result["confidence"], 0.5)
+
+    def test_classify_low_contrast_rectangle_image(self):
+        img = Image.new('RGB', (200, 200), color=(245, 245, 245))
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([20, 40, 180, 160], fill=(230, 230, 230), outline=(215, 215, 215), width=3)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG')
+
+        result = classify_goods_image(buf.getvalue())
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "rectangle")
+
+    def test_classify_no_clear_shape(self):
+        result = classify_goods_image(self.noise_bytes)
+        self.assertIsNone(result)
+
+    def test_classify_unknown_image(self):
+        result = classify_goods_image(b"not an image")
+        self.assertIsNone(result)
+
+
+class GoodsClassifyAPITests(TestCase):
+    """图片分类 API 测试"""
+
+    def setUp(self):
+        from apps.users.models import User, Role
+        self.client = APIClient()
+        role = Role.objects.create(name="分类测试")
+        self.user = User.objects.create(username="classifyuser", password="test123", role=role)
+        self.client.force_authenticate(user=self.user)
+        Category.objects.get_or_create(
+            name="吧唧", defaults={"shape_type": "round", "path_name": "吧唧"}
+        )
+        self.badge_parent = Category.objects.get(name="吧唧")
+        self.badge_58 = Category.objects.create(
+            name="58mm吧唧",
+            parent=self.badge_parent,
+            path_name="吧唧/58mm吧唧",
+        )
+        self.badge_75 = Category.objects.create(
+            name="75mm吧唧",
+            parent=self.badge_parent,
+            path_name="吧唧/75mm吧唧",
+        )
+        Category.objects.get_or_create(
+            name="小卡", defaults={"shape_type": "rectangle", "path_name": "小卡"}
+        )
+        self.polaroid = Category.objects.create(name="拍立得", path_name="拍立得")
+
+    def _create_jpeg(self, draw_func, size=(200, 200)):
+        img = Image.new('RGB', size, color='white')
+        d = ImageDraw.Draw(img)
+        draw_func(d)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG')
+        buf.seek(0)
+        return buf
+
+    def test_classify_round_returns_suggestions(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = self._create_jpeg(lambda d: d.ellipse([20, 20, 180, 180], fill='black'))
+        image_file = SimpleUploadedFile("test.jpg", buf.read(), content_type="image/jpeg")
+
+        resp = self.client.post(
+            reverse("goods-classify-image"),
+            {"image": image_file},
+            format="multipart",
+        )
+
+        self.assertEqual(resp.status_code, 200, msg=resp.data)
+        data = resp.data
+        self.assertEqual(data["shape_type"], "round")
+        self.assertGreaterEqual(data["confidence"], 0.5)
+        self.assertTrue(len(data["suggestions"]) > 0)
+        suggestion_ids = {item["id"] for item in data["suggestions"]}
+        self.assertIn(self.badge_58.id, suggestion_ids)
+        self.assertIn(self.badge_75.id, suggestion_ids)
+
+    def test_classify_rectangle_returns_suggestions(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = self._create_jpeg(lambda d: d.rectangle([20, 40, 180, 160], fill='black'))
+        image_file = SimpleUploadedFile("test.jpg", buf.read(), content_type="image/jpeg")
+
+        resp = self.client.post(
+            reverse("goods-classify-image"),
+            {"image": image_file},
+            format="multipart",
+        )
+
+        self.assertEqual(resp.status_code, 200, msg=resp.data)
+        data = resp.data
+        self.assertEqual(data["shape_type"], "rectangle")
+        suggestion_ids = {item["id"] for item in data["suggestions"]}
+        self.assertIn(self.polaroid.id, suggestion_ids)
+
+    def test_classify_no_shape_returns_422(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = self._create_jpeg(lambda d: None)
+        image_file = SimpleUploadedFile("test.jpg", buf.read(), content_type="image/jpeg")
+
+        resp = self.client.post(
+            reverse("goods-classify-image"),
+            {"image": image_file},
+            format="multipart",
+        )
+
+        self.assertEqual(resp.status_code, 422, msg=resp.data)
+
+    def test_classify_requires_auth(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        self.client.force_authenticate(user=None)
+        buf = self._create_jpeg(lambda d: d.ellipse([20, 20, 180, 180], fill='black'))
+        image_file = SimpleUploadedFile("test.jpg", buf.read(), content_type="image/jpeg")
+        resp = self.client.post(
+            reverse("goods-classify-image"),
+            {"image": image_file},
+            format="multipart",
+        )
+        self.assertIn(resp.status_code, (401, 403), msg=resp.data)
 

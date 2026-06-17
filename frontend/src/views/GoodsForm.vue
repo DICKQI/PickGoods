@@ -77,6 +77,23 @@
                   <span class="color-dot" v-if="selectedCategory.color_tag" :style="{ backgroundColor: selectedCategory.color_tag || '#a3a3a3' }"></span>
                   <span class="chip-text">{{ selectedCategory.path_name || selectedCategory.name }}</span>
                 </div>
+                <div v-if="!selectedCategory && classifyResult?.suggestions?.length && classifyResult.shape_type" class="classify-suggestions">
+                  <span class="classify-suggestions__label">疑似品类：</span>
+                  <el-tag
+                    v-for="sug in classifyResult.suggestions"
+                    :key="sug.id"
+                    class="classify-suggestion-tag"
+                    :type="classifyResult.confidence >= 0.7 ? 'primary' : 'info'"
+                    effect="plain"
+                    @click="selectSuggestedCategory(sug.id)"
+                  >
+                    {{ sug.path_name || sug.name }}
+                  </el-tag>
+                  <span class="classify-confidence">{{ Math.round(classifyResult.confidence * 100) }}%</span>
+                  <el-button text size="small" class="classify-dismiss-btn" @click="dismissSuggestions">
+                    忽略
+                  </el-button>
+                </div>
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
@@ -406,6 +423,7 @@ import OcrFillDialog from '@/views/goods-form/components/OcrFillDialog.vue'
 import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFormMetadata'
 import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
+import { useImageClassifier } from '@/views/goods-form/composables/useImageClassifier'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 const router = useRouter()
 const route = useRoute()
@@ -486,6 +504,9 @@ const {
   handleAdditionalPhotosUpload, setExistingPhotos, cleanupNewPhotos,
 } = additionalPhotos
 
+const imageClassifier = useImageClassifier()
+const { classifyResult, dismissSuggestions, runClassification } = imageClassifier
+
 const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft' | 'publish') => {
   const id = result.id
   if (mainPhotoFile.value) {
@@ -539,6 +560,7 @@ const handleMainPhotoRemove = () => {
   mainPhotoFile.value = null
   mainPhotoList.value = []
   formData.value.main_photo = ''
+  dismissSuggestions()
 }
 
 // ── Crop dialog state ──
@@ -567,6 +589,16 @@ const handleMainPhotoChange = (uploadFile: UploadFile) => {
 
 const handleCropDialogConfirm = (file: File, previewUrl: string) => {
   setMainPhotoFromFile(file, previewUrl)
+  if (!isEditMode.value && !formData.value.category) {
+    void runClassification(file)
+  } else {
+    dismissSuggestions()
+  }
+}
+
+const selectSuggestedCategory = (categoryId: number) => {
+  formData.value.category = categoryId
+  dismissSuggestions()
 }
 
 const handleCropDialogCancel = () => { cropDialogVisible.value = false }
@@ -892,6 +924,7 @@ const handleReset = async () => {
   try {
     await ElMessageBox.confirm('确定要重置表单吗？当前填写内容将恢复为进入页面时的状态（未保存的修改会丢失）。', '重置表单', { type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消' })
     formRef.value?.resetFields()
+    dismissSuggestions()
     if (useCreateWizard.value) currentWizardStepIndex.value = 0
   } catch { /* user cancelled */ }
 }
@@ -1484,4 +1517,35 @@ onUnmounted(() => {
 @keyframes rotating { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .ocr-upload-hint { margin: 6px 0 0; font-size: 12px; color: #a8abb2; }
 
+.classify-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: var(--el-color-primary-light-9);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.classify-suggestions__label {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  margin-right: 2px;
+}
+
+.classify-suggestion-tag {
+  cursor: pointer;
+}
+
+.classify-confidence {
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.classify-dismiss-btn {
+  font-size: 12px;
+  margin-left: 4px;
+}
 </style>

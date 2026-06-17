@@ -19,6 +19,7 @@ from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
@@ -34,6 +35,7 @@ from apps.location.models import StorageNode
 from ..serializers import (
     GoodsDetailSerializer,
     GoodsDuplicateCandidateSerializer,
+    GoodsImageClassifyRequestSerializer,
     GoodsListSerializer,
     GoodsMoveSerializer,
 )
@@ -49,6 +51,74 @@ def _is_draft_status(value):
         return str(value).lower() == "draft"
     except Exception:
         return False
+
+
+CATEGORY_SHAPE_KEYWORDS = {
+    "round": ("吧唧", "徽章", "马口铁"),
+    "rectangle": ("小卡", "拍立得", "色纸", "镭射票", "透卡", "明信片", "卡片", "纸片"),
+}
+
+
+def _category_shape_text(category):
+    return f"{category.name or ''}/{category.path_name or ''}"
+
+
+def _category_matches_shape_keyword(category, shape_type):
+    text = _category_shape_text(category)
+    return any(keyword in text for keyword in CATEGORY_SHAPE_KEYWORDS.get(shape_type, ()))
+
+
+def _collect_descendant_category_ids(children_by_parent, root_ids):
+    descendants = set()
+    stack = list(root_ids)
+    while stack:
+        parent_id = stack.pop()
+        for child in children_by_parent.get(parent_id, []):
+            if child.id in descendants:
+                continue
+            descendants.add(child.id)
+            stack.append(child.id)
+    return descendants
+
+
+def _build_category_shape_suggestions(shape_type, limit=12):
+    categories = list(Category.objects.all().order_by("order", "id"))
+    children_by_parent = {}
+    for category in categories:
+        children_by_parent.setdefault(category.parent_id, []).append(category)
+
+    explicit_ids = {category.id for category in categories if category.shape_type == shape_type}
+    descendant_ids = _collect_descendant_category_ids(children_by_parent, explicit_ids)
+
+    scored = []
+    for category in categories:
+        has_children = bool(children_by_parent.get(category.id))
+        source_score = 0
+        if category.id in descendant_ids:
+            source_score = 110 if not has_children else 85
+        elif category.id in explicit_ids:
+            source_score = 100 if not has_children else 80
+        elif _category_matches_shape_keyword(category, shape_type):
+            source_score = 95 if not has_children else 75
+
+        if source_score <= 0:
+            continue
+
+        path = category.path_name or category.name
+        depth_bonus = min(path.count("/"), 3) * 2
+        spec_bonus = 6 if any(token in path.lower() for token in ("mm", "×", "x")) else 0
+        scored.append((source_score + depth_bonus + spec_bonus, category))
+
+    scored.sort(key=lambda item: (-item[0], item[1].order, item[1].id))
+    return [
+        {
+            "id": category.id,
+            "name": category.name,
+            "path_name": category.path_name or category.name,
+            "shape_type": category.shape_type or shape_type,
+        }
+        for _, category in scored[:limit]
+    ]
 
 
 class GoodsPagination(PageNumberPagination):
@@ -1338,6 +1408,47 @@ class GoodsViewSet(viewsets.ModelViewSet):
                         ip_ids.remove(ip_id)
 
         return result
+
+    @action(
+        detail=False,
+        methods=["POST"],
+        url_path="classify-image",
+        parser_classes=[MultiPartParser, FormParser],
+        permission_classes=[IsAuthenticated],
+        throttle_classes=[ScopedRateThrottle],
+    )
+    def classify_image(self, request):
+        """对上传的谷子图片进行品类形状分类。"""
+        req_serializer = GoodsImageClassifyRequestSerializer(data=request.data)
+        if not req_serializer.is_valid():
+            return Response(req_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        image_file = req_serializer.validated_data["image"]
+        image_bytes = image_file.read()
+
+        from ..classifier import classify_goods_image
+
+        result = classify_goods_image(image_bytes)
+        if result is None:
+            return Response(
+                {
+                    "shape_type": None,
+                    "confidence": 0.0,
+                    "suggestions": [],
+                    "detail": "未能识别图片中谷子的品类形状",
+                },
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+
+        shape_type = result["shape_type"]
+        confidence = result["confidence"]
+        suggestions = _build_category_shape_suggestions(shape_type)
+
+        return Response({
+            "shape_type": shape_type,
+            "confidence": confidence,
+            "suggestions": suggestions,
+        })
 
     def _order_by_ids(self, qs, id_list):
         """

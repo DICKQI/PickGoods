@@ -70,6 +70,7 @@ export interface Category {
   parent: number | null
   path_name: string
   color_tag?: string | null
+  shape_type?: 'round' | 'rectangle' | null
   order: number
   children?: Category[]
 }
@@ -458,6 +459,22 @@ export interface OcrGoodsItem {
   suggestions: OcrSuggestions
   source_lines: string[]
   warnings: string[]
+}
+
+/** 图片品类分类建议项 */
+export interface ClassifySuggestion {
+  id: number
+  name: string
+  path_name: string
+  shape_type?: 'round' | 'rectangle' | null
+}
+
+/** 图片品类分类结果 */
+export interface ClassifyResult {
+  shape_type: 'round' | 'rectangle' | null
+  confidence: number
+  suggestions: ClassifySuggestion[]
+  detail?: string
 }
 
 // 谷子排序移动响应

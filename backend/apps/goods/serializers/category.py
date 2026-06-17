@@ -12,7 +12,7 @@ class CategorySimpleSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Category
-        fields = ("id", "name", "parent", "path_name", "color_tag", "order")
+        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order")
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
@@ -23,7 +23,7 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Category
-        fields = ("id", "name", "parent", "path_name", "color_tag", "order")
+        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order")
 
 
 class CategoryOrderItemSerializer(serializers.Serializer):
@@ -64,7 +64,7 @@ class CategoryDetailSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Category
-        fields = ("id", "name", "parent", "path_name", "color_tag", "order")
+        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order")
     
     def create(self, validated_data):
         """创建品类时，如果未提供 path_name，则根据父节点自动生成"""
