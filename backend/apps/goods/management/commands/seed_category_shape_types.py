@@ -6,7 +6,7 @@ from apps.goods.models import Category
 # (name, shape_type)
 DEFAULT_CATEGORIES = [
     ("吧唧", "round"),
-    ("异形吧唧", "round"),
+    ("异形吧唧", None),
     ("金属徽章", "round"),
     ("亚克力立牌", None),
     ("摇摇乐", None),

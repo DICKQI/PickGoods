@@ -956,6 +956,30 @@ class GoodsClassifyAPITests(TestCase):
             parent=self.badge_parent,
             path_name="吧唧/75mm吧唧",
         )
+        self.irregular_badge = Category.objects.create(
+            name="异形吧唧",
+            parent=self.badge_parent,
+            path_name="吧唧/异形吧唧",
+            shape_type="round",
+        )
+        self.square_badge = Category.objects.create(
+            name="70×44mm",
+            parent=Category.objects.create(
+                name="方形吧唧",
+                parent=self.irregular_badge,
+                path_name="吧唧/异形吧唧/方形吧唧",
+            ),
+            path_name="吧唧/异形吧唧/方形吧唧/70×44mm",
+        )
+        self.heart_badge = Category.objects.create(
+            name="57×54mm",
+            parent=Category.objects.create(
+                name="心形吧唧",
+                parent=self.irregular_badge,
+                path_name="吧唧/异形吧唧/心形吧唧",
+            ),
+            path_name="吧唧/异形吧唧/心形吧唧/57×54mm",
+        )
         Category.objects.get_or_create(
             name="小卡", defaults={"shape_type": "rectangle", "path_name": "小卡"}
         )
@@ -989,6 +1013,29 @@ class GoodsClassifyAPITests(TestCase):
         suggestion_ids = {item["id"] for item in data["suggestions"]}
         self.assertIn(self.badge_58.id, suggestion_ids)
         self.assertIn(self.badge_75.id, suggestion_ids)
+
+    def test_classify_round_excludes_irregular_badge_branch(self):
+        """圆形图只推荐常规圆形吧唧，不展开异形吧唧生产分支。"""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = self._create_jpeg(lambda d: d.ellipse([20, 20, 180, 180], fill='black'))
+        image_file = SimpleUploadedFile("round.jpg", buf.read(), content_type="image/jpeg")
+
+        resp = self.client.post(
+            reverse("goods-classify-image"),
+            {"image": image_file},
+            format="multipart",
+        )
+
+        self.assertEqual(resp.status_code, 200, msg=resp.data)
+        data = resp.data
+        self.assertEqual(data["shape_type"], "round")
+        paths = [item["path_name"] for item in data["suggestions"]]
+        self.assertTrue(any("58mm" in path for path in paths), msg=paths)
+        self.assertTrue(any("75mm" in path for path in paths), msg=paths)
+        self.assertFalse(any("异形" in path for path in paths), msg=paths)
+        suggestion_ids = {item["id"] for item in data["suggestions"]}
+        self.assertNotIn(self.square_badge.id, suggestion_ids)
+        self.assertNotIn(self.heart_badge.id, suggestion_ids)
 
     def test_classify_rectangle_returns_suggestions(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
