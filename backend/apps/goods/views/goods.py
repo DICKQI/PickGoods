@@ -58,6 +58,26 @@ CATEGORY_SHAPE_KEYWORDS = {
     "rectangle": ("小卡", "拍立得", "色纸", "镭射票", "透卡", "明信片", "卡片", "纸片"),
 }
 
+CATEGORY_SHAPE_EXCLUDE_KEYWORDS = {
+    "round": (
+        "异形",
+        "方形",
+        "正方形",
+        "长方形",
+        "矩形",
+        "心形",
+        "椭圆",
+        "宝石",
+        "星形",
+        "星型",
+        "菱形",
+        "三角",
+        "六边",
+        "多边形",
+    ),
+    "rectangle": ("吧唧", "徽章", "马口铁", "圆形", "异形"),
+}
+
 
 def _category_shape_text(category):
     return f"{category.name or ''}/{category.path_name or ''}"
@@ -66,6 +86,11 @@ def _category_shape_text(category):
 def _category_matches_shape_keyword(category, shape_type):
     text = _category_shape_text(category)
     return any(keyword in text for keyword in CATEGORY_SHAPE_KEYWORDS.get(shape_type, ()))
+
+
+def _category_excluded_for_shape(category, shape_type):
+    text = _category_shape_text(category)
+    return any(keyword in text for keyword in CATEGORY_SHAPE_EXCLUDE_KEYWORDS.get(shape_type, ()))
 
 
 def _collect_descendant_category_ids(children_by_parent, root_ids):
@@ -87,11 +112,18 @@ def _build_category_shape_suggestions(shape_type, limit=12):
     for category in categories:
         children_by_parent.setdefault(category.parent_id, []).append(category)
 
-    explicit_ids = {category.id for category in categories if category.shape_type == shape_type}
+    explicit_ids = {
+        category.id
+        for category in categories
+        if category.shape_type == shape_type and not _category_excluded_for_shape(category, shape_type)
+    }
     descendant_ids = _collect_descendant_category_ids(children_by_parent, explicit_ids)
 
     scored = []
     for category in categories:
+        if _category_excluded_for_shape(category, shape_type):
+            continue
+
         has_children = bool(children_by_parent.get(category.id))
         source_score = 0
         if category.id in descendant_ids:
