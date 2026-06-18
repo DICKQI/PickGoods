@@ -21,6 +21,7 @@ _CIRCLE_PARAM2 = 35
 _CONTOUR_MIN_AREA_RATIO = 0.02
 _RECT_EPSILON_RATIO = 0.03
 _RECTANGULARITY_THRESHOLD = 0.80
+_RECTANGLE_DOMINANT_CONFIDENCE = 0.95
 
 _MAX_SIDE = 512
 _BLUR_KERNEL = (5, 5)
@@ -162,6 +163,9 @@ def classify_goods_image(image_bytes: bytes) -> Optional[dict]:
     )
 
     if circle_count > 0 and rect_count > 0:
+        # 色纸/卡片内经常有人物头发、装饰圆弧等圆形内容；强矩形外框应优先代表商品外形。
+        if rect_conf >= _RECTANGLE_DOMINANT_CONFIDENCE:
+            return {"shape_type": "rectangle", "confidence": round(float(rect_conf), 2)}
         if circle_conf >= rect_conf:
             return {"shape_type": "round", "confidence": round(float(circle_conf), 2)}
         else:

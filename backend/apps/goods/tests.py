@@ -924,6 +924,22 @@ class GoodsImageClassifierTests(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["shape_type"], "rectangle")
 
+    def test_classify_rectangle_with_inner_circles_as_rectangle(self):
+        img = Image.new('RGB', (1600, 1200), color='white')
+        draw = ImageDraw.Draw(img)
+        draw.rectangle([100, 390, 1500, 820], fill=(40, 35, 60), outline=(190, 150, 70), width=16)
+        draw.rectangle([180, 470, 1420, 750], fill=(120, 165, 220), outline=(210, 170, 80), width=10)
+        draw.rectangle([220, 500, 1380, 720], fill=(130, 170, 220))
+        for box in ([600, 500, 800, 700], [850, 500, 1050, 700], [1100, 500, 1300, 700]):
+            draw.ellipse(box, outline=(245, 245, 250), width=16)
+        buf = io.BytesIO()
+        img.save(buf, format='JPEG', quality=95)
+
+        result = classify_goods_image(buf.getvalue())
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "rectangle")
+
     def test_classify_no_clear_shape(self):
         result = classify_goods_image(self.noise_bytes)
         self.assertIsNone(result)
