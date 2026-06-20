@@ -22,14 +22,18 @@ export function useAdditionalPhotos(goodsId: Ref<string | undefined>) {
   const handleAdditionalPhotoChange = (uploadFile: UploadFile) => {
     const file = uploadFile.raw
     if (file) {
-      const preview = URL.createObjectURL(file)
-      newAdditionalPhotoFiles.value.push({
-        file,
-        preview,
-        label: '',
-      })
+      addNewPhotoFile(file)
     }
     additionalPhotoList.value = []
+  }
+
+  const addNewPhotoFile = (file: File, options?: { label?: string; preview?: string }) => {
+    const preview = options?.preview || URL.createObjectURL(file)
+    newAdditionalPhotoFiles.value.push({
+      file,
+      preview,
+      label: options?.label ?? '',
+    })
   }
 
   const handleAdditionalPhotoRemove = () => {
@@ -125,6 +129,7 @@ export function useAdditionalPhotos(goodsId: Ref<string | undefined>) {
     newAdditionalPhotoFiles,
     additionalPhotoList,
     handleAdditionalPhotoChange,
+    addNewPhotoFile,
     handleAdditionalPhotoRemove,
     handleRemoveNewPhoto,
     handleRemoveExistingPhoto,

@@ -53,7 +53,7 @@
           <el-row :gutter="20">
             <el-col :xs="24" :sm="12">
               <el-form-item label="谷子名称" prop="name" class="is-required">
-                <el-input v-model="formData.name" placeholder="请输入谷子名称" />
+                <el-input :model-value="formData.name" placeholder="请输入谷子名称" @update:model-value="handleNameInput" />
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
@@ -98,7 +98,7 @@
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="主题">
-                <el-select v-model="formData.theme" placeholder="选择或创建主题" filterable allow-create default-first-option :reserve-keyword="true" @change="handleThemeChange" @create="handleThemeCreate" style="width: 100%" clearable>
+                <el-select v-model="formData.theme" placeholder="选择或创建主题" filterable allow-create default-first-option :reserve-keyword="true" @change="handleThemeSelectionChange" @create="handleThemeCreate" style="width: 100%" clearable>
                   <el-option v-for="theme in themeOptions" :key="theme.id" :label="theme.name" :value="theme.id" />
                 </el-select>
               </el-form-item>
@@ -150,7 +150,7 @@
             </el-col>
             <el-col :xs="12" :sm="12">
               <el-form-item label="是否官谷">
-                <el-switch v-model="formData.is_official" active-text="是" inactive-text="否" inline-prompt />
+                <el-switch v-model="formData.is_official" active-text="是" inactive-text="否" inline-prompt @change="markIsOfficialTouched" />
               </el-form-item>
             </el-col>
           </el-row>
@@ -365,6 +365,27 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="themeImagePickerVisible" width="min(92vw, 720px)" class="theme-image-dialog" title="选择主题图片" :close-on-click-modal="false">
+      <div class="theme-image-grid">
+        <label
+          v-for="image in activeThemeImages"
+          :key="image.id"
+          class="theme-image-card"
+          :class="{ 'is-selected': selectedThemeImageIds.includes(image.id) }"
+        >
+          <input v-model="selectedThemeImageIds" type="checkbox" :value="image.id" class="theme-image-card__checkbox" />
+          <img :src="image.image" :alt="image.label || '主题图片'" class="theme-image-card__img" />
+          <span class="theme-image-card__label">{{ image.label || '主题图片' }}</span>
+        </label>
+      </div>
+      <template #footer>
+        <div class="theme-image-dialog-footer">
+          <el-button @click="themeImagePickerVisible = false">取消</el-button>
+          <el-button type="primary" :disabled="selectedThemeImageIds.length === 0" @click="applySelectedThemeImages">加入附件图片</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <OcrBatchImportDialog
       v-if="!isEditMode"
       v-model="ocrBatchDialogVisible"
@@ -394,7 +415,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
 import {
@@ -415,7 +436,8 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
 import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
-import type { GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult } from '@/api/types'
+import { copyThemeImagesFromGoods, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
+import type { GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
@@ -425,6 +447,7 @@ import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditiona
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
 import { useImageClassifier } from '@/views/goods-form/composables/useImageClassifier'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { getCurrentBaseURL } from '@/utils/request'
 const router = useRouter()
 const route = useRoute()
 const locationStore = useLocationStore()
@@ -493,7 +516,8 @@ const metadata = useGoodsFormMetadata(formData)
 const {
   ipOptions, characters, categoryOptions, themeOptions, filteredCharacters,
   categoryTreeOptions, selectedCategory,
-  handleIpChange, handleThemeChange, handleThemeCreate, ensureThemeCreated, loadMetadata,
+  pendingThemeName, handleIpChange, handleThemeChange: applyThemeSelection, handleThemeCreate, ensureThemeCreated, loadMetadata,
+  wasThemeCreatedInCurrentFlow,
 } = metadata
 
 const additionalPhotos = useAdditionalPhotos(goodsId)
@@ -501,19 +525,315 @@ const {
   existingAdditionalPhotos, newAdditionalPhotoFiles, additionalPhotoList,
   handleAdditionalPhotoChange, handleAdditionalPhotoRemove,
   handleRemoveNewPhoto, handleRemoveExistingPhoto, handlePhotoLabelChange,
-  handleAdditionalPhotosUpload, setExistingPhotos, cleanupNewPhotos,
+  handleAdditionalPhotosUpload, setExistingPhotos, cleanupNewPhotos, addNewPhotoFile,
 } = additionalPhotos
+
+const DEFAULT_NOTES_TEMPLATE = '店铺：\n工艺：\n画师：\n主题：'
+const activeThemeTemplatePayload = ref<ThemeTemplatePayload | null>(null)
+const themeImagePickerVisible = ref(false)
+const selectedThemeImageIds = ref<number[]>([])
+const appliedThemeImageIds = ref<Set<number>>(new Set())
+const isOfficialTouched = ref(false)
+const activeThemeImages = computed<ThemeImage[]>(() => activeThemeTemplatePayload.value?.images ?? [])
+
+const isBlankText = (value: string | null | undefined) => !value || value.trim() === ''
+
+const isBlankTemplateField = (value: unknown) => {
+  if (Array.isArray(value)) return value.length === 0
+  if (typeof value === 'string') {
+    return isBlankText(value) || value.trim() === DEFAULT_NOTES_TEMPLATE.trim()
+  }
+  return value === undefined || value === null
+}
+
+type GoodsNameSource = 'auto' | 'user' | 'external'
+
+const lastAutoGeneratedName = ref('')
+const isSettingGoodsName = ref(false)
+const hasUserEditedGoodsName = ref(false)
+
+const setGoodsName = (name: string, source: GoodsNameSource) => {
+  isSettingGoodsName.value = true
+  formData.value.name = name
+  if (source === 'auto') {
+    lastAutoGeneratedName.value = name
+    hasUserEditedGoodsName.value = false
+  } else if (source === 'user') {
+    hasUserEditedGoodsName.value = name.trim() !== ''
+    if (!hasUserEditedGoodsName.value) lastAutoGeneratedName.value = ''
+  } else {
+    hasUserEditedGoodsName.value = name.trim() !== ''
+    lastAutoGeneratedName.value = ''
+  }
+  void nextTick(() => {
+    isSettingGoodsName.value = false
+  })
+}
+
+const handleNameInput = (value: string) => {
+  setGoodsName(value, 'user')
+}
+
+const getSelectedCharacterNameForAutoName = () => {
+  if (formData.value.characters.length !== 1) return null
+  const character = characters.value.find(item => item.id === formData.value.characters[0])
+  return character?.name?.trim() || null
+}
+
+const getThemeNameForAutoName = () => {
+  if (pendingThemeName.value) return pendingThemeName.value
+  const theme = formData.value.theme
+  if (typeof theme === 'string') return theme.trim() || null
+  if (typeof theme === 'number') {
+    return themeOptions.value.find(item => item.id === theme)?.name?.trim() || null
+  }
+  return null
+}
+
+const getTopLevelCategoryNameForAutoName = () => {
+  let category = categoryOptions.value.find(item => item.id === formData.value.category)
+  if (!category) return null
+
+  const seen = new Set<number>()
+  while (category.parent !== null && !seen.has(category.id)) {
+    seen.add(category.id)
+    const parent = categoryOptions.value.find(item => item.id === category!.parent)
+    if (!parent) break
+    category = parent
+  }
+
+  return category.name?.trim() || null
+}
+
+const buildAutoGoodsName = () => {
+  const characterName = getSelectedCharacterNameForAutoName()
+  const themeName = getThemeNameForAutoName()
+  const categoryName = getTopLevelCategoryNameForAutoName()
+  if (!characterName || !themeName || !categoryName) return null
+  return `${characterName}《${themeName}》${categoryName}`
+}
+
+const refreshAutoGoodsName = () => {
+  if (hasUserEditedGoodsName.value) return
+
+  const currentName = formData.value.name.trim()
+  if (currentName && currentName !== lastAutoGeneratedName.value) {
+    hasUserEditedGoodsName.value = true
+    return
+  }
+
+  const nextName = buildAutoGoodsName()
+  if (!nextName) {
+    if (currentName && currentName === lastAutoGeneratedName.value) {
+      setGoodsName('', 'auto')
+    }
+    return
+  }
+
+  if (formData.value.name !== nextName) {
+    setGoodsName(nextName, 'auto')
+  }
+}
+
+watch(
+  () => [
+    formData.value.name,
+    formData.value.characters.join(','),
+    formData.value.category,
+    formData.value.theme,
+    pendingThemeName.value,
+    characters.value,
+    categoryOptions.value,
+    themeOptions.value,
+  ],
+  () => {
+    if (isSettingGoodsName.value) return
+    if (formData.value.name.trim() === '') {
+      hasUserEditedGoodsName.value = false
+      if (lastAutoGeneratedName.value && formData.value.name !== lastAutoGeneratedName.value) {
+        lastAutoGeneratedName.value = ''
+      }
+    }
+    refreshAutoGoodsName()
+  },
+  { deep: true },
+)
+
+const markIsOfficialTouched = () => {
+  isOfficialTouched.value = true
+}
+
+const applyThemeTemplateDefaults = (payload: ThemeTemplatePayload) => {
+  const template = payload.template
+  if (!template) return
+  const fd = formData.value
+
+  if (isBlankTemplateField(fd.name) && template.name) setGoodsName(template.name, 'external')
+  if (isBlankTemplateField(fd.ip) && template.ip?.id) {
+    fd.ip = template.ip.id
+  }
+  if (isBlankTemplateField(fd.characters) && template.characters?.length) {
+    fd.characters = template.characters.map(character => character.id)
+  }
+  if (isBlankTemplateField(fd.purchase_date) && template.purchase_date) {
+    fd.purchase_date = template.purchase_date
+  }
+  if (!isOfficialTouched.value) {
+    fd.is_official = template.is_official
+  }
+  if (isBlankTemplateField(fd.notes) && template.notes) {
+    fd.notes = template.notes
+  }
+}
+
+const askToUseThemeImages = async (images: ThemeImage[]) => {
+  if (images.length === 0) return
+  const freshImages = images.filter(image => !appliedThemeImageIds.value.has(image.id))
+  if (freshImages.length === 0) return
+
+  try {
+    await ElMessageBox.confirm('该主题有历史图片，是否从主题图片池中选择附件图？', '使用主题图片', {
+      type: 'info',
+      confirmButtonText: '选择图片',
+      cancelButtonText: '暂不使用',
+    })
+    selectedThemeImageIds.value = freshImages.map(image => image.id)
+    themeImagePickerVisible.value = true
+  } catch {
+    // 用户取消选择历史图片，不影响主题模板字段填充。
+  }
+}
+
+const loadAndApplyThemeTemplate = async (themeId: number) => {
+  try {
+    const payload = await getThemeTemplate(themeId)
+    activeThemeTemplatePayload.value = payload
+    applyThemeTemplateDefaults(payload)
+    await askToUseThemeImages(payload.images)
+  } catch (err: any) {
+    ElMessage.warning(err?.message || '主题模板加载失败')
+  }
+}
+
+const handleThemeChange = async (value: number | string | null) => {
+  applyThemeSelection(value)
+  if (!isEditMode.value && typeof formData.value.theme === 'number') {
+    await loadAndApplyThemeTemplate(formData.value.theme)
+  } else {
+    activeThemeTemplatePayload.value = null
+    themeImagePickerVisible.value = false
+    selectedThemeImageIds.value = []
+  }
+}
+
+const handleThemeSelectionChange = handleThemeChange
+
+const buildThemeTemplatePayload = () => ({
+  name: formData.value.name,
+  ip_id: formData.value.ip!,
+  character_ids: [...formData.value.characters],
+  purchase_date: formData.value.purchase_date || null,
+  is_official: formData.value.is_official,
+  notes: formData.value.notes || null,
+})
+
+const promptAndCreateThemeTemplate = async (goodsIdValue: string, themeId: number | null | undefined) => {
+  if (!themeId || !wasThemeCreatedInCurrentFlow(themeId)) return
+  if (!formData.value.ip || formData.value.characters.length === 0 || !formData.value.name.trim()) return
+
+  try {
+    await ElMessageBox.confirm('要基于当前填写内容创建主题模板吗？下次选择该主题时会自动填充空白字段。', '创建主题模板', {
+      type: 'info',
+      confirmButtonText: '创建模板',
+      cancelButtonText: '暂不创建',
+    })
+  } catch {
+    return
+  }
+
+  await saveThemeTemplate(themeId, buildThemeTemplatePayload())
+  await copyThemeImagesFromGoods(themeId, goodsIdValue)
+}
+
+const resolveThemeImageUrl = (url: string) => {
+  if (/^https?:\/\//i.test(url) || url.startsWith('blob:') || url.startsWith('data:')) return url
+  return new URL(url, getCurrentBaseURL()).toString()
+}
+
+const fileNameFromUrl = (url: string, index: number, mime: string) => {
+  const fallbackExt = mime.includes('/') ? mime.split('/')[1] : 'jpg'
+  const cleanUrl = url.split('?')[0] || ''
+  const lastPart = cleanUrl.split('/').filter(Boolean).pop()
+  return lastPart || `theme_image_${Date.now()}_${index}.${fallbackExt}`
+}
+
+const applySelectedThemeImages = async () => {
+  try {
+    const selectedIds = new Set(selectedThemeImageIds.value)
+    const images = activeThemeImages.value.filter(image => selectedIds.has(image.id))
+    for (const [index, image] of images.entries()) {
+      if (appliedThemeImageIds.value.has(image.id)) continue
+      const imageUrl = resolveThemeImageUrl(image.image)
+      const response = await fetch(imageUrl)
+      if (!response.ok) throw new Error(`拉取主题图片失败：${response.status}`)
+      const blob = await response.blob()
+      const mime = blob.type || 'image/jpeg'
+      const file = new File([blob], fileNameFromUrl(image.image, index, mime), { type: mime })
+      addNewPhotoFile(file, { label: image.label || '', preview: URL.createObjectURL(file) })
+      appliedThemeImageIds.value = new Set([...appliedThemeImageIds.value, image.id])
+    }
+    themeImagePickerVisible.value = false
+    selectedThemeImageIds.value = []
+  } catch (error) {
+    console.error('主题图片加入失败:', error)
+    ElMessage.warning('主题图片加入失败')
+  }
+}
 
 const imageClassifier = useImageClassifier()
 const { classifyResult, dismissSuggestions, runClassification } = imageClassifier
 
-const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft' | 'publish') => {
+const getThemeDescriptionFromNotes = () => {
+  const notes = formData.value.notes?.trim() ?? ''
+  if (!notes || notes === DEFAULT_NOTES_TEMPLATE.trim()) return null
+  return notes
+}
+
+const syncNewThemeNotes = async (themeId: number | null | undefined) => {
+  if (!themeId || !wasThemeCreatedInCurrentFlow(themeId)) return
+
+  const description = getThemeDescriptionFromNotes()
+  if (!description) return
+
+  try {
+    await patchTheme(themeId, { description })
+  } catch (error) {
+    console.error('保存主题备注失败:', error)
+    ElMessage.warning('主题备注保存失败')
+  }
+}
+
+const runNewThemePostSaveFlow = async (
+  goodsIdValue: string,
+  mode: 'draft' | 'publish',
+  themeId: number | null | undefined,
+) => {
+  await syncNewThemeNotes(themeId)
+  if (mode === 'publish') {
+    await promptAndCreateThemeTemplate(goodsIdValue, themeId ?? null)
+  }
+}
+
+const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft' | 'publish', themeId?: number | null) => {
   const id = result.id
   if (mainPhotoFile.value) {
     await uploadMainPhoto(id, mainPhotoFile.value)
   }
   if (newAdditionalPhotoFiles.value.length > 0) {
     await handleAdditionalPhotosUpload(id)
+  }
+  if (!result.merged) {
+    await runNewThemePostSaveFlow(id, mode, themeId)
   }
   if (result.merged) {
     ElMessage.success('已合并到已有谷子')
@@ -671,7 +991,7 @@ const handleOcrFillConfirm = (data: {
   raw_text: string
 }) => {
   const fd = formData.value
-  if (!fd.name && data.name) fd.name = data.name
+  if (!fd.name && data.name) setGoodsName(data.name, 'external')
   if (fd.price === undefined && data.price !== undefined && data.price !== '') {
     const p = parseFloat(data.price)
     if (!isNaN(p)) fd.price = p
@@ -895,12 +1215,13 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
       await updateGoods(id, submitData)
       if (mainPhotoFile.value) await uploadMainPhoto(id, mainPhotoFile.value)
       await handleAdditionalPhotosUpload(id)
+      await runNewThemePostSaveFlow(id, mode, submitData.theme_id ?? null)
       ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
       router.push({ name: 'CloudShowcase' })
     } else {
       const createPayload: GoodsInput = mode === 'publish' ? { ...submitData, merge_strategy: 'auto' } : submitData
       const result = await createGoods(createPayload)
-      await onCreateOrMergeSuccess(result, mode)
+      await onCreateOrMergeSuccess(result, mode, createPayload.theme_id ?? null)
     }
   } catch (err: any) {
     if (mode === 'publish' && err.response?.status === 409) {
@@ -954,7 +1275,7 @@ onMounted(async () => {
   await locationStore.fetchNodes()
 
   if (!route.params.id) {
-    formData.value.notes = '店铺：\n工艺：\n画师：\n主题：'
+    formData.value.notes = DEFAULT_NOTES_TEMPLATE
   }
 
   if (route.params.id) {
@@ -975,6 +1296,8 @@ onMounted(async () => {
         notes: data.notes || '',
         main_photo: data.main_photo || '',
       }
+      hasUserEditedGoodsName.value = Boolean(data.name?.trim())
+      lastAutoGeneratedName.value = ''
       if (data.main_photo) {
         mainPhotoList.value = [{ url: data.main_photo, name: 'main_photo' } as UploadFile]
       }

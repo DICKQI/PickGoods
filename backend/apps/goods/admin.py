@@ -10,6 +10,7 @@ from .models import (
     Showcase,
     ShowcaseGoods,
     Theme,
+    ThemeTemplate,
 )
 
 
@@ -51,6 +52,15 @@ class ThemeAdmin(admin.ModelAdmin):
     list_display = ("id", "name", "created_at")
     search_fields = ("name", "description")
     ordering = ("name",)
+
+
+@admin.register(ThemeTemplate)
+class ThemeTemplateAdmin(admin.ModelAdmin):
+    list_display = ("id", "theme", "user", "name", "ip", "purchase_date", "is_official", "updated_at")
+    search_fields = ("theme__name", "name", "ip__name", "characters__name")
+    autocomplete_fields = ("theme", "user", "ip", "characters")
+    readonly_fields = ("created_at", "updated_at")
+    filter_horizontal = ("characters",)
 
 
 class GuziImageInline(admin.TabularInline):

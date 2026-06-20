@@ -20,6 +20,9 @@ from .category import (
 )
 from .theme import (
     ThemeDetailSerializer,
+    ThemeImageSerializer,
+    ThemeTemplatePayloadSerializer,
+    ThemeTemplateSerializer,
     ThemeSimpleSerializer,
 )
 from .goods import (
@@ -73,6 +76,9 @@ __all__ = [
     # Theme
     "ThemeSimpleSerializer",
     "ThemeDetailSerializer",
+    "ThemeImageSerializer",
+    "ThemeTemplateSerializer",
+    "ThemeTemplatePayloadSerializer",
     # Goods
     "GuziImageSerializer",
     "GoodsListSerializer",

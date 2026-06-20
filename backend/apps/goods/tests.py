@@ -1,5 +1,6 @@
 from django.test import TestCase
 from django.urls import reverse
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
 from rest_framework import status
 from datetime import date, timedelta
@@ -10,7 +11,7 @@ from PIL import Image, ImageDraw
 from django.utils import timezone
 
 from apps.users.models import User, Role
-from .models import Goods, IP, Character, Category, Theme
+from .models import Goods, IP, Character, Category, Theme, ThemeImage
 from .similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
 from .utils import compress_image
 
@@ -437,6 +438,210 @@ class GoodsCRUDTestCase(TestCase):
         items = data.get("results", data)
         names = [i["name"] for i in items]
         self.assertNotIn("Private", names)
+
+
+class ThemeTemplateAPITestCase(TestCase):
+    """主题模板 API 与主题图片池联动。"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name='User')
+        self.user = User.objects.create(username='template_user', password='testpass123', role=self.role)
+        self.other_user = User.objects.create(username='template_other', password='testpass123', role=self.role)
+        self.client.force_authenticate(user=self.user)
+
+        self.ip = IP.objects.create(name='模板测试IP', subject_type=4)
+        self.category = Category.objects.create(name='模板测试品类')
+        self.character = Character.objects.create(ip=self.ip, name='模板测试角色', gender='female')
+        self.partner = Character.objects.create(ip=self.ip, name='模板测试搭档', gender='other')
+        self.theme = Theme.objects.create(user=self.user, name='模板主题')
+        self.other_theme = Theme.objects.create(user=self.other_user, name='别人主题')
+
+    def _image_file(self, name='test.jpg', color='blue'):
+        buf = io.BytesIO()
+        Image.new('RGB', (32, 32), color=color).save(buf, format='JPEG')
+        buf.seek(0)
+        return SimpleUploadedFile(name, buf.read(), content_type='image/jpeg')
+
+    def _large_image_file(self, name='large.bmp'):
+        buf = io.BytesIO()
+        Image.new('RGB', (2000, 2000), color='purple').save(buf, format='BMP')
+        buf.seek(0)
+        return SimpleUploadedFile(name, buf.read(), content_type='image/bmp')
+
+    def _response_debug(self, response):
+        return getattr(response, "data", response.content)
+
+    def test_create_or_update_theme_template(self):
+        payload = {
+            "name": "模板谷子名",
+            "ip_id": self.ip.id,
+            "character_ids": [self.character.id],
+            "purchase_date": "2026-06-18",
+            "is_official": True,
+            "notes": "模板备注",
+        }
+
+        response = self.client.post(f'/api/themes/{self.theme.id}/template/', payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=self._response_debug(response))
+        data = response.json()
+        self.assertEqual(data["name"], "模板谷子名")
+        self.assertEqual(data["ip"]["id"], self.ip.id)
+        self.assertEqual([item["id"] for item in data["characters"]], [self.character.id])
+        self.assertEqual(data["purchase_date"], "2026-06-18")
+        self.assertTrue(data["is_official"])
+        self.assertEqual(data["notes"], "模板备注")
+
+        update_payload = {
+            **payload,
+            "name": "更新后的模板",
+            "character_ids": [self.character.id, self.partner.id],
+            "is_official": False,
+        }
+        response = self.client.post(f'/api/themes/{self.theme.id}/template/', update_payload, format='json')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=self._response_debug(response))
+        data = response.json()
+        self.assertEqual(data["name"], "更新后的模板")
+        self.assertEqual([item["id"] for item in data["characters"]], [self.character.id, self.partner.id])
+        self.assertFalse(data["is_official"])
+
+    def test_update_template_ip_without_new_characters_revalidates_existing_characters(self):
+        payload = {
+            "name": "模板谷子名",
+            "ip_id": self.ip.id,
+            "character_ids": [self.character.id],
+            "purchase_date": None,
+            "is_official": True,
+            "notes": "",
+        }
+        create_response = self.client.post(f'/api/themes/{self.theme.id}/template/', payload, format='json')
+        self.assertEqual(create_response.status_code, status.HTTP_200_OK, msg=self._response_debug(create_response))
+        other_ip = IP.objects.create(name='模板测试另一个IP', subject_type=4)
+
+        response = self.client.post(
+            f'/api/themes/{self.theme.id}/template/',
+            {
+                "name": payload["name"],
+                "ip_id": other_ip.id,
+                "purchase_date": None,
+                "is_official": True,
+                "notes": "",
+            },
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("character_ids", response.json())
+
+    def test_get_theme_template_returns_template_and_images(self):
+        self.client.post(
+            f'/api/themes/{self.theme.id}/template/',
+            {
+                "name": "读取模板",
+                "ip_id": self.ip.id,
+                "character_ids": [self.character.id],
+                "purchase_date": "2026-06-18",
+                "is_official": True,
+                "notes": "",
+            },
+            format='json',
+        )
+        ThemeImage.objects.create(theme=self.theme, image=self._image_file("theme.jpg"), label="海报")
+
+        response = self.client.get(f'/api/themes/{self.theme.id}/template/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=self._response_debug(response))
+        data = response.json()
+        self.assertEqual(data["template"]["name"], "读取模板")
+        self.assertEqual(len(data["images"]), 1)
+        self.assertEqual(data["images"][0]["label"], "海报")
+
+    def test_normal_user_cannot_access_other_users_theme_template(self):
+        payload = {
+            "name": "越权模板",
+            "ip_id": self.ip.id,
+            "character_ids": [self.character.id],
+            "purchase_date": None,
+            "is_official": False,
+            "notes": "",
+        }
+
+        get_response = self.client.get(f'/api/themes/{self.other_theme.id}/template/')
+        post_response = self.client.post(f'/api/themes/{self.other_theme.id}/template/', payload, format='json')
+
+        self.assertEqual(get_response.status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(post_response.status_code, status.HTTP_404_NOT_FOUND)
+
+    def test_copy_images_from_goods_requires_same_owner_and_theme(self):
+        same_theme_goods = Goods.objects.create(
+            user=self.user,
+            name='同主题谷子',
+            ip=self.ip,
+            category=self.category,
+            theme=self.theme,
+            main_photo=self._image_file("main.jpg", "green"),
+        )
+        same_theme_goods.characters.add(self.character)
+        same_theme_goods.additional_photos.create(
+            image=self._image_file("extra.jpg", "red"),
+            label="背板",
+        )
+        other_theme = Theme.objects.create(user=self.user, name='另一个主题')
+        wrong_theme_goods = Goods.objects.create(
+            user=self.user,
+            name='错主题谷子',
+            ip=self.ip,
+            category=self.category,
+            theme=other_theme,
+            main_photo=self._image_file("wrong.jpg", "yellow"),
+        )
+
+        response = self.client.post(
+            f'/api/themes/{self.theme.id}/copy-images-from-goods/',
+            {"goods_id": str(same_theme_goods.id)},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=self._response_debug(response))
+        self.assertEqual(ThemeImage.objects.filter(theme=self.theme).count(), 2)
+        labels = set(ThemeImage.objects.filter(theme=self.theme).values_list("label", flat=True))
+        self.assertEqual(labels, {"主图", "背板"})
+
+        bad_response = self.client.post(
+            f'/api/themes/{self.theme.id}/copy-images-from-goods/',
+            {"goods_id": str(wrong_theme_goods.id)},
+            format='json',
+        )
+        self.assertEqual(bad_response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_copy_images_from_goods_compresses_copied_images(self):
+        goods = Goods.objects.create(
+            user=self.user,
+            name='large image goods',
+            ip=self.ip,
+            category=self.category,
+            theme=self.theme,
+            main_photo=self._large_image_file(),
+        )
+        goods.characters.add(self.character)
+
+        response = self.client.post(
+            f'/api/themes/{self.theme.id}/copy-images-from-goods/',
+            {"goods_id": str(goods.id)},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, msg=self._response_debug(response))
+        copied = ThemeImage.objects.get(theme=self.theme)
+        copied.image.open("rb")
+        try:
+            copied.image.seek(0, 2)
+            self.assertLessEqual(copied.image.tell(), 300 * 1024)
+        finally:
+            copied.image.close()
+        self.assertTrue(copied.image.name.lower().endswith(".jpg"))
 
 
 class GoodsDuplicateDetectionTestCase(TestCase):

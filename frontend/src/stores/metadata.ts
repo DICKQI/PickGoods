@@ -1,13 +1,15 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
 import { getIPList, getIPCharacters, getCategoryList, getThemeList } from '@/api/metadata'
+import { AUTH_TOKEN_KEY } from '@/utils/request'
 import type { IP, Character, Category, Theme } from '@/api/types'
 
 const CACHE_KEYS = {
   IPS: 'metadata_ips',
   CHARACTERS_BY_IP: 'metadata_characters_by_ip', // 改为存储按IP分组的角色
   CATEGORIES: 'metadata_categories',
-  THEMES: 'metadata_themes'
+  THEMES: 'metadata_themes',
+  OWNER: 'metadata_cache_owner',
 }
 
 export const useMetadataStore = defineStore('metadata', () => {
@@ -17,9 +19,48 @@ export const useMetadataStore = defineStore('metadata', () => {
   const themes = ref<Theme[]>([])
   const loading = ref(false)
 
+  const getCacheOwner = () => {
+    const token = localStorage.getItem(AUTH_TOKEN_KEY)
+    return token ? `${token.length}:${token.slice(-16)}` : 'anonymous'
+  }
+
+  const hasCachedMetadata = () => Boolean(
+    localStorage.getItem(CACHE_KEYS.IPS) ||
+    localStorage.getItem(CACHE_KEYS.CHARACTERS_BY_IP) ||
+    localStorage.getItem(CACHE_KEYS.CATEGORIES) ||
+    localStorage.getItem(CACHE_KEYS.THEMES)
+  )
+
+  const clearMemory = () => {
+    ips.value = []
+    charactersByIP.value = {}
+    categories.value = []
+    themes.value = []
+  }
+
+  const removeCachedMetadata = () => {
+    localStorage.removeItem(CACHE_KEYS.IPS)
+    localStorage.removeItem(CACHE_KEYS.CHARACTERS_BY_IP)
+    localStorage.removeItem(CACHE_KEYS.CATEGORIES)
+    localStorage.removeItem(CACHE_KEYS.THEMES)
+  }
+
+  const ensureCacheOwner = () => {
+    const owner = getCacheOwner()
+    const cachedOwner = localStorage.getItem(CACHE_KEYS.OWNER)
+    if (cachedOwner !== owner && (cachedOwner !== null || hasCachedMetadata())) {
+      clearMemory()
+      removeCachedMetadata()
+    }
+    if (cachedOwner !== owner) {
+      localStorage.setItem(CACHE_KEYS.OWNER, owner)
+    }
+  }
+
   // 初始化时从本地缓存加载
   const loadFromCache = () => {
     try {
+      ensureCacheOwner()
       const cachedIps = localStorage.getItem(CACHE_KEYS.IPS)
       if (cachedIps) ips.value = JSON.parse(cachedIps)
 
@@ -39,6 +80,7 @@ export const useMetadataStore = defineStore('metadata', () => {
   // 保存到本地缓存
   const saveToCache = (key: string, data: any) => {
     try {
+      ensureCacheOwner()
       localStorage.setItem(key, JSON.stringify(data))
     } catch (e) {
       console.error('Failed to save metadata to cache', e)
@@ -46,6 +88,7 @@ export const useMetadataStore = defineStore('metadata', () => {
   }
 
   const fetchIPs = async (force = false) => {
+    ensureCacheOwner()
     if (!force && ips.value.length > 0) return ips.value
     try {
       const data = await getIPList()
@@ -60,6 +103,7 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   // 按需获取指定 IP 的角色
   const fetchIPCharacters = async (ipId: number, force = false) => {
+    ensureCacheOwner()
     // 如果非强制刷新，且内存中已有该IP的角色数据，直接返回
     if (!force && charactersByIP.value[ipId]) return charactersByIP.value[ipId]
     
@@ -83,6 +127,7 @@ export const useMetadataStore = defineStore('metadata', () => {
   }
 
   const fetchCategories = async (force = false) => {
+    ensureCacheOwner()
     if (!force && categories.value.length > 0) return categories.value
     try {
       const data = await getCategoryList()
@@ -96,6 +141,7 @@ export const useMetadataStore = defineStore('metadata', () => {
   }
 
   const fetchThemes = async (force = false) => {
+    ensureCacheOwner()
     if (!force && themes.value.length > 0) return themes.value
     try {
       const data = await getThemeList()
@@ -123,15 +169,9 @@ export const useMetadataStore = defineStore('metadata', () => {
   }
 
   const clearCache = () => {
-    ips.value = []
-    charactersByIP.value = {}
-    categories.value = []
-    themes.value = []
-    
-    localStorage.removeItem(CACHE_KEYS.IPS)
-    localStorage.removeItem(CACHE_KEYS.CHARACTERS_BY_IP)
-    localStorage.removeItem(CACHE_KEYS.CATEGORIES)
-    localStorage.removeItem(CACHE_KEYS.THEMES)
+    clearMemory()
+    removeCachedMetadata()
+    localStorage.removeItem(CACHE_KEYS.OWNER)
   }
 
   // 自动加载缓存

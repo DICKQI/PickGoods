@@ -49,6 +49,16 @@ describe('ThemeManagement infinite scroll – source structure', () => {
     expect(viewSource).toContain('sentinelObserver.disconnect()')
   })
 
+  it('refreshes the theme list and closes edit dialog when detail loading returns 404', () => {
+    const handleEditStart = viewSource.indexOf('const handleEdit = async (row: Theme) => {')
+    expect(handleEditStart).toBeGreaterThan(-1)
+    const handleEditBody = viewSource.slice(handleEditStart, handleEditStart + 1200)
+    expect(handleEditBody).toContain('error?.response?.status === 404')
+    expect(handleEditBody).toContain('dialogVisible.value = false')
+    expect(handleEditBody).toContain('editingId.value = null')
+    expect(handleEditBody).toContain('await fetchThemeList(true)')
+  })
+
   it('has guard logic to prevent duplicate loadMoreMobile calls', () => {
     // loadMoreMobile should check loadingMoreMobile.value before proceeding
     expect(viewSource).toContain('if (loadingMoreMobile.value || !hasMoreMobileData.value) return')

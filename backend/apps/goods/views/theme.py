@@ -1,6 +1,7 @@
 """
 主题（Theme）相关的视图
 """
+from django.core.files.base import ContentFile
 from django.db.models import Count
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters, status, viewsets
@@ -8,8 +9,8 @@ from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.response import Response
 
-from ..models import Theme, ThemeImage
-from ..serializers import ThemeDetailSerializer, ThemeSimpleSerializer
+from ..models import Goods, Theme, ThemeImage
+from ..serializers import ThemeDetailSerializer, ThemeImageSerializer, ThemeSimpleSerializer, ThemeTemplateSerializer
 from ..utils import compress_image
 from core.permissions import IsOwnerOnly, is_admin
 
@@ -51,8 +52,15 @@ class ThemeViewSet(viewsets.ModelViewSet):
             return qs.none()
         if not is_admin(user):
             qs = qs.filter(user=user)
-        if self.action in ("retrieve", "upload_images", "delete_theme_image", "delete_theme_images"):
-            qs = qs.prefetch_related("images")
+        if self.action in (
+            "retrieve",
+            "template",
+            "upload_images",
+            "copy_images_from_goods",
+            "delete_theme_image",
+            "delete_theme_images",
+        ):
+            qs = qs.prefetch_related("images", "template__characters__ip")
         return qs
 
     def get_serializer_class(self):
@@ -67,6 +75,105 @@ class ThemeViewSet(viewsets.ModelViewSet):
         if uid is not None and is_admin(self.request.user):
             user = uid
         serializer.save(user=user)
+
+    @action(detail=True, methods=["get", "post"], url_path="template")
+    def template(self, request, pk=None):
+        """Read or upsert the template defaults linked to a theme."""
+        instance = self.get_object()
+
+        if request.method.lower() == "get":
+            template_obj = getattr(instance, "template", None)
+            template_data = None
+            if template_obj is not None:
+                template_data = ThemeTemplateSerializer(
+                    template_obj,
+                    context=self.get_serializer_context(),
+                ).data
+            images = ThemeImageSerializer(
+                instance.images.all(),
+                many=True,
+                context=self.get_serializer_context(),
+            ).data
+            return Response(
+                {"template": template_data, "images": images},
+                status=status.HTTP_200_OK,
+            )
+
+        template_obj = getattr(instance, "template", None)
+        serializer = ThemeTemplateSerializer(
+            template_obj,
+            data=request.data,
+            context=self.get_serializer_context(),
+        )
+        serializer.is_valid(raise_exception=True)
+        serializer.save(theme=instance, user=instance.user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def _copy_theme_image_from_field(self, theme, image_field, label):
+        if not image_field or not getattr(image_field, "name", ""):
+            return None
+        filename = image_field.name.split("/")[-1]
+        compressed = compress_image(image_field, max_size_kb=300)
+        source = compressed or image_field
+        source.seek(0)
+        content = ContentFile(source.read())
+        filename = source.name.split("/")[-1]
+        theme_image = ThemeImage(theme=theme, label=label)
+        theme_image.image.save(filename, content, save=True)
+        return theme_image
+
+    @action(detail=True, methods=["post"], url_path="copy-images-from-goods")
+    def copy_images_from_goods(self, request, pk=None):
+        """Copy a goods item's main and additional photos into the theme image pool."""
+        instance = self.get_object()
+        goods_id = request.data.get("goods_id")
+        if not goods_id:
+            return Response(
+                {"detail": "请提供 goods_id"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            goods = (
+                Goods.objects.select_related("theme", "user")
+                .prefetch_related("additional_photos")
+                .get(id=goods_id, user=instance.user)
+            )
+        except Goods.DoesNotExist:
+            return Response(
+                {"detail": "谷子不存在或不属于当前主题用户"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        if goods.theme_id != instance.id:
+            return Response(
+                {"detail": "只能复制属于该主题的谷子图片"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        copied = []
+        main_copy = self._copy_theme_image_from_field(instance, goods.main_photo, "主图")
+        if main_copy is not None:
+            copied.append(main_copy)
+        for photo in goods.additional_photos.all():
+            copied_photo = self._copy_theme_image_from_field(
+                instance,
+                photo.image,
+                photo.label or "附件图片",
+            )
+            if copied_photo is not None:
+                copied.append(copied_photo)
+
+        if hasattr(instance, "_prefetched_objects_cache"):
+            instance._prefetched_objects_cache.pop("images", None)
+        serializer = ThemeDetailSerializer(
+            instance,
+            context=self.get_serializer_context(),
+        )
+        return Response(
+            {"copied_count": len(copied), **serializer.data},
+            status=status.HTTP_200_OK,
+        )
 
     @action(
         detail=True,

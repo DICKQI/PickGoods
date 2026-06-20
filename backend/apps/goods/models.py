@@ -276,6 +276,66 @@ class ThemeImage(models.Model):
         return f"{self.theme.name} - {self.label or '附加图'}"
 
 
+class ThemeTemplate(models.Model):
+    """
+    Default goods fields captured from a theme creation flow.
+    """
+
+    theme = models.OneToOneField(
+        Theme,
+        on_delete=models.CASCADE,
+        related_name="template",
+        verbose_name="关联主题",
+    )
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        related_name="theme_templates",
+        db_index=True,
+        verbose_name="所属用户",
+    )
+    name = models.CharField(
+        max_length=200,
+        verbose_name="谷子名称",
+    )
+    ip = models.ForeignKey(
+        IP,
+        on_delete=models.PROTECT,
+        related_name="theme_templates",
+        verbose_name="IP作品",
+    )
+    characters = models.ManyToManyField(
+        Character,
+        related_name="theme_templates",
+        blank=True,
+        verbose_name="角色",
+    )
+    purchase_date = models.DateField(
+        null=True,
+        blank=True,
+        verbose_name="入手日期",
+    )
+    is_official = models.BooleanField(
+        default=False,
+        verbose_name="是否官谷",
+    )
+    notes = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="备注",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "主题模板"
+        verbose_name_plural = "主题模板"
+        ordering = ["-updated_at"]
+
+    def __str__(self):
+        return f"{self.theme.name} template"
+
+
 class Goods(models.Model):
     """
     谷子核心表，关联 IP / 角色 / 品类 / 主题 以及 物理位置 StorageNode。

@@ -141,7 +141,7 @@ export function batchUpdateCategoryOrder(items: { id: number; order: number }[])
 
 // ==================== 主题 CRUD ====================
 
-import type { Theme } from './types'
+import type { Theme, ThemeTemplate, ThemeTemplateInput, ThemeTemplatePayload } from './types'
 
 // 获取所有主题列表
 export function getThemeList(params?: { name?: string; search?: string }) {
@@ -171,6 +171,20 @@ export function patchTheme(id: number, data: Partial<{ name: string; description
 // 删除主题
 export function deleteTheme(id: number) {
   return request.delete(`/api/themes/${id}/`)
+}
+
+export function getThemeTemplate(themeId: number) {
+  return request.get<ThemeTemplatePayload>(`/api/themes/${themeId}/template/`)
+}
+
+export function saveThemeTemplate(themeId: number, data: ThemeTemplateInput) {
+  return request.post<ThemeTemplate>(`/api/themes/${themeId}/template/`, data)
+}
+
+export function copyThemeImagesFromGoods(themeId: number, goodsId: string) {
+  return request.post<Theme & { copied_count: number }>(`/api/themes/${themeId}/copy-images-from-goods/`, {
+    goods_id: goodsId,
+  })
 }
 
 // 上传或更新主题附加图片
@@ -264,4 +278,3 @@ export function createBGMCharacters(characters: BGMCreateCharacterItem[], subjec
     characters: charactersWithType,
   })
 }
-

@@ -82,12 +82,40 @@ export interface ThemeImage {
   label?: string | null
 }
 
+export interface ThemeTemplate {
+  id: number
+  theme: number
+  name: string
+  ip: IP
+  characters: Character[]
+  purchase_date?: string | null
+  is_official: boolean
+  notes?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface ThemeTemplatePayload {
+  template: ThemeTemplate | null
+  images: ThemeImage[]
+}
+
+export interface ThemeTemplateInput {
+  name: string
+  ip_id: number
+  character_ids: number[]
+  purchase_date?: string | null
+  is_official: boolean
+  notes?: string | null
+}
+
 // 主题信息
 export interface Theme {
   id: number
   name: string
   description?: string | null
   created_at?: string | null
+  template?: ThemeTemplate | null
   /** 主题附加图片列表，仅详情接口返回 */
   images?: ThemeImage[]
 }

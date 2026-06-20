@@ -666,8 +666,15 @@ const handleEdit = async (row: Theme) => {
       label: img.label ?? '',
       originalLabel: img.label ?? '',
     }))
-  } catch {
-    ElMessage.error('加载主题详情失败')
+  } catch (error: any) {
+    if (error?.response?.status === 404) {
+      dialogVisible.value = false
+      editingId.value = null
+      ElMessage.warning('该主题已不存在或不属于当前用户，已刷新列表')
+      await fetchThemeList(true)
+    } else {
+      ElMessage.error('加载主题详情失败')
+    }
   } finally {
     loadingThemeDetail.value = false
   }

@@ -2,7 +2,11 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import GoodsForm from '@/views/GoodsForm.vue'
-import { classifyGoodsImage, createGoods } from '@/api/goods'
+import { classifyGoodsImage, createGoods, updateGoods } from '@/api/goods'
+import { copyThemeImagesFromGoods, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { updateBaseURL } from '@/utils/request'
+import type { ThemeTemplatePayload } from '@/api/types'
 
 const pushMock = vi.fn()
 let routeParams: Record<string, string | undefined> = {}
@@ -39,10 +43,34 @@ vi.mock('@capacitor/camera', () => ({
 
 vi.mock('@/api/metadata', () => ({
   getIPList: vi.fn(async () => [{ id: 1, name: '咒术回战' }]),
-  getCharacterList: vi.fn(async () => [{ id: 10, name: '五条悟', ip: { id: 1, name: '咒术回战' } }]),
-  getCategoryList: vi.fn(async () => [{ id: 100, name: '吧唧', parent: null, order: 0 }]),
-  getThemeList: vi.fn(async () => []),
+  getCharacterList: vi.fn(async () => [
+    { id: 10, name: '五条悟', ip: { id: 1, name: '咒术回战' } },
+    { id: 11, name: '夏油杰', ip: { id: 1, name: '咒术回战' } },
+  ]),
+  getCategoryList: vi.fn(async () => [
+    { id: 100, name: '吧唧', parent: null, path_name: '吧唧', order: 0 },
+    { id: 101, name: '圆形吧唧', parent: 100, path_name: '吧唧/圆形吧唧', order: 0 },
+    { id: 102, name: '75mm吧唧', parent: 101, path_name: '吧唧/圆形吧唧/75mm吧唧', order: 0 },
+    { id: 200, name: '镭射票', parent: null, path_name: '镭射票', order: 1 },
+  ]),
+  getThemeList: vi.fn(async () => [{ id: 6, name: '群星邀约', description: null }]),
   createTheme: vi.fn(async ({ name }: { name: string }) => ({ id: 7, name })),
+  patchTheme: vi.fn(async (id: number, data: any) => ({ id, name: 'patched-theme', ...data })),
+  getThemeTemplate: vi.fn(async () => ({ template: null, images: [] })),
+  saveThemeTemplate: vi.fn(async (_themeId: number, data: any) => ({
+    id: 1,
+    theme: _themeId,
+    ...data,
+    ip: { id: data.ip_id, name: '咒术回战' },
+    characters: data.character_ids.map((id: number) => ({
+      id,
+      name: id === 10 ? '五条悟' : '夏油杰',
+      ip: { id: data.ip_id, name: '咒术回战' },
+      avatar: null,
+      gender: 'other',
+    })),
+  })),
+  copyThemeImagesFromGoods: vi.fn(async () => ({ copied_count: 0 })),
 }))
 
 vi.mock('@/api/goods', () => ({
@@ -79,6 +107,22 @@ vi.mock('@/stores/location', () => ({
     fetchNodes: vi.fn(async () => undefined),
   }),
 }))
+
+vi.mock('element-plus', async () => {
+  const actual = await vi.importActual<typeof import('element-plus')>('element-plus')
+  return {
+    ...actual,
+    ElMessage: {
+      success: vi.fn(),
+      error: vi.fn(),
+      warning: vi.fn(),
+      info: vi.fn(),
+    },
+    ElMessageBox: {
+      confirm: vi.fn(async () => undefined),
+    },
+  }
+})
 
 const isMissing = (value: unknown) => {
   if (Array.isArray(value)) return value.length === 0
@@ -163,7 +207,7 @@ const mountGoodsForm = async ({
         ElCol: passthroughStub('ElCol'),
         ElInput: defineComponent({
           name: 'ElInput',
-          props: ['modelValue', 'placeholder'],
+          props: ['modelValue', 'placeholder', 'size'],
           emits: ['update:modelValue'],
           setup(props, { emit }) {
             return () => h('input', {
@@ -219,10 +263,42 @@ const flushAsyncWork = async () => {
   await Promise.resolve()
 }
 
+const existingTemplatePayload: ThemeTemplatePayload = {
+  template: {
+    id: 1,
+    theme: 7,
+    name: '模板谷子',
+    ip: { id: 1, name: '咒术回战' },
+    characters: [
+      { id: 10, name: '五条悟', ip: { id: 1, name: '咒术回战' }, avatar: null, gender: 'other' },
+      { id: 11, name: '夏油杰', ip: { id: 1, name: '咒术回战' }, avatar: null, gender: 'other' },
+    ],
+    purchase_date: '2026-06-18',
+    is_official: true,
+    notes: '模板备注',
+    created_at: '2026-06-18T00:00:00Z',
+    updated_at: '2026-06-18T00:00:00Z',
+  },
+  images: [],
+}
+
 describe('GoodsForm mobile create wizard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     routeParams = {}
+    vi.mocked(ElMessageBox.confirm).mockResolvedValue(undefined as never)
+    vi.mocked(getThemeTemplate).mockResolvedValue({ template: null, images: [] })
+    vi.mocked(patchTheme).mockClear()
+    vi.mocked(patchTheme).mockResolvedValue({ id: 7, name: 'patched-theme' } as any)
+    vi.mocked(saveThemeTemplate).mockClear()
+    vi.mocked(copyThemeImagesFromGoods).mockClear()
+    updateBaseURL('http://api.test')
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      blob: async () => new Blob(['theme-image'], { type: 'image/jpeg' }),
+    })))
+    globalThis.URL.createObjectURL = vi.fn(() => 'blob:theme-image')
+    globalThis.URL.revokeObjectURL = vi.fn()
   })
 
   it('renders mobile creation as a step wizard starting with basic information only', async () => {
@@ -493,5 +569,501 @@ describe('GoodsForm mobile create wizard', () => {
       category_id: 100,
       merge_strategy: 'auto',
     }))
+  })
+
+  it('auto-fills an empty goods name from one character, existing theme, and root category', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = ''
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.category = 200
+    vm.formData.theme = 6
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('五条悟《群星邀约》镭射票')
+  })
+
+  it('uses the root category name when auto-filling from a child category', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = ''
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.category = 102
+    vm.formData.theme = 6
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('五条悟《群星邀约》吧唧')
+  })
+
+  it('auto-fills from a newly typed theme name', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = ''
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.category = 200
+    await vm.handleThemeChange('新主题')
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('五条悟《新主题》镭射票')
+  })
+
+  it('keeps auto-generated names in sync until the user edits the name', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = ''
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.category = 200
+    vm.formData.theme = 6
+    await flushAsyncWork()
+    expect(vm.formData.name).toBe('五条悟《群星邀约》镭射票')
+
+    vm.formData.category = 102
+    await flushAsyncWork()
+    expect(vm.formData.name).toBe('五条悟《群星邀约》吧唧')
+
+    vm.formData.name = '用户自己写的名称'
+    await flushAsyncWork()
+    vm.formData.category = 200
+    vm.formData.theme = '另一个主题'
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('用户自己写的名称')
+  })
+
+  it('allows auto-filling again after the user clears the name', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = '用户自己写的名称'
+    await flushAsyncWork()
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.category = 200
+    vm.formData.theme = 6
+    await flushAsyncWork()
+    expect(vm.formData.name).toBe('用户自己写的名称')
+
+    vm.formData.name = ''
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('五条悟《群星邀约》镭射票')
+  })
+
+  it('does not auto-fill for multiple characters and clears an old auto-generated name', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = ''
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.category = 200
+    vm.formData.theme = 6
+    await flushAsyncWork()
+    expect(vm.formData.name).toBe('五条悟《群星邀约》镭射票')
+
+    vm.formData.characters = [10, 11]
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('')
+  })
+
+  it('asks to save a theme template after publishing with a theme created in this form', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.name = '新主题谷子'
+    vm.formData.theme = '夏日主题'
+    vm.formData.purchase_date = '2026-06-18'
+    vm.formData.is_official = true
+    vm.formData.notes = '模板备注'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(createGoods)).toHaveBeenCalledWith(expect.objectContaining({
+      theme_id: 7,
+      merge_strategy: 'auto',
+    }))
+    expect(vi.mocked(ElMessageBox.confirm)).toHaveBeenCalledWith(
+      expect.stringContaining('主题模板'),
+      expect.any(String),
+      expect.any(Object),
+    )
+    expect(vi.mocked(saveThemeTemplate)).toHaveBeenCalledWith(7, {
+      name: '新主题谷子',
+      ip_id: 1,
+      character_ids: [10],
+      purchase_date: '2026-06-18',
+      is_official: true,
+      notes: '模板备注',
+    })
+    expect(vi.mocked(copyThemeImagesFromGoods)).toHaveBeenCalledWith(7, 'new-id')
+  })
+
+  it('syncs notes into the newly created theme after publishing', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = '鍚屾澶囨敞涓婚'
+    vm.formData.notes = '店铺：A\n工艺：烫金'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).toHaveBeenCalledWith(7, {
+      description: '店铺：A\n工艺：烫金',
+    })
+  })
+
+  it('does not sync blank or default notes into the newly created theme', async () => {
+    const blankWrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const blankVm = blankWrapper.vm as any
+    await fillRequiredBasicFields(blankWrapper)
+    blankVm.formData.theme = '绌虹櫧澶囨敞涓婚'
+    blankVm.formData.notes = '   '
+    await nextTick()
+
+    await blankVm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).not.toHaveBeenCalled()
+
+    vi.clearAllMocks()
+    vi.mocked(ElMessageBox.confirm).mockResolvedValue(undefined as never)
+    vi.mocked(getThemeTemplate).mockResolvedValue({ template: null, images: [] })
+
+    const defaultWrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const defaultVm = defaultWrapper.vm as any
+    await fillRequiredBasicFields(defaultWrapper)
+    defaultVm.formData.theme = '榛樿澶囨敞涓婚'
+    defaultVm.formData.notes = '店铺：\n工艺：\n画师：\n主题：'
+    await nextTick()
+
+    await defaultVm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).not.toHaveBeenCalled()
+  })
+
+  it('does not sync notes when publishing with an existing theme', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = 7
+    vm.formData.notes = '已有主题不应覆盖'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).not.toHaveBeenCalled()
+  })
+
+  it('syncs notes into a newly created theme when saving a draft', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = '鑽夌澶囨敞涓婚'
+    vm.formData.notes = '草稿里的主题备注'
+    await nextTick()
+
+    await vm.submitByMode('draft')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).toHaveBeenCalledWith(7, {
+      description: '草稿里的主题备注',
+    })
+  })
+
+  it('does not sync notes when the new goods is merged into an existing goods item', async () => {
+    vi.mocked(createGoods).mockResolvedValueOnce({
+      id: 'existing-id',
+      saved_as_draft: false,
+      merged: true,
+    } as any)
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = '鍚堝苟涓婚'
+    vm.formData.notes = '合并时不写主题'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).not.toHaveBeenCalled()
+  })
+
+  it('keeps the create flow moving when syncing new theme notes fails', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    vi.mocked(patchTheme).mockRejectedValueOnce(new Error('sync failed'))
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = '澶辫触涓婚'
+    vm.formData.notes = '同步失败也继续'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(patchTheme)).toHaveBeenCalled()
+    expect(consoleError).toHaveBeenCalledWith('保存主题备注失败:', expect.any(Error))
+    expect(vi.mocked(ElMessage.warning)).toHaveBeenCalledWith('主题备注保存失败')
+    expect(pushMock).toHaveBeenCalledWith({ name: 'CloudShowcase' })
+    consoleError.mockRestore()
+  })
+
+  it('does not save a template when the user declines the new-theme prompt', async () => {
+    vi.mocked(ElMessageBox.confirm).mockRejectedValueOnce('cancel')
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = '拒绝模板主题'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(saveThemeTemplate)).not.toHaveBeenCalled()
+    expect(vi.mocked(copyThemeImagesFromGoods)).not.toHaveBeenCalled()
+  })
+
+  it('runs the new-theme template flow after editing with a newly created theme', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'existing-id' },
+    })
+    await flushAsyncWork()
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.name = 'Edited Goods'
+    vm.formData.theme = 'Edited Fresh Theme'
+    vm.formData.purchase_date = '2026-06-19'
+    vm.formData.is_official = true
+    vm.formData.notes = 'Edited theme notes'
+    await nextTick()
+
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(updateGoods)).toHaveBeenCalledWith('existing-id', expect.objectContaining({
+      theme_id: 7,
+    }))
+    expect(vi.mocked(patchTheme)).toHaveBeenCalledWith(7, {
+      description: 'Edited theme notes',
+    })
+    expect(vi.mocked(saveThemeTemplate)).toHaveBeenCalledWith(7, {
+      name: 'Edited Goods',
+      ip_id: 1,
+      character_ids: [10],
+      purchase_date: '2026-06-19',
+      is_official: true,
+      notes: 'Edited theme notes',
+    })
+    expect(vi.mocked(copyThemeImagesFromGoods)).toHaveBeenCalledWith(7, 'existing-id')
+  })
+
+  it('syncs new theme notes but does not save a template when editing as draft', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'existing-id' },
+    })
+    await flushAsyncWork()
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.formData.theme = 'Edited Draft Theme'
+    vm.formData.notes = 'Edited draft notes'
+    await nextTick()
+
+    await vm.submitByMode('draft')
+    await flushAsyncWork()
+
+    expect(vi.mocked(updateGoods)).toHaveBeenCalledWith('existing-id', expect.objectContaining({
+      theme_id: 7,
+      status: 'draft',
+    }))
+    expect(vi.mocked(patchTheme)).toHaveBeenCalledWith(7, {
+      description: 'Edited draft notes',
+    })
+    expect(vi.mocked(saveThemeTemplate)).not.toHaveBeenCalled()
+    expect(vi.mocked(copyThemeImagesFromGoods)).not.toHaveBeenCalled()
+  })
+
+  it('fills only blank fields when selecting a theme with an existing template', async () => {
+    vi.mocked(getThemeTemplate).mockResolvedValue(existingTemplatePayload)
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = '用户已填名称'
+    vm.formData.ip = 1
+    vm.formData.characters = [10]
+    vm.formData.purchase_date = ''
+    vm.formData.is_official = false
+    vm.formData.notes = ''
+    await nextTick()
+
+    await vm.handleThemeChange(7)
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('用户已填名称')
+    expect(vm.formData.ip).toBe(1)
+    expect(vm.formData.characters).toEqual([10])
+    expect(vm.formData.purchase_date).toBe('2026-06-18')
+    expect(vm.formData.is_official).toBe(true)
+    expect(vm.formData.notes).toBe('模板备注')
+  })
+
+  it('does not overwrite a template-provided name with the auto-generated name', async () => {
+    vi.mocked(getThemeTemplate).mockResolvedValue({
+      ...existingTemplatePayload,
+      template: {
+        ...existingTemplatePayload.template!,
+        name: '模板里的完整名称',
+      },
+    })
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+    vm.formData.name = ''
+    await nextTick()
+
+    await vm.handleThemeChange(7)
+    await flushAsyncWork()
+    vm.formData.category = 200
+    await flushAsyncWork()
+
+    expect(vm.formData.name).toBe('模板里的完整名称')
+  })
+
+  it('can add selected theme images into the current additional photo queue', async () => {
+    vi.mocked(getThemeTemplate).mockResolvedValue({
+      ...existingTemplatePayload,
+      images: [{ id: 101, image: '/media/themes/extra/poster.jpg', label: '海报' }],
+    })
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+
+    await vm.handleThemeChange(7)
+    await flushAsyncWork()
+    expect(vm.themeImagePickerVisible).toBe(true)
+
+    vm.selectedThemeImageIds = [101]
+    await vm.applySelectedThemeImages()
+    await flushAsyncWork()
+
+    expect(fetch).toHaveBeenCalledWith('http://api.test/media/themes/extra/poster.jpg')
+    expect(vm.newAdditionalPhotoFiles).toHaveLength(1)
+    expect(vm.newAdditionalPhotoFiles[0].label).toBe('海报')
+  })
+
+  it('keeps the theme image picker open and warns when selected theme image fetch fails', async () => {
+    vi.mocked(getThemeTemplate).mockResolvedValue({
+      ...existingTemplatePayload,
+      images: [{ id: 101, image: '/media/themes/extra/missing.jpg', label: '缺失图' }],
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: false,
+      status: 404,
+      blob: async () => new Blob(),
+    })))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    const vm = wrapper.vm as any
+
+    await vm.handleThemeChange(7)
+    await flushAsyncWork()
+    vm.selectedThemeImageIds = [101]
+    await expect(vm.applySelectedThemeImages()).resolves.toBeUndefined()
+    await flushAsyncWork()
+
+    expect(fetch).toHaveBeenCalledWith('http://api.test/media/themes/extra/missing.jpg')
+    expect(vi.mocked(ElMessage.warning)).toHaveBeenCalledWith('主题图片加入失败')
+    expect(vm.themeImagePickerVisible).toBe(true)
+    expect(vm.newAdditionalPhotoFiles).toHaveLength(0)
+    expect(consoleError).toHaveBeenCalledWith('主题图片加入失败:', expect.any(Error))
+    consoleError.mockRestore()
   })
 })

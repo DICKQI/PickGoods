@@ -17,6 +17,7 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
   const categoryOptions = ref<Category[]>([])
   const allThemes = ref<Theme[]>([])
   const themeOptions = ref<Theme[]>([])
+  const createdThemeIds = ref<Set<number>>(new Set())
 
   const filteredCharacters = computed(() => {
     if (!formData.value.ip) return []
@@ -51,6 +52,15 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
 
   // ── Theme management ──
   const pendingThemeName = ref<string | null>(null)
+  const isBlankText = (value: string | null | undefined) => !value || value.trim() === ''
+
+  const rememberCreatedTheme = (theme: Theme) => {
+    createdThemeIds.value = new Set([...createdThemeIds.value, theme.id])
+  }
+
+  const wasThemeCreatedInCurrentFlow = (themeId: number | null | undefined) => (
+    typeof themeId === 'number' && createdThemeIds.value.has(themeId)
+  )
 
   const handleThemeChange = (value: number | string | null) => {
     if (value === null) {
@@ -66,7 +76,7 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
     pendingThemeName.value = null
 
     const selectedTheme = allThemes.value.find(theme => theme.id === value)
-    if (selectedTheme && selectedTheme.description) {
+    if (selectedTheme && selectedTheme.description && isBlankText(formData.value.notes)) {
       formData.value.notes = selectedTheme.description
     }
   }
@@ -92,6 +102,7 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
 
       const newTheme = await createTheme({ name: trimmedName })
       allThemes.value.push(newTheme)
+      rememberCreatedTheme(newTheme)
       themeOptions.value = allThemes.value
       formData.value.theme = newTheme.id
       pendingThemeName.value = null
@@ -122,6 +133,7 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
 
         const newTheme = await createTheme({ name: themeNameToCreate })
         allThemes.value.push(newTheme)
+        rememberCreatedTheme(newTheme)
         themeOptions.value = allThemes.value
         formData.value.theme = newTheme.id
         pendingThemeName.value = null
@@ -159,6 +171,8 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
     categoryTreeOptions,
     selectedCategory,
     pendingThemeName,
+    createdThemeIds,
+    wasThemeCreatedInCurrentFlow,
     handleIpChange,
     handleThemeChange,
     handleThemeCreate,

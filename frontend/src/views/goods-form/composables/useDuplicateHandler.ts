@@ -4,7 +4,7 @@ import { createGoods } from '@/api/goods'
 import type { GoodsCreateResponse, GoodsDuplicateCandidate, GoodsInput } from '@/api/types'
 
 export function useDuplicateHandler(options: {
-  onSuccess: (result: GoodsCreateResponse, mode: 'draft' | 'publish') => Promise<void>
+  onSuccess: (result: GoodsCreateResponse, mode: 'draft' | 'publish', themeId?: number | null) => Promise<void>
 }) {
   const duplicateDialogVisible = ref(false)
   const duplicateCandidates = ref<GoodsDuplicateCandidate[]>([])
@@ -39,6 +39,14 @@ export function useDuplicateHandler(options: {
     duplicateDialogVisible.value = true
   }
 
+  const notifySuccess = async (result: GoodsCreateResponse, payload: GoodsInput) => {
+    if (payload.theme_id !== undefined && payload.theme_id !== null) {
+      await options.onSuccess(result, 'publish', payload.theme_id)
+    } else {
+      await options.onSuccess(result, 'publish')
+    }
+  }
+
   const handleDuplicateMerge = async () => {
     const targetId = duplicateSelectedId.value
     const payload = pendingCreatePayload.value
@@ -57,7 +65,7 @@ export function useDuplicateHandler(options: {
       duplicateCandidates.value = []
       duplicateSelectedId.value = null
       pendingCreatePayload.value = null
-      await options.onSuccess(result, 'publish')
+      await notifySuccess(result, payload)
     } catch (err: any) {
       if (err.response?.status === 400) {
         const detail = err.response?.data?.detail
@@ -80,7 +88,7 @@ export function useDuplicateHandler(options: {
       duplicateCandidates.value = []
       duplicateSelectedId.value = null
       pendingCreatePayload.value = null
-      await options.onSuccess(result, 'publish')
+      await notifySuccess(result, payload)
     } catch (err: any) {
       ElMessage.error(err.message || '创建失败')
     } finally {
