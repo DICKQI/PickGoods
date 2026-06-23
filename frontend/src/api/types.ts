@@ -49,6 +49,13 @@ export interface IP {
    * 该 IP 下的角色数量（后端 /api/ips/ 列表接口返回）
    */
   character_count?: number
+  /**
+   * bangumi.tv 对应作品 subject_id，用于增量更新精确匹配。
+   * 历史 IP 该字段为 null，首次「从 BGM 更新」时由用户手动选 subject 回填。
+   */
+  bgm_subject_id?: number | null
+  /** 最近一次 BGM 同步时间（ISO 字符串），未同步过则为 null */
+  last_synced_at?: string | null
 }
 
 // 角色性别类型
@@ -61,6 +68,8 @@ export interface Character {
   ip: IP
   avatar?: string | null
   gender: CharacterGender
+  /** bangumi.tv 对应角色 character_id（增量更新使用） */
+  bgm_character_id?: number | null
 }
 
 // 品类信息（树形支持）
@@ -613,6 +622,8 @@ export interface ShowcaseMoveGoodsResponse {
 
 // BGM角色搜索结果
 export interface BGMCharacter {
+  /** BGM 角色 ID（增量同步用），老接口可能不返回 */
+  id?: number | null
   name: string
   relation: string
   avatar: string
@@ -630,6 +641,10 @@ export interface BGMCreateCharacterItem {
   character_name: string
   subject_type?: number | null
   avatar?: string | null
+  /** 可选：本次绑定的 BGM 作品 ID，将被后端持久化以支持后续增量同步 */
+  bgm_subject_id?: number | null
+  /** 可选：本次绑定的 BGM 角色 ID */
+  bgm_character_id?: number | null
 }
 
 // BGM创建角色响应项
@@ -639,6 +654,8 @@ export interface BGMCreateCharacterResult {
   status: 'created' | 'already_exists' | 'error'
   ip_id?: number
   character_id?: number
+  bgm_subject_id?: number | null
+  bgm_character_id?: number | null
   error?: string
 }
 
@@ -669,6 +686,68 @@ export interface BGMGetCharactersResponse {
   subject_id: number
   subject_name: string
   characters: BGMCharacter[]
+}
+
+// ==================== BGM 增量同步 ====================
+
+/** 单条角色 diff 项的处理动作 */
+export type BGMSyncAction =
+  | 'new'
+  | 'link_by_name'
+  | 'matched'
+  | 'local_only'
+  | 'skipped_duplicate'
+
+/** 预览阶段返回的单条 diff */
+export interface BGMSyncDiffItem {
+  action: BGMSyncAction
+  bgm_character_id?: number | null
+  name: string
+  relation?: string
+  avatar?: string
+  local_character_id?: number | null
+}
+
+/** /api/ips/{id}/bgm-preview/ 响应 */
+export interface BGMSyncPreviewResponse {
+  ip_id: number
+  ip_name: string
+  bgm_subject_id: number
+  bgm_subject_name: string
+  bgm_subject_type?: number | null
+  /** apply 时是否会更新本地 subject_type */
+  subject_type_will_update: boolean
+  /** apply 时是否会首次写入 bgm_subject_id */
+  will_link_subject: boolean
+  items: BGMSyncDiffItem[]
+  summary: Record<BGMSyncAction, number>
+}
+
+/** apply 阶段提交的单条项（仅 new / link_by_name 有意义） */
+export interface BGMSyncApplyItem {
+  action: 'new' | 'link_by_name'
+  bgm_character_id?: number | null
+  name: string
+  avatar?: string | null
+  local_character_id?: number | null
+}
+
+/** /api/ips/{id}/bgm-sync/ 响应 */
+export interface BGMSyncApplyResponse {
+  ip_id: number
+  bgm_subject_id: number
+  created_count: number
+  linked_count: number
+  subject_linked: boolean
+  subject_type_updated: boolean
+  last_synced_at?: string | null
+  details: Array<{
+    action: string
+    name: string
+    character_id?: number
+    status: string
+    error?: string
+  }>
 }
 
 // ==================== 管理员模块 ====================

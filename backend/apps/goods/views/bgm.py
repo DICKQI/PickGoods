@@ -140,7 +140,9 @@ def bgm_create_characters(request):
         character_name = char_data['character_name']
         subject_type = char_data.get('subject_type')  # 可选字段
         avatar = char_data.get('avatar')  # 可选字段，头像URL
-        
+        bgm_subject_id = char_data.get('bgm_subject_id')  # 可选，BGM 作品 ID（用于增量同步绑定）
+        bgm_character_id = char_data.get('bgm_character_id')  # 可选，BGM 角色 ID
+
         try:
             # 获取或创建IP
             # 如果提供了 subject_type，在创建新 IP 时使用它
@@ -152,33 +154,46 @@ def bgm_create_characters(request):
             if not ip_created and ip_obj.subject_type is None and subject_type:
                 ip_obj.subject_type = subject_type
                 ip_obj.save(update_fields=['subject_type'])
-            
+
+            # 回填 bgm_subject_id：仅当本次提供了 ID、且本地 IP 尚未绑定时写入
+            # （unique 约束由数据库保证；若已被其他 IP 占用则抛异常进入 error 分支）
+            if bgm_subject_id and not ip_obj.bgm_subject_id:
+                ip_obj.bgm_subject_id = bgm_subject_id
+                ip_obj.save(update_fields=['bgm_subject_id'])
+
             # 获取或创建角色（使用unique_together约束避免重复）
             character_obj, char_created = Character.objects.get_or_create(
                 ip=ip_obj,
                 name=character_name,
                 defaults={'avatar': avatar.strip() if avatar and avatar.strip() else None} if avatar else {}
             )
-            
+
             # 如果角色已存在，但提供了头像URL且角色当前没有头像，则更新头像
             if not char_created and avatar and avatar.strip():
                 if not character_obj.avatar:
                     character_obj.avatar = avatar.strip()
                     character_obj.save(update_fields=['avatar'])
-            
+
+            # 回填 bgm_character_id：仅当本次提供了 ID、且本地角色尚未绑定时写入
+            if bgm_character_id and not character_obj.bgm_character_id:
+                character_obj.bgm_character_id = bgm_character_id
+                character_obj.save(update_fields=['bgm_character_id'])
+
             if char_created:
                 created_count += 1
                 status_msg = "created"
             else:
                 skipped_count += 1
                 status_msg = "already_exists"
-            
+
             details.append({
                 "ip_name": ip_name,
                 "character_name": character_name,
                 "status": status_msg,
                 "ip_id": ip_obj.id,
-                "character_id": character_obj.id
+                "character_id": character_obj.id,
+                "bgm_subject_id": ip_obj.bgm_subject_id,
+                "bgm_character_id": character_obj.bgm_character_id,
             })
             
         except Exception as e:

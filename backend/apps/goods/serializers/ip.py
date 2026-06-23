@@ -23,7 +23,8 @@ class IPSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IP
-        fields = ("id", "name", "subject_type", "order", "keywords", "character_count")
+        fields = ("id", "name", "subject_type", "order", "keywords", "character_count",
+                  "bgm_subject_id", "last_synced_at")
 
     def get_character_count(self, obj):
         """统计IP下的角色数量"""
@@ -41,7 +42,8 @@ class IPDetailSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = IP
-        fields = ("id", "name", "subject_type", "order", "keywords")
+        fields = ("id", "name", "subject_type", "order", "keywords",
+                  "bgm_subject_id", "last_synced_at")
 
     def create(self, validated_data):
         """创建IP时同时创建关键词"""

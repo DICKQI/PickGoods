@@ -20,9 +20,11 @@ class BGMSearchRequestSerializer(serializers.Serializer):
 
 class BGMCharacterSerializer(serializers.Serializer):
     """BGM角色信息序列化器（用于搜索接口返回）"""
+    # BGM 角色 ID。历史接口可能不带，故可选；同步流程依赖它做精确匹配
+    id = serializers.IntegerField(required=False, allow_null=True, help_text="BGM角色ID")
     name = serializers.CharField(help_text="角色名称")
-    relation = serializers.CharField(help_text="角色关系，如：主角、配角、客串")
-    avatar = serializers.CharField(allow_blank=True, help_text="角色头像URL")
+    relation = serializers.CharField(required=False, allow_blank=True, help_text="角色关系，如：主角、配角、客串")
+    avatar = serializers.CharField(required=False, allow_blank=True, help_text="角色头像URL")
 
 
 class BGMSearchResponseSerializer(serializers.Serializer):
@@ -54,6 +56,16 @@ class BGMCreateCharacterRequestSerializer(serializers.Serializer):
         allow_blank=True,
         allow_null=True,
         help_text="角色头像URL。可以是BGM返回的头像URL（如 https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg）或其他外部URL。可选"
+    )
+    bgm_subject_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="BGM作品ID，可选。提供后将持久化以支持后续增量同步"
+    )
+    bgm_character_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="BGM角色ID，可选。提供后将持久化以支持后续增量同步"
     )
 
 
@@ -110,3 +122,98 @@ class BGMGetCharactersBySubjectIdResponseSerializer(serializers.Serializer):
     subject_id = serializers.IntegerField(help_text="BGM作品ID")
     subject_name = serializers.CharField(help_text="作品名称")
     characters = BGMCharacterSerializer(many=True, help_text="角色列表")
+
+
+# ==================== 增量同步：预览 / 应用 ====================
+
+class BGMSyncPreviewRequestSerializer(serializers.Serializer):
+    """从 BGM 同步预览请求
+
+    - 若该 IP 已经记录了 bgm_subject_id，可以不传 subject_id（服务端使用已绑定值）；
+    - 历史 IP 首次同步时通过弹窗内手动搜索后传入 subject_id 完成回填。
+    """
+    subject_id = serializers.IntegerField(
+        required=False,
+        allow_null=True,
+        help_text="可选。若 IP 尚未绑定 BGM 作品，则必须提供，并会在 apply 阶段持久化"
+    )
+
+
+class BGMSyncDiffItemSerializer(serializers.Serializer):
+    """同步预览中的单条角色 diff 项"""
+    action = serializers.ChoiceField(
+        choices=[
+            ("new", "新增"),                  # BGM 上有而本地没有
+            ("link_by_name", "按名字回填ID"),  # 本地存在同名角色但 bgm_character_id 为空
+            ("matched", "已关联无变更"),       # 已经按 ID 匹配，本地存在
+            ("local_only", "本地独有"),        # 本地存在但 BGM 上没有对应（按策略不处理）
+            ("skipped_duplicate", "BGM重复"),  # BGM 返回了多条同名角色，仅第一条生效
+        ],
+        help_text="该角色在同步中的处理动作"
+    )
+    bgm_character_id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField()
+    relation = serializers.CharField(required=False, allow_blank=True)
+    avatar = serializers.CharField(required=False, allow_blank=True)
+    local_character_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class BGMSyncPreviewResponseSerializer(serializers.Serializer):
+    """同步预览响应"""
+    ip_id = serializers.IntegerField(help_text="本地 IP ID")
+    ip_name = serializers.CharField(help_text="本地 IP 名称")
+    bgm_subject_id = serializers.IntegerField(help_text="本次同步使用的 BGM subject_id")
+    bgm_subject_name = serializers.CharField(help_text="BGM 上的作品名称")
+    bgm_subject_type = serializers.IntegerField(
+        required=False, allow_null=True, help_text="BGM 上的作品类型代码"
+    )
+    subject_type_will_update = serializers.BooleanField(
+        help_text="apply 时是否会更新本地 subject_type"
+    )
+    will_link_subject = serializers.BooleanField(
+        help_text="apply 时是否会首次写入 bgm_subject_id"
+    )
+    items = BGMSyncDiffItemSerializer(many=True)
+    summary = serializers.DictField(
+        help_text="统计：new / link_by_name / matched / local_only / skipped_duplicate 各自数量"
+    )
+
+
+class BGMSyncApplyItemSerializer(serializers.Serializer):
+    """apply 阶段用户在前端勾选的待执行项
+
+    仅 new / link_by_name 两类需要用户确认；matched 项可忽略，local_only 不处理。
+    """
+    action = serializers.ChoiceField(choices=[("new", "新增"), ("link_by_name", "按名字回填ID")])
+    bgm_character_id = serializers.IntegerField(required=False, allow_null=True)
+    name = serializers.CharField()
+    avatar = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    local_character_id = serializers.IntegerField(required=False, allow_null=True)
+
+
+class BGMSyncApplyRequestSerializer(serializers.Serializer):
+    """同步应用请求"""
+    subject_id = serializers.IntegerField(
+        required=False, allow_null=True,
+        help_text="可选。若 IP 尚未绑定 BGM 作品，必须传入，apply 时持久化"
+    )
+    items = BGMSyncApplyItemSerializer(
+        many=True,
+        help_text="用户确认要执行的差异项列表（new / link_by_name）"
+    )
+    update_subject_type = serializers.BooleanField(
+        required=False, default=True,
+        help_text="是否同步 BGM 的 subject_type 到本地（仅当本地为空或不同时生效）"
+    )
+
+
+class BGMSyncApplyResponseSerializer(serializers.Serializer):
+    """同步应用响应"""
+    ip_id = serializers.IntegerField()
+    bgm_subject_id = serializers.IntegerField()
+    created_count = serializers.IntegerField(help_text="新增角色数")
+    linked_count = serializers.IntegerField(help_text="按名字回填 bgm_character_id 的角色数")
+    subject_linked = serializers.BooleanField(help_text="本次是否完成 bgm_subject_id 首次绑定")
+    subject_type_updated = serializers.BooleanField(help_text="本次是否更新了 subject_type")
+    last_synced_at = serializers.DateTimeField(allow_null=True)
+    details = serializers.ListField(child=serializers.DictField(), help_text="每条执行结果明细")

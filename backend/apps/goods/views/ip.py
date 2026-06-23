@@ -8,13 +8,19 @@ from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
+from ..bgm_service import get_characters, get_subject_info
+from ..bgm_sync import apply_bgm_sync, compute_bgm_diff
 from ..models import IP
 from core.permissions import IsAdminOrReadOnly
 from ..serializers import (
+    BGMSyncApplyRequestSerializer,
+    BGMSyncApplyResponseSerializer,
+    BGMSyncPreviewRequestSerializer,
+    BGMSyncPreviewResponseSerializer,
+    CharacterSimpleSerializer,
     IPBatchUpdateOrderSerializer,
     IPDetailSerializer,
     IPSimpleSerializer,
-    CharacterSimpleSerializer,
 )
 
 
@@ -123,3 +129,156 @@ class IPViewSet(viewsets.ModelViewSet):
                 {"detail": f"更新排序失败: {str(e)}"},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
+
+    # ==================== BGM 增量同步 ====================
+
+    def _resolve_bgm_subject_id(self, ip, payload_subject_id):
+        """统一处理 subject_id 来源（请求传入优先，否则使用 IP 已绑定）
+
+        返回 (subject_id, error_response)。error_response 不为 None 时直接返回它。
+        若请求传入了与已绑定不一致的 subject_id，视为冲突。
+        """
+        bound = ip.bgm_subject_id
+        if payload_subject_id is None:
+            if bound is None:
+                return None, Response(
+                    {"detail": "该IP尚未绑定 BGM 作品，请在请求中传入 subject_id"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            return bound, None
+
+        if bound is not None and bound != payload_subject_id:
+            return None, Response(
+                {
+                    "detail": (
+                        f"该IP已绑定 BGM subject_id={bound}，与请求中的 "
+                        f"{payload_subject_id} 不一致"
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        # 校验目标 subject_id 是否被其它 IP 占用
+        conflict = (
+            IP.objects.filter(bgm_subject_id=payload_subject_id)
+            .exclude(pk=ip.pk)
+            .first()
+        )
+        if conflict is not None:
+            return None, Response(
+                {
+                    "detail": (
+                        f"BGM subject_id={payload_subject_id} 已被 IP "
+                        f"'{conflict.name}'(id={conflict.id}) 占用"
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return payload_subject_id, None
+
+    @action(detail=True, methods=["post"], url_path="bgm-preview",
+            serializer_class=BGMSyncPreviewRequestSerializer)
+    def bgm_preview(self, request, pk=None):
+        """
+        从 BGM 拉取最新角色列表并计算 diff 预览（不写库）。
+        URL: /api/ips/{id}/bgm-preview/
+
+        - 若 IP 已经绑定 bgm_subject_id，可不传 subject_id；
+        - 历史 IP 首次同步时需在请求中传入 subject_id。
+        """
+        ip = self.get_object()
+        req = BGMSyncPreviewRequestSerializer(data=request.data)
+        req.is_valid(raise_exception=True)
+        payload_subject_id = req.validated_data.get("subject_id")
+
+        subject_id, err = self._resolve_bgm_subject_id(ip, payload_subject_id)
+        if err is not None:
+            return err
+
+        try:
+            subject_info = get_subject_info(subject_id)
+            if not subject_info:
+                return Response(
+                    {"detail": f"未找到 BGM subject_id={subject_id}"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            bgm_characters = get_characters(subject_id)
+        except Exception as e:
+            return Response(
+                {"detail": f"获取 BGM 数据失败: {str(e)}"},
+                status=status.HTTP_502_BAD_GATEWAY,
+            )
+
+        diff = compute_bgm_diff(ip, bgm_characters)
+        bgm_subject_type = subject_info.get("type")
+        subject_type_will_update = (
+            bgm_subject_type is not None and ip.subject_type != bgm_subject_type
+        )
+        will_link_subject = ip.bgm_subject_id is None
+
+        payload = {
+            "ip_id": ip.id,
+            "ip_name": ip.name,
+            "bgm_subject_id": subject_id,
+            "bgm_subject_name": subject_info.get("display_name") or "",
+            "bgm_subject_type": bgm_subject_type,
+            "subject_type_will_update": subject_type_will_update,
+            "will_link_subject": will_link_subject,
+            "items": diff["items"],
+            "summary": diff["summary"],
+        }
+        response_serializer = BGMSyncPreviewResponseSerializer(data=payload)
+        response_serializer.is_valid(raise_exception=True)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="bgm-sync",
+            serializer_class=BGMSyncApplyRequestSerializer)
+    def bgm_sync(self, request, pk=None):
+        """
+        应用用户确认的 BGM diff：新增缺失角色 / 回填 bgm_character_id / 可选同步 subject_type。
+        URL: /api/ips/{id}/bgm-sync/
+
+        为保证服务端真相一致，apply 阶段会**重拉**一次 BGM subject 信息以获取最新 subject_type；
+        但角色列表以请求中传入的 items 为准（前端已基于 preview 让用户勾选过）。
+        """
+        ip = self.get_object()
+        req = BGMSyncApplyRequestSerializer(data=request.data)
+        req.is_valid(raise_exception=True)
+        payload_subject_id = req.validated_data.get("subject_id")
+        items = req.validated_data["items"]
+        update_subject_type = req.validated_data.get("update_subject_type", True)
+
+        subject_id, err = self._resolve_bgm_subject_id(ip, payload_subject_id)
+        if err is not None:
+            return err
+
+        bgm_subject_type = None
+        try:
+            subject_info = get_subject_info(subject_id)
+            if not subject_info:
+                return Response(
+                    {"detail": f"未找到 BGM subject_id={subject_id}"},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            bgm_subject_type = subject_info.get("type")
+        except Exception as e:
+            # 取不到 subject_info 不阻塞新增/回填，只是无法更新 subject_type
+            bgm_subject_type = None
+            _ = e
+
+        try:
+            result = apply_bgm_sync(
+                ip=ip,
+                bgm_subject_id=subject_id,
+                items=[dict(it) for it in items],
+                bgm_subject_type=bgm_subject_type,
+                update_subject_type=update_subject_type,
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"同步失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        response_serializer = BGMSyncApplyResponseSerializer(data=result)
+        response_serializer.is_valid(raise_exception=True)
+        return Response(response_serializer.data, status=status.HTTP_200_OK)

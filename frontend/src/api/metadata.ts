@@ -242,7 +242,10 @@ import type {
   BGMCreateCharactersResponse,
   BGMCreateCharacterItem,
   BGMSearchSubjectsResponse,
-  BGMGetCharactersResponse
+  BGMGetCharactersResponse,
+  BGMSyncApplyItem,
+  BGMSyncApplyResponse,
+  BGMSyncPreviewResponse,
 } from './types'
 
 // 搜索BGM IP作品列表
@@ -269,12 +272,55 @@ export function searchBGMCharacters(ipName: string, subjectType?: number) {
 }
 
 // 批量创建IP和角色
-export function createBGMCharacters(characters: BGMCreateCharacterItem[], subjectType?: number | null) {
+export function createBGMCharacters(
+  characters: BGMCreateCharacterItem[],
+  subjectType?: number | null,
+  bgmSubjectId?: number | null,
+) {
   // 根据API文档，subject_type应该在每个character项中传递
-  const charactersWithType = subjectType !== undefined && subjectType !== null
-    ? characters.map(char => ({ ...char, subject_type: subjectType }))
-    : characters
+  // 同时把 bgm_subject_id 注入每一项以便后端持久化绑定（用于后续增量同步）
+  const charactersWithExtras = characters.map(char => ({
+    ...char,
+    ...(subjectType !== undefined && subjectType !== null
+      ? { subject_type: subjectType }
+      : {}),
+    ...(bgmSubjectId !== undefined && bgmSubjectId !== null && char.bgm_subject_id == null
+      ? { bgm_subject_id: bgmSubjectId }
+      : {}),
+  }))
   return request.post<BGMCreateCharactersResponse>('/api/bgm/create-characters/', {
-    characters: charactersWithType,
+    characters: charactersWithExtras,
   })
+}
+
+// ==================== BGM 增量同步 ====================
+
+/**
+ * 预览：从 BGM 拉取最新角色列表，计算 diff（不写库）。
+ * - 若 IP 已经绑定 bgm_subject_id，可不传 subjectId；
+ * - 历史 IP 首次同步时需传入用户在弹窗中选定的 subjectId。
+ */
+export function previewBGMSync(ipId: number, subjectId?: number | null) {
+  return request.post<BGMSyncPreviewResponse>(`/api/ips/${ipId}/bgm-preview/`, {
+    ...(subjectId !== undefined && subjectId !== null ? { subject_id: subjectId } : {}),
+  })
+}
+
+/**
+ * 应用：将用户勾选的 diff 项写入数据库。
+ * 仅 new / link_by_name 两类需要传入。
+ */
+export function applyBGMSync(
+  ipId: number,
+  items: BGMSyncApplyItem[],
+  options?: { subjectId?: number | null; updateSubjectType?: boolean },
+) {
+  const body: Record<string, unknown> = { items }
+  if (options?.subjectId !== undefined && options?.subjectId !== null) {
+    body.subject_id = options.subjectId
+  }
+  if (options?.updateSubjectType !== undefined) {
+    body.update_subject_type = options.updateSubjectType
+  }
+  return request.post<BGMSyncApplyResponse>(`/api/ips/${ipId}/bgm-sync/`, body)
 }

@@ -38,6 +38,20 @@ class IP(models.Model):
         help_text="控制IP作品的展示顺序，值越小越靠前",
     )
 
+    # BGM 关联：用于增量同步精确匹配。Nullable，保持对历史数据零影响。
+    bgm_subject_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        verbose_name="BGM作品ID",
+        help_text="bangumi.tv 对应作品的 subject_id，用于增量更新精确匹配",
+    )
+    last_synced_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="最近一次BGM同步时间",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
         null=True,
@@ -104,7 +118,16 @@ class Character(models.Model):
         verbose_name="角色头像",
         help_text="角色头像路径或URL。可以是服务器内的相对路径（如 characters/xxx.jpg）或外部URL（如 https://example.com/avatar.jpg）",
     )
-    
+
+    # BGM 关联：用于增量同步精确匹配。Nullable，保持对历史数据零影响。
+    bgm_character_id = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="BGM角色ID",
+        help_text="bangumi.tv 对应角色的 character_id，用于增量更新精确匹配",
+    )
+
     GENDER_CHOICES = (
         ("male", "男"),
         ("female", "女"),

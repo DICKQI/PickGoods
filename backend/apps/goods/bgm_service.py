@@ -120,11 +120,15 @@ def get_characters(subject_id):
                 avatar_url = ""
                 if isinstance(images, dict):
                     avatar_url = images.get("grid", "")
-                
+
+                # BGM 角色 ID（用于增量同步精确匹配）
+                bgm_character_id = item.get("id")
+
                 # 只有当名字存在时才添加，并解码HTML实体（如 &amp; -> &）
                 if name:
                     name = html.unescape(name)  # 解码HTML实体编码
                     characters.append({
+                        "id": bgm_character_id,
                         "name": name,
                         "relation": relation,
                         "avatar": avatar_url
@@ -239,21 +243,23 @@ def get_subject_info(subject_id):
         
         name = data.get("name", "")
         name_cn = data.get("name_cn", "")
-        
+        subject_type_code = data.get("type")
+
         # 解码HTML实体
         if name:
             name = html.unescape(name)
         if name_cn:
             name_cn = html.unescape(name_cn)
-        
+
         # 优先返回中文名
         display_name = name_cn if name_cn else name
-        
+
         return {
             "id": subject_id,
             "name": name,
             "name_cn": name_cn,
-            "display_name": display_name
+            "display_name": display_name,
+            "type": subject_type_code,
         }
 
     except requests.exceptions.RequestException as e:

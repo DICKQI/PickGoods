@@ -233,9 +233,24 @@
             </template>
           </el-table-column>
 
-          <el-table-column v-if="authStore.isAdmin" label="操作" width="120" align="right" fixed="right">
+          <el-table-column v-if="authStore.isAdmin" label="操作" width="175" align="right" fixed="right">
             <template #default="{ row }">
               <div class="action-inline">
+                <el-tooltip
+                  content="从 Bangumi 更新角色（增量同步）"
+                  placement="top"
+                  :show-after="500"
+                >
+                  <el-button
+                    link
+                    type="info"
+                    class="bgm-sync-btn"
+                    @click="handleOpenBGMSync(row)"
+                    title="从 BGM 更新"
+                  >
+                    <el-icon :size="16"><Refresh /></el-icon>
+                  </el-button>
+                </el-tooltip>
                 <el-button link type="primary" @click="handleEditIP(row)" title="编辑">
                   <el-icon :size="16"><Edit /></el-icon>
                 </el-button>
@@ -302,6 +317,10 @@
                 @touchcancel="onCardTouchEnd"
               >
                 <div class="swipe-actions" v-if="authStore.isAdmin">
+                  <button class="swipe-action-btn sync" type="button" @click.stop="handleOpenBGMSync(item)">
+                    <el-icon><Refresh /></el-icon>
+                    <span>更新</span>
+                  </button>
                   <button class="swipe-action-btn edit" type="button" @click.stop="handleEditIP(item)">
                     <el-icon><Edit /></el-icon>
                     <span>编辑</span>
@@ -732,6 +751,260 @@
       </template>
     </el-dialog>
 
+    <!-- BGM 增量更新弹窗 -->
+    <el-dialog
+      v-model="bgmSyncDialogVisible"
+      title="从 Bangumi 更新角色"
+      :width="bgmDialogWidth"
+      class="custom-dialog bgm-dialog"
+      align-center
+      :close-on-click-modal="false"
+    >
+      <div class="bgm-import-container">
+        <!-- 步骤：未绑定 subject 时的搜索回填 -->
+        <div v-if="bgmSyncStep === 'link_search'" class="bgm-step-search">
+          <el-alert
+            type="info"
+            :closable="false"
+            show-icon
+            class="bgm-sync-alert"
+          >
+            <template #title>
+              该作品尚未关联 Bangumi 条目。请搜索并选择对应的 BGM 作品以建立关联，后续更新将自动识别。
+            </template>
+          </el-alert>
+          <el-form @submit.prevent="handleBGMSyncSearch">
+            <el-form-item label="搜索关键词">
+              <el-input
+                v-model="bgmSyncSearchInput"
+                :placeholder="bgmSyncTargetIP?.name || '例如：崩坏：星穹铁道'"
+                clearable
+                @keyup.enter="handleBGMSyncSearch"
+                :disabled="bgmSyncSearching"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </el-form-item>
+            <el-form-item label="作品类型（可选）">
+              <el-select
+                v-model="bgmSyncSubjectType"
+                placeholder="选择作品类型（不选则搜索所有类型）"
+                clearable
+                :disabled="bgmSyncSearching"
+                style="width: 100%"
+              >
+                <el-option label="所有类型" :value="undefined" />
+                <el-option label="书籍" :value="1" />
+                <el-option label="动画" :value="2" />
+                <el-option label="音乐" :value="3" />
+                <el-option label="游戏" :value="4" />
+                <el-option label="三次元/特摄" :value="6" />
+              </el-select>
+            </el-form-item>
+            <div class="bgm-search-actions">
+              <el-button
+                type="primary"
+                @click="handleBGMSyncSearch"
+                :loading="bgmSyncSearching"
+                :disabled="!bgmSyncSearchInput.trim()"
+              >
+                搜索BGM
+              </el-button>
+            </div>
+          </el-form>
+        </div>
+
+        <!-- 步骤：搜索中 -->
+        <div v-if="bgmSyncStep === 'link_searching'" class="bgm-step-searching">
+          <div class="searching-content">
+            <el-icon class="searching-icon"><Loading /></el-icon>
+            <h3>正在搜索 Bangumi...</h3>
+            <el-progress :percentage="50" :indeterminate="true" />
+          </div>
+        </div>
+
+        <!-- 步骤：选择 subject（仅未绑定时出现） -->
+        <div v-if="bgmSyncStep === 'link_subjects'" class="bgm-step-subjects">
+          <div class="results-header">
+            <h3>选择作品</h3>
+            <p class="results-subtitle">找到 {{ bgmSyncSubjects.length }} 个相关作品，请点击选择一个进行关联</p>
+          </div>
+          <div class="bgm-subjects-list">
+            <div
+              v-for="subject in bgmSyncSubjects"
+              :key="subject.id"
+              class="bgm-subject-item"
+              @click="handleBGMSyncPickSubject(subject)"
+            >
+              <el-image :src="subject.image" class="bgm-subject-cover" fit="cover" loading="lazy">
+                <template #error>
+                  <div class="image-slot"><el-icon><Picture /></el-icon></div>
+                </template>
+              </el-image>
+              <div class="bgm-subject-info">
+                <h4 class="subject-name" :title="subject.name">{{ subject.name }}</h4>
+                <div class="subject-meta">
+                  <el-tag size="small" type="info">{{ subject.type_name }}</el-tag>
+                  <span class="subject-cn" v-if="subject.name_cn && subject.name_cn !== subject.name">{{ subject.name_cn }}</span>
+                </div>
+              </div>
+              <div class="bgm-subject-arrow"><el-icon><ArrowRight /></el-icon></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步骤：预览加载中 -->
+        <div v-if="bgmSyncStep === 'previewing'" class="bgm-step-searching">
+          <div class="searching-content">
+            <el-icon class="searching-icon"><Loading /></el-icon>
+            <h3>正在从 Bangumi 获取最新角色列表...</h3>
+            <el-progress :percentage="50" :indeterminate="true" />
+          </div>
+        </div>
+
+        <!-- 步骤：预览 diff -->
+        <div v-if="bgmSyncStep === 'preview' && bgmSyncPreview" class="bgm-step-results">
+          <div class="results-header">
+            <h3>更新预览：{{ bgmSyncPreview.bgm_subject_name }}</h3>
+            <p class="results-subtitle">
+              本地「{{ bgmSyncPreview.ip_name }}」与 BGM 比对结果：
+              新增 <strong>{{ bgmSyncPreview.summary.new || 0 }}</strong> ·
+              回填ID <strong>{{ bgmSyncPreview.summary.link_by_name || 0 }}</strong> ·
+              已关联 <strong>{{ bgmSyncPreview.summary.matched || 0 }}</strong> ·
+              本地独有 <strong>{{ bgmSyncPreview.summary.local_only || 0 }}</strong>
+            </p>
+          </div>
+
+          <div v-if="bgmSyncPreview.subject_type_will_update" class="bgm-sync-notice">
+            <el-alert type="warning" :closable="false" show-icon>
+              <template #title>
+                将更新本地作品类型为「{{ getSubjectTypeLabel(bgmSyncPreview.bgm_subject_type) }}」
+              </template>
+            </el-alert>
+          </div>
+
+          <div class="results-actions-top">
+            <el-button size="small" @click="handleBGMSyncSelectAllNew">全选新增</el-button>
+            <el-button size="small" @click="handleBGMSyncSelectNone">取消全选</el-button>
+            <span class="selected-count">已选择 {{ bgmSyncSelectedItems.length }} 项</span>
+          </div>
+
+          <div class="results-filter">
+            <el-input
+              v-model="bgmSyncFilter"
+              size="small"
+              placeholder="按角色名筛选"
+              clearable
+              class="results-filter-input"
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
+          </div>
+
+          <div class="character-list-container bgm-sync-list">
+            <div
+              v-for="(item, idx) in bgmSyncPreview.items"
+              :key="idx"
+              class="bgm-character-item bgm-sync-item"
+              :class="[
+                `action-${item.action}`,
+                {
+                  selected: isBGMSyncItemSelected(idx),
+                  selectable: isBGMSyncItemSelectable(item),
+                },
+              ]"
+              v-show="!bgmSyncFilter.trim() || item.name.toLowerCase().includes(bgmSyncFilter.trim().toLowerCase())"
+              @click="handleBGMSyncToggle(idx)"
+            >
+              <el-checkbox
+                v-if="isBGMSyncItemSelectable(item)"
+                :model-value="isBGMSyncItemSelected(idx)"
+                @change="handleBGMSyncToggle(idx)"
+                @click.stop
+              />
+              <el-icon v-else class="sync-fixed-icon">
+                <CircleCheck v-if="item.action === 'matched'" />
+                <Minus v-else-if="item.action === 'local_only'" />
+                <Warning v-else-if="item.action === 'skipped_duplicate'" />
+              </el-icon>
+              <el-avatar :size="42" :src="item.avatar || undefined" shape="square" class="char-avatar">
+                <el-icon><UserFilled /></el-icon>
+              </el-avatar>
+              <div class="char-info">
+                <div class="char-name">{{ item.name }}</div>
+                <div class="char-relation">{{ getBGMSyncActionLabel(item.action) }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 步骤：应用中 -->
+        <div v-if="bgmSyncStep === 'applying'" class="bgm-step-importing">
+          <div class="importing-content">
+            <el-icon class="importing-icon"><Loading /></el-icon>
+            <h3>正在应用更新...</h3>
+            <el-progress :percentage="50" :indeterminate="true" />
+          </div>
+        </div>
+
+        <!-- 步骤：完成 -->
+        <div v-if="bgmSyncStep === 'done' && bgmSyncApplyResult" class="bgm-step-imported">
+          <div class="imported-content">
+            <el-icon class="success-icon"><CircleCheck /></el-icon>
+            <h3>更新完成！</h3>
+            <div class="import-summary">
+              <p>新增角色：<strong>{{ bgmSyncApplyResult.created_count }}</strong></p>
+              <p>回填 ID：<strong>{{ bgmSyncApplyResult.linked_count }}</strong></p>
+              <p v-if="bgmSyncApplyResult.subject_linked">已建立 BGM 关联</p>
+              <p v-if="bgmSyncApplyResult.subject_type_updated">已更新作品类型</p>
+            </div>
+            <div class="import-details" v-if="bgmSyncApplyResult.details.length">
+              <el-collapse>
+                <el-collapse-item title="查看详情" name="details">
+                  <div
+                    v-for="(detail, idx) in bgmSyncApplyResult.details"
+                    :key="idx"
+                    class="detail-item"
+                    :class="detail.status"
+                  >
+                    <el-icon>
+                      <CircleCheck v-if="detail.status === 'created'" />
+                      <Link v-else-if="detail.status === 'linked'" />
+                      <CircleClose v-else />
+                    </el-icon>
+                    <span class="detail-text">
+                      {{ detail.name }}
+                      <span class="detail-status">({{ detail.status === 'created' ? '新增' : detail.status === 'linked' ? '回填ID' : '错误' }})</span>
+                    </span>
+                  </div>
+                </el-collapse-item>
+              </el-collapse>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button v-if="bgmSyncStep === 'link_search'" @click="bgmSyncDialogVisible = false">取消</el-button>
+          <el-button v-if="bgmSyncStep === 'link_subjects'" @click="handleBGMSyncResetToSearch">返回搜索</el-button>
+          <el-button v-if="bgmSyncStep === 'preview'" @click="bgmSyncDialogVisible = false">取消</el-button>
+          <el-button
+            v-if="bgmSyncStep === 'preview'"
+            type="primary"
+            @click="handleBGMSyncApply"
+            :disabled="bgmSyncSelectedItems.length === 0 && !bgmSyncPreview?.subject_type_will_update && !bgmSyncPreview?.will_link_subject"
+            :loading="bgmSyncApplying"
+          >
+            应用更新 ({{ bgmSyncSelectedItems.length }})
+          </el-button>
+          <el-button v-if="bgmSyncStep === 'done'" type="primary" @click="handleBGMSyncClose">完成</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 角色编辑弹窗 (保持不变) -->
     <el-dialog
       v-model="characterDialogVisible"
@@ -842,6 +1115,7 @@ import {
   Link,
   Top,
   Picture,
+  Minus,
 } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile } from 'element-plus'
@@ -865,6 +1139,8 @@ import {
   createBGMCharacters,
   searchBGMSubjects,
   getBGMCharactersBySubjectId,
+  previewBGMSync,
+  applyBGMSync,
 } from '@/api/metadata'
 import Sortable from 'sortablejs'
 import type {
@@ -874,6 +1150,9 @@ import type {
   BGMSearchResponse,
   BGMCreateCharactersResponse,
   BGMSubject,
+  BGMSyncPreviewResponse,
+  BGMSyncApplyResponse,
+  BGMSyncDiffItem,
 } from '@/api/types'
 
 const { isMobile } = useResponsiveDevice()
@@ -1951,6 +2230,201 @@ const handleBGMClose = () => {
   handleBGMReset()
   fetchIPList(true)
 }
+
+// ==================== BGM 增量更新（从已有 IP 触发） ====================
+type BGMSyncStep =
+  | 'link_search'
+  | 'link_searching'
+  | 'link_subjects'
+  | 'previewing'
+  | 'preview'
+  | 'applying'
+  | 'done'
+
+const bgmSyncDialogVisible = ref(false)
+const bgmSyncStep = ref<BGMSyncStep>('preview')
+const bgmSyncTargetIP = ref<IP | null>(null)
+const bgmSyncSearchInput = ref('')
+const bgmSyncSubjectType = ref<number | undefined>(undefined)
+const bgmSyncSearching = ref(false)
+const bgmSyncSubjects = ref<BGMSubject[]>([])
+const bgmSyncPickedSubjectId = ref<number | null>(null)
+const bgmSyncPreview = ref<BGMSyncPreviewResponse | null>(null)
+const bgmSyncSelectedItems = ref<number[]>([])
+const bgmSyncFilter = ref('')
+const bgmSyncApplying = ref(false)
+const bgmSyncApplyResult = ref<BGMSyncApplyResponse | null>(null)
+
+const resetBGMSyncState = () => {
+  bgmSyncTargetIP.value = null
+  bgmSyncSearchInput.value = ''
+  bgmSyncSubjectType.value = undefined
+  bgmSyncSubjects.value = []
+  bgmSyncPickedSubjectId.value = null
+  bgmSyncPreview.value = null
+  bgmSyncSelectedItems.value = []
+  bgmSyncFilter.value = ''
+  bgmSyncApplyResult.value = null
+}
+
+const handleOpenBGMSync = async (ip: IP) => {
+  resetBGMSyncState()
+  bgmSyncTargetIP.value = ip
+  bgmSyncDialogVisible.value = true
+
+  if (ip.bgm_subject_id) {
+    // 已绑定：直接进入预览
+    await runBGMSyncPreview(ip.id, null)
+    return
+  }
+  // 未绑定：进入搜索回填流程，预填 IP 名称
+  bgmSyncSearchInput.value = ip.name
+  bgmSyncSubjectType.value = ip.subject_type ?? undefined
+  bgmSyncStep.value = 'link_search'
+}
+
+const handleBGMSyncSearch = async () => {
+  const keyword = bgmSyncSearchInput.value.trim()
+  if (!keyword) {
+    ElMessage.warning('请输入搜索关键词')
+    return
+  }
+  bgmSyncSearching.value = true
+  bgmSyncStep.value = 'link_searching'
+  try {
+    const resp = await searchBGMSubjects(keyword, bgmSyncSubjectType.value)
+    bgmSyncSubjects.value = resp.subjects
+    if (!resp.subjects.length) {
+      ElMessage.warning('未找到相关作品')
+      bgmSyncStep.value = 'link_search'
+    } else {
+      bgmSyncStep.value = 'link_subjects'
+    }
+  } catch (err: any) {
+    ElMessage.error(err?.message || '搜索失败')
+    bgmSyncStep.value = 'link_search'
+  } finally {
+    bgmSyncSearching.value = false
+  }
+}
+
+const handleBGMSyncResetToSearch = () => {
+  bgmSyncSubjects.value = []
+  bgmSyncStep.value = 'link_search'
+}
+
+const handleBGMSyncPickSubject = async (subject: BGMSubject) => {
+  if (!bgmSyncTargetIP.value) return
+  bgmSyncPickedSubjectId.value = subject.id
+  await runBGMSyncPreview(bgmSyncTargetIP.value.id, subject.id)
+}
+
+const runBGMSyncPreview = async (ipId: number, subjectId: number | null) => {
+  bgmSyncStep.value = 'previewing'
+  try {
+    const resp = await previewBGMSync(ipId, subjectId)
+    bgmSyncPreview.value = resp
+    // 默认选中所有 new + link_by_name
+    bgmSyncSelectedItems.value = resp.items
+      .map((it, idx) => ({ it, idx }))
+      .filter(({ it }) => it.action === 'new' || it.action === 'link_by_name')
+      .map(({ idx }) => idx)
+    bgmSyncStep.value = 'preview'
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || err?.message || '获取更新预览失败')
+    // 出错时：若是历史 IP 回填流程则回到 subjects 列表，否则回到搜索/关闭
+    if (bgmSyncSubjects.value.length) {
+      bgmSyncStep.value = 'link_subjects'
+    } else if (bgmSyncTargetIP.value && !bgmSyncTargetIP.value.bgm_subject_id) {
+      bgmSyncStep.value = 'link_search'
+    } else {
+      bgmSyncDialogVisible.value = false
+    }
+  }
+}
+
+const isBGMSyncItemSelectable = (item: BGMSyncDiffItem) =>
+  item.action === 'new' || item.action === 'link_by_name'
+
+const isBGMSyncItemSelected = (idx: number) => bgmSyncSelectedItems.value.includes(idx)
+
+const handleBGMSyncToggle = (idx: number) => {
+  const item = bgmSyncPreview.value?.items[idx]
+  if (!item || !isBGMSyncItemSelectable(item)) return
+  const pos = bgmSyncSelectedItems.value.indexOf(idx)
+  if (pos >= 0) {
+    bgmSyncSelectedItems.value.splice(pos, 1)
+  } else {
+    bgmSyncSelectedItems.value.push(idx)
+  }
+}
+
+const handleBGMSyncSelectAllNew = () => {
+  if (!bgmSyncPreview.value) return
+  bgmSyncSelectedItems.value = bgmSyncPreview.value.items
+    .map((it, idx) => ({ it, idx }))
+    .filter(({ it }) => isBGMSyncItemSelectable(it))
+    .map(({ idx }) => idx)
+}
+
+const handleBGMSyncSelectNone = () => {
+  bgmSyncSelectedItems.value = []
+}
+
+const getBGMSyncActionLabel = (action: BGMSyncDiffItem['action']) => {
+  const map: Record<BGMSyncDiffItem['action'], string> = {
+    new: '新增',
+    link_by_name: '按名字回填 BGM ID',
+    matched: '已关联，无需变动',
+    local_only: '本地独有（不处理）',
+    skipped_duplicate: 'BGM 重复，已跳过',
+  }
+  return map[action] || action
+}
+
+const handleBGMSyncApply = async () => {
+  if (!bgmSyncTargetIP.value || !bgmSyncPreview.value) return
+  bgmSyncApplying.value = true
+  bgmSyncStep.value = 'applying'
+  try {
+    const items = bgmSyncSelectedItems.value
+      .map((idx) => bgmSyncPreview.value!.items[idx])
+      .filter((it): it is BGMSyncDiffItem => !!it && isBGMSyncItemSelectable(it))
+      .map((it) => ({
+        action: it.action as 'new' | 'link_by_name',
+        bgm_character_id: it.bgm_character_id ?? null,
+        name: it.name,
+        avatar: it.avatar ?? null,
+        local_character_id: it.local_character_id ?? null,
+      }))
+
+    const subjectId = bgmSyncTargetIP.value.bgm_subject_id
+      ? null
+      : bgmSyncPickedSubjectId.value
+
+    const result = await applyBGMSync(bgmSyncTargetIP.value.id, items, {
+      subjectId,
+      updateSubjectType: true,
+    })
+    bgmSyncApplyResult.value = result
+    bgmSyncStep.value = 'done'
+    // 刷新缓存
+    metadataStore.charactersByIP[bgmSyncTargetIP.value.id] = []
+    await fetchIPList(true)
+    ElMessage.success(`新增 ${result.created_count} · 回填 ${result.linked_count}`)
+  } catch (err: any) {
+    ElMessage.error(err?.response?.data?.detail || err?.message || '更新失败')
+    bgmSyncStep.value = 'preview'
+  } finally {
+    bgmSyncApplying.value = false
+  }
+}
+
+const handleBGMSyncClose = () => {
+  bgmSyncDialogVisible.value = false
+  resetBGMSyncState()
+  fetchIPList(true)
+}
 </script>
 
 <style scoped>
@@ -2541,8 +3015,18 @@ const handleBGMClose = () => {
   border-bottom: 1px solid rgba(212, 175, 55, 0.12);
 }
 
+.swipe-action-btn.sync {
+  color: var(--accent-purple-dark);
+  border-bottom: 1px solid rgba(162, 155, 254, 0.18);
+}
+
 .swipe-action-btn.delete {
   color: #e5484d;
+}
+
+.swipe-action-btn.sync {
+  color: var(--accent-purple-dark);
+  border-bottom: 1px solid rgba(162, 155, 254, 0.18);
 }
 
 .swipe-action-btn:active {
@@ -2551,6 +3035,53 @@ const handleBGMClose = () => {
 
 .swipe-action-btn.delete:active {
   background: rgba(245, 108, 108, 0.08);
+}
+
+/* ==================== BGM 增量同步弹窗补充样式 ==================== */
+.bgm-sync-alert {
+  margin-bottom: 12px;
+}
+
+.bgm-sync-notice {
+  margin-bottom: 12px;
+}
+
+.bgm-sync-list .bgm-sync-item {
+  align-items: center;
+  gap: 12px;
+}
+
+.bgm-sync-item.action-matched {
+  opacity: 0.6;
+}
+
+.bgm-sync-item.action-local_only {
+  opacity: 0.55;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.bgm-sync-item.action-skipped_duplicate {
+  opacity: 0.55;
+}
+
+.bgm-sync-item:not(.selectable) {
+  cursor: default;
+}
+
+.bgm-sync-item .sync-fixed-icon {
+  width: 16px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary, #909399);
+}
+
+.bgm-sync-item.action-matched .sync-fixed-icon {
+  color: var(--el-color-success, #67c23a);
+}
+
+.bgm-sync-item.action-skipped_duplicate .sync-fixed-icon {
+  color: var(--el-color-warning, #e6a23c);
 }
 
 .swipe-content {

@@ -25,4 +25,4 @@ class CharacterSimpleSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Character
-        fields = ("id", "name", "ip", "ip_id", "avatar", "gender")
+        fields = ("id", "name", "ip", "ip_id", "avatar", "gender", "bgm_character_id")
