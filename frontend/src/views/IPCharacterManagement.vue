@@ -189,7 +189,16 @@
           <!-- 修改点：添加 sortable="custom" 和 prop -->
           <el-table-column prop="name" label="作品名称" min-width="180" sortable="custom">
             <template #default="{ row }">
-              <span class="table-name">{{ row.name }}</span>
+              <span class="table-name">
+                {{ row.name }}
+                <el-tooltip
+                  v-if="row.bgm_subject_id"
+                  :content="`已绑定 Bangumi (ID: ${row.bgm_subject_id})`"
+                  placement="top"
+                >
+                  <el-icon class="bgm-bound-icon" :size="14"><Link /></el-icon>
+                </el-tooltip>
+              </span>
             </template>
           </el-table-column>
 
@@ -336,7 +345,14 @@
                   <div class="card-main" @click="handleMobileCardClick(item.id)">
                     <div class="card-info">
                       <div class="name-row">
-                        <h3 class="name-text">{{ item.name }}</h3>
+                        <div class="name-text">
+                          <span class="name-label">{{ item.name }}</span>
+                          <el-icon
+                            v-if="item.bgm_subject_id"
+                            class="bgm-bound-icon-mobile"
+                            :size="14"
+                          ><Link /></el-icon>
+                        </div>
                       </div>
                       <div v-if="item.subject_type" class="meta-row">
                         <span class="subject-type-pill">
@@ -2659,6 +2675,13 @@ const handleBGMSyncClose = () => {
   color: #404144;
 }
 
+.bgm-bound-icon {
+  color: #67c23a;
+  margin-left: 6px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
+
 .custom-tag {
   border: 1px solid #d9d4ff;
   color: #5a4bff;
@@ -3182,6 +3205,13 @@ const handleBGMSyncClose = () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.bgm-bound-icon-mobile {
+  color: #67c23a;
+  margin-left: 6px;
+  flex-shrink: 0;
+  opacity: 0.85;
 }
 
 .card-actions-panel {

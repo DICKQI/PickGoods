@@ -23,7 +23,8 @@
 src/styles/
 ├── variables.css              # CSS 自定义属性
 ├── index.css                  # 全局重置、滚动条、通用工具类
-└── element-plus-theme.css     # Element Plus 全局覆盖
+├── element-plus-theme.css     # Element Plus 全局覆盖
+└── admin.css                  # 管理后台共享样式（仅 admin 页面使用）
 ```
 
 `src/main.ts` 导入顺序：
@@ -31,6 +32,7 @@ src/styles/
 ```ts
 import './styles/index.css'
 import './styles/element-plus-theme.css'
+import './styles/admin.css'
 ```
 
 `index.css` 内部通过 `@import './variables.css'` 引入变量。
@@ -45,6 +47,7 @@ import './styles/element-plus-theme.css'
 | `--bg-gray` | `var(--secondary-gray)` | 页面背景 |
 | `--text-dark` | `#333333` | 主要文字 |
 | `--text-light` | `#888888` | 次要文字 |
+| `--text-regular` | `#606266` | 常规正文（介于主/次要文字之间） |
 | `--text-lighter` | `#CCCCCC` | 禁用/弱提示 |
 | `--border-color` | `rgba(212, 175, 55, 0.3)` | 默认边框 |
 | `--border-color-active` | `var(--primary-gold)` | 激活边框 |
@@ -54,6 +57,7 @@ import './styles/element-plus-theme.css'
 | 变量 | 值 | 说明 |
 |------|------|------|
 | `--card-radius` | `20px` | 通用卡片圆角 |
+| `--card-radius-sm` | `12px` | 小卡片 / 表格圆角 |
 | `--button-radius` | `8px` | 按钮/输入框圆角 |
 | `--shadow-sm` | `0 2px 10px rgba(0, 0, 0, 0.05)` | 轻阴影 |
 | `--shadow-md` | `0 4px 15px rgba(212, 175, 55, 0.15)` | 中等阴影 |
@@ -67,6 +71,26 @@ import './styles/element-plus-theme.css'
 | `--transition-fast` | `0.2s ease` |
 | `--transition-normal` | `0.3s ease` |
 | `--transition-slow` | `0.5s ease` |
+
+### 间距
+
+| 变量 | 值 | 说明 |
+|------|------|------|
+| `--space-xs` | `4px` | 极小间距 |
+| `--space-sm` | `8px` | 小间距 |
+| `--space-md` | `16px` | 中间距 |
+| `--space-lg` | `24px` | 大间距 |
+
+### 字号
+
+| 变量 | 值 | 说明 |
+|------|------|------|
+| `--font-title-lg` | `22px` | 页面主标题 |
+| `--font-title` | `18px` | 顶栏标题 |
+| `--font-section` | `16px` | 卡片区块标题 |
+| `--font-body` | `14px` | 正文 / 控件 |
+| `--font-caption` | `13px` | 副标题 / 摘要 |
+| `--font-small` | `12px` | 辅助 / 标签 |
 
 ## 全局样式
 
@@ -145,7 +169,15 @@ Vue 组件样式基本使用 `<style scoped>`。
 
 ## Z-Index 约定
 
-当前 z-index 分散在组件中，尚未集中变量化。新增浮层时建议参考：
+当前 z-index 分散在组件中，尚未集中变量化。管理后台已定义以下变量：
+
+| 变量 | 值 | 用途 |
+|------|------|------|
+| `--z-admin-sidebar` | `100` | 管理后台侧边栏 |
+| `--z-admin-header` | `50` | 管理后台顶栏（sticky） |
+| `--z-admin-overlay` | `99` | 管理后台移动端遮罩 |
+
+新增浮层时建议参考以下范围：
 
 | 范围 | 用途 |
 |------|------|
@@ -172,5 +204,5 @@ Vue 组件样式基本使用 `<style scoped>`。
 2. 断点多数使用 `768px`，个别组件仍有自己的布局阈值。
 3. 深度选择器存在 `:deep()` 与 `::deep()` 混用。
 4. 暂无深色模式。
-5. 字号、间距、z-index 尚未完全变量化。
+5. 字号、间距、z-index 已补齐管理后台所需的最小集（见上文「间距」「字号」小节与「Z-Index 约定」），其余页面仍以硬编码为主，后续可按需扩展。
 6. `.laser-gradient` 工具类已定义但当前使用较少。
