@@ -179,6 +179,16 @@ const routes: RouteRecordRaw[] = [
           requiresAdmin: true,
         },
       },
+      {
+        path: 'bgm-sync',
+        name: 'AdminBGMSync',
+        component: () => import('@/views/admin/BGMSyncManagement.vue'),
+        meta: {
+          title: 'BGM自动同步',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
     ],
   },
 ]

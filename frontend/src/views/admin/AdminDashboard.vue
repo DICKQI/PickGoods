@@ -48,6 +48,10 @@
           <el-icon><Star /></el-icon>
           <template #title>主题管理</template>
         </el-menu-item>
+        <el-menu-item index="/admin/bgm-sync">
+          <el-icon><Refresh /></el-icon>
+          <template #title>BGM 自动同步</template>
+        </el-menu-item>
       </el-menu>
 
       <div class="sidebar-footer">
@@ -103,7 +107,8 @@ import {
   Back,
   Setting,
   Fold,
-  Expand
+  Expand,
+  Refresh
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -122,6 +127,7 @@ const activeMenu = computed(() => {
   if (path.startsWith('/admin/ip')) return '/admin/ip'
   if (path.startsWith('/admin/categories')) return '/admin/categories'
   if (path.startsWith('/admin/themes')) return '/admin/themes'
+  if (path.startsWith('/admin/bgm-sync')) return '/admin/bgm-sync'
   return '/admin/users'
 })
 
@@ -131,7 +137,8 @@ const pageTitle = computed(() => {
     '/admin/goods': '谷子管理',
     '/admin/ip': 'IP与角色管理',
     '/admin/categories': '品类管理',
-    '/admin/themes': '主题管理'
+    '/admin/themes': '主题管理',
+    '/admin/bgm-sync': 'BGM 自动同步'
   }
   return titles[activeMenu.value] || '管理后台'
 })

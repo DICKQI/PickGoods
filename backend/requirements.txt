@@ -11,4 +11,5 @@ paddlepaddle==3.0.0  # CPU版；Python 3.13 兼容版本，3.3.x有一DNN问题
 paddleocr>=3.0.0,<4.0.0  # 代码使用 PaddleOCR 3.x predict/rec_texts 返回结构
 jieba>=0.42.1
 rapidfuzz>=3.0.0
+APScheduler>=3.10,<4.0  # BGM 自动同步进程内调度器（3.x API；4.x 为不兼容重写）
 

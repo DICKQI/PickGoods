@@ -766,3 +766,80 @@ export interface AdminUser {
   created_at: string
   updated_at: string
 }
+
+// ==================== BGM 自动同步：审计 ====================
+
+export type BGMSyncFrequency = 'daily' | 'every_3_days' | 'weekly'
+
+export interface BGMSyncSettings {
+  id: number
+  auto_sync_enabled: boolean
+  frequency: BGMSyncFrequency
+  last_run_at: string | null
+  next_run_at: string | null
+  concurrency_limit: number
+  request_interval_ms: number
+  updated_at: string
+  updated_by: AdminUser | null
+  /** 已绑定 BGM 的 IP 数量（后端额外返回，便于前端展示） */
+  bound_ip_count?: number
+}
+
+export interface UpdateBGMSyncSettingsData {
+  auto_sync_enabled?: boolean
+  frequency?: BGMSyncFrequency
+  request_interval_ms?: number
+}
+
+export type BGMSyncJobTrigger = 'scheduled' | 'manual'
+export type BGMSyncJobStatus = 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled'
+export type BGMSyncJobItemStatus = 'success' | 'no_change' | 'skipped_unbound' | 'error'
+
+export interface BGMSyncJob {
+  id: number
+  trigger: BGMSyncJobTrigger
+  status: BGMSyncJobStatus
+  started_at: string
+  finished_at: string | null
+  triggered_by: string | null
+  total_ips: number
+  success_count: number
+  failed_count: number
+  skipped_count: number
+  created_total: number
+  linked_total: number
+  error_message: string | null
+  /** 详情接口额外返回的明细列表（列表接口不返回） */
+  items?: BGMSyncJobItem[]
+}
+
+export interface BGMSyncJobItem {
+  id: number
+  job: number
+  ip: number | null
+  ip_name_snapshot: string
+  bgm_subject_id: number | null
+  status: BGMSyncJobItemStatus
+  created_count: number
+  linked_count: number
+  subject_type_updated: boolean
+  error_message: string | null
+  duration_ms: number
+  created_at: string
+}
+
+export interface BGMSyncJobListParams {
+  page?: number
+  page_size?: number
+  status?: BGMSyncJobStatus
+  trigger?: BGMSyncJobTrigger
+  started_at__gte?: string
+  started_at__lte?: string
+}
+
+export interface BGMSyncJobItemListParams {
+  page?: number
+  page_size?: number
+  status?: BGMSyncJobItemStatus
+  ip_name_snapshot?: string
+}
