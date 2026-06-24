@@ -1,8 +1,8 @@
 <template>
-  <div class="admin-layout">
+  <div class="admin-layout" :class="{ 'is-collapsed': isSidebarCollapsed }">
     <aside class="admin-sidebar" :class="{ collapsed: isSidebarCollapsed }">
       <div class="sidebar-header">
-        <div class="brand" @click="goHome">
+        <div class="brand" @click="goToShowcase">
           <span class="brand-icon">✦</span>
           <span v-show="!isSidebarCollapsed" class="brand-text">管理后台</span>
         </div>
@@ -23,43 +23,19 @@
       </div>
 
       <el-menu
-        :default-active="activeMenu"
+        :default-active="route.path"
         class="sidebar-menu"
         :collapse="isSidebarCollapsed"
         @select="handleMenuSelect"
       >
-        <el-menu-item index="/admin/users">
-          <el-icon><User /></el-icon>
-          <template #title>用户管理</template>
-        </el-menu-item>
-        <el-menu-item index="/admin/goods">
-          <el-icon><Goods /></el-icon>
-          <template #title>谷子管理</template>
-        </el-menu-item>
-        <el-menu-item index="/admin/ip">
-          <el-icon><Collection /></el-icon>
-          <template #title>IP与角色</template>
-        </el-menu-item>
-        <el-menu-item index="/admin/categories">
-          <el-icon><Box /></el-icon>
-          <template #title>品类管理</template>
-        </el-menu-item>
-        <el-menu-item index="/admin/themes">
-          <el-icon><Star /></el-icon>
-          <template #title>主题管理</template>
-        </el-menu-item>
-        <el-menu-item index="/admin/bgm-sync">
-          <el-icon><Refresh /></el-icon>
-          <template #title>BGM 自动同步</template>
+        <el-menu-item v-for="item in adminMenu" :key="item.index" :index="item.index">
+          <el-icon><component :is="item.icon" /></el-icon>
+          <template #title>{{ item.title }}</template>
         </el-menu-item>
       </el-menu>
 
       <div class="sidebar-footer">
-        <el-button
-          text
-          class="back-btn"
-          @click="goBack"
-        >
+        <el-button text class="back-btn" @click="goToShowcase">
           <el-icon><Back /></el-icon>
           <span v-show="!isSidebarCollapsed">返回主站</span>
         </el-button>
@@ -96,7 +72,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, type Component } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import {
   User,
@@ -108,7 +84,7 @@ import {
   Setting,
   Fold,
   Expand,
-  Refresh
+  Refresh,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -120,28 +96,19 @@ const authStore = useAuthStore()
 const isSidebarCollapsed = ref(false)
 const { isMobile } = useResponsiveDevice()
 
-const activeMenu = computed(() => {
-  const path = route.path
-  if (path.startsWith('/admin/users')) return '/admin/users'
-  if (path.startsWith('/admin/goods')) return '/admin/goods'
-  if (path.startsWith('/admin/ip')) return '/admin/ip'
-  if (path.startsWith('/admin/categories')) return '/admin/categories'
-  if (path.startsWith('/admin/themes')) return '/admin/themes'
-  if (path.startsWith('/admin/bgm-sync')) return '/admin/bgm-sync'
-  return '/admin/users'
-})
+// 菜单单一数据源：index=路由路径，title=展示名，icon=Element 图标组件。
+// 新增菜单项只需在此追加一行，无需同步修改路由表/高亮/标题等多处。
+const adminMenu: { index: string; title: string; icon: Component }[] = [
+  { index: '/admin/users', title: '用户管理', icon: User },
+  { index: '/admin/goods', title: '谷子管理', icon: Goods },
+  { index: '/admin/ip', title: 'IP与角色', icon: Collection },
+  { index: '/admin/categories', title: '品类管理', icon: Box },
+  { index: '/admin/themes', title: '主题管理', icon: Star },
+  { index: '/admin/bgm-sync', title: 'BGM 自动同步', icon: Refresh },
+]
 
-const pageTitle = computed(() => {
-  const titles: Record<string, string> = {
-    '/admin/users': '用户管理',
-    '/admin/goods': '谷子管理',
-    '/admin/ip': 'IP与角色管理',
-    '/admin/categories': '品类管理',
-    '/admin/themes': '主题管理',
-    '/admin/bgm-sync': 'BGM 自动同步'
-  }
-  return titles[activeMenu.value] || '管理后台'
-})
+// 顶栏标题直接取子路由 meta.title，避免与菜单/路由重复维护标题表。
+const pageTitle = computed(() => (route.meta.title as string) || '管理后台')
 
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
@@ -154,11 +121,7 @@ const handleMenuSelect = (index: string) => {
   }
 }
 
-const goHome = () => {
-  router.push('/showcase')
-}
-
-const goBack = () => {
+const goToShowcase = () => {
   router.push('/showcase')
 }
 
@@ -173,7 +136,7 @@ watch(
       isSidebarCollapsed.value = true
     }
   },
-  { immediate: true }
+  { immediate: true },
 )
 </script>
 
@@ -181,21 +144,21 @@ watch(
 .admin-layout {
   display: flex;
   min-height: 100vh;
-  background-color: #f5f7fa;
+  background-color: var(--bg-gray);
 }
 
 .admin-sidebar {
   width: 220px;
-  background: linear-gradient(180deg, #ffffff 0%, #fafbff 100%);
-  border-right: 1px solid #e4e7ed;
+  background: var(--bg-white);
+  border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  transition: width 0.3s ease;
+  transition: width var(--transition-normal);
   position: fixed;
   top: 0;
   left: 0;
   bottom: 0;
-  z-index: 100;
+  z-index: var(--z-admin-sidebar);
 }
 
 .admin-sidebar.collapsed {
@@ -207,8 +170,8 @@ watch(
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 16px;
-  border-bottom: 1px solid #e4e7ed;
+  padding: 0 var(--space-md);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .admin-sidebar.collapsed .sidebar-header {
@@ -219,7 +182,7 @@ watch(
 .brand {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--space-sm);
   cursor: pointer;
 }
 
@@ -229,21 +192,21 @@ watch(
 
 .brand-icon {
   font-size: 24px;
-  background: linear-gradient(45deg, #d4af37, #f0d77c);
+  background: linear-gradient(45deg, var(--primary-gold), var(--primary-gold-light));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
 
 .brand-text {
-  font-size: 16px;
+  font-size: var(--font-body);
   font-weight: 600;
-  color: #303133;
+  color: var(--text-dark);
 }
 
 .collapse-btn {
-  font-size: 18px;
-  color: #606266;
+  font-size: var(--font-section);
+  color: var(--text-regular);
 }
 
 .admin-sidebar.collapsed .collapse-btn {
@@ -267,12 +230,12 @@ watch(
 .sidebar-menu :deep(.el-menu-item) {
   height: 50px;
   line-height: 50px;
-  margin: 4px 8px;
-  border-radius: 8px;
+  margin: var(--space-xs) var(--space-sm);
+  border-radius: var(--button-radius);
 }
 
 .sidebar-menu.el-menu--collapse :deep(.el-menu-item) {
-  margin: 4px 0;
+  margin: var(--space-xs) 0;
   padding: 0 !important;
   display: flex;
   align-items: center;
@@ -284,52 +247,55 @@ watch(
 }
 
 .sidebar-menu :deep(.el-menu-item:hover) {
-  background-color: #f5f7fa;
+  background-color: var(--bg-gray);
 }
 
+/* 菜单激活态：遵循 STYLING.md，使用香槟金（与全局 el-menu 激活一致），
+   不再用紫色作为后台识别色。 */
 .sidebar-menu :deep(.el-menu-item.is-active) {
-  background: linear-gradient(135deg, #f6f4ff 0%, #ebe7ff 100%);
-  color: #8e7dff;
+  background: rgba(212, 175, 55, 0.1);
+  color: var(--primary-gold-dark);
 }
 
 .sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid #e4e7ed;
+  padding: var(--space-md);
+  border-top: 1px solid var(--border-color);
 }
 
 .back-btn {
   width: 100%;
   justify-content: flex-start;
-  color: #606266;
+  color: var(--text-regular);
 }
 
 .back-btn:hover {
-  color: #8e7dff;
+  color: var(--primary-gold);
 }
 
 .admin-main {
   flex: 1;
   margin-left: 220px;
-  transition: margin-left 0.3s ease;
+  transition: margin-left var(--transition-normal);
   display: flex;
   flex-direction: column;
 }
 
-.admin-sidebar.collapsed + .admin-main {
+/* 用父级 class 控制折叠态，替代脆弱的 .admin-sidebar.collapsed + .admin-main 相邻兄弟选择器。 */
+.admin-layout.is-collapsed .admin-main {
   margin-left: 64px;
 }
 
 .admin-header {
   height: 64px;
-  background: #ffffff;
-  border-bottom: 1px solid #e4e7ed;
+  background: var(--bg-white);
+  border-bottom: 1px solid var(--border-color);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 24px;
+  padding: 0 var(--space-lg);
   position: sticky;
   top: 0;
-  z-index: 50;
+  z-index: var(--z-admin-header);
 }
 
 .header-left {
@@ -338,35 +304,35 @@ watch(
 }
 
 .page-title {
-  font-size: 18px;
+  font-size: var(--font-title);
   font-weight: 600;
-  color: #303133;
+  color: var(--text-dark);
   margin: 0;
 }
 
 .header-right {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: var(--space-md);
 }
 
 .user-info {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 14px;
-  color: #606266;
+  font-size: var(--font-body);
+  color: var(--text-regular);
 }
 
 .admin-content {
   flex: 1;
-  padding: 24px;
+  padding: var(--space-lg);
   overflow-y: auto;
 }
 
 .admin-page-fade-enter-active,
 .admin-page-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
 }
 
 .admin-page-fade-enter-from,
@@ -389,11 +355,8 @@ watch(
     overflow: hidden;
   }
 
-  .admin-main {
-    margin-left: 0;
-  }
-
-  .admin-sidebar.collapsed + .admin-main {
+  .admin-main,
+  .admin-layout.is-collapsed .admin-main {
     margin-left: 0;
   }
 
@@ -405,15 +368,15 @@ watch(
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.3);
-    z-index: 99;
+    z-index: var(--z-admin-overlay);
   }
 
   .admin-content {
-    padding: 16px;
+    padding: var(--space-md);
   }
 
   .admin-header {
-    padding: 0 16px;
+    padding: 0 var(--space-md);
   }
 }
 
@@ -428,7 +391,7 @@ watch(
   }
 
   .admin-main,
-  .admin-sidebar.collapsed + .admin-main {
+  .admin-layout.is-collapsed .admin-main {
     margin-left: 0;
   }
 
@@ -440,15 +403,15 @@ watch(
     right: 0;
     bottom: 0;
     background: rgba(0, 0, 0, 0.3);
-    z-index: 99;
+    z-index: var(--z-admin-overlay);
   }
 
   .admin-content {
-    padding: 16px;
+    padding: var(--space-md);
   }
 
   .admin-header {
-    padding: 0 16px;
+    padding: 0 var(--space-md);
   }
 }
 </style>

@@ -12,6 +12,7 @@ import App from './App.vue'
 import router from './router'
 import './styles/index.css'
 import './styles/element-plus-theme.css'
+import './styles/admin.css'
 
 // 初始化 StatusBar（仅在 Capacitor 环境中）
 if (Capacitor.isNativePlatform()) {

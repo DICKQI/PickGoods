@@ -63,6 +63,7 @@ class AdminPagination(PageNumberPagination):
     description=(
         "仅 `role.name` 为 Admin 的账号可访问。\n\n"
         "- 支持分页：`?page=`、`?page_size=`（最大 100）。\n"
+        "- 支持搜索：`?search=` 按 `username` 模糊匹配（icontains）。\n"
         "- 不提供 DELETE：请使用 PATCH 将 `is_active` 设为 false 停用账号。"
     ),
 )
@@ -76,6 +77,9 @@ class AdminUserViewSet(
     permission_classes = [IsAuthenticated, IsAdmin]
     pagination_class = AdminPagination
     queryset = User.objects.select_related("role").order_by("id")
+    # 复用全局 SearchFilter（见 settings.DEFAULT_FILTER_BACKENDS），
+    # 查询参数名为 search，对 username 做 icontains 模糊匹配。
+    search_fields = ["username"]
 
     def get_serializer_class(self):
         if self.action == "create":

@@ -1,28 +1,24 @@
 import request from '@/utils/request'
-import type { PaginatedResponse } from './types'
+import type {
+  PaginatedResponse,
+  AdminUser,
+  AdminRole,
+  BGMSyncSettings,
+  BGMSyncJob,
+  BGMSyncJobItem,
+} from './types'
 
-export interface AdminUser {
-  id: number
-  username: string
-  role: {
-    id: number
-    name: string
-    created_at: string
-  }
-  is_active: boolean
-  created_at: string
-  updated_at: string
-}
+// 数据模型类型统一来自 ./types，此处再导出，以便组件从 '@/api/admin' 统一导入，
+// 避免在 admin.ts 与 types.ts 两处重复定义同一接口。
+export type { AdminUser, AdminRole, BGMSyncSettings, BGMSyncJob, BGMSyncJobItem } from './types'
 
-export interface AdminRole {
-  id: number
-  name: string
-  created_at: string
-}
+// ==================== 用户 / 角色管理 ====================
 
 export interface AdminUserListParams {
   page?: number
   page_size?: number
+  /** 按用户名模糊匹配（后端 SearchFilter，icontains） */
+  search?: string
 }
 
 export interface CreateAdminUserData {
@@ -58,50 +54,6 @@ export function getAdminRoles() {
 }
 
 // ==================== BGM 自动同步 ====================
-
-export interface BGMSyncSettings {
-  auto_sync_enabled: boolean
-  frequency: 'daily' | 'every_3_days' | 'weekly'
-  last_run_at: string | null
-  next_run_at: string | null
-  concurrency_limit: number
-  request_interval_ms: number
-  updated_at: string
-  /** 已绑定 BGM 的 IP 数量（后端 SerializerMethodField 额外返回） */
-  bound_ip_count?: number
-}
-
-export interface BGMSyncJobItem {
-  id: number
-  job: number
-  ip: number | null
-  ip_name_snapshot: string
-  bgm_subject_id: number | null
-  status: 'success' | 'no_change' | 'skipped_unbound' | 'error'
-  created_count: number
-  linked_count: number
-  subject_type_updated: boolean
-  error_message: string | null
-  duration_ms: number
-  created_at: string
-}
-
-export interface BGMSyncJob {
-  id: number
-  trigger: 'scheduled' | 'manual'
-  status: 'running' | 'succeeded' | 'partial' | 'failed' | 'cancelled'
-  started_at: string
-  finished_at: string | null
-  /** 后端 serializer 已展平为 username 字符串；未登录触发为 null */
-  triggered_by: string | null
-  total_ips: number
-  success_count: number
-  failed_count: number
-  skipped_count: number
-  created_total: number
-  linked_total: number
-  error_message: string | null
-}
 
 export interface BGMSyncSettingsUpdate {
   auto_sync_enabled?: boolean

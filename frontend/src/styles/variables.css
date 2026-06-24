@@ -41,5 +41,30 @@
   --transition-fast: 0.2s ease;
   --transition-normal: 0.3s ease;
   --transition-slow: 0.5s ease;
+
+  /* 文字色 - 常规正文色（介于 --text-dark 与 --text-light 之间） */
+  --text-regular: #606266;
+
+  /* 圆角 - 小卡片 / 表格 */
+  --card-radius-sm: 12px;
+
+  /* 间距 - 最小集 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+
+  /* 字号 */
+  --font-title-lg: 22px;   /* 页面主标题 */
+  --font-title: 18px;      /* 顶栏标题 */
+  --font-section: 16px;    /* 卡片区块标题 */
+  --font-body: 14px;       /* 正文 / 控件 */
+  --font-caption: 13px;    /* 副标题 / 摘要 */
+  --font-small: 12px;      /* 辅助 / 标签 */
+
+  /* z-index - 管理后台 */
+  --z-admin-sidebar: 100;
+  --z-admin-header: 50;
+  --z-admin-overlay: 99;
 }
 

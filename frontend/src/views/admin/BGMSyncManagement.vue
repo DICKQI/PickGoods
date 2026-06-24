@@ -1,88 +1,83 @@
 <template>
-  <div class="bgm-sync-container">
+  <div class="admin-page">
+    <AdminPageHeader title="BGM 自动同步" subtitle="定时从 Bangumi 拉取已绑定 IP 的角色变更，支持审计" />
+
     <!-- 顶部设置卡片 -->
     <el-card class="settings-card" shadow="never">
-      <div class="settings-header">
-        <div class="title-wrapper">
-          <h2 class="page-title">BGM 自动同步</h2>
-          <span class="sub-title">定时从 Bangumi 拉取已绑定 IP 的角色变更，支持审计</span>
-        </div>
-      </div>
-
       <div v-loading="settingsLoading" class="settings-body">
         <template v-if="settings">
-        <div class="settings-row">
-          <div class="setting-item">
-            <span class="setting-label">自动同步</span>
-            <el-switch
-              v-model="settings.auto_sync_enabled"
-              :loading="settingsSaving"
-              @change="handleSaveSettings"
-            />
-            <span class="setting-hint">{{ settings.auto_sync_enabled ? '已开启' : '已关闭' }}</span>
+          <div class="settings-row">
+            <div class="setting-item">
+              <span class="setting-label">自动同步</span>
+              <el-switch
+                v-model="settings.auto_sync_enabled"
+                :loading="settingsSaving"
+                @change="handleSaveSettings"
+              />
+              <span class="setting-hint">{{ settings.auto_sync_enabled ? '已开启' : '已关闭' }}</span>
+            </div>
+
+            <div class="setting-item">
+              <span class="setting-label">同步频率</span>
+              <el-select
+                v-model="settings.frequency"
+                :disabled="settingsSaving"
+                style="width: 140px"
+                @change="handleSaveSettings"
+              >
+                <el-option label="每天" value="daily" />
+                <el-option label="每 3 天" value="every_3_days" />
+                <el-option label="每周" value="weekly" />
+              </el-select>
+            </div>
+
+            <div class="setting-item">
+              <span class="setting-label">请求间隔(ms)</span>
+              <el-input-number
+                v-model="settings.request_interval_ms"
+                :min="500"
+                :max="10000"
+                :step="500"
+                :disabled="settingsSaving"
+                style="width: 130px"
+                @change="handleSaveSettings"
+              />
+            </div>
           </div>
 
-          <div class="setting-item">
-            <span class="setting-label">同步频率</span>
-            <el-select
-              v-model="settings.frequency"
-              :disabled="settingsSaving"
-              style="width: 140px"
-              @change="handleSaveSettings"
+          <div class="status-row">
+            <div class="status-item">
+              <span class="status-label">上次执行</span>
+              <span class="status-value">{{ formatDateTime(settings.last_run_at) }}</span>
+            </div>
+            <div v-if="settings.auto_sync_enabled" class="status-item">
+              <span class="status-label">下次执行</span>
+              <span class="status-value">{{ formatDateTime(settings.next_run_at) }}</span>
+            </div>
+            <div v-else class="status-item">
+              <span class="status-label">下次执行</span>
+              <span class="status-value status-disabled">自动同步已关闭</span>
+            </div>
+            <div class="status-item">
+              <span class="status-label">已绑定 BGM 的 IP</span>
+              <span class="status-value">{{ boundIpCount }}</span>
+            </div>
+          </div>
+
+          <div class="action-row">
+            <el-button
+              type="primary"
+              :loading="runNowLoading"
+              :disabled="!!runningJobId"
+              @click="handleRunNow"
             >
-              <el-option label="每天" value="daily" />
-              <el-option label="每 3 天" value="every_3_days" />
-              <el-option label="每周" value="weekly" />
-            </el-select>
+              <el-icon><CaretRight /></el-icon>
+              立即执行
+            </el-button>
+            <span v-if="runningJobId" class="running-hint">
+              任务 #{{ runningJobId }} 执行中...
+            </span>
           </div>
-
-          <div class="setting-item">
-            <span class="setting-label">请求间隔(ms)</span>
-            <el-input-number
-              v-model="settings.request_interval_ms"
-              :min="500"
-              :max="10000"
-              :step="500"
-              :disabled="settingsSaving"
-              style="width: 130px"
-              @change="handleSaveSettings"
-            />
-          </div>
-        </div>
-
-        <div class="status-row">
-          <div class="status-item">
-            <span class="status-label">上次执行</span>
-            <span class="status-value">{{ formatDateTime(settings.last_run_at) }}</span>
-          </div>
-          <div v-if="settings.auto_sync_enabled" class="status-item">
-            <span class="status-label">下次执行</span>
-            <span class="status-value">{{ formatDateTime(settings.next_run_at) }}</span>
-          </div>
-          <div v-else class="status-item">
-            <span class="status-label">下次执行</span>
-            <span class="status-value status-disabled">自动同步已关闭</span>
-          </div>
-          <div class="status-item">
-            <span class="status-label">已绑定 BGM 的 IP</span>
-            <span class="status-value">{{ boundIpCount }}</span>
-          </div>
-        </div>
-
-        <div class="action-row">
-          <el-button
-            type="primary"
-            :loading="runNowLoading"
-            :disabled="!!runningJobId"
-            @click="handleRunNow"
-          >
-            <el-icon><CaretRight /></el-icon>
-            立即执行
-          </el-button>
-          <span v-if="runningJobId" class="running-hint">
-            任务 #{{ runningJobId }} 执行中...
-          </span>
-        </div>
         </template>
       </div>
     </el-card>
@@ -123,59 +118,60 @@
       </div>
 
       <div v-loading="jobsLoading" class="jobs-body">
-        <el-table :data="jobs" style="width: 100%" @row-click="handleJobClick">
-          <el-table-column prop="id" label="#" width="70" align="center" />
-          <el-table-column prop="started_at" label="开始时间" width="170">
-            <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
-          </el-table-column>
-          <el-table-column prop="trigger" label="触发方式" width="110" align="center">
-            <template #default="{ row }">
-              <el-tag :type="row.trigger === 'manual' ? 'warning' : 'info'" size="small" effect="plain">
-                {{ row.trigger === 'manual' ? '手动' : '定时' }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="status" label="状态" width="110" align="center">
-            <template #default="{ row }">
-              <el-tag :type="getStatusTagType(row.status)" size="small">
-                {{ getStatusLabel(row.status) }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="total_ips" label="总数" width="80" align="center" />
-          <el-table-column prop="success_count" label="成功" width="80" align="center">
-            <template #default="{ row }">
-              <span class="count-success">{{ row.success_count }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="failed_count" label="失败" width="80" align="center">
-            <template #default="{ row }">
-              <span :class="{ 'count-failed': row.failed_count > 0 }">{{ row.failed_count }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column prop="created_total" label="新增角色" width="100" align="center" />
-          <el-table-column prop="linked_total" label="回填ID" width="90" align="center" />
-          <el-table-column prop="duration_display" label="耗时" width="100" align="center" />
-          <el-table-column prop="triggered_by" label="触发人" width="110" align="center">
-            <template #default="{ row }">
-              {{ row.triggered_by || '—' }}
-            </template>
-          </el-table-column>
-        </el-table>
-
-        <div class="pagination-wrapper">
-          <el-pagination
-            v-model:current-page="jobsPage"
-            v-model:page-size="jobsPageSize"
-            :page-sizes="[10, 20, 50]"
-            :total="jobsTotal"
-            layout="total, sizes, prev, pager, next"
-            @size-change="fetchJobs"
-            @current-change="fetchJobs"
-          />
-        </div>
-
         <el-empty v-if="!jobsLoading && jobs.length === 0" description="暂无同步记录" />
+        <template v-else>
+          <el-table :data="jobs" style="width: 100%" @row-click="handleJobClick">
+            <el-table-column prop="id" label="#" width="70" align="center" />
+            <el-table-column prop="started_at" label="开始时间" width="170">
+              <template #default="{ row }">{{ formatDateTime(row.started_at) }}</template>
+            </el-table-column>
+            <el-table-column prop="trigger" label="触发方式" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.trigger === 'manual' ? 'warning' : 'info'" size="small" effect="plain">
+                  {{ row.trigger === 'manual' ? '手动' : '定时' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="status" label="状态" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="getStatusTagType(row.status)" size="small">
+                  {{ getStatusLabel(row.status) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="total_ips" label="总数" width="80" align="center" />
+            <el-table-column prop="success_count" label="成功" width="80" align="center">
+              <template #default="{ row }">
+                <span class="count-success">{{ row.success_count }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="failed_count" label="失败" width="80" align="center">
+              <template #default="{ row }">
+                <span :class="{ 'count-failed': row.failed_count > 0 }">{{ row.failed_count }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_total" label="新增角色" width="100" align="center" />
+            <el-table-column prop="linked_total" label="回填ID" width="90" align="center" />
+            <el-table-column prop="duration_display" label="耗时" width="100" align="center" />
+            <el-table-column prop="triggered_by" label="触发人" width="110" align="center">
+              <template #default="{ row }">
+                {{ row.triggered_by || '—' }}
+              </template>
+            </el-table-column>
+          </el-table>
+
+          <div v-if="jobsTotal > 0" class="pagination-wrapper">
+            <el-pagination
+              v-model:current-page="jobsPage"
+              v-model:page-size="jobsPageSize"
+              :page-sizes="[10, 20, 50]"
+              :total="jobsTotal"
+              layout="total, sizes, prev, pager, next"
+              @size-change="fetchJobs"
+              @current-change="fetchJobs"
+            />
+          </div>
+        </template>
       </div>
     </el-card>
 
@@ -278,6 +274,8 @@ import {
   type BGMSyncJob,
   type BGMSyncJobItem,
 } from '@/api/admin'
+import AdminPageHeader from './components/AdminPageHeader.vue'
+import { formatDateTime } from '@/utils/datetime'
 
 // ==================== 设置 ====================
 const settings = ref<BGMSyncSettings | null>(null)
@@ -409,7 +407,7 @@ const fetchJobs = async () => {
       status: jobFilter.value.status || undefined,
       trigger: jobFilter.value.trigger || undefined,
     })
-    jobs.value = resp.results.map(j => ({ ...j, duration_display: formatDuration(j) }))
+    jobs.value = resp.results.map((j) => ({ ...j, duration_display: formatDuration(j) }))
     jobsTotal.value = resp.count
   } catch (err: any) {
     ElMessage.error(err?.message || '获取任务列表失败')
@@ -471,17 +469,6 @@ const fetchJobItems = async () => {
 }
 
 // ==================== 工具函数 ====================
-const formatDateTime = (dt: string | null | undefined): string => {
-  if (!dt) return '—'
-  return new Date(dt).toLocaleString('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 const getStatusTagType = (s: string): '' | 'success' | 'info' | 'warning' | 'danger' => {
   const map: Record<string, '' | 'success' | 'info' | 'warning' | 'danger'> = {
     running: 'warning',
@@ -536,99 +523,70 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-.bgm-sync-container {
-  padding: 20px;
-  max-width: 1280px;
-  margin: 0 auto;
-}
-
 .settings-card,
 .jobs-card {
-  border-radius: 12px;
+  border-radius: var(--card-radius-sm);
   border: none;
-  margin-bottom: 20px;
-}
-
-.title-wrapper {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.page-title {
-  font-size: 22px;
-  font-weight: 600;
-  color: #303133;
-  margin: 0;
-}
-
-.sub-title {
-  font-size: 13px;
-  color: #909399;
+  margin-bottom: var(--space-lg);
 }
 
 .settings-body {
-  padding-top: 8px;
+  padding-top: var(--space-sm);
 }
 
 .settings-row {
   display: flex;
   flex-wrap: wrap;
   gap: 32px;
-  margin-bottom: 20px;
+  margin-bottom: var(--space-md);
 }
 
 .setting-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--space-sm);
 }
 
 .setting-label {
-  font-size: 14px;
+  font-size: var(--font-body);
   font-weight: 500;
-  color: #606266;
+  color: var(--text-regular);
 }
 
 .setting-hint {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-small);
+  color: var(--text-light);
 }
 
 .status-row {
   display: flex;
   flex-wrap: wrap;
   gap: 32px;
-  padding: 16px;
-  background: #f7f8fa;
-  border-radius: 8px;
-  margin-bottom: 16px;
+  padding: var(--space-md);
+  background: var(--bg-gray);
+  border-radius: var(--button-radius);
+  margin-bottom: var(--space-md);
 }
 
 .status-item {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-xs);
 }
 
 .status-label {
-  font-size: 12px;
-  color: #909399;
+  font-size: var(--font-small);
+  color: var(--text-light);
 }
 
 .status-value {
-  font-size: 14px;
+  font-size: var(--font-body);
   font-weight: 500;
-  color: #303133;
+  color: var(--text-dark);
 }
 
 .status-disabled {
-  color: #909399;
-  font-weight: 400;
-}
-
-.status-disabled {
-  color: #909399;
+  color: var(--text-light);
   font-weight: 400;
 }
 
@@ -639,29 +597,29 @@ onUnmounted(() => {
 }
 
 .running-hint {
-  font-size: 13px;
-  color: #e6a23c;
+  font-size: var(--font-caption);
+  color: var(--el-color-warning);
 }
 
 .jobs-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-md);
   flex-wrap: wrap;
   gap: 12px;
 }
 
 .section-title {
-  font-size: 16px;
+  font-size: var(--font-section);
   font-weight: 600;
-  color: #303133;
+  color: var(--text-dark);
   margin: 0;
 }
 
 .jobs-filters {
   display: flex;
-  gap: 8px;
+  gap: var(--space-sm);
   flex-wrap: wrap;
 }
 
@@ -670,44 +628,44 @@ onUnmounted(() => {
 }
 
 .count-success {
-  color: #67c23a;
+  color: var(--el-color-success);
   font-weight: 600;
 }
 
 .count-failed {
-  color: #f56c6c;
+  color: var(--el-color-danger);
   font-weight: 600;
 }
 
 .pagination-wrapper {
   display: flex;
   justify-content: flex-end;
-  padding: 16px 0;
+  padding: var(--space-md) 0;
 }
 
 .items-summary {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 12px 16px;
-  background: #f7f8fa;
-  border-radius: 8px;
-  margin-bottom: 16px;
+  padding: 12px var(--space-md);
+  background: var(--bg-gray);
+  border-radius: var(--button-radius);
+  margin-bottom: var(--space-md);
 }
 
 .summary-text {
-  font-size: 13px;
-  color: #606266;
+  font-size: var(--font-caption);
+  color: var(--text-regular);
 }
 
 .items-filters {
   display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+  gap: var(--space-sm);
+  margin-bottom: var(--space-md);
 }
 
 .error-text {
-  color: #f56c6c;
+  color: var(--el-color-danger);
   cursor: help;
   display: inline-block;
   max-width: 240px;
@@ -717,7 +675,7 @@ onUnmounted(() => {
 }
 
 .no-error {
-  color: #c0c4cc;
+  color: var(--text-lighter);
 }
 
 :deep(.el-table__row) {
@@ -725,14 +683,10 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
-  .bgm-sync-container {
-    padding: 16px;
-  }
-
   .settings-row,
   .status-row {
     flex-direction: column;
-    gap: 16px;
+    gap: var(--space-md);
   }
 
   .jobs-header {
@@ -742,6 +696,17 @@ onUnmounted(() => {
 
   .jobs-filters {
     width: 100%;
+  }
+
+  /* 宽表横向滚动：任务表 10 列、明细表 6 列在窄屏溢出 */
+  .jobs-body,
+  .items-body {
+    overflow-x: auto;
+  }
+
+  .jobs-body .el-table,
+  .items-body .el-table {
+    min-width: 640px;
   }
 }
 </style>

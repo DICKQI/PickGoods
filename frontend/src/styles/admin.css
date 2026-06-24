@@ -1,0 +1,72 @@
+/* 管理后台共享样式 —— 全部基于 src/styles/variables.css 的设计 token。
+   仅 admin 专属页面使用，不影响主站。 */
+
+/* 页面容器：居中限宽 */
+.admin-page {
+  padding: var(--space-lg);
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+/* 搜索卡片 */
+.admin-search-card {
+  border-radius: var(--card-radius-sm);
+  border: none;
+  margin-bottom: var(--space-lg);
+}
+
+/* 搜索区 flex 布局 */
+.admin-search-flex {
+  display: flex;
+  gap: var(--space-sm);
+  flex-wrap: wrap;
+}
+
+/* 表格壳 */
+.admin-table-wrapper {
+  background: var(--bg-white);
+  border-radius: var(--card-radius-sm);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+}
+
+/* 分页栏 */
+.admin-pagination {
+  display: flex;
+  justify-content: flex-end;
+  padding: var(--space-md);
+  background: var(--bg-white);
+  border-radius: 0 0 var(--card-radius-sm) var(--card-radius-sm);
+}
+
+/* 行内操作按钮组 */
+.admin-action-inline {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .admin-page {
+    padding: var(--space-md);
+  }
+
+  .admin-search-flex {
+    flex-direction: column;
+  }
+
+  .admin-pagination {
+    overflow-x: auto;
+  }
+
+  /* 宽表横向滚动：表格保持最小宽度，壳层横向滚动 */
+  .admin-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .admin-table-wrapper .el-table {
+    min-width: 640px;
+  }
+}
