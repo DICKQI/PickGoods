@@ -64,7 +64,7 @@ def search_subject(keyword, subject_type=None):
     
     try:
         # requests 会自动处理 params 的拼接
-        response = requests.get(url, headers=get_headers(), params=params, timeout=10)
+        response = requests.get(url, headers=get_headers(), params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -103,7 +103,7 @@ def get_characters(subject_id):
     url = f"{API_HOST}/v0/subjects/{subject_id}/characters"
     
     try:
-        response = requests.get(url, headers=get_headers(), timeout=10)
+        response = requests.get(url, headers=get_headers(), timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -184,7 +184,7 @@ def search_subjects_list(keyword, subject_type=None):
     
     try:
         # requests 会自动处理 params 的拼接
-        response = requests.get(url, headers=get_headers(), params=params, timeout=10)
+        response = requests.get(url, headers=get_headers(), params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -237,7 +237,7 @@ def get_subject_info(subject_id):
     url = f"{API_HOST}/v0/subjects/{subject_id}"
     
     try:
-        response = requests.get(url, headers=get_headers(), timeout=10)
+        response = requests.get(url, headers=get_headers(), timeout=30)
         response.raise_for_status()
         data = response.json()
         
