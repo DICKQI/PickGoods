@@ -135,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Goods, Picture } from '@element-plus/icons-vue'
 import GoodsCard from '@/components/GoodsCard.vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
@@ -204,13 +204,19 @@ const recalcColumns = () => {
   columnsPerShelf.value = Math.min(5, Math.max(2, n || 2))
 }
 
-onMounted(() => {
+const attachObserver = (el: HTMLElement | null) => {
+  ro?.disconnect()
+  if (!el) return
   recalcColumns()
   if (typeof ResizeObserver !== 'undefined') {
-    ro = new ResizeObserver(recalcColumns)
-    if (cabinetRef.value) ro.observe(cabinetRef.value)
+    if (!ro) ro = new ResizeObserver(recalcColumns)
+    ro.observe(el)
   }
-})
+}
+
+// 用 watch 确保 v-if 控制 cabinetRef 出现/消失时都能正确挂载/卸载 observer
+watch(cabinetRef, attachObserver)
+onMounted(() => attachObserver(cabinetRef.value))
 onBeforeUnmount(() => {
   ro?.disconnect()
   ro = null
