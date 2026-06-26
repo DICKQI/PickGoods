@@ -101,13 +101,20 @@ describe('PaperAlbumDisplay', () => {
     expect(wrapper.find('.watermark-image-stub').exists()).toBe(true)
   })
 
-  it('uses a square paper image frame and keeps the book spine inside the page area', () => {
+  it('uses a roomy square paper image frame and keeps the book spine inside the page area', () => {
     const source = componentSource()
     const paperBookBlock = source.match(/\.paper-book\s*\{([\s\S]*?)\n\}/)?.[1] || ''
 
     expect(source).toMatch(/\.paper-card\s*\{[\s\S]*aspect-ratio:\s*1\s*\/\s*1/)
+    expect(paperBookBlock).toContain('max-width: min(1120px, 100%);')
+    expect(source).toContain('min-height: 440px;')
+    expect(source).toContain('min-height: 188px;')
+    expect(source).toContain('width: min(168px, 100%);')
+    expect(source).toContain('width: min(128px, 100%);')
     expect(source).toMatch(/\.paper-book::before\s*\{[\s\S]*top:\s*var\(--paper-book-padding\)/)
     expect(source).toMatch(/\.paper-book::before\s*\{[\s\S]*bottom:\s*var\(--paper-book-padding\)/)
+    expect(source).not.toContain('max-width: 850px;')
+    expect(source).not.toContain('width: min(124px, 100%);')
     expect(paperBookBlock).not.toContain('transparent calc(50% - 1px)')
   })
 })

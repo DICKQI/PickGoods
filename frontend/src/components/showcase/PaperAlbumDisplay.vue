@@ -201,7 +201,7 @@ const {
   errorMessage: '纸制品排序更新失败，已恢复',
   ghostSize: () => {
     const mobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
-    return mobile ? { width: 96, height: 96, radius: '12px' } : { width: 124, height: 124, radius: '14px' }
+    return mobile ? { width: 128, height: 128, radius: '14px' } : { width: 168, height: 168, radius: '16px' }
   },
   onHoverEdge: maybeFlipAtEdge,
 })
@@ -289,13 +289,13 @@ const onPaperClick = (item: ShowcaseGoods) => {
 
 .paper-album {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) 36px;
+  grid-template-columns: 40px minmax(0, 1fr) 40px;
   align-items: center;
-  gap: 10px;
+  gap: 14px;
 }
 .paper-page-button {
-  width: 36px;
-  height: 48px;
+  width: 40px;
+  height: 56px;
   border: 1px solid rgba(142, 125, 255, 0.18);
   border-radius: 999px;
   color: rgba(64, 58, 112, 0.72);
@@ -308,15 +308,15 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 
 .paper-book {
-  --paper-book-padding: 16px;
+  --paper-book-padding: 20px;
   min-width: 0;
   position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
-  max-width: 850px;
+  max-width: min(1120px, 100%);
   margin: 0 auto;
-  border-radius: 18px;
+  border-radius: 20px;
   padding: var(--paper-book-padding);
   background:
     repeating-linear-gradient(90deg, rgba(142, 125, 255, 0.045) 0 1px, transparent 1px 18px),
@@ -341,35 +341,35 @@ const onPaperClick = (item: ShowcaseGoods) => {
 .paper-page {
   position: relative;
   z-index: 1;
-  min-height: 360px;
-  padding: 18px 16px 18px 34px;
-  border-radius: 14px 4px 4px 14px;
+  min-height: 440px;
+  padding: 22px 20px 22px 40px;
+  border-radius: 16px 5px 5px 16px;
   background:
     repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 18px),
     linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(246, 249, 255, 0.74));
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58);
 }
 .paper-page--right {
-  border-radius: 4px 14px 14px 4px;
+  border-radius: 5px 16px 16px 5px;
 }
 .paper-page-ring {
   position: absolute;
-  top: 18px;
-  bottom: 18px;
-  left: 12px;
-  width: 8px;
+  top: 22px;
+  bottom: 22px;
+  left: 14px;
+  width: 9px;
   border-radius: 999px;
   background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 32%, transparent 34%) 0 0 / 8px 48px,
+    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 32%, transparent 34%) 0 0 / 9px 56px,
     linear-gradient(180deg, rgba(142, 125, 255, 0.28), rgba(212, 175, 55, 0.2));
 }
 .paper-pocket-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+  gap: 18px;
 }
 .paper-pocket {
-  min-height: 146px;
+  min-height: 188px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -389,7 +389,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 .paper-item {
   position: relative;
-  width: min(124px, 100%);
+  width: min(168px, 100%);
   transition: transform 0.22s ease;
   touch-action: none;
   user-select: none;
@@ -490,15 +490,15 @@ const onPaperClick = (item: ShowcaseGoods) => {
     flex-direction: column;
   }
   .paper-album {
-    grid-template-columns: 30px minmax(0, 1fr) 30px;
-    gap: 6px;
+    grid-template-columns: 32px minmax(0, 1fr) 32px;
+    gap: 8px;
   }
   .paper-page-button {
-    width: 30px;
-    height: 42px;
+    width: 32px;
+    height: 46px;
   }
   .paper-book {
-    --paper-book-padding: 10px;
+    --paper-book-padding: 12px;
     grid-template-columns: 1fr;
     padding: 10px;
     border-radius: 14px;
@@ -510,18 +510,18 @@ const onPaperClick = (item: ShowcaseGoods) => {
     display: none;
   }
   .paper-page {
-    min-height: 320px;
-    padding: 14px 12px 14px 28px;
+    min-height: 380px;
+    padding: 16px 14px 16px 30px;
     border-radius: 12px;
   }
   .paper-pocket-grid {
-    gap: 10px;
+    gap: 12px;
   }
   .paper-pocket {
-    min-height: 124px;
+    min-height: 156px;
   }
   .paper-item {
-    width: min(96px, 100%);
+    width: min(128px, 100%);
   }
 }
 </style>
