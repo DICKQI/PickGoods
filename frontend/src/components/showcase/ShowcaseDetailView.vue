@@ -112,7 +112,7 @@
           <section v-if="roundGoods.length" class="display-section round-display-section">
             <div class="cabinet-label" data-test="round-section-title">
               <div class="section-heading-copy">
-                <span class="section-kicker">Round badge shelf</span>
+                <span class="section-kicker">ROUND BADGE SHELF</span>
                 <h2 class="cabinet-label-title">吧唧展架</h2>
               </div>
               <span class="cabinet-label-count">{{ roundGoods.length }} 枚</span>

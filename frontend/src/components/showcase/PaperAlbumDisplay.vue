@@ -2,7 +2,7 @@
   <section class="paper-section display-section">
     <div class="paper-header" data-test="paper-section-title">
       <div class="section-heading-copy">
-        <span class="section-kicker">Paper archive album</span>
+        <span class="section-kicker">PAPER ARCHIVE ALBUM</span>
         <h2 class="paper-title">纸制品收纳册</h2>
       </div>
       <div class="paper-header-meta">
@@ -432,6 +432,19 @@ const onPaperClick = (item: ShowcaseGoods) => {
   display: flex;
   align-items: flex-end;
 }
+.section-heading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.section-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  letter-spacing: 0;
+  text-transform: uppercase;
+  color: rgba(70, 50, 18, 0.54);
+}
 .paper-header {
   justify-content: space-between;
   gap: 16px;
@@ -441,7 +454,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
   font-size: 18px;
   line-height: 1.2;
   font-weight: 900;
-  color: rgba(38, 50, 56, 0.84);
+  color: rgba(70, 50, 18, 0.86);
   margin: 0;
 }
 .paper-header-meta {

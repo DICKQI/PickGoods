@@ -214,6 +214,7 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(wrapper.get('[data-test="hero-round-count"]').text()).toContain('1')
     expect(wrapper.get('[data-test="hero-paper-count"]').text()).toContain('1')
     expect(wrapper.get('[data-test="hero-other-count"]').text()).toContain('1')
+    expect(wrapper.get('[data-test="round-section-title"]').text()).toContain('ROUND BADGE SHELF')
     expect(wrapper.get('[data-test="round-section-title"]').text()).toContain('吧唧展架')
     expect(wrapper.get('[data-test="paper-section-title"]').text()).toContain('纸制品收纳册')
     expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('其他谷子')
