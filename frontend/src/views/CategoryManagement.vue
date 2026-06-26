@@ -119,6 +119,13 @@
                   </el-tag>
                 </template>
               </el-table-column>
+              <el-table-column label="谷子件数" width="120" align="center">
+                <template #default="{ row }">
+                  <el-tag effect="plain" class="goods-count-tag">
+                    {{ row.goods_count ?? 0 }}
+                  </el-tag>
+                </template>
+              </el-table-column>
               <el-table-column label="操作" width="200" align="right">
                 <template #default="{ row }">
                   <div class="action-inline">
@@ -261,6 +268,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { Plus, Search, CollectionTag, Refresh, Loading, Top, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
@@ -303,6 +311,7 @@ const currentActionRow = ref<Category | null>(null)
 
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
+const route = useRoute()
 
 const scrollContainerRef = ref<HTMLElement | null>(null)
 
@@ -538,6 +547,11 @@ const displayedTree = computed<CategoryNode[]>(() => {
   return filterTreeByKeyword(tree, searchText.value.trim())
 })
 
+const isAdminCategoryRoute = computed(() => route.name === 'AdminCategories')
+const categoryListParams = computed(() => (
+  isAdminCategoryRoute.value && authStore.isAdmin ? { goods_count_scope: 'all' as const } : undefined
+))
+
 const autoExpandedMobileIds = computed(() => {
   const ids = new Set<number>()
   if (!searchText.value.trim()) return ids
@@ -654,7 +668,7 @@ const collapseAll = async () => {
 const fetchCategoryList = async (force = false) => {
   loading.value = true
   try {
-    const data = await metadataStore.fetchCategories(force)
+    const data = await metadataStore.fetchCategories(force, categoryListParams.value)
     allCategories.value = data
 
     // 数据更新后，初始化/更新拖拽

@@ -2,6 +2,7 @@
 品类（Category）相关的视图
 """
 from django.db import transaction
+from django.db.models import Sum
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action
@@ -14,7 +15,7 @@ from ..serializers import (
     CategorySimpleSerializer,
     CategoryTreeSerializer,
 )
-from core.permissions import IsAdminOrReadOnly
+from core.permissions import IsAdminOrReadOnly, is_admin
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
@@ -41,8 +42,60 @@ class CategoryViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrReadOnly]
     
     def get_queryset(self):
-        """优化查询，预加载父节点和子节点"""
-        return Category.objects.select_related("parent").prefetch_related("children")
+        """优化查询，预加载父节点和子节点。"""
+        return Category.objects.select_related("parent").prefetch_related("children").order_by("order", "id")
+
+    def _attach_goods_counts(self, categories):
+        """
+        为每个品类挂载 goods_count。
+
+        统计口径：
+        - 汇总 Goods.quantity，而不是 Goods 记录数；
+        - 排除草稿；
+        - 当前品类包含所有后代品类；
+        - 普通用户只看自己的数据，管理员传 goods_count_scope=all 时看全站。
+        """
+        categories = list(categories)
+        all_categories = list(Category.objects.all().only("id", "parent_id"))
+        if not categories:
+            return categories
+
+        user = getattr(self.request, "user", None)
+        goods_queryset = Goods.objects.exclude(status="draft")
+        if not (user and is_admin(user) and self.request.query_params.get("goods_count_scope") == "all"):
+            goods_queryset = goods_queryset.filter(user=user)
+
+        direct_counts = {
+            row["category_id"]: row["quantity_sum"] or 0
+            for row in goods_queryset.values("category_id").annotate(quantity_sum=Sum("quantity"))
+        }
+
+        children_by_parent = {}
+        for category in all_categories:
+            children_by_parent.setdefault(category.parent_id, []).append(category)
+
+        memo = {}
+
+        def subtree_count(category):
+            if category.id in memo:
+                return memo[category.id]
+            total = direct_counts.get(category.id, 0)
+            for child in children_by_parent.get(category.id, []):
+                total += subtree_count(child)
+            memo[category.id] = total
+            return total
+
+        for category in categories:
+            category.goods_count = subtree_count(category)
+
+        return categories
+
+    def list(self, request, *args, **kwargs):
+        """获取品类列表，并附带当前统计口径下的谷子件数。"""
+        queryset = self.filter_queryset(self.get_queryset())
+        categories = self._attach_goods_counts(queryset)
+        serializer = self.get_serializer(categories, many=True)
+        return Response(serializer.data)
     
     def get_serializer_class(self):
         """根据操作类型选择序列化器"""
@@ -72,7 +125,8 @@ class CategoryViewSet(viewsets.ModelViewSet):
         返回所有节点的扁平列表（带 parent），前端在内存中组装为树。
         """
         queryset = self.filter_queryset(self.get_queryset())
-        serializer = self.get_serializer(queryset, many=True)
+        categories = self._attach_goods_counts(queryset)
+        serializer = self.get_serializer(categories, many=True)
         return Response(serializer.data)
     
     @action(detail=False, methods=["post"], url_path="batch-update-order")

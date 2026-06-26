@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useMetadataStore } from '@/stores/metadata'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
-import { getThemeList } from '@/api/metadata'
+import { getCategoryList, getThemeList } from '@/api/metadata'
 
 vi.mock('@/api/metadata', () => ({
   getIPList: vi.fn(),
@@ -43,5 +43,21 @@ describe('useMetadataStore cache ownership', () => {
 
     expect(themes).toEqual([{ id: 3, name: '当前用户缓存' }])
     expect(getThemeList).not.toHaveBeenCalled()
+  })
+
+  it('keeps personal and admin category count caches separate', async () => {
+    localStorage.setItem(AUTH_TOKEN_KEY, 'same-user-token')
+    vi.mocked(getCategoryList)
+      .mockResolvedValueOnce([{ id: 1, name: '吧唧', goods_count: 2 } as any])
+      .mockResolvedValueOnce([{ id: 1, name: '吧唧', goods_count: 9 } as any])
+
+    const store = useMetadataStore()
+    const personalCategories = await store.fetchCategories(false)
+    const adminCategories = await store.fetchCategories(false, { goods_count_scope: 'all' })
+
+    expect(personalCategories).toMatchObject([{ goods_count: 2 }])
+    expect(adminCategories).toMatchObject([{ goods_count: 9 }])
+    expect(getCategoryList).toHaveBeenNthCalledWith(1, undefined)
+    expect(getCategoryList).toHaveBeenNthCalledWith(2, { goods_count_scope: 'all' })
   })
 })

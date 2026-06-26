@@ -20,4 +20,12 @@ describe('CategoryManagement mobile layout', () => {
     expect(nodeSource).toContain('class="card-meta-line"')
     expect(nodeSource).toContain('.category-expand-enter-active')
   })
+
+  it('shows category goods counts and requests all-user counts on the admin route', () => {
+    expect(viewSource).toContain('谷子件数')
+    expect(viewSource).toContain("goods_count_scope: 'all'")
+    expect(viewSource).toContain('isAdminCategoryRoute')
+    expect(nodeSource).toContain('件谷子')
+    expect(nodeSource).toContain('node.goods_count')
+  })
 })

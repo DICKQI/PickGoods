@@ -94,7 +94,13 @@ export function deleteCharacter(id: number) {
 // ==================== 品类 CRUD ====================
 
 // 获取所有品类列表（扁平），支持父级筛选
-export function getCategoryList(params?: { name?: string; search?: string; parent?: number; parent__isnull?: boolean }) {
+export function getCategoryList(params?: {
+  name?: string
+  search?: string
+  parent?: number
+  parent__isnull?: boolean
+  goods_count_scope?: 'all'
+}) {
   return request.get<Category[]>('/api/categories/', { params })
 }
 

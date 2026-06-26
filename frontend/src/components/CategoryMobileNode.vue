@@ -32,8 +32,13 @@
             />
           </div>
           <div class="card-path">{{ node.path_name || node.name }}</div>
-          <div v-if="hasChildren" class="card-meta-line">
-            <span>{{ childrenCount }} 个子类</span>
+          <div class="card-meta-list">
+            <div class="card-meta-line">
+              <span>{{ node.goods_count ?? 0 }} 件谷子</span>
+            </div>
+            <div v-if="hasChildren" class="card-meta-line">
+              <span>{{ childrenCount }} 个子类</span>
+            </div>
           </div>
         </div>
 
@@ -290,6 +295,13 @@ const emitToggle = () => {
 
 .mobile-category-node.is-child-node .card-path {
   font-size: 11px;
+}
+
+.card-meta-list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 
 .card-meta-line {

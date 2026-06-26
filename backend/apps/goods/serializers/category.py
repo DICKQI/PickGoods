@@ -9,10 +9,15 @@ from ..models import Category
 class CategorySimpleSerializer(serializers.ModelSerializer):
     """品类简单序列化器（用于列表和嵌套显示）"""
     parent = serializers.PrimaryKeyRelatedField(read_only=True, help_text="父级品类ID")
+    goods_count = serializers.SerializerMethodField(help_text="该品类及其子品类下的谷子持有件数")
     
     class Meta:
         model = Category
-        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order")
+        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order", "goods_count")
+
+    def get_goods_count(self, obj):
+        """返回视图预计算的谷子件数；没有预计算时为 0。"""
+        return getattr(obj, "goods_count", 0) or 0
 
 
 class CategoryTreeSerializer(serializers.ModelSerializer):
@@ -20,10 +25,15 @@ class CategoryTreeSerializer(serializers.ModelSerializer):
     品类树一次性下发用序列化器。
     前端可根据 parent/id 在内存中自行组装为树结构。
     """
+    goods_count = serializers.SerializerMethodField(help_text="该品类及其子品类下的谷子持有件数")
     
     class Meta:
         model = Category
-        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order")
+        fields = ("id", "name", "parent", "path_name", "color_tag", "shape_type", "order", "goods_count")
+
+    def get_goods_count(self, obj):
+        """返回视图预计算的谷子件数；没有预计算时为 0。"""
+        return getattr(obj, "goods_count", 0) or 0
 
 
 class CategoryOrderItemSerializer(serializers.Serializer):

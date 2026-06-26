@@ -8,14 +8,18 @@ const CACHE_KEYS = {
   IPS: 'metadata_ips',
   CHARACTERS_BY_IP: 'metadata_characters_by_ip', // 改为存储按IP分组的角色
   CATEGORIES: 'metadata_categories',
+  CATEGORIES_BY_SCOPE: 'metadata_categories_by_scope',
   THEMES: 'metadata_themes',
   OWNER: 'metadata_cache_owner',
 }
+
+type CategoryListParams = Parameters<typeof getCategoryList>[0]
 
 export const useMetadataStore = defineStore('metadata', () => {
   const ips = ref<IP[]>([])
   const charactersByIP = ref<Record<number, Character[]>>({}) // 使用 Map 结构存储
   const categories = ref<Category[]>([])
+  const categoriesByScope = ref<Record<string, Category[]>>({})
   const themes = ref<Theme[]>([])
   const loading = ref(false)
 
@@ -42,8 +46,13 @@ export const useMetadataStore = defineStore('metadata', () => {
     localStorage.removeItem(CACHE_KEYS.IPS)
     localStorage.removeItem(CACHE_KEYS.CHARACTERS_BY_IP)
     localStorage.removeItem(CACHE_KEYS.CATEGORIES)
+    localStorage.removeItem(CACHE_KEYS.CATEGORIES_BY_SCOPE)
     localStorage.removeItem(CACHE_KEYS.THEMES)
   }
+
+  const categoryScopeKey = (params?: CategoryListParams) => (
+    params?.goods_count_scope === 'all' ? 'all' : 'default'
+  )
 
   const ensureCacheOwner = () => {
     const owner = getCacheOwner()
@@ -68,7 +77,15 @@ export const useMetadataStore = defineStore('metadata', () => {
       if (cachedCharacters) charactersByIP.value = JSON.parse(cachedCharacters)
 
       const cachedCategories = localStorage.getItem(CACHE_KEYS.CATEGORIES)
-      if (cachedCategories) categories.value = JSON.parse(cachedCategories)
+      const cachedCategoriesByScope = localStorage.getItem(CACHE_KEYS.CATEGORIES_BY_SCOPE)
+      if (cachedCategoriesByScope) {
+        categoriesByScope.value = JSON.parse(cachedCategoriesByScope)
+        categories.value = categoriesByScope.value.default || []
+      } else if (cachedCategories) {
+        const parsedCategories = JSON.parse(cachedCategories)
+        categories.value = parsedCategories
+        categoriesByScope.value = { default: parsedCategories }
+      }
 
       const cachedThemes = localStorage.getItem(CACHE_KEYS.THEMES)
       if (cachedThemes) themes.value = JSON.parse(cachedThemes)
@@ -126,13 +143,25 @@ export const useMetadataStore = defineStore('metadata', () => {
     }
   }
 
-  const fetchCategories = async (force = false) => {
+  const fetchCategories = async (force = false, params?: CategoryListParams) => {
     ensureCacheOwner()
-    if (!force && categories.value.length > 0) return categories.value
+    const scopeKey = categoryScopeKey(params)
+    const cachedCategories = categoriesByScope.value[scopeKey]
+    if (!force && cachedCategories && cachedCategories.length > 0) {
+      categories.value = cachedCategories
+      return categories.value
+    }
     try {
-      const data = await getCategoryList()
+      const data = await getCategoryList(params)
+      categoriesByScope.value = {
+        ...categoriesByScope.value,
+        [scopeKey]: data,
+      }
       categories.value = data
-      saveToCache(CACHE_KEYS.CATEGORIES, data)
+      saveToCache(CACHE_KEYS.CATEGORIES_BY_SCOPE, categoriesByScope.value)
+      if (scopeKey === 'default') {
+        saveToCache(CACHE_KEYS.CATEGORIES, data)
+      }
       return data
     } catch (error) {
       console.error('Failed to fetch Categories', error)
@@ -181,6 +210,7 @@ export const useMetadataStore = defineStore('metadata', () => {
     ips,
     charactersByIP,
     categories,
+    categoriesByScope,
     themes,
     loading,
     fetchIPs,

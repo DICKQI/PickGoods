@@ -81,6 +81,8 @@ export interface Category {
   color_tag?: string | null
   shape_type?: 'round' | 'rectangle' | null
   order: number
+  /** 该品类及其子品类下的非草稿谷子持有件数 */
+  goods_count?: number
   children?: Category[]
 }
 
