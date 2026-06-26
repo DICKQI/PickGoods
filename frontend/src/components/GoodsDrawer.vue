@@ -51,19 +51,12 @@
         <!-- 图片画廊区域 -->
         <div class="detail-images">
           <div class="main-image-wrapper">
-            <el-image
+            <SquarePaddedImage
               v-if="detail.main_photo"
               :src="detail.main_photo"
-              fit="contain"
               :preview-src-list="allImages"
               class="main-image"
-            >
-              <template #error>
-                <div class="image-placeholder">
-                  <el-icon><Picture /></el-icon>
-                </div>
-              </template>
-            </el-image>
+            />
           </div>
 
           <div v-if="detail.additional_photos.length > 0" class="additional-images">
@@ -187,18 +180,11 @@
                     class="same-theme-item"
                     @click="handleSameThemeItemClick(goods.id)"
                   >
-                    <el-image
+                    <SquarePaddedImage
                       v-if="goods.main_photo"
                       :src="goods.main_photo"
-                      fit="cover"
                       class="same-theme-image"
-                    >
-                      <template #error>
-                        <div class="same-theme-image-placeholder">
-                          <el-icon><Picture /></el-icon>
-                        </div>
-                      </template>
-                    </el-image>
+                    />
                     <div v-else class="same-theme-image-placeholder">
                       <el-icon><Picture /></el-icon>
                     </div>
@@ -224,6 +210,7 @@ import { Picture, Close, Collection } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getGoodsList } from '@/api/goods'
+import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import type { GoodsDetail, GoodsListItem } from '@/api/types'
 
 interface Props {
@@ -830,6 +817,7 @@ watch([isMobile, viewportHeight], () => {
   width: 100%;
   aspect-ratio: 1;
   border-radius: 8px 8px 0 0;
+  overflow: hidden;
 }
 
 .same-theme-image-placeholder {

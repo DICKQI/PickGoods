@@ -11,28 +11,15 @@
   >
     <!-- 1. 图片区域 -->
     <div class="card-image-wrapper">
-      <WatermarkImage
-        v-if="enableWatermark && goods.main_photo"
+      <SquarePaddedImage
+        v-if="goods.main_photo"
         :src="goods.main_photo"
         :alt="goods.name"
-        :user-id="'ID:' + goods.id.slice(0, 8)"
-        fit="cover"
+        :watermark="enableWatermark"
+        :watermark-user-id="'ID:' + goods.id.slice(0, 8)"
+        loading="lazy"
         class="main-image"
       />
-      <el-image
-        v-else-if="goods.main_photo"
-        :src="goods.main_photo"
-        :alt="goods.name"
-        fit="cover"
-        class="main-image"
-        loading="lazy"
-      >
-        <template #error>
-          <div class="image-placeholder">
-            <el-icon><Picture /></el-icon>
-          </div>
-        </template>
-      </el-image>
       <div v-else class="image-placeholder">
         <el-icon><Picture /></el-icon>
       </div>
@@ -111,7 +98,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref } from 'vue'
 import { Picture, Location, CircleCheck, MoreFilled, Brush, Check } from '@element-plus/icons-vue'
-import WatermarkImage from '@/components/WatermarkImage.vue'
+import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import type { GoodsListItem } from '@/api/types'
 
 interface Props {

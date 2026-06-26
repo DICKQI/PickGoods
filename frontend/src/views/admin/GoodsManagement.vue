@@ -59,18 +59,12 @@
           <el-table :data="goodsList" style="width: 100%">
             <el-table-column label="主图" width="80" align="center">
               <template #default="{ row }">
-                <el-image
+                <SquarePaddedImage
                   v-if="row.main_photo"
                   :src="row.main_photo"
-                  fit="cover"
+                  :alt="row.name"
                   class="goods-image"
-                >
-                  <template #error>
-                    <div class="image-placeholder">
-                      <el-icon><Picture /></el-icon>
-                    </div>
-                  </template>
-                </el-image>
+                />
                 <div v-else class="image-placeholder">
                   <el-icon><Picture /></el-icon>
                 </div>
@@ -153,6 +147,7 @@ import { getAdminUsers } from '@/api/admin'
 import type { GoodsListItem } from '@/api/types'
 import type { AdminUser } from '@/api/admin'
 import AdminPageHeader from './components/AdminPageHeader.vue'
+import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 
 const router = useRouter()
 
@@ -296,7 +291,7 @@ onMounted(() => {
   width: 50px;
   height: 50px;
   border-radius: var(--button-radius);
-  object-fit: cover;
+  overflow: hidden;
 }
 
 .image-placeholder {
