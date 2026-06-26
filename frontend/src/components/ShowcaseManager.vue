@@ -50,22 +50,20 @@
         </div>
 
         <!-- 详情页 -->
-        <div v-else key="detail" class="panel-container full-panel">
-          <el-card shadow="never" class="glass-card adaptive-card detail-card">
-            <div class="scroll-content">
-              <ShowcaseDetailView
-                :loading="showcaseStore.detailLoading"
-                :showcase="showcaseStore.activeShowcase"
-                :goods="showcaseStore.sortedShowcaseGoods"
-                :readonly="isReadonly"
-                @back="backToList"
-                @add-goods="openAddGoods"
-                @open-goods="handleOpenGoodsDetail"
-                @goods-context-menu="openGoodsContextMenu"
-                @goods-context-menu-from-dom="openGoodsContextMenuFromDom"
-              />
-            </div>
-          </el-card>
+        <div v-else key="detail" class="showcase-detail-stage">
+          <ShowcaseDetailView
+            :loading="showcaseStore.detailLoading"
+            :showcase="showcaseStore.activeShowcase"
+            :goods="showcaseStore.sortedShowcaseGoods"
+            :readonly="isReadonly"
+            @back="backToList"
+            @add-goods="openAddGoods"
+            @edit-showcase="openEditShowcase"
+            @delete-showcase="handleDeleteShowcase"
+            @open-goods="handleOpenGoodsDetail"
+            @goods-context-menu="openGoodsContextMenu"
+            @goods-context-menu-from-dom="openGoodsContextMenuFromDom"
+          />
         </div>
       </Transition>
     </div>
@@ -740,6 +738,12 @@ watch(
 
 .full-panel {
   width: 100%;
+}
+
+.showcase-detail-stage {
+  width: min(100%, 1640px);
+  margin: 0 auto;
+  padding: 28px 20px 72px;
 }
 
 .left-panel {

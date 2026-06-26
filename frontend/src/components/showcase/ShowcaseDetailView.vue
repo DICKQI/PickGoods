@@ -1,111 +1,181 @@
 <template>
   <div class="detail-root">
-    <div class="detail-header-bar">
-      <el-button link @click="emit('back')" class="back-btn">
-        <el-icon><ArrowLeft /></el-icon>
-      </el-button>
-      <div class="title">展柜详情</div>
-    </div>
-
-    <div v-if="loading && !showcase" class="detail-loading">
-      <el-skeleton :rows="10" animated />
+    <div v-if="loading && !showcase" class="detail-loading" data-test="detail-loading">
+      <div class="loading-hero">
+        <el-skeleton :rows="3" animated />
+      </div>
+      <div class="loading-display">
+        <el-skeleton :rows="7" animated />
+      </div>
     </div>
 
     <div v-else-if="showcase" class="detail-content">
-      <div class="detail-info-banner">
-        <div class="info-text">
-          <h2 class="detail-name">{{ showcase.name }}</h2>
-          <p class="detail-desc">{{ showcase.description || '这个展柜还没有描述...' }}</p>
-          <div class="detail-tags">
-            <el-tag size="small" :type="showcase.is_public ? 'success' : 'info'" effect="light" round>
-              {{ showcase.is_public ? '公开展示' : '私密收藏' }}
-            </el-tag>
-          </div>
-        </div>
-        <div class="info-action">
-          <el-button v-if="!readonly" type="primary" class="btn-accent add-goods-btn" @click="emit('addGoods')">
-            <el-icon class="el-icon--left"><Goods /></el-icon> 添加谷子
-          </el-button>
-        </div>
-      </div>
+      <section
+        class="showcase-hero"
+        :class="{ 'has-cover': !!showcase.cover_image }"
+        :style="heroStyle"
+        data-test="showcase-detail-hero"
+      >
+        <div class="hero-surface">
+          <div class="hero-toolbar">
+            <el-button text class="hero-back-button" data-test="back-button" @click="emit('back')">
+              <el-icon><ArrowLeft /></el-icon>
+              <span>返回展柜</span>
+            </el-button>
 
-      <el-divider class="custom-divider" />
-
-      <div class="goods-section">
-        <div class="section-header">
-          <span class="section-title">收纳物品</span>
-          <span class="section-count">{{ goods.length }} 件</span>
-        </div>
-
-        <div v-if="goods.length === 0" class="goods-empty">
-          <el-empty description="这里空空如也，快去添加心爱的谷子吧！" image-size="80" />
-        </div>
-
-        <template v-else>
-          <!-- 吧唧木质展架 -->
-          <div v-if="roundGoods.length" class="cabinet-label">
-            <span class="cabinet-label-title">吧唧展架</span>
-            <span class="cabinet-label-count">{{ roundGoods.length }} 枚</span>
-          </div>
-
-          <div v-if="roundGoods.length" ref="cabinetRef" class="cabinet" :class="{ 'is-drag-active': dragging }">
-            <div class="cabinet-inner">
-              <div v-for="(row, ri) in roundRows" :key="ri" class="shelf">
-                <div class="shelf-items">
-                  <div
-                    v-for="item in row"
-                    :key="item.id"
-                    class="badge-item"
-                    :data-id="item.id"
-                    :class="{ 'is-dragging': dragItemId === item.id }"
-                    :style="[
-                      { cursor: readonly ? 'default' : 'grab' },
-                      item.goods.category?.color_tag ? { '--badge-ring': item.goods.category.color_tag } : {},
-                    ]"
-                    @pointerdown="onBadgePointerDown($event, item)"
-                    @click="onBadgeClick(item)"
-                    @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', item.goods.id, $event)"
-                    @dragstart.prevent
-                  >
-                    <div class="badge-photo" :title="item.goods.name">
-                      <WatermarkImage
-                        v-if="readonly && item.goods.main_photo"
-                        :src="item.goods.main_photo"
-                        :alt="item.goods.name"
-                        :user-id="'ID:' + item.goods.id.slice(0, 8)"
-                        fit="cover"
-                        class="badge-img"
-                      />
-                      <el-image
-                        v-else-if="item.goods.main_photo"
-                        :src="item.goods.main_photo"
-                        :alt="item.goods.name"
-                        fit="cover"
-                        class="badge-img"
-                        loading="lazy"
-                      >
-                        <template #error>
-                          <div class="badge-placeholder"><el-icon><Picture /></el-icon></div>
-                        </template>
-                      </el-image>
-                      <div v-else class="badge-placeholder"><el-icon><Picture /></el-icon></div>
-                    </div>
-
-                    <!-- 数量角标 -->
-                    <div v-if="item.goods.quantity > 1" class="badge-qty">x{{ item.goods.quantity }}</div>
-                    <!-- 官谷/同人 小点 -->
-                    <span class="badge-official-dot" :class="item.goods.is_official ? 'is-official' : 'is-doujin'" />
-                  </div>
-                </div>
-                <div class="shelf-board" />
-              </div>
+            <div v-if="!readonly" class="hero-actions">
+              <el-button class="hero-secondary-action" data-test="edit-showcase-button" @click="emit('editShowcase')">
+                <el-icon class="el-icon--left"><Edit /></el-icon>
+                编辑
+              </el-button>
+              <el-button type="primary" class="btn-accent hero-primary-action" data-test="add-goods-button" @click="emit('addGoods')">
+                <el-icon class="el-icon--left"><Goods /></el-icon>
+                添加谷子
+              </el-button>
+              <el-dropdown trigger="click" @command="handleMoreCommand">
+                <el-button circle class="hero-more-button" data-test="more-actions-button">
+                  <el-icon><MoreFilled /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="delete" class="danger-dropdown-item" data-test="delete-showcase-action">
+                      <el-icon><Delete /></el-icon>
+                      删除展柜
+                    </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
 
+          <div class="hero-main">
+            <div class="hero-copy">
+              <div class="hero-kicker">云展柜陈列</div>
+              <h1 class="detail-name">{{ showcase.name }}</h1>
+              <p class="detail-desc" data-test="hero-description">
+                {{ showcase.description || '这个展柜还没有描述，先把喜欢的谷子摆上来吧。' }}
+              </p>
+              <div class="detail-tags">
+                <el-tag
+                  size="small"
+                  :type="showcase.is_public ? 'success' : 'info'"
+                  effect="light"
+                  round
+                  data-test="hero-visibility"
+                >
+                  {{ showcase.is_public ? '公开展示' : '私密收藏' }}
+                </el-tag>
+                <span v-if="showcase.cover_image" class="cover-status">封面陈列中</span>
+              </div>
+            </div>
+
+            <div class="hero-stats" aria-label="展柜统计">
+              <div class="hero-stat" data-test="hero-total-count">
+                <strong>{{ goods.length }}</strong>
+                <span>全部谷子</span>
+              </div>
+              <div class="hero-stat" data-test="hero-round-count">
+                <strong>{{ roundGoods.length }}</strong>
+                <span>吧唧</span>
+              </div>
+              <div class="hero-stat" data-test="hero-other-count">
+                <strong>{{ otherGoods.length }}</strong>
+                <span>其他</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="goods-section">
+        <div v-if="goods.length === 0" class="empty-showcase-panel" data-test="empty-showcase-panel">
+          <el-empty description="这个展柜还没有摆上谷子" image-size="96">
+            <el-button
+              v-if="!readonly"
+              type="primary"
+              class="btn-accent empty-add-button"
+              data-test="empty-add-goods-button"
+              @click="emit('addGoods')"
+            >
+              <el-icon class="el-icon--left"><Goods /></el-icon>
+              添加第一件谷子
+            </el-button>
+          </el-empty>
+        </div>
+
+        <template v-else>
+          <!-- 吧唧香槟金属展架 -->
+          <section v-if="roundGoods.length" class="display-section round-display-section">
+            <div class="cabinet-label" data-test="round-section-title">
+              <div class="section-heading-copy">
+                <span class="section-kicker">Round badge shelf</span>
+                <h2 class="cabinet-label-title">吧唧展架</h2>
+              </div>
+              <span class="cabinet-label-count">{{ roundGoods.length }} 枚</span>
+            </div>
+
+            <div ref="cabinetRef" class="cabinet" :class="{ 'is-drag-active': dragging }">
+              <div class="cabinet-inner">
+                <div v-for="(row, ri) in roundRows" :key="ri" class="shelf">
+                  <div class="shelf-items">
+                    <div
+                      v-for="item in row"
+                      :key="item.id"
+                      class="badge-item"
+                      :data-id="item.id"
+                      :class="{ 'is-dragging': dragItemId === item.id }"
+                      :style="[
+                        { cursor: readonly ? 'default' : 'grab' },
+                        item.goods.category?.color_tag ? { '--badge-ring': item.goods.category.color_tag } : {},
+                      ]"
+                      @pointerdown="onBadgePointerDown($event, item)"
+                      @click="onBadgeClick(item)"
+                      @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', item.goods.id, $event)"
+                      @dragstart.prevent
+                    >
+                      <div class="badge-photo" :title="item.goods.name">
+                        <WatermarkImage
+                          v-if="readonly && item.goods.main_photo"
+                          :src="item.goods.main_photo"
+                          :alt="item.goods.name"
+                          :user-id="'ID:' + item.goods.id.slice(0, 8)"
+                          fit="cover"
+                          class="badge-img"
+                        />
+                        <el-image
+                          v-else-if="item.goods.main_photo"
+                          :src="item.goods.main_photo"
+                          :alt="item.goods.name"
+                          fit="cover"
+                          class="badge-img"
+                          loading="lazy"
+                        >
+                          <template #error>
+                            <div class="badge-placeholder"><el-icon><Picture /></el-icon></div>
+                          </template>
+                        </el-image>
+                        <div v-else class="badge-placeholder"><el-icon><Picture /></el-icon></div>
+                      </div>
+
+                      <!-- 数量角标 -->
+                      <div v-if="item.goods.quantity > 1" class="badge-qty">x{{ item.goods.quantity }}</div>
+                      <!-- 官谷/同人 小点 -->
+                      <span class="badge-official-dot" :class="item.goods.is_official ? 'is-official' : 'is-doujin'" />
+                    </div>
+                  </div>
+                  <div class="shelf-board" />
+                </div>
+              </div>
+            </div>
+          </section>
+
           <!-- 其他谷子（非吧唧）网格 -->
-          <div v-if="otherGoods.length" class="other-section">
-            <div class="other-header">
-              <span class="other-title">其他谷子</span>
+          <section v-if="otherGoods.length" class="other-section display-section">
+            <div class="other-header" data-test="other-section-title">
+              <div class="section-heading-copy">
+                <span class="section-kicker">Mixed collection</span>
+                <h2 class="other-title">其他谷子</h2>
+              </div>
               <span class="other-count">{{ otherGoods.length }} 件</span>
             </div>
             <div class="goods-grid">
@@ -127,7 +197,7 @@
                 />
               </div>
             </div>
-          </div>
+          </section>
         </template>
       </div>
     </div>
@@ -159,7 +229,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowLeft, Goods, Picture } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Edit, Goods, MoreFilled, Picture } from '@element-plus/icons-vue'
 import GoodsCard from '@/components/GoodsCard.vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
 import { useShowcaseStore } from '@/stores/showcase'
@@ -177,12 +247,27 @@ const props = withDefaults(defineProps<{
 const emit = defineEmits<{
   back: []
   addGoods: []
+  editShowcase: []
+  deleteShowcase: []
   openGoods: [goods: GoodsListItem]
   goodsContextMenu: [payload: { goods: GoodsListItem; x: number; y: number }]
   goodsContextMenuFromDom: [goodsId: string, event: MouseEvent]
 }>()
 
 const noop = () => {}
+
+const heroStyle = computed(() => {
+  if (!props.showcase?.cover_image) return {}
+  return {
+    '--hero-cover': `url("${props.showcase.cover_image}")`,
+  }
+})
+
+const handleMoreCommand = (command: string | number | object) => {
+  if (command === 'delete') {
+    emit('deleteShowcase')
+  }
+}
 
 // 与后端 CATEGORY_SHAPE_KEYWORDS 保持一致：吧唧/徽章/马口铁 → 圆形
 const ROUND_KEYWORDS = ['吧唧', '徽章', '马口铁']
@@ -506,150 +591,344 @@ const cleanupDrag = () => {
   min-height: 0;
   display: flex;
   flex-direction: column;
-}
-
-.detail-header-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 0 6px;
-}
-.title {
-  font-size: 16px;
-  font-weight: 800;
-  color: rgba(0, 0, 0, 0.8);
-}
-.back-btn {
-  padding: 0;
+  color: #263238;
 }
 
 .detail-loading {
-  padding: 16px;
+  display: grid;
+  gap: 18px;
+  padding: 4px;
+}
+.loading-hero,
+.loading-display {
+  border-radius: 18px;
+  padding: 22px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(212, 175, 55, 0.12);
 }
 
 .detail-content {
   flex: 1 1 auto;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
 }
 
-.detail-info-banner {
+.showcase-hero {
+  min-height: 260px;
+  border-radius: 22px;
+  padding: 1px;
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 16%, rgba(255, 255, 255, 0.92), transparent 24%),
+    radial-gradient(circle at 82% 20%, rgba(162, 155, 254, 0.26), transparent 30%),
+    linear-gradient(135deg, rgba(212, 175, 55, 0.28), rgba(162, 155, 254, 0.18) 42%, rgba(255, 255, 255, 0.7));
+  box-shadow:
+    0 24px 60px -36px rgba(80, 65, 24, 0.46),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.48);
+}
+.showcase-hero.has-cover {
+  background:
+    linear-gradient(135deg, rgba(21, 18, 12, 0.52), rgba(63, 47, 16, 0.3)),
+    var(--hero-cover) center / cover no-repeat;
+}
+.showcase-hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.76) 48%, rgba(255, 255, 255, 0.36)),
+    repeating-linear-gradient(90deg, rgba(212, 175, 55, 0.07) 0 1px, transparent 1px 12px);
+  pointer-events: none;
+}
+.showcase-hero.has-cover::before {
+  background:
+    linear-gradient(90deg, rgba(18, 16, 12, 0.78), rgba(18, 16, 12, 0.58) 42%, rgba(18, 16, 12, 0.2)),
+    radial-gradient(circle at 80% 16%, rgba(212, 175, 55, 0.28), transparent 28%);
+}
+.showcase-hero::after {
+  content: '';
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  bottom: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 175, 55, 0.62), transparent);
+}
+.hero-surface {
+  position: relative;
+  z-index: 1;
+  min-height: 258px;
+  padding: 18px 22px 24px;
   display: flex;
+  flex-direction: column;
   justify-content: space-between;
-  align-items: flex-start;
-  padding: 8px 0;
-  gap: 20px;
+  gap: 36px;
+}
+.hero-toolbar,
+.hero-actions,
+.hero-main,
+.hero-stats,
+.detail-tags {
+  display: flex;
+  align-items: center;
+}
+.hero-toolbar {
+  justify-content: space-between;
+  gap: 16px;
+}
+.hero-actions {
+  gap: 10px;
+}
+.hero-back-button,
+.hero-secondary-action,
+.hero-more-button {
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  background: rgba(255, 255, 255, 0.72);
+  color: rgba(38, 50, 56, 0.84);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+.has-cover .hero-back-button,
+.has-cover .hero-secondary-action,
+.has-cover .hero-more-button {
+  background: rgba(255, 255, 255, 0.16);
+  color: #fffaf0;
+  border-color: rgba(255, 255, 255, 0.24);
+}
+.hero-back-button {
+  gap: 6px;
+  padding: 8px 10px;
+  border-radius: 999px;
+}
+.hero-secondary-action,
+.hero-primary-action,
+.hero-more-button {
+  height: 36px;
+}
+.hero-secondary-action,
+.hero-primary-action {
+  border-radius: 999px;
+  padding: 0 16px;
+}
+.hero-primary-action,
+.empty-add-button {
+  box-shadow: 0 10px 24px -14px rgba(162, 155, 254, 0.9);
+}
+.hero-more-button {
+  width: 36px;
+}
+.hero-main {
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 30px;
+}
+.hero-copy {
+  max-width: min(720px, 64%);
+}
+.hero-kicker,
+.section-kicker,
+.cover-status {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+.hero-kicker {
+  margin-bottom: 10px;
+  color: rgba(154, 116, 64, 0.8);
+}
+.has-cover .hero-kicker {
+  color: rgba(255, 244, 214, 0.82);
 }
 .detail-name {
-  font-size: 24px;
-  color: rgba(0, 0, 0, 0.84);
+  font-size: clamp(32px, 4vw, 52px);
+  line-height: 1.06;
+  color: rgba(26, 26, 26, 0.92);
   margin: 0;
   font-weight: 900;
 }
+.has-cover .detail-name {
+  color: #fffaf0;
+  text-shadow: 0 12px 32px rgba(0, 0, 0, 0.28);
+}
 .detail-desc {
-  color: rgba(0, 0, 0, 0.55);
+  max-width: 620px;
+  color: rgba(38, 50, 56, 0.68);
   font-size: 14px;
-  margin: 8px 0;
-  line-height: 1.5;
+  margin: 12px 0 14px;
+  line-height: 1.7;
 }
-.custom-divider {
-  margin: 20px 0;
-  border-color: rgba(0, 0, 0, 0.06);
+.has-cover .detail-desc {
+  color: rgba(255, 250, 240, 0.82);
 }
-.section-header {
-  display: flex;
-  align-items: baseline;
-  margin-bottom: 16px;
+.detail-tags {
+  gap: 8px;
+  flex-wrap: wrap;
 }
-.section-title {
-  font-size: 16px;
-  font-weight: 800;
-  color: rgba(0, 0, 0, 0.8);
+.cover-status {
+  color: rgba(154, 116, 64, 0.76);
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(212, 175, 55, 0.2);
 }
-.section-count {
-  margin-left: 8px;
-  font-size: 13px;
-  color: rgba(0, 0, 0, 0.55);
+.has-cover .cover-status {
+  color: rgba(255, 244, 214, 0.86);
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
 }
-.goods-empty {
-  padding: 16px 0;
+.hero-stats {
+  min-width: 300px;
+  justify-content: flex-end;
+  gap: 10px;
+}
+.hero-stat {
+  width: 92px;
+  min-height: 78px;
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.62);
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+.has-cover .hero-stat {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.22);
+}
+.hero-stat strong {
+  display: block;
+  font-size: 26px;
+  line-height: 1;
+  color: #9a7440;
+  font-weight: 900;
+}
+.has-cover .hero-stat strong {
+  color: #fff4d6;
+}
+.hero-stat span {
+  display: block;
+  margin-top: 8px;
+  font-size: 12px;
+  color: rgba(38, 50, 56, 0.58);
+}
+.has-cover .hero-stat span {
+  color: rgba(255, 250, 240, 0.78);
+}
+.danger-dropdown-item {
+  color: #f56c6c;
 }
 
-/* 木质展架局部调色板：定义在 .goods-section，让标题与柜体共用同一套木色
-   （对齐 ShowcaseManager 的 --c-* 局部变量用法；仅在吧唧展架相关样式中引用） */
+/* 香槟金属展示柜局部调色板：仅服务吧唧展架，不影响其他谷子陈列 */
 .goods-section {
-  --c-wood-frame-light: #fbf4e4;
-  --c-wood-frame-dark: #f0e2c4;
-  --c-wood-panel-light: #d8c6a4;
-  --c-wood-panel-mid: #c1ab83;
-  --c-wood-panel-dark: #a98f68;
-  --c-wood-cap-light: #b8905a;
-  --c-wood-cap-mid: #9a7440;
-  --c-wood-cap-dark: #7d5a2a;
-  --c-wood-grain: 120, 72, 22;        /* 木纹基色（RGB 分量，便于带透明度复用） */
-  --c-wood-shadow: 90, 54, 18;        /* 木影基色（RGB 分量） */
-  --c-wood-inlay: 199, 154, 74;       /* 木中泛金的嵌线（RGB 分量） */
+  --c-display-shell: #fff8e6;
+  --c-display-edge: #d4af37;
+  --c-display-rail-light: #fff2bf;
+  --c-display-rail-mid: #d8bd72;
+  --c-display-rail-dark: #9f7a31;
+  --c-display-panel: #f7f5ef;
+  --c-display-holo: 162, 155, 254;
+  --c-display-cyan: 64, 221, 255;
+  --c-display-shadow: 70, 50, 18;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  padding: 0 4px 8px;
+}
+.display-section,
+.empty-showcase-panel {
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  box-shadow: 0 18px 46px -36px rgba(50, 36, 10, 0.34);
+}
+.display-section {
+  padding: 20px;
+}
+.round-display-section {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(255, 251, 241, 0.7)),
+    radial-gradient(circle at 50% 0%, rgba(212, 175, 55, 0.12), transparent 34%);
+}
+.empty-showcase-panel {
+  display: flex;
+  justify-content: center;
+  padding: 40px 20px;
+}
+.section-heading-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.section-kicker {
+  color: rgba(var(--c-display-shadow), 0.54);
 }
 
-/* ==================== 吧唧木质展架 ==================== */
+/* ==================== 吧唧香槟金属展架 ==================== */
 .cabinet-label {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 10px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 .cabinet-label-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--c-wood-cap-dark);
-  padding-bottom: 2px;
-  border-bottom: 1px solid rgba(var(--c-wood-inlay), 0.45);   /* 金木嵌线点缀 */
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 900;
+  color: rgba(var(--c-display-shadow), 0.86);
+  margin: 0;
 }
 .cabinet-label-count {
+  flex: 0 0 auto;
   font-size: 12px;
-  color: rgba(var(--c-wood-shadow), 0.6);
+  font-weight: 800;
+  color: rgba(var(--c-display-shadow), 0.62);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(var(--c-display-holo), 0.1), rgba(var(--c-display-cyan), 0.08)),
+    rgba(255, 248, 230, 0.7);
+  border: 1px solid rgba(212, 175, 55, 0.24);
 }
 
 .cabinet {
   max-width: 720px;
   margin: 0 auto;
-  border-radius: 14px;
+  border-radius: 18px;
   padding: 14px;
-  background: linear-gradient(160deg, var(--c-wood-frame-light) 0%, var(--c-wood-frame-dark) 100%);
-  border: 1px solid rgba(150, 100, 40, 0.18);
+  background:
+    linear-gradient(135deg, rgba(var(--c-display-holo), 0.16), transparent 34%, rgba(var(--c-display-cyan), 0.12) 68%, transparent),
+    linear-gradient(160deg, #fffdf6 0%, var(--c-display-shell) 48%, #ead8a4 100%);
+  border: 1px solid rgba(212, 175, 55, 0.34);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.5),            /* 顶部高光：框体斜面 */
-    inset 0 0 0 1px rgba(var(--c-wood-inlay), 0.35),   /* 内层极细金木嵌线 */
-    0 10px 40px -10px rgba(var(--c-wood-shadow), 0.22),
-    0 6px 18px -8px rgba(var(--c-wood-shadow), 0.28);
+    inset 0 1px 0 rgba(255, 255, 255, 0.78),
+    inset 0 0 0 1px rgba(255, 247, 216, 0.68),
+    inset 0 0 0 2px rgba(var(--c-display-holo), 0.06),
+    0 22px 54px -30px rgba(var(--c-display-shadow), 0.34),
+    0 8px 22px -16px rgba(var(--c-display-holo), 0.35);
 }
 
 .cabinet-inner {
   position: relative;
-  border-radius: 10px;
+  border-radius: 13px;
   padding: 14px 14px 4px;
   background:
-    /* 顶部光晕：模拟柜顶光源，中心提亮 */
-    radial-gradient(110% 70% at 50% 0%, rgba(255, 250, 235, 0.12) 0%, transparent 55%),
-    /* 边缘晕影：四角渐入暗，营造柜内纵深 */
-    radial-gradient(130% 100% at 50% 40%, transparent 55%, rgba(var(--c-wood-shadow), 0.2) 100%),
-    /* 亮色木纹丝：丝绸般的高光纹理走向 */
-    repeating-linear-gradient(90deg, rgba(255, 250, 235, 0.04) 0 1px, transparent 1px 11px),
-    /* 细密暗纹：贴近的木纹 */
-    repeating-linear-gradient(90deg, rgba(var(--c-wood-grain), 0.06) 0 1px, transparent 1px 4px),
-    /* 较疏暗纹：节奏变化，避免单调 */
-    repeating-linear-gradient(90deg, rgba(var(--c-wood-grain), 0.05) 0 2px, transparent 2px 9px),
-    /* 极淡斜向纹：木纹自然走向 */
-    repeating-linear-gradient(88deg, rgba(var(--c-wood-grain), 0.04) 0 1px, transparent 1px 14px),
-    /* 顶光衰减：上亮下暗模拟柜内光照 */
-    linear-gradient(180deg, var(--c-wood-panel-light) 0%, var(--c-wood-panel-mid) 55%, var(--c-wood-panel-dark) 100%);
-  /* 帽下凹陷 + 立柱（左右内阴影加深）+ 内嵌木框描边 */
+    radial-gradient(120% 80% at 50% 0%, rgba(255, 255, 255, 0.74) 0%, rgba(255, 255, 255, 0.18) 42%, transparent 68%),
+    radial-gradient(110% 78% at 90% 8%, rgba(var(--c-display-holo), 0.12), transparent 46%),
+    radial-gradient(100% 74% at 6% 16%, rgba(var(--c-display-cyan), 0.075), transparent 48%),
+    linear-gradient(112deg, rgba(255, 255, 255, 0.42) 0%, rgba(255, 255, 255, 0.08) 42%, rgba(var(--c-display-holo), 0.045) 72%, rgba(255, 255, 255, 0.2) 100%),
+    linear-gradient(180deg, #fffef9 0%, var(--c-display-panel) 56%, #eee8da 100%);
   box-shadow:
-    inset 0 8px 10px -8px rgba(var(--c-wood-shadow), 0.3),
-    inset 4px 0 7px -3px rgba(var(--c-wood-shadow), 0.5),
-    inset -4px 0 7px -3px rgba(var(--c-wood-shadow), 0.5),
-    inset 0 0 0 1px rgba(var(--c-wood-grain), 0.18);
+    inset 0 10px 18px -14px rgba(var(--c-display-shadow), 0.22),
+    inset 5px 0 12px -9px rgba(var(--c-display-shadow), 0.28),
+    inset -5px 0 12px -9px rgba(var(--c-display-shadow), 0.28),
+    inset 0 0 0 1px rgba(212, 175, 55, 0.18),
+    inset 0 0 0 2px rgba(255, 255, 255, 0.34);
 }
-/* 底板反光：柜体内部地板的空间感 */
+
 .cabinet-inner::after {
   content: '';
   position: absolute;
@@ -658,57 +937,55 @@ const cleanupDrag = () => {
   bottom: 2px;
   height: 6px;
   border-radius: 50%;
-  background: radial-gradient(ellipse at center, rgba(var(--c-wood-shadow), 0.12) 0%, transparent 70%);
+  background:
+    radial-gradient(ellipse at center, rgba(var(--c-display-holo), 0.16) 0%, transparent 68%),
+    radial-gradient(ellipse at center, rgba(var(--c-display-shadow), 0.08) 0%, transparent 72%);
   pointer-events: none;
   z-index: 0;
 }
-/* 顶部木帽：让柜体更像立式高柜 */
+
 .cabinet-inner::before {
   content: '';
   display: block;
-  height: 14px;
-  margin: -14px -14px 16px;
-  border-radius: 10px 10px 3px 3px;
+  height: 10px;
+  margin: -14px -14px 20px;
+  border-radius: 13px 13px 7px 7px;
   background:
-    /* 端纹：木帽横截面纹理 */
-    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.08) 0 1px, transparent 1px 6px),
-    linear-gradient(180deg, var(--c-wood-cap-light) 0%, var(--c-wood-cap-mid) 60%, var(--c-wood-cap-dark) 100%);
+    linear-gradient(90deg, rgba(var(--c-display-holo), 0.1), transparent 24%, rgba(255, 255, 255, 0.22) 52%, transparent 76%, rgba(var(--c-display-cyan), 0.08)),
+    linear-gradient(180deg, #fff6ce 0%, var(--c-display-rail-light) 34%, var(--c-display-rail-mid) 72%, var(--c-display-rail-dark) 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.3),             /* 顶部高光更亮：斜面 */
-    inset 0 -2px 0 rgba(var(--c-wood-shadow), 0.4),     /* 底部凹槽更深：板厚 */
-    inset 0 -1px 0 0 rgba(var(--c-wood-inlay), 0.6),    /* 金木嵌线：封边 */
-    inset 4px 0 6px -4px rgba(var(--c-wood-shadow), 0.35),  /* 左侧下沉：衔接立柱 */
-    inset -4px 0 6px -4px rgba(var(--c-wood-shadow), 0.35), /* 右侧下沉：衔接立柱 */
-    0 4px 8px -3px rgba(var(--c-wood-shadow), 0.4);
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    inset 0 -1px 0 rgba(var(--c-display-shadow), 0.28),
+    0 7px 16px -12px rgba(var(--c-display-shadow), 0.42);
 }
 
 .shelf {
   position: relative;
-  z-index: 1;            /* 让层板/托架绘制在柜内底板反光之上 */
+  z-index: 1;
   margin-bottom: 24px;
 }
 .shelf:last-child {
   margin-bottom: 8px;
 }
-/* 木质托架：让层板被支撑而非悬浮，提升实体感 */
+
 .shelf::before,
 .shelf::after {
   content: '';
   position: absolute;
-  bottom: -9px;
-  width: 16px;
-  height: 12px;
+  bottom: -6px;
+  width: 18px;
+  height: 8px;
   pointer-events: none;
   z-index: 0;
-  background: linear-gradient(180deg, var(--c-wood-cap-mid) 0%, var(--c-wood-cap-dark) 100%);
+  background:
+    linear-gradient(180deg, rgba(255, 246, 206, 0.72) 0%, var(--c-display-rail-mid) 42%, var(--c-display-rail-dark) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -1px 0 rgba(var(--c-wood-shadow), 0.4),
-    0 2px 5px -2px rgba(var(--c-wood-shadow), 0.45);
-  border-radius: 0 0 3px 3px;
+    inset 0 1px 0 rgba(255, 255, 255, 0.36),
+    0 3px 6px -5px rgba(var(--c-display-shadow), 0.48);
+  border-radius: 0 0 5px 5px;
 }
-.shelf::before { left: 4px; }
-.shelf::after { right: 4px; }
+.shelf::before { left: 18px; }
+.shelf::after { right: 18px; }
 
 .shelf-items {
   display: flex;
@@ -722,45 +999,43 @@ const cleanupDrag = () => {
 }
 
 .shelf-board {
-  height: 15px;
-  margin: -3px -6px 0;
-  border-radius: 3px;
+  height: 10px;
+  margin: -2px 0 0;
+  border-radius: 999px;
   position: relative;
   z-index: 1;
   background:
-    /* 横向木纹：板面纹理走向 */
-    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.05) 0 1px, transparent 1px 9px),
-    linear-gradient(180deg, var(--c-wood-cap-light) 0%, var(--c-wood-cap-mid) 55%, var(--c-wood-cap-dark) 100%);
+    linear-gradient(90deg, rgba(var(--c-display-holo), 0.1), transparent 22%, rgba(255, 255, 255, 0.2) 50%, transparent 78%, rgba(var(--c-display-cyan), 0.08)),
+    linear-gradient(180deg, #fff7d3 0%, var(--c-display-rail-light) 28%, var(--c-display-rail-mid) 68%, var(--c-display-rail-dark) 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.28),          /* 顶部高光：正面斜面 */
-    inset 0 -2px 0 rgba(var(--c-wood-shadow), 0.4),   /* 底部凹槽：板厚 */
-    inset 0 -1px 0 0 rgba(var(--c-wood-inlay), 0.5),  /* 金木嵌线：封边 */
-    0 7px 14px -5px rgba(var(--c-wood-shadow), 0.5);  /* 落影：板压在柜内 */
+    inset 0 1px 0 rgba(255, 255, 255, 0.68),
+    inset 0 -1px 0 rgba(var(--c-display-shadow), 0.26),
+    0 8px 16px -13px rgba(var(--c-display-shadow), 0.46);
 }
-/* 端纹：木板两端封边（横截面纹理） */
+
 .shelf-board::before,
 .shelf-board::after {
   content: '';
   position: absolute;
   top: 0;
   bottom: 0;
-  width: 8px;
+  width: 4px;
   pointer-events: none;
   background:
-    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.12) 0 1px, transparent 1px 4px),
-    linear-gradient(90deg, var(--c-wood-cap-dark) 0%, var(--c-wood-cap-mid) 100%);
-  box-shadow: inset 0 0 0 1px rgba(var(--c-wood-shadow), 0.2);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 48%),
+    linear-gradient(90deg, var(--c-display-rail-dark) 0%, var(--c-display-rail-mid) 100%);
+  box-shadow: inset 0 0 0 1px rgba(var(--c-display-shadow), 0.12);
 }
 .shelf-board::before {
   left: 0;
-  border-radius: 3px 0 0 3px;
+  border-radius: 999px 0 0 999px;
 }
 .shelf-board::after {
   right: 0;
-  border-radius: 0 3px 3px 0;
+  border-radius: 0 999px 999px 0;
   background:
-    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.12) 0 1px, transparent 1px 4px),
-    linear-gradient(90deg, var(--c-wood-cap-mid) 0%, var(--c-wood-cap-dark) 100%);
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34), transparent 48%),
+    linear-gradient(90deg, var(--c-display-rail-mid) 0%, var(--c-display-rail-dark) 100%);
 }
 
 .badge-item {
@@ -786,7 +1061,7 @@ const cleanupDrag = () => {
 }
 .cabinet.is-drag-active .badge-item:hover .badge-photo {
   box-shadow:
-    0 0 0 2px #fffbe8,
+    0 0 0 2px #fffdf4,
     0 0 0 4px var(--badge-ring, #d4af37),
     inset 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
@@ -800,18 +1075,18 @@ const cleanupDrag = () => {
   border-radius: 50%;
   overflow: hidden;
   position: relative;
-  isolation: isolate;             /* 让 ::after 的 screen 混合只作用于吧唧内部 */
-  background: #fff8ea;
+  isolation: isolate;
+  background: #fffdf4;
   box-shadow:
-    0 0 0 2px #fffbe8,                            /* 内底：奶白 */
-    0 0 0 4px var(--badge-ring, #d4af37),         /* 主金属边 */
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45);    /* 内高光弧：金属倒角反光 */
+    0 0 0 2px #fffdf4,
+    0 0 0 4px var(--badge-ring, #d4af37),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.48);
   filter:
-    drop-shadow(0 2px 2px rgba(90, 54, 18, 0.28))   /* 接触影 */
-    drop-shadow(0 6px 5px rgba(90, 54, 18, 0.3));   /* 环境影 */
+    drop-shadow(0 2px 2px rgba(var(--c-display-shadow), 0.2))
+    drop-shadow(0 7px 7px rgba(52, 47, 33, 0.18));
   transition: box-shadow 0.22s ease;
 }
-/* 穹顶高光：吧唧金属面的弧度反光 */
+
 .badge-photo::after {
   content: '';
   position: absolute;
@@ -824,10 +1099,10 @@ const cleanupDrag = () => {
 }
 .badge-item:hover .badge-photo {
   box-shadow:
-    0 0 0 2px #fffbe8,
+    0 0 0 2px #fffdf4,
     0 0 0 4px var(--badge-ring, #d4af37),
     inset 0 0 0 1px rgba(255, 255, 255, 0.55),
-    0 0 10px 1px rgba(212, 175, 55, 0.5);          /* 悬停金色辉光（马口铁细闪） */
+    0 0 11px 1px rgba(212, 175, 55, 0.34);
 }
 .badge-img {
   width: 100%;
@@ -844,7 +1119,7 @@ const cleanupDrag = () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: rgba(120, 72, 22, 0.4);
+  color: rgba(var(--c-display-shadow), 0.34);
   font-size: 26px;
 }
 
@@ -854,12 +1129,12 @@ const cleanupDrag = () => {
   pointer-events: none;
   border-radius: 50%;
   overflow: hidden;
-  background: #fff8ea;
+  background: #fffdf4;
   box-shadow:
-    0 0 0 2px #fffbe8,
+    0 0 0 2px #fffdf4,
     0 0 0 4px var(--badge-ring, #d4af37),
     inset 0 0 0 1px rgba(255, 255, 255, 0.45),
-    0 12px 24px -6px rgba(0, 0, 0, 0.4);
+    0 12px 24px -6px rgba(31, 28, 20, 0.34);
   transform: scale(1.06);
 }
 .badge-ghost-img {
@@ -894,11 +1169,11 @@ const cleanupDrag = () => {
   width: 9px;
   height: 9px;
   border-radius: 50%;
-  border: 1.5px solid #fffbe8;
+  border: 1.5px solid #fffdf4;
   z-index: 4;
 }
 .badge-official-dot.is-official {
-  background: #d4af37;
+  background: var(--c-display-edge);
 }
 .badge-official-dot.is-doujin {
   background: #9c6dd6;
@@ -906,27 +1181,36 @@ const cleanupDrag = () => {
 
 /* ==================== 其他谷子网格 ==================== */
 .other-section {
-  margin-top: 22px;
+  margin-top: 0;
 }
 .other-header {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
-  margin-bottom: 12px;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
 }
 .other-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: rgba(0, 0, 0, 0.65);
+  font-size: 18px;
+  line-height: 1.2;
+  font-weight: 900;
+  color: rgba(38, 50, 56, 0.82);
+  margin: 0;
 }
 .other-count {
+  flex: 0 0 auto;
   font-size: 12px;
-  color: rgba(0, 0, 0, 0.45);
+  font-weight: 800;
+  color: rgba(38, 50, 56, 0.56);
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(162, 155, 254, 0.1);
+  border: 1px solid rgba(162, 155, 254, 0.18);
 }
 .goods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(156px, 1fr));
+  gap: 18px;
 }
 .goods-wrapper {
   position: relative;
@@ -938,13 +1222,40 @@ const cleanupDrag = () => {
 }
 
 @media (max-width: 768px) {
-  .detail-info-banner {
+  .showcase-hero {
+    border-radius: 16px;
+  }
+  .hero-surface {
+    min-height: auto;
+    padding: 14px;
+    gap: 24px;
+  }
+  .hero-toolbar,
+  .hero-main {
     flex-direction: column;
     align-items: stretch;
     gap: 12px;
   }
-  .add-goods-btn {
-    width: 100%;
+  .hero-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+  }
+  .hero-copy {
+    max-width: none;
+  }
+  .detail-name {
+    font-size: 30px;
+  }
+  .hero-stats {
+    min-width: 0;
+    justify-content: stretch;
+  }
+  .hero-stat {
+    width: auto;
+    flex: 1;
+  }
+  .display-section {
+    padding: 14px;
   }
   .cabinet {
     padding: 10px;
@@ -953,8 +1264,8 @@ const cleanupDrag = () => {
     padding: 10px 10px 2px;
   }
   .cabinet-inner::before {
-    margin: -10px -10px 14px;
-    height: 11px;
+    margin: -10px -10px 16px;
+    height: 8px;
   }
   .cabinet-inner::after {
     left: 10px;
@@ -963,23 +1274,24 @@ const cleanupDrag = () => {
   .shelf {
     margin-bottom: 16px;
   }
-  /* 托架在窄屏略缩小，避免拥挤 */
   .shelf::before,
   .shelf::after {
-    width: 12px;
-    height: 10px;
-    bottom: -7px;
+    width: 14px;
+    height: 6px;
+    bottom: -5px;
   }
+  .shelf::before { left: 12px; }
+  .shelf::after { right: 12px; }
   .shelf-items {
     gap: 16px;
     padding: 4px 2px 6px;
   }
   .shelf-board {
-    height: 12px;
+    height: 8px;
   }
   .shelf-board::before,
   .shelf-board::after {
-    width: 6px;           /* 端纹同步收窄 */
+    width: 3px;
   }
   .badge-photo {
     width: 84px;
