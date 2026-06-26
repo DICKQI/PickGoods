@@ -22,7 +22,8 @@ describe('StatsDashboard character stats entry', () => {
 
   it('searches characters with the applied IP filter and navigates by named route', () => {
     expect(statsDashboardSource).toContain("import { useRouter } from 'vue-router'")
-    expect(statsDashboardSource).toContain("import { getIPList, getCategoryTree, getCharacterList } from '@/api/metadata'")
+    expect(statsDashboardSource).toContain("import { getCharacterList } from '@/api/metadata'")
+    expect(statsDashboardSource).toContain("import { useMetadataStore } from '@/stores/metadata'")
     expect(statsDashboardSource).toContain('const characterStatsTargetId = ref<number | undefined>()')
     expect(statsDashboardSource).toContain('const characterStatsOptions = ref<Character[]>([])')
     expect(statsDashboardSource).toContain('const characterStatsLoading = ref(false)')

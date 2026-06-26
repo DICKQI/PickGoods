@@ -328,7 +328,8 @@ import { ElMessage } from 'element-plus'
 import { RefreshLeft, ArrowDown, List, Close, Top } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getGoodsStats } from '@/api/goods'
-import { getIPList, getCategoryTree, getCharacterList } from '@/api/metadata'
+import { getCharacterList } from '@/api/metadata'
+import { useMetadataStore } from '@/stores/metadata'
 import { useLocationStore } from '@/stores/location'
 import StatsFilterControls from '@/components/StatsFilterControls.vue'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -337,8 +338,6 @@ import type {
   GoodsStatsParams,
   GoodsStatsResponse,
   GoodsStatus,
-  IP,
-  Category,
   Character,
 } from '@/api/types'
 
@@ -527,9 +526,10 @@ const formattedValueSum = computed(() => {
   return num.toFixed(2)
 })
 
-// 基础数据（IP / 品类树 / 位置树）
-const ipOptions = ref<IP[]>([])
-const categoryList = ref<Category[]>([])
+// 基础数据（IP / 品类树 / 位置树）- 从 store 读取已缓存数据
+const metadataStore = useMetadataStore()
+const ipOptions = computed(() => metadataStore.ips)
+const categoryList = computed(() => metadataStore.categories)
 const locationStore = useLocationStore()
 
 interface CategoryTreeNode {
@@ -947,9 +947,7 @@ const handleResetFilters = () => {
 
 const initMetadata = async () => {
   try {
-    const [ips, categories] = await Promise.all([getIPList(), getCategoryTree()])
-    ipOptions.value = ips
-    categoryList.value = categories
+    await metadataStore.fetchAll()
   } catch {
     ElMessage.error('加载基础筛选数据失败')
   }

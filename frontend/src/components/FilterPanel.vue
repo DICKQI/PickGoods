@@ -215,14 +215,15 @@ import { ArrowDown, RefreshLeft, List, MagicStick } from '@element-plus/icons-vu
 import { useGuziStore } from '@/stores/guzi'
 import { useLocationStore } from '@/stores/location'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
-import { getIPList, getCharacterList, getCategoryTree, getThemeList } from '@/api/metadata'
-import type { GoodsSearchParams, IP, Character, Category, GoodsStatus, Theme } from '@/api/types'
+import { useMetadataStore } from '@/stores/metadata'
+import type { GoodsSearchParams, GoodsStatus } from '@/api/types'
 
-// 从API获取的数据
-const ipOptions = ref<IP[]>([])
-const characters = ref<Character[]>([])
-const categoryList = ref<Category[]>([])
-const themeOptions = ref<Theme[]>([])
+const metadataStore = useMetadataStore()
+
+// 从 store 读取已缓存数据（store 初始化时已 loadFromCache）
+const ipOptions = computed(() => metadataStore.ips)
+const categoryList = computed(() => metadataStore.categories)
+const themeOptions = computed(() => metadataStore.themes)
 
 // 品类树节点类型（用于 el-tree-select）
 interface CategoryTreeNode {
@@ -326,9 +327,8 @@ const categoryTreeData = computed(() => {
 })
 
 const filteredCharacters = computed(() => {
-  // 如果选择了IP，只显示该IP下的角色；否则返回空数组（选择器会被禁用）
   if (!localFilters.value.ip) return []
-  return characters.value.filter((char) => char.ip.id === localFilters.value.ip)
+  return metadataStore.charactersByIP[localFilters.value.ip] || []
 })
 
 const applyStatusToFilters = (filters: GoodsSearchParams) => {
@@ -345,9 +345,12 @@ const applyStatusToFilters = (filters: GoodsSearchParams) => {
 }
 
 const handleFilterChange = () => {
-  // 如果IP改变，清空角色选择
+  // 如果IP改变，清空角色选择并预加载该IP的角色列表
   if (localFilters.value.ip !== guziStore.filters.ip) {
     localFilters.value.character = undefined
+    if (localFilters.value.ip) {
+      metadataStore.fetchIPCharacters(localFilters.value.ip)
+    }
   }
 
   const filters: GoodsSearchParams = {
@@ -448,19 +451,10 @@ onMounted(async () => {
     handleFilterChange()
   }
 
-  // 加载基础数据
+  // 加载基础数据（store 初始化时已从 localStorage 恢复缓存，此处仅触发后台刷新）
   try {
-    const [ipList, characterList, categoryTree, themeList] = await Promise.all([
-      getIPList(),
-      getCharacterList(),
-      getCategoryTree(),
-      getThemeList(),
-    ])
-    ipOptions.value = ipList
-    characters.value = characterList
-    categoryList.value = categoryTree
-    themeOptions.value = themeList
-  } catch (err) {
+    await metadataStore.fetchAll()
+  } catch {
     ElMessage.error('加载基础数据失败')
   }
 

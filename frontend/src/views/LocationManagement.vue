@@ -358,7 +358,7 @@ const handleTouchEnd = async () => {
     pullDistance.value = TRIGGER_DIST // 停留在加载位置
     
     try {
-      await locationStore.fetchNodes()
+      await locationStore.fetchNodes(true)
       ElMessage.success('刷新成功')
     } catch (error) {
       ElMessage.error('刷新失败')
@@ -462,8 +462,8 @@ const handleDeleteNode = async (data: any) => {
     if (isMobile.value && selectedNode.value?.id === nodeId) {
       mobileDrawerVisible.value = false
       selectedNode.value = null
-    }
-    await locationStore.fetchNodes()
+      }
+    await locationStore.fetchNodes(true)
     if (!isMobile.value && selectedNode.value?.id === nodeId) {
       selectedNode.value = null
       locationGuziList.value = []
@@ -493,7 +493,7 @@ const handleSubmit = async () => {
       ElMessage.success('创建成功')
     }
     dialogVisible.value = false
-    await locationStore.fetchNodes()
+    await locationStore.fetchNodes(true)
   } catch (err: any) {
     ElMessage.error(err.message || '操作失败')
   }

@@ -6,12 +6,15 @@ import type { IP, Character, Category, Theme } from '@/api/types'
 
 const CACHE_KEYS = {
   IPS: 'metadata_ips',
-  CHARACTERS_BY_IP: 'metadata_characters_by_ip', // 改为存储按IP分组的角色
+  CHARACTERS_BY_IP: 'metadata_characters_by_ip',
   CATEGORIES: 'metadata_categories',
   CATEGORIES_BY_SCOPE: 'metadata_categories_by_scope',
   THEMES: 'metadata_themes',
   OWNER: 'metadata_cache_owner',
+  TIMESTAMPS: 'metadata_cache_timestamps',
 }
+
+const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 
 type CategoryListParams = Parameters<typeof getCategoryList>[0]
 
@@ -21,6 +24,7 @@ export const useMetadataStore = defineStore('metadata', () => {
   const categories = ref<Category[]>([])
   const categoriesByScope = ref<Record<string, Category[]>>({})
   const themes = ref<Theme[]>([])
+  const lastFetched = ref<Record<string, number>>({})
   const loading = ref(false)
 
   const getCacheOwner = () => {
@@ -40,6 +44,7 @@ export const useMetadataStore = defineStore('metadata', () => {
     charactersByIP.value = {}
     categories.value = []
     themes.value = []
+    lastFetched.value = {}
   }
 
   const removeCachedMetadata = () => {
@@ -48,6 +53,7 @@ export const useMetadataStore = defineStore('metadata', () => {
     localStorage.removeItem(CACHE_KEYS.CATEGORIES)
     localStorage.removeItem(CACHE_KEYS.CATEGORIES_BY_SCOPE)
     localStorage.removeItem(CACHE_KEYS.THEMES)
+    localStorage.removeItem(CACHE_KEYS.TIMESTAMPS)
   }
 
   const categoryScopeKey = (params?: CategoryListParams) => (
@@ -66,10 +72,27 @@ export const useMetadataStore = defineStore('metadata', () => {
     }
   }
 
+  const isCacheFresh = (key: string): boolean => {
+    const ts = lastFetched.value[key]
+    if (!ts) return false
+    return Date.now() - ts < CACHE_TTL
+  }
+
+  const markFetched = (key: string) => {
+    lastFetched.value = { ...lastFetched.value, [key]: Date.now() }
+    try {
+      localStorage.setItem(CACHE_KEYS.TIMESTAMPS, JSON.stringify(lastFetched.value))
+    } catch { /* ignore */ }
+  }
+
   // 初始化时从本地缓存加载
   const loadFromCache = () => {
     try {
       ensureCacheOwner()
+
+      const cachedTimestamps = localStorage.getItem(CACHE_KEYS.TIMESTAMPS)
+      if (cachedTimestamps) lastFetched.value = JSON.parse(cachedTimestamps)
+
       const cachedIps = localStorage.getItem(CACHE_KEYS.IPS)
       if (cachedIps) ips.value = JSON.parse(cachedIps)
 
@@ -89,6 +112,25 @@ export const useMetadataStore = defineStore('metadata', () => {
 
       const cachedThemes = localStorage.getItem(CACHE_KEYS.THEMES)
       if (cachedThemes) themes.value = JSON.parse(cachedThemes)
+
+      // 为旧缓存（无时间戳）补上当前时间作为起始点，避免旧数据永不过期
+      const now = Date.now()
+      let timestampsUpdated = false
+      const ensureTs = (key: string) => {
+        if (!lastFetched.value[key]) {
+          lastFetched.value = { ...lastFetched.value, [key]: now }
+          timestampsUpdated = true
+        }
+      }
+      if (ips.value.length > 0) ensureTs('ips')
+      if (themes.value.length > 0) ensureTs('themes')
+      if (categories.value.length > 0) ensureTs('categories:default')
+      for (const ipId of Object.keys(charactersByIP.value)) {
+        ensureTs(`characters:${ipId}`)
+      }
+      if (timestampsUpdated) {
+        localStorage.setItem(CACHE_KEYS.TIMESTAMPS, JSON.stringify(lastFetched.value))
+      }
     } catch (e) {
       console.error('Failed to load metadata from cache', e)
     }
@@ -106,10 +148,11 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   const fetchIPs = async (force = false) => {
     ensureCacheOwner()
-    if (!force && ips.value.length > 0) return ips.value
+    if (!force && ips.value.length > 0 && isCacheFresh('ips')) return ips.value
     try {
       const data = await getIPList()
       ips.value = data
+      markFetched('ips')
       saveToCache(CACHE_KEYS.IPS, data)
       return data
     } catch (error) {
@@ -121,20 +164,18 @@ export const useMetadataStore = defineStore('metadata', () => {
   // 按需获取指定 IP 的角色
   const fetchIPCharacters = async (ipId: number, force = false) => {
     ensureCacheOwner()
-    // 如果非强制刷新，且内存中已有该IP的角色数据，直接返回
-    if (!force && charactersByIP.value[ipId]) return charactersByIP.value[ipId]
+    const cacheKey = `characters:${ipId}`
+    if (!force && charactersByIP.value[ipId] && isCacheFresh(cacheKey)) return charactersByIP.value[ipId]
     
     try {
-      // 使用特定接口获取该IP的角色
       const data = await getIPCharacters(ipId)
       
-      // 更新状态
       charactersByIP.value = {
         ...charactersByIP.value,
         [ipId]: data
       }
       
-      // 更新本地缓存
+      markFetched(cacheKey)
       saveToCache(CACHE_KEYS.CHARACTERS_BY_IP, charactersByIP.value)
       return data
     } catch (error) {
@@ -146,8 +187,9 @@ export const useMetadataStore = defineStore('metadata', () => {
   const fetchCategories = async (force = false, params?: CategoryListParams) => {
     ensureCacheOwner()
     const scopeKey = categoryScopeKey(params)
+    const cacheKey = `categories:${scopeKey}`
     const cachedCategories = categoriesByScope.value[scopeKey]
-    if (!force && cachedCategories && cachedCategories.length > 0) {
+    if (!force && cachedCategories && cachedCategories.length > 0 && isCacheFresh(cacheKey)) {
       categories.value = cachedCategories
       return categories.value
     }
@@ -158,6 +200,7 @@ export const useMetadataStore = defineStore('metadata', () => {
         [scopeKey]: data,
       }
       categories.value = data
+      markFetched(cacheKey)
       saveToCache(CACHE_KEYS.CATEGORIES_BY_SCOPE, categoriesByScope.value)
       if (scopeKey === 'default') {
         saveToCache(CACHE_KEYS.CATEGORIES, data)
@@ -171,10 +214,11 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   const fetchThemes = async (force = false) => {
     ensureCacheOwner()
-    if (!force && themes.value.length > 0) return themes.value
+    if (!force && themes.value.length > 0 && isCacheFresh('themes')) return themes.value
     try {
       const data = await getThemeList()
       themes.value = data
+      markFetched('themes')
       saveToCache(CACHE_KEYS.THEMES, data)
       return data
     } catch (error) {
