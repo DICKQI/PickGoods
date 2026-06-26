@@ -50,22 +50,20 @@
         </div>
 
         <!-- 详情页 -->
-        <div v-else key="detail" class="panel-container full-panel">
-          <el-card shadow="never" class="glass-card adaptive-card detail-card">
-            <div class="scroll-content">
-              <ShowcaseDetailView
-                :loading="showcaseStore.detailLoading"
-                :showcase="showcaseStore.activeShowcase"
-                :goods="showcaseStore.sortedShowcaseGoods"
-                :readonly="isReadonly"
-                @back="backToList"
-                @add-goods="openAddGoods"
-                @open-goods="handleOpenGoodsDetail"
-                @goods-context-menu="openGoodsContextMenu"
-                @goods-context-menu-from-dom="openGoodsContextMenuFromDom"
-              />
-            </div>
-          </el-card>
+        <div v-else key="detail" class="showcase-detail-stage">
+          <ShowcaseDetailView
+            :loading="showcaseStore.detailLoading"
+            :showcase="showcaseStore.activeShowcase"
+            :goods="showcaseStore.sortedShowcaseGoods"
+            :readonly="isReadonly"
+            @back="backToList"
+            @add-goods="openAddGoods"
+            @edit-showcase="openEditShowcase"
+            @delete-showcase="handleDeleteShowcase"
+            @open-goods="handleOpenGoodsDetail"
+            @goods-context-menu="openGoodsContextMenu"
+            @goods-context-menu-from-dom="openGoodsContextMenuFromDom"
+          />
         </div>
       </Transition>
     </div>
@@ -109,6 +107,14 @@
     </div>
 
     <GoodsDrawer v-model="goodsDrawerVisible" :goods-id="selectedGoodsId" />
+
+    <ShowcaseAddGoodsDialog
+      v-model="addDialogVisible"
+      :existing-goods-ids="existingShowcaseGoodsIds"
+      :mutating="showcaseStore.mutating"
+      @add="handleAddToShowcase"
+      @open-detail="openGoodsDetailFromAdd"
+    />
 
     <el-dialog
       v-model="showcaseDialogVisible"
@@ -155,80 +161,7 @@
       </template>
     </el-dialog>
 
-    <el-drawer
-      v-model="addDrawerVisible"
-      title="从谷仓选购"
-      direction="rtl"
-      :size="isMobile ? '100%' : '480px'"
-      class="add-drawer-panel"
-    >
-      <div class="add-container full-height">
-        <div class="search-bar">
-          <el-input
-            v-model="addSearch"
-            placeholder="搜索名称/IP..."
-            clearable
-            :prefix-icon="Search"
-            @keyup.enter="fetchAddGoods(1)"
-          >
-            <template #append>
-              <el-button @click="fetchAddGoods(1)" :loading="addLoading">搜索</el-button>
-            </template>
-          </el-input>
-        </div>
 
-        <div class="search-results scroll-content">
-          <div v-if="addError" class="state-box">
-            <el-alert :title="addError" type="error" :closable="false" />
-          </div>
-
-          <div v-else-if="addLoading && addList.length === 0" class="state-box">
-            <el-skeleton :rows="5" animated />
-          </div>
-
-          <div v-else-if="addList.length === 0" class="state-box">
-            <el-empty description="没有找到相关谷子" image-size="80" />
-          </div>
-
-          <div v-else class="add-list">
-            <div v-for="g in addList" :key="g.id" class="add-item-card">
-              <div class="add-item-left" @click="openGoodsDetailFromAdd(g.id)">
-                <SquarePaddedImage v-if="g.main_photo" :src="g.main_photo" :alt="g.name" class="add-thumb" />
-                <div v-else class="add-thumb placeholder-img"></div>
-                <div class="add-info">
-                  <div class="add-name">{{ g.name }}</div>
-                  <div class="add-tags">
-                    <el-tag size="small" type="info" effect="plain">{{ g.ip.name }}</el-tag>
-                  </div>
-                </div>
-              </div>
-              <el-button
-                type="primary"
-                size="small"
-                circle
-                class="btn-icon-only"
-                :loading="showcaseStore.mutating"
-                @click="handleAddToShowcase(g.id)"
-              >
-                <el-icon><Plus /></el-icon>
-              </el-button>
-            </div>
-          </div>
-
-          <div class="pager-container">
-            <el-pagination
-              v-if="addPagination.count > 0"
-              v-model:current-page="addPagination.page"
-              :page-size="addPagination.page_size"
-              :total="addPagination.count"
-              layout="prev, next"
-              small
-              @current-change="fetchAddGoods"
-            />
-          </div>
-        </div>
-      </div>
-    </el-drawer>
   </div>
 </template>
 
@@ -237,7 +170,6 @@ import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import {
   Plus,
-  Search,
   Delete,
   Edit,
   Top,
@@ -245,14 +177,13 @@ import {
   Collection,
 } from '@element-plus/icons-vue'
 import GoodsDrawer from '@/components/GoodsDrawer.vue'
-import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
+import ShowcaseAddGoodsDialog from '@/components/showcase/ShowcaseAddGoodsDialog.vue'
 import ShowcaseListView from '@/components/showcase/ShowcaseListView.vue'
 import ShowcaseDetailView from '@/components/showcase/ShowcaseDetailView.vue'
 import { useShowcaseStore } from '@/stores/showcase'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
-import { getGoodsList } from '@/api/goods'
 import { uploadShowcaseCoverImage } from '@/api/showcase'
-import type { GoodsListItem, PaginatedResponse } from '@/api/types'
+import type { GoodsListItem } from '@/api/types'
 
 const { isMobile } = useResponsiveDevice()
 
@@ -304,7 +235,6 @@ const openGoodsDetailFromAdd = (id: string) => {
   selectedGoodsId.value = id
   goodsDrawerVisible.value = true
 }
-const noop = () => {}
 
 const contextMenu = reactive<{
   visible: boolean
@@ -391,7 +321,7 @@ const resetShowcaseCoverState = () => {
 
 const dummyUpload = () => Promise.resolve()
 
-const handleCoverChange = (file: UploadFile, fileList: UploadFile[]) => {
+const handleCoverChange = (file: UploadFile) => {
   if (file.raw) {
     showcaseCoverFile.value = file.raw
     // 仅保留一条记录，使用当前选择的文件作为预览
@@ -529,51 +459,30 @@ const handleEnterShowcaseDetail = async (id: string) => {
   viewMode.value = 'detail'
 }
 
-const addDrawerVisible = ref(false)
-const addSearch = ref('')
-const addLoading = ref(false)
-const addError = ref<string | null>(null)
-const addList = ref<GoodsListItem[]>([])
-const addPagination = reactive<PaginatedResponse<GoodsListItem>>({
-  count: 0,
-  page: 1,
-  page_size: 18,
-  next: null,
-  previous: null,
-  results: [],
-})
+const addDialogVisible = ref(false)
+const recentlyAddedGoodsIds = ref<Set<string>>(new Set())
+const existingShowcaseGoodsIds = computed(() => [
+  ...new Set([
+    ...showcaseStore.sortedShowcaseGoods.map((item) => item.goods.id),
+    ...recentlyAddedGoodsIds.value,
+  ]),
+])
 
-const openAddGoods = async () => {
-  addDrawerVisible.value = true
-  addSearch.value = ''
-  await fetchAddGoods(1)
-}
-
-const fetchAddGoods = async (page: number) => {
-  addLoading.value = true
-  addError.value = null
-  try {
-    const data = await getGoodsList({
-      search: addSearch.value?.trim() || undefined,
-      page,
-      page_size: addPagination.page_size,
-    })
-    Object.assign(addPagination, data)
-    addList.value = data.results
-  } catch (e: unknown) {
-    const err = e as { message?: string }
-    addError.value = err?.message || '加载失败'
-  } finally {
-    addLoading.value = false
-  }
+const openAddGoods = () => {
+  recentlyAddedGoodsIds.value = new Set()
+  addDialogVisible.value = true
 }
 
 const handleAddToShowcase = async (goodsId: string) => {
   const showcaseId = showcaseStore.activeShowcaseId
   if (!showcaseId) return
   const created = await showcaseStore.addGoods({ showcaseId, goodsId })
-  if (created) ElMessage.success('已加入展柜')
-  else if (showcaseStore.mutationStatus === 400) ElMessage.info(showcaseStore.mutationMessage || '该谷子已在展柜中')
+  if (created) {
+    const nextAddedIds = new Set(recentlyAddedGoodsIds.value)
+    nextAddedIds.add(goodsId)
+    recentlyAddedGoodsIds.value = nextAddedIds
+    ElMessage.success('已加入展柜')
+  } else if (showcaseStore.mutationStatus === 400) ElMessage.info(showcaseStore.mutationMessage || '该谷子已在展柜中')
 }
 
 const handleRemoveFromShowcase = async (goodsId: string) => {
@@ -740,6 +649,12 @@ watch(
 
 .full-panel {
   width: 100%;
+}
+
+.showcase-detail-stage {
+  width: min(100%, 1640px);
+  margin: 0 auto;
+  padding: 28px 20px 72px;
 }
 
 .left-panel {
@@ -1118,72 +1033,6 @@ watch(
   color: #f56c6c;
 }
 
-.add-container {
-  display: flex;
-  flex-direction: column;
-  height: 100%;
-}
-.search-bar {
-  padding: 16px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
-}
-.search-results {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
-}
-.add-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.add-item-card {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fff;
-  padding: 10px;
-  border-radius: 12px;
-  border: 1px solid #f0f0f0;
-}
-.add-item-left {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  flex: 1;
-  cursor: pointer;
-}
-.add-thumb {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
-  background: #fafafa;
-  flex-shrink: 0;
-  overflow: hidden;
-}
-.placeholder-img {
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(162, 155, 254, 0.12));
-}
-.add-info {
-  min-width: 0;
-}
-.add-name {
-  font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.add-tags {
-  margin-top: 4px;
-}
-.btn-icon-only {
-  width: 32px;
-  height: 32px;
-  background: var(--c-accent);
-  border-color: var(--c-accent);
-}
 
 .switch-row {
   display: flex;
