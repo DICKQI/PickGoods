@@ -11,11 +11,20 @@
       </div>
     </div>
 
-    <div ref="albumRef" class="paper-album" :class="{ 'is-drag-active': dragging }">
+    <div
+      ref="albumRef"
+      class="paper-album"
+      :class="{
+        'is-drag-active': dragging,
+        'is-page-turning': isPageTurning,
+        'is-turning-next': turnDirection === 'next',
+        'is-turning-prev': turnDirection === 'prev',
+      }"
+    >
       <button
         class="paper-page-button paper-page-button--prev"
         data-test="paper-prev-page"
-        :disabled="currentSpread === 0"
+        :disabled="isPageTurning || currentSpread === 0"
         type="button"
         title="上一页"
         @click="goPrev"
@@ -81,12 +90,107 @@
             </div>
           </div>
         </div>
+
+        <div
+          v-if="isPageTurning && turnSheetFrontPage && turnSheetBackPage"
+          class="paper-turn-layer"
+          aria-hidden="true"
+        >
+          <div class="paper-turn-sheet">
+            <div class="paper-turn-shadow" />
+            <div class="paper-turn-face paper-turn-face--front">
+              <div class="paper-turn-page">
+                <div class="paper-page-ring" />
+                <div class="paper-pocket-grid">
+                  <div
+                    v-for="slot in turnSheetFrontPage.slots"
+                    :key="`front-${slot.key}`"
+                    class="paper-pocket"
+                    :class="{ 'is-empty': !slot.item }"
+                  >
+                    <div v-if="slot.item" class="paper-turn-card" :data-id="slot.item.id">
+                      <div
+                        class="paper-card"
+                        :style="slot.item.goods.category?.color_tag ? { '--paper-accent': slot.item.goods.category.color_tag } : {}"
+                      >
+                        <WatermarkImage
+                          v-if="readonly && slot.item.goods.main_photo"
+                          :src="slot.item.goods.main_photo"
+                          :alt="slot.item.goods.name"
+                          :user-id="'ID:' + slot.item.goods.id.slice(0, 8)"
+                          fit="contain"
+                          class="paper-img"
+                        />
+                        <el-image
+                          v-else-if="slot.item.goods.main_photo"
+                          :src="slot.item.goods.main_photo"
+                          :alt="slot.item.goods.name"
+                          fit="contain"
+                          class="paper-img"
+                          loading="lazy"
+                        >
+                          <template #error>
+                            <div class="paper-placeholder"><el-icon><Picture /></el-icon></div>
+                          </template>
+                        </el-image>
+                        <div v-else class="paper-placeholder"><el-icon><Picture /></el-icon></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="paper-turn-face paper-turn-face--back">
+              <div class="paper-turn-page">
+                <div class="paper-page-ring" />
+                <div class="paper-pocket-grid">
+                  <div
+                    v-for="slot in turnSheetBackPage.slots"
+                    :key="`back-${slot.key}`"
+                    class="paper-pocket"
+                    :class="{ 'is-empty': !slot.item }"
+                  >
+                    <div v-if="slot.item" class="paper-turn-card" :data-id="slot.item.id">
+                      <div
+                        class="paper-card"
+                        :style="slot.item.goods.category?.color_tag ? { '--paper-accent': slot.item.goods.category.color_tag } : {}"
+                      >
+                        <WatermarkImage
+                          v-if="readonly && slot.item.goods.main_photo"
+                          :src="slot.item.goods.main_photo"
+                          :alt="slot.item.goods.name"
+                          :user-id="'ID:' + slot.item.goods.id.slice(0, 8)"
+                          fit="contain"
+                          class="paper-img"
+                        />
+                        <el-image
+                          v-else-if="slot.item.goods.main_photo"
+                          :src="slot.item.goods.main_photo"
+                          :alt="slot.item.goods.name"
+                          fit="contain"
+                          class="paper-img"
+                          loading="lazy"
+                        >
+                          <template #error>
+                            <div class="paper-placeholder"><el-icon><Picture /></el-icon></div>
+                          </template>
+                        </el-image>
+                        <div v-else class="paper-placeholder"><el-icon><Picture /></el-icon></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <button
         class="paper-page-button paper-page-button--next"
         data-test="paper-next-page"
-        :disabled="currentSpread >= totalSpreads - 1"
+        :disabled="isPageTurning || currentSpread >= totalSpreads - 1"
         type="button"
         title="下一页"
         @click="goNext"
@@ -136,11 +240,19 @@ const emit = defineEmits<{
   goodsContextMenuFromDom: [goodsId: string, event: MouseEvent]
 }>()
 
+type TurnDirection = 'next' | 'prev'
+const pageTurnDurationMs = 520
 const albumRef = ref<HTMLElement | null>(null)
 const currentSpread = ref(0)
+const displayedSpread = ref(0)
+const turnFromSpread = ref<number | null>(null)
+const turnToSpread = ref<number | null>(null)
+const turnDirection = ref<TurnDirection | null>(null)
+const isPageTurning = ref(false)
 const isMobile = ref(false)
 let mediaQuery: MediaQueryList | null = null
 let mediaCleanup: (() => void) | null = null
+let pageTurnTimer: number | null = null
 
 if (typeof window !== 'undefined') {
   mediaQuery = window.matchMedia('(max-width: 768px)')
@@ -154,6 +266,7 @@ if (typeof window !== 'undefined') {
 
 onBeforeUnmount(() => {
   mediaCleanup?.()
+  if (pageTurnTimer !== null) window.clearTimeout(pageTurnTimer)
 })
 
 const slotsPerPage = computed(() => 4)
@@ -161,12 +274,38 @@ const pagesPerSpread = computed(() => (isMobile.value ? 1 : 2))
 const itemsPerSpread = computed(() => slotsPerPage.value * pagesPerSpread.value)
 const totalSpreads = computed(() => Math.max(1, Math.ceil(props.items.length / itemsPerSpread.value)))
 
+const finishPageTurn = () => {
+  if (turnToSpread.value !== null) {
+    currentSpread.value = turnToSpread.value
+    displayedSpread.value = turnToSpread.value
+  }
+  isPageTurning.value = false
+  turnFromSpread.value = null
+  turnToSpread.value = null
+  turnDirection.value = null
+  pageTurnTimer = null
+}
+
+const startPageTurn = (targetSpread: number, direction: TurnDirection) => {
+  if (isPageTurning.value) return
+  if (targetSpread < 0 || targetSpread > totalSpreads.value - 1) return
+  if (targetSpread === currentSpread.value) return
+
+  turnFromSpread.value = currentSpread.value
+  turnToSpread.value = targetSpread
+  turnDirection.value = direction
+  isPageTurning.value = true
+
+  if (pageTurnTimer !== null) window.clearTimeout(pageTurnTimer)
+  pageTurnTimer = window.setTimeout(finishPageTurn, pageTurnDurationMs)
+}
+
 const goPrev = () => {
-  currentSpread.value = Math.max(0, currentSpread.value - 1)
+  startPageTurn(currentSpread.value - 1, 'prev')
 }
 
 const goNext = () => {
-  currentSpread.value = Math.min(totalSpreads.value - 1, currentSpread.value + 1)
+  startPageTurn(currentSpread.value + 1, 'next')
 }
 
 const maybeFlipAtEdge = (x: number, y: number) => {
@@ -175,9 +314,9 @@ const maybeFlipAtEdge = (x: number, y: number) => {
   if (y < rect.top || y > rect.bottom) return
   const edge = Math.min(82, rect.width * 0.16)
   if (x < rect.left + edge && currentSpread.value > 0) {
-    goPrev()
+    startPageTurn(currentSpread.value - 1, 'prev')
   } else if (x > rect.right - edge && currentSpread.value < totalSpreads.value - 1) {
-    goNext()
+    startPageTurn(currentSpread.value + 1, 'next')
   }
 }
 
@@ -208,6 +347,7 @@ const {
 
 watch(totalSpreads, (next) => {
   if (currentSpread.value >= next) currentSpread.value = Math.max(0, next - 1)
+  if (displayedSpread.value >= next) displayedSpread.value = Math.max(0, next - 1)
 })
 
 interface PaperSlot {
@@ -220,9 +360,9 @@ interface VisiblePage {
   slots: PaperSlot[]
 }
 
-const visiblePages = computed<VisiblePage[]>(() => {
+const buildPagesForSpread = (spreadIndex: number): VisiblePage[] => {
   const pages: VisiblePage[] = []
-  const spreadStart = currentSpread.value * itemsPerSpread.value
+  const spreadStart = spreadIndex * itemsPerSpread.value
   for (let page = 0; page < pagesPerSpread.value; page += 1) {
     const start = spreadStart + page * slotsPerPage.value
     const slots: PaperSlot[] = []
@@ -233,9 +373,43 @@ const visiblePages = computed<VisiblePage[]>(() => {
         item: localOrder.value[index] || null,
       })
     }
-    pages.push({ key: `spread-${currentSpread.value}-page-${page}`, slots })
+    pages.push({ key: `spread-${spreadIndex}-page-${page}`, slots })
   }
   return pages
+}
+
+const turnFromPages = computed<VisiblePage[]>(() => (
+  turnFromSpread.value === null ? [] : buildPagesForSpread(turnFromSpread.value)
+))
+const turnToPages = computed<VisiblePage[]>(() => (
+  turnToSpread.value === null ? [] : buildPagesForSpread(turnToSpread.value)
+))
+const visiblePages = computed<VisiblePage[]>(() => {
+  if (!isPageTurning.value || !turnDirection.value || pagesPerSpread.value === 1) {
+    return buildPagesForSpread(displayedSpread.value)
+  }
+
+  const fromPages = turnFromPages.value
+  const toPages = turnToPages.value
+  if (fromPages.length < 2 || toPages.length < 2) return buildPagesForSpread(displayedSpread.value)
+
+  const [fromLeft, fromRight] = fromPages
+  const [toLeft, toRight] = toPages
+  if (!fromLeft || !fromRight || !toLeft || !toRight) return buildPagesForSpread(displayedSpread.value)
+
+  return turnDirection.value === 'next'
+    ? [fromLeft, toRight]
+    : [toLeft, fromRight]
+})
+const turnSheetFrontPage = computed<VisiblePage | null>(() => {
+  if (!turnDirection.value) return null
+  const pages = turnFromPages.value
+  return pages[turnDirection.value === 'next' && pagesPerSpread.value > 1 ? 1 : 0] || null
+})
+const turnSheetBackPage = computed<VisiblePage | null>(() => {
+  if (!turnDirection.value) return null
+  const pages = turnToPages.value
+  return pages[turnDirection.value === 'prev' && pagesPerSpread.value > 1 ? 1 : 0] || null
 })
 
 const onPaperClick = (item: ShowcaseGoods) => {
@@ -309,6 +483,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
 
 .paper-book {
   --paper-book-padding: 20px;
+  --paper-turn-duration: 520ms;
   min-width: 0;
   position: relative;
   display: grid;
@@ -318,6 +493,8 @@ const onPaperClick = (item: ShowcaseGoods) => {
   margin: 0 auto;
   border-radius: 20px;
   padding: var(--paper-book-padding);
+  overflow: hidden;
+  perspective: 1800px;
   background:
     repeating-linear-gradient(90deg, rgba(142, 125, 255, 0.045) 0 1px, transparent 1px 18px),
     linear-gradient(135deg, #fbfcff 0%, #eef4ff 48%, #e3eaf8 100%);
@@ -337,6 +514,95 @@ const onPaperClick = (item: ShowcaseGoods) => {
   background: linear-gradient(180deg, rgba(142, 125, 255, 0.18), rgba(212, 175, 55, 0.12), rgba(142, 125, 255, 0.2));
   pointer-events: none;
   z-index: 3;
+}
+.paper-turn-layer {
+  position: absolute;
+  inset: var(--paper-book-padding);
+  z-index: 6;
+  pointer-events: none;
+  perspective: 1800px;
+  isolation: isolate;
+  contain: paint;
+}
+.paper-turn-sheet {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 50%;
+  transform-style: preserve-3d;
+  will-change: transform;
+  animation-duration: var(--paper-turn-duration);
+  animation-fill-mode: both;
+  animation-timing-function: cubic-bezier(0.22, 0.72, 0.22, 1);
+}
+.is-turning-next .paper-turn-sheet {
+  right: 0;
+  transform-origin: left center;
+  animation-name: paper-turn-next;
+}
+.is-turning-prev .paper-turn-sheet {
+  left: 0;
+  transform-origin: right center;
+  animation-name: paper-turn-prev;
+}
+.paper-turn-sheet::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgba(34, 29, 62, 0.2), transparent 22%, rgba(255, 255, 255, 0.36) 72%, transparent);
+  opacity: 0;
+  animation: paper-turn-sheen var(--paper-turn-duration) ease both;
+  pointer-events: none;
+}
+.paper-turn-shadow {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: inherit;
+  background:
+    linear-gradient(90deg, rgba(31, 38, 62, 0.22), transparent 18%, transparent 76%, rgba(31, 38, 62, 0.14)),
+    radial-gradient(ellipse at center, rgba(31, 38, 62, 0.18), transparent 68%);
+  opacity: 0.34;
+  transform: translateZ(1px);
+  animation: paper-turn-shadow var(--paper-turn-duration) ease both;
+  pointer-events: none;
+}
+.paper-turn-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  z-index: 2;
+  backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+.paper-turn-face--front {
+  transform: rotateY(0deg);
+}
+.paper-turn-face--back {
+  transform: rotateY(180deg);
+}
+.paper-turn-page {
+  position: relative;
+  width: 100%;
+  padding: 22px 20px 22px 40px;
+  border-radius: 5px 16px 16px 5px;
+  background:
+    repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 18px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 249, 255, 0.88));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.64),
+    0 24px 44px -26px rgba(31, 38, 62, 0.52);
+}
+.is-turning-prev .paper-turn-page {
+  border-radius: 16px 5px 5px 16px;
+}
+.paper-turn-card {
+  width: min(168px, 100%);
+}
+.paper-turn-card .paper-card {
+  width: 100%;
 }
 .paper-page {
   position: relative;
@@ -484,6 +750,44 @@ const onPaperClick = (item: ShowcaseGoods) => {
   object-fit: contain;
 }
 
+@keyframes paper-turn-next {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(-180deg);
+  }
+}
+
+@keyframes paper-turn-prev {
+  0% {
+    transform: rotateY(0deg);
+  }
+  100% {
+    transform: rotateY(180deg);
+  }
+}
+
+@keyframes paper-turn-shadow {
+  0%,
+  100% {
+    opacity: 0.24;
+  }
+  48% {
+    opacity: 0.42;
+  }
+}
+
+@keyframes paper-turn-sheen {
+  0%,
+  100% {
+    opacity: 0.18;
+  }
+  50% {
+    opacity: 0.54;
+  }
+}
+
 @media (max-width: 768px) {
   .paper-header {
     align-items: flex-start;
@@ -509,6 +813,25 @@ const onPaperClick = (item: ShowcaseGoods) => {
   .paper-book::before {
     display: none;
   }
+  .paper-turn-sheet {
+    width: 100%;
+  }
+  .is-turning-next .paper-turn-sheet,
+  .is-turning-prev .paper-turn-sheet {
+    left: 0;
+    right: auto;
+    transform-origin: left center;
+  }
+  .is-turning-prev .paper-turn-sheet {
+    transform-origin: right center;
+  }
+  .paper-turn-page {
+    padding: 16px 14px 16px 30px;
+    border-radius: 12px;
+  }
+  .paper-turn-card {
+    width: min(128px, 100%);
+  }
   .paper-page {
     min-height: 380px;
     padding: 16px 14px 16px 30px;
@@ -522,6 +845,17 @@ const onPaperClick = (item: ShowcaseGoods) => {
   }
   .paper-item {
     width: min(128px, 100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .paper-turn-sheet,
+  .paper-turn-sheet::after {
+    animation-duration: 1ms;
+  }
+
+  .paper-item {
+    transition-duration: 1ms;
   }
 }
 </style>
