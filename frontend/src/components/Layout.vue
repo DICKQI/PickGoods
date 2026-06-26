@@ -20,15 +20,15 @@
             </el-menu-item>
             <el-menu-item index="/location">
               <el-icon><FolderOpened /></el-icon>
-              <span>位置管理</span>
+              <span>位置</span>
             </el-menu-item>
             <el-menu-item index="/ipcharacter">
               <el-icon><Collection /></el-icon>
-              <span>IP作品与角色</span>
+              <span>IP与角色</span>
             </el-menu-item>
             <el-menu-item index="/category">
               <el-icon><Box /></el-icon>
-              <span>品类管理</span>
+              <span>品类</span>
             </el-menu-item>
             <el-menu-item index="/theme">
               <el-icon><Star /></el-icon>

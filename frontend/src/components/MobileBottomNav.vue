@@ -37,7 +37,7 @@ const navItems: NavItem[] = [
   },
   {
     path: '/location',
-    label: '位置管理',
+    label: '位置',
     icon: FolderOpened
   },
   {
@@ -47,7 +47,7 @@ const navItems: NavItem[] = [
   },
   {
     path: '/category',
-    label: '品类管理',
+    label: '品类',
     icon: Box
   },
   {

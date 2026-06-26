@@ -32,7 +32,7 @@ const routes: RouteRecordRaw[] = [
     name: 'Location',
     component: () => import('@/views/LocationManagement.vue'),
     meta: {
-      title: '位置管理',
+      title: '位置',
       requiresAuth: true,
     },
   },
@@ -41,7 +41,7 @@ const routes: RouteRecordRaw[] = [
     name: 'IPCharacterManagement',
     component: () => import('@/views/IPCharacterManagement.vue'),
     meta: {
-      title: 'IP作品与角色管理',
+      title: 'IP与角色',
       requiresAuth: true,
     },
   },
@@ -68,7 +68,7 @@ const routes: RouteRecordRaw[] = [
     name: 'CategoryManagement',
     component: () => import('@/views/CategoryManagement.vue'),
     meta: {
-      title: '品类管理',
+      title: '品类',
       requiresAuth: true,
     },
   },
@@ -164,7 +164,7 @@ const routes: RouteRecordRaw[] = [
         name: 'AdminCategories',
         component: () => import('@/views/CategoryManagement.vue'),
         meta: {
-          title: '品类管理',
+          title: '品类',
           requiresAuth: true,
           requiresAdmin: true,
         },
