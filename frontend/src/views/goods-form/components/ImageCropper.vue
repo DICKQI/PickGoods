@@ -349,12 +349,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { RefreshLeft } from '@element-plus/icons-vue'
 import VuePictureCropper, { cropper } from 'vue-picture-cropper'
 import type { CropEditSnapshot, CropNumericState } from '@/views/goods-form/cropHistory'
 import { createDefaultFilterState, isTransformStateDefault, applyFiltersToImage, computeCropperStyle, blobToImageBitmap } from '@/views/goods-form/imageUtils'
-import { applyCircleMaskToBlob, applyEllipseMaskToBlob, applyRoundedRectMaskToBlob, applyFreeCropSquareBlob, applyMarginToBlob } from '@/views/goods-form/imageMask'
+import { applyCircleMaskToBlob, applyEllipseMaskToBlob, applyRoundedRectMaskToBlob, applyMarginToBlob } from '@/views/goods-form/imageMask'
 import { applyPerspectiveAndRotateToBlob } from '@/views/goods-form/imageTransform'
 import { useCropHistory } from '@/views/goods-form/composables/useCropHistory'
 import { useLivePreview } from '@/views/goods-form/composables/useLivePreview'
@@ -656,8 +656,6 @@ const refreshLivePreview = async () => {
       if (enableRoundedRect.value && roundedRadius.value > 0) {
         workingFile = await applyRoundedRectMaskToBlob(workingFile, roundedRadius.value)
       }
-      const square = await applyFreeCropSquareBlob(workingFile)
-      workingFile = new File([square], `preview_${Date.now()}.png`, { type: 'image/png' })
     } else if (selectedAspectRatio.value === '1:1') {
       if (enableRoundedRect.value && roundedRadius.value > 0) {
         workingFile = await applyRoundedRectMaskToBlob(workingFile, roundedRadius.value)
@@ -793,10 +791,6 @@ const handleCropConfirm = async () => {
           if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
           croppedFile = roundedFile; previewUrl = URL.createObjectURL(roundedFile)
         }
-        const squareBlob = await applyFreeCropSquareBlob(croppedFile)
-        if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-        croppedFile = new File([squareBlob], `main_photo_${Date.now()}.png`, { type: 'image/png' })
-        previewUrl = URL.createObjectURL(squareBlob)
       } catch { cropping.value = false; return }
     }
 

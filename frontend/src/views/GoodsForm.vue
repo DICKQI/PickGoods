@@ -346,7 +346,7 @@
       <div class="duplicate-candidates-list">
         <div v-for="c in duplicateCandidates" :key="c.id" class="duplicate-candidate-card" :class="{ 'is-selected': duplicateSelectedId === c.id }" @click="setDuplicateSelectedId(c.id)">
           <div class="duplicate-candidate-thumb">
-            <img v-if="c.main_photo_url" :src="c.main_photo_url" :alt="c.name" class="candidate-thumb-img" />
+            <SquarePaddedImage v-if="c.main_photo_url" :src="c.main_photo_url" :alt="c.name" class="candidate-thumb-img" />
             <span v-else class="candidate-thumb-placeholder">无图</span>
           </div>
           <div class="duplicate-candidate-main">
@@ -442,6 +442,7 @@ import type { GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImag
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
 import OcrFillDialog from '@/views/goods-form/components/OcrFillDialog.vue'
+import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFormMetadata'
 import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
@@ -1544,7 +1545,8 @@ onUnmounted(() => {
 .main-photo-uploader :deep(.el-upload--picture-card .el-icon) { font-size: 26px; color: #b1b5c6; }
 .main-photo-uploader :deep(.el-upload-list--picture-card) { display: block; width: 220px; }
 .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) { width: 220px; height: 220px; margin: 0; border-radius: 16px; }
-.main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item-thumbnail) { width: 100%; height: 100%; object-fit: cover; }
+.main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) { background: #fff; }
+.main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item-thumbnail) { width: 100%; height: 100%; object-fit: contain; background: #fff; }
 .goods-form--desktop-workbench .main-photo-uploader :deep(.el-upload--picture-card),
 .goods-form--desktop-workbench .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) {
   width: min(220px, 100%);
@@ -1593,7 +1595,7 @@ onUnmounted(() => {
 .duplicate-candidate-card:hover { background: var(--el-fill-color-light); }
 .duplicate-candidate-card.is-selected { border-color: #D4AF37; background: rgba(212,175,55,0.06); }
 .duplicate-candidate-thumb { flex-shrink: 0; width: 40px; height: 40px; border-radius: 8px; background: var(--el-fill-color-light); border: 1px solid var(--el-border-color-lighter); overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.duplicate-candidate-thumb .candidate-thumb-img { width: 100%; height: 100%; object-fit: cover; }
+.duplicate-candidate-thumb .candidate-thumb-img { width: 100%; height: 100%; }
 .duplicate-candidate-thumb .candidate-thumb-placeholder { font-size: 11px; color: var(--el-text-color-placeholder); }
 .duplicate-candidate-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .duplicate-candidate-card .candidate-name { font-size: 16px; font-weight: 500; color: #1a1a1a; }

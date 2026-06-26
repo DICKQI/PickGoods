@@ -193,9 +193,8 @@
           <div v-else class="add-list">
             <div v-for="g in addList" :key="g.id" class="add-item-card">
               <div class="add-item-left" @click="openGoodsDetailFromAdd(g.id)">
-                <el-image :src="g.main_photo || ''" fit="cover" class="add-thumb">
-                  <template #error><div class="placeholder-img"></div></template>
-                </el-image>
+                <SquarePaddedImage v-if="g.main_photo" :src="g.main_photo" :alt="g.name" class="add-thumb" />
+                <div v-else class="add-thumb placeholder-img"></div>
                 <div class="add-info">
                   <div class="add-name">{{ g.name }}</div>
                   <div class="add-tags">
@@ -234,7 +233,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import {
   Plus,
@@ -243,14 +242,10 @@ import {
   Edit,
   Top,
   Bottom,
-  ArrowRight,
-  ArrowLeft,
   Collection,
-  Picture,
-  Goods,
 } from '@element-plus/icons-vue'
-import GoodsCard from '@/components/GoodsCard.vue'
 import GoodsDrawer from '@/components/GoodsDrawer.vue'
+import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import ShowcaseListView from '@/components/showcase/ShowcaseListView.vue'
 import ShowcaseDetailView from '@/components/showcase/ShowcaseDetailView.vue'
 import { useShowcaseStore } from '@/stores/showcase'
@@ -1164,10 +1159,9 @@ watch(
   border-radius: 8px;
   background: #fafafa;
   flex-shrink: 0;
+  overflow: hidden;
 }
 .placeholder-img {
-  width: 100%;
-  height: 100%;
   background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(162, 155, 254, 0.12));
 }
 .add-info {
