@@ -3,7 +3,7 @@
     <!-- ================= 顶部区域 ================= -->
     <div class="header-section">
       <div class="title-wrapper">
-        <h2 class="page-title">主题管理</h2>
+        <h2 class="page-title">主题</h2>
         <span class="sub-title">配置谷子的主题分类（如：夏日主题、节日主题等）</span>
       </div>
       <div class="header-actions">

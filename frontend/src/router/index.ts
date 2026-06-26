@@ -77,7 +77,7 @@ const routes: RouteRecordRaw[] = [
     name: 'ThemeManagement',
     component: () => import('@/views/ThemeManagement.vue'),
     meta: {
-      title: '主题管理',
+      title: '主题',
       requiresAuth: true,
     },
   },
@@ -174,7 +174,7 @@ const routes: RouteRecordRaw[] = [
         name: 'AdminThemes',
         component: () => import('@/views/ThemeManagement.vue'),
         meta: {
-          title: '主题管理',
+          title: '主题',
           requiresAuth: true,
           requiresAdmin: true,
         },

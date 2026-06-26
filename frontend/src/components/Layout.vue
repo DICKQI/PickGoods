@@ -11,6 +11,7 @@
           <el-menu
             :default-active="activeMenu"
             mode="horizontal"
+            :ellipsis="false"
             @select="handleMenuSelect"
             class="nav-menu-el"
           >
@@ -32,7 +33,7 @@
             </el-menu-item>
             <el-menu-item index="/theme">
               <el-icon><Star /></el-icon>
-              <span>主题管理</span>
+              <span>主题</span>
             </el-menu-item>
           </el-menu>
         </div>

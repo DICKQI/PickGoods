@@ -103,7 +103,7 @@ const adminMenu: { index: string; title: string; icon: Component }[] = [
   { index: '/admin/goods', title: '谷子管理', icon: Goods },
   { index: '/admin/ip', title: 'IP与角色', icon: Collection },
   { index: '/admin/categories', title: '品类管理', icon: Box },
-  { index: '/admin/themes', title: '主题管理', icon: Star },
+  { index: '/admin/themes', title: '主题', icon: Star },
   { index: '/admin/bgm-sync', title: 'BGM 自动同步', icon: Refresh },
 ]
 

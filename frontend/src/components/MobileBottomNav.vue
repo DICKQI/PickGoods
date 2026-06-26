@@ -52,7 +52,7 @@ const navItems: NavItem[] = [
   },
   {
     path: '/theme',
-    label: '主题管理',
+    label: '主题',
     icon: Star
   }
 ]
