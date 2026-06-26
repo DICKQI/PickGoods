@@ -574,6 +574,22 @@ const cleanupDrag = () => {
   padding: 16px 0;
 }
 
+/* 木质展架局部调色板：定义在 .goods-section，让标题与柜体共用同一套木色
+   （对齐 ShowcaseManager 的 --c-* 局部变量用法；仅在吧唧展架相关样式中引用） */
+.goods-section {
+  --c-wood-frame-light: #fbf4e4;
+  --c-wood-frame-dark: #f0e2c4;
+  --c-wood-panel-light: #d8c6a4;
+  --c-wood-panel-mid: #c1ab83;
+  --c-wood-panel-dark: #a98f68;
+  --c-wood-cap-light: #b8905a;
+  --c-wood-cap-mid: #9a7440;
+  --c-wood-cap-dark: #7d5a2a;
+  --c-wood-grain: 120, 72, 22;        /* 木纹基色（RGB 分量，便于带透明度复用） */
+  --c-wood-shadow: 90, 54, 18;        /* 木影基色（RGB 分量） */
+  --c-wood-inlay: 199, 154, 74;       /* 木中泛金的嵌线（RGB 分量） */
+}
+
 /* ==================== 吧唧木质展架 ==================== */
 .cabinet-label {
   display: flex;
@@ -584,11 +600,13 @@ const cleanupDrag = () => {
 .cabinet-label-title {
   font-size: 14px;
   font-weight: 700;
-  color: rgba(120, 74, 24, 0.85);
+  color: var(--c-wood-cap-dark);
+  padding-bottom: 2px;
+  border-bottom: 1px solid rgba(var(--c-wood-inlay), 0.45);   /* 金木嵌线点缀 */
 }
 .cabinet-label-count {
   font-size: 12px;
-  color: rgba(120, 74, 24, 0.55);
+  color: rgba(var(--c-wood-shadow), 0.6);
 }
 
 .cabinet {
@@ -596,9 +614,13 @@ const cleanupDrag = () => {
   margin: 0 auto;
   border-radius: 14px;
   padding: 14px;
-  background: linear-gradient(160deg, #fbf4e4 0%, #f3e7cd 100%);
+  background: linear-gradient(160deg, var(--c-wood-frame-light) 0%, var(--c-wood-frame-dark) 100%);
   border: 1px solid rgba(150, 100, 40, 0.18);
-  box-shadow: 0 6px 18px -8px rgba(120, 72, 22, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),            /* 顶部高光：框体斜面 */
+    inset 0 0 0 1px rgba(var(--c-wood-inlay), 0.35),   /* 内层极细金木嵌线 */
+    0 10px 40px -10px rgba(var(--c-wood-shadow), 0.22),
+    0 6px 18px -8px rgba(var(--c-wood-shadow), 0.28);
 }
 
 .cabinet-inner {
@@ -606,12 +628,39 @@ const cleanupDrag = () => {
   border-radius: 10px;
   padding: 14px 14px 4px;
   background:
-    repeating-linear-gradient(90deg, rgba(120, 72, 22, 0.04) 0 2px, transparent 2px 7px),
-    linear-gradient(180deg, #efd9a8 0%, #e6cb8e 100%);
-  /* 侧板：左右内阴影模拟柜体立柱 */
+    /* 顶部光晕：模拟柜顶光源，中心提亮 */
+    radial-gradient(110% 70% at 50% 0%, rgba(255, 250, 235, 0.12) 0%, transparent 55%),
+    /* 边缘晕影：四角渐入暗，营造柜内纵深 */
+    radial-gradient(130% 100% at 50% 40%, transparent 55%, rgba(var(--c-wood-shadow), 0.2) 100%),
+    /* 亮色木纹丝：丝绸般的高光纹理走向 */
+    repeating-linear-gradient(90deg, rgba(255, 250, 235, 0.04) 0 1px, transparent 1px 11px),
+    /* 细密暗纹：贴近的木纹 */
+    repeating-linear-gradient(90deg, rgba(var(--c-wood-grain), 0.06) 0 1px, transparent 1px 4px),
+    /* 较疏暗纹：节奏变化，避免单调 */
+    repeating-linear-gradient(90deg, rgba(var(--c-wood-grain), 0.05) 0 2px, transparent 2px 9px),
+    /* 极淡斜向纹：木纹自然走向 */
+    repeating-linear-gradient(88deg, rgba(var(--c-wood-grain), 0.04) 0 1px, transparent 1px 14px),
+    /* 顶光衰减：上亮下暗模拟柜内光照 */
+    linear-gradient(180deg, var(--c-wood-panel-light) 0%, var(--c-wood-panel-mid) 55%, var(--c-wood-panel-dark) 100%);
+  /* 帽下凹陷 + 立柱（左右内阴影加深）+ 内嵌木框描边 */
   box-shadow:
-    inset 3px 0 6px -3px rgba(120, 72, 22, 0.4),
-    inset -3px 0 6px -3px rgba(120, 72, 22, 0.4);
+    inset 0 8px 10px -8px rgba(var(--c-wood-shadow), 0.3),
+    inset 4px 0 7px -3px rgba(var(--c-wood-shadow), 0.5),
+    inset -4px 0 7px -3px rgba(var(--c-wood-shadow), 0.5),
+    inset 0 0 0 1px rgba(var(--c-wood-grain), 0.18);
+}
+/* 底板反光：柜体内部地板的空间感 */
+.cabinet-inner::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 2px;
+  height: 6px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse at center, rgba(var(--c-wood-shadow), 0.12) 0%, transparent 70%);
+  pointer-events: none;
+  z-index: 0;
 }
 /* 顶部木帽：让柜体更像立式高柜 */
 .cabinet-inner::before {
@@ -620,18 +669,46 @@ const cleanupDrag = () => {
   height: 14px;
   margin: -14px -14px 16px;
   border-radius: 10px 10px 3px 3px;
-  background: linear-gradient(180deg, #cb9550 0%, #b9823c 60%, #a36e30 100%);
+  background:
+    /* 端纹：木帽横截面纹理 */
+    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.08) 0 1px, transparent 1px 6px),
+    linear-gradient(180deg, var(--c-wood-cap-light) 0%, var(--c-wood-cap-mid) 60%, var(--c-wood-cap-dark) 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.22),
-    0 4px 8px -3px rgba(110, 66, 22, 0.4);
+    inset 0 2px 0 rgba(255, 255, 255, 0.3),             /* 顶部高光更亮：斜面 */
+    inset 0 -2px 0 rgba(var(--c-wood-shadow), 0.4),     /* 底部凹槽更深：板厚 */
+    inset 0 -1px 0 0 rgba(var(--c-wood-inlay), 0.6),    /* 金木嵌线：封边 */
+    inset 4px 0 6px -4px rgba(var(--c-wood-shadow), 0.35),  /* 左侧下沉：衔接立柱 */
+    inset -4px 0 6px -4px rgba(var(--c-wood-shadow), 0.35), /* 右侧下沉：衔接立柱 */
+    0 4px 8px -3px rgba(var(--c-wood-shadow), 0.4);
 }
 
 .shelf {
+  position: relative;
+  z-index: 1;            /* 让层板/托架绘制在柜内底板反光之上 */
   margin-bottom: 24px;
 }
 .shelf:last-child {
   margin-bottom: 8px;
 }
+/* 木质托架：让层板被支撑而非悬浮，提升实体感 */
+.shelf::before,
+.shelf::after {
+  content: '';
+  position: absolute;
+  bottom: -9px;
+  width: 16px;
+  height: 12px;
+  pointer-events: none;
+  z-index: 0;
+  background: linear-gradient(180deg, var(--c-wood-cap-mid) 0%, var(--c-wood-cap-dark) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    inset 0 -1px 0 rgba(var(--c-wood-shadow), 0.4),
+    0 2px 5px -2px rgba(var(--c-wood-shadow), 0.45);
+  border-radius: 0 0 3px 3px;
+}
+.shelf::before { left: 4px; }
+.shelf::after { right: 4px; }
 
 .shelf-items {
   display: flex;
@@ -650,11 +727,40 @@ const cleanupDrag = () => {
   border-radius: 3px;
   position: relative;
   z-index: 1;
-  background: linear-gradient(180deg, #cb9550 0%, #b9823c 55%, #a36e30 100%);
+  background:
+    /* 横向木纹：板面纹理走向 */
+    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.05) 0 1px, transparent 1px 9px),
+    linear-gradient(180deg, var(--c-wood-cap-light) 0%, var(--c-wood-cap-mid) 55%, var(--c-wood-cap-dark) 100%);
   box-shadow:
-    inset 0 2px 0 rgba(255, 255, 255, 0.22),
-    inset 0 -2px 0 rgba(90, 54, 20, 0.35),
-    0 7px 14px -5px rgba(110, 66, 22, 0.5);
+    inset 0 2px 0 rgba(255, 255, 255, 0.28),          /* 顶部高光：正面斜面 */
+    inset 0 -2px 0 rgba(var(--c-wood-shadow), 0.4),   /* 底部凹槽：板厚 */
+    inset 0 -1px 0 0 rgba(var(--c-wood-inlay), 0.5),  /* 金木嵌线：封边 */
+    0 7px 14px -5px rgba(var(--c-wood-shadow), 0.5);  /* 落影：板压在柜内 */
+}
+/* 端纹：木板两端封边（横截面纹理） */
+.shelf-board::before,
+.shelf-board::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 8px;
+  pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.12) 0 1px, transparent 1px 4px),
+    linear-gradient(90deg, var(--c-wood-cap-dark) 0%, var(--c-wood-cap-mid) 100%);
+  box-shadow: inset 0 0 0 1px rgba(var(--c-wood-shadow), 0.2);
+}
+.shelf-board::before {
+  left: 0;
+  border-radius: 3px 0 0 3px;
+}
+.shelf-board::after {
+  right: 0;
+  border-radius: 0 3px 3px 0;
+  background:
+    repeating-linear-gradient(90deg, rgba(var(--c-wood-shadow), 0.12) 0 1px, transparent 1px 4px),
+    linear-gradient(90deg, var(--c-wood-cap-mid) 0%, var(--c-wood-cap-dark) 100%);
 }
 
 .badge-item {
@@ -681,7 +787,8 @@ const cleanupDrag = () => {
 .cabinet.is-drag-active .badge-item:hover .badge-photo {
   box-shadow:
     0 0 0 2px #fffbe8,
-    0 0 0 4px var(--badge-ring, #d4af37);
+    0 0 0 4px var(--badge-ring, #d4af37),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45);
 }
 .cabinet.is-drag-active .badge-item {
   will-change: transform;
@@ -693,18 +800,34 @@ const cleanupDrag = () => {
   border-radius: 50%;
   overflow: hidden;
   position: relative;
+  isolation: isolate;             /* 让 ::after 的 screen 混合只作用于吧唧内部 */
   background: #fff8ea;
   box-shadow:
-    0 0 0 2px #fffbe8,
-    0 0 0 4px var(--badge-ring, #d4af37);
-  filter: drop-shadow(0 7px 6px rgba(90, 54, 18, 0.34));
+    0 0 0 2px #fffbe8,                            /* 内底：奶白 */
+    0 0 0 4px var(--badge-ring, #d4af37),         /* 主金属边 */
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45);    /* 内高光弧：金属倒角反光 */
+  filter:
+    drop-shadow(0 2px 2px rgba(90, 54, 18, 0.28))   /* 接触影 */
+    drop-shadow(0 6px 5px rgba(90, 54, 18, 0.3));   /* 环境影 */
   transition: box-shadow 0.22s ease;
+}
+/* 穹顶高光：吧唧金属面的弧度反光 */
+.badge-photo::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(120% 80% at 50% 16%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.08) 40%, transparent 60%);
+  mix-blend-mode: screen;
+  pointer-events: none;
+  z-index: 1;
 }
 .badge-item:hover .badge-photo {
   box-shadow:
     0 0 0 2px #fffbe8,
     0 0 0 4px var(--badge-ring, #d4af37),
-    0 0 10px 1px rgba(212, 175, 55, 0.5);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
+    0 0 10px 1px rgba(212, 175, 55, 0.5);          /* 悬停金色辉光（马口铁细闪） */
 }
 .badge-img {
   width: 100%;
@@ -735,6 +858,7 @@ const cleanupDrag = () => {
   box-shadow:
     0 0 0 2px #fffbe8,
     0 0 0 4px var(--badge-ring, #d4af37),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
     0 12px 24px -6px rgba(0, 0, 0, 0.4);
   transform: scale(1.06);
 }
@@ -832,12 +956,30 @@ const cleanupDrag = () => {
     margin: -10px -10px 14px;
     height: 11px;
   }
+  .cabinet-inner::after {
+    left: 10px;
+    right: 10px;          /* 与移动端内边距对齐 */
+  }
   .shelf {
     margin-bottom: 16px;
+  }
+  /* 托架在窄屏略缩小，避免拥挤 */
+  .shelf::before,
+  .shelf::after {
+    width: 12px;
+    height: 10px;
+    bottom: -7px;
   }
   .shelf-items {
     gap: 16px;
     padding: 4px 2px 6px;
+  }
+  .shelf-board {
+    height: 12px;
+  }
+  .shelf-board::before,
+  .shelf-board::after {
+    width: 6px;           /* 端纹同步收窄 */
   }
   .badge-photo {
     width: 84px;
