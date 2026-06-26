@@ -181,6 +181,45 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('1 件')
   })
 
+  it('按吧唧、纸制品和其他谷子拆分展示数量', () => {
+    const wrapper = mountDetail({
+      goods: [
+        makeShowcaseGoods('1'),
+        makeShowcaseGoods('2', {
+          category: {
+            id: 2,
+            name: '方卡',
+            parent: null,
+            path_name: '纸制品/方卡',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 2,
+          },
+        }),
+        makeShowcaseGoods('3', {
+          category: {
+            id: 3,
+            name: '亚克力立牌',
+            parent: null,
+            path_name: '亚克力/立牌',
+            shape_type: 'rectangle',
+            color_tag: '#A29BFE',
+            order: 3,
+          },
+        }),
+      ],
+    })
+
+    expect(wrapper.get('[data-test="hero-total-count"]').text()).toContain('3')
+    expect(wrapper.get('[data-test="hero-round-count"]').text()).toContain('1')
+    expect(wrapper.get('[data-test="hero-paper-count"]').text()).toContain('1')
+    expect(wrapper.get('[data-test="hero-other-count"]').text()).toContain('1')
+    expect(wrapper.get('[data-test="round-section-title"]').text()).toContain('吧唧展架')
+    expect(wrapper.get('[data-test="paper-section-title"]').text()).toContain('纸制品收纳册')
+    expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('其他谷子')
+    expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('1 件')
+  })
+
   it('ShowcaseManager 将详情页编辑事件接到展柜编辑弹窗', () => {
     expect(showcaseManagerSource).toContain('@edit-showcase="openEditShowcase"')
   })

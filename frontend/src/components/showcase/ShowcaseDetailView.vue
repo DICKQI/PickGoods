@@ -78,6 +78,10 @@
                 <strong>{{ roundGoods.length }}</strong>
                 <span>吧唧</span>
               </div>
+              <div class="hero-stat" data-test="hero-paper-count">
+                <strong>{{ paperGoods.length }}</strong>
+                <span>纸制品</span>
+              </div>
               <div class="hero-stat" data-test="hero-other-count">
                 <strong>{{ otherGoods.length }}</strong>
                 <span>其他</span>
@@ -169,6 +173,15 @@
             </div>
           </section>
 
+          <PaperAlbumDisplay
+            v-if="paperGoods.length"
+            :items="paperGoods"
+            :showcase-id="showcase.id"
+            :readonly="readonly"
+            @open-goods="emit('openGoods', $event)"
+            @goods-context-menu-from-dom="forwardGoodsContextMenuFromDom"
+          />
+
           <!-- 其他谷子（非吧唧）网格 -->
           <section v-if="otherGoods.length" class="other-section display-section">
             <div class="other-header" data-test="other-section-title">
@@ -214,8 +227,8 @@
         :style="{
           left: dragGhost.x + 'px',
           top: dragGhost.y + 'px',
-          width: dragGhost.size + 'px',
-          height: dragGhost.size + 'px',
+          width: dragGhost.width + 'px',
+          height: dragGhost.height + 'px',
           '--badge-ring': dragGhost.ring,
         }"
       >
@@ -227,12 +240,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, Delete, Edit, Goods, MoreFilled, Picture } from '@element-plus/icons-vue'
 import GoodsCard from '@/components/GoodsCard.vue'
+import PaperAlbumDisplay from '@/components/showcase/PaperAlbumDisplay.vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
-import { useShowcaseStore } from '@/stores/showcase'
+import { groupShowcaseDisplayGoods } from './showcaseDisplayGrouping'
+import { useShowcaseDisplayDragSort } from './useShowcaseDisplayDragSort'
 import type { GoodsListItem, Showcase, ShowcaseGoods } from '@/api/types'
 
 const props = withDefaults(defineProps<{
@@ -269,31 +283,17 @@ const handleMoreCommand = (command: string | number | object) => {
   }
 }
 
-// 与后端 CATEGORY_SHAPE_KEYWORDS 保持一致：吧唧/徽章/马口铁 → 圆形
-const ROUND_KEYWORDS = ['吧唧', '徽章', '马口铁']
-const ROUND_EXCLUDES = [
-  '异形', '方形', '正方形', '长方形', '矩形', '心形', '椭圆',
-  '宝石', '星形', '星型', '菱形', '三角', '六边', '多边形',
-]
-
-/**
- * 判定一枚谷子是否为"圆形吧唧类"→ 上柜展示。
- * 优先用 category.shape_type；子分类（如 58mm吧唧/75mm吧唧）shape_type 常为空，
- * 故再用与后端一致的关键词逻辑兜底：name/path_name 含 吧唧/徽章/马口铁 且不含排除词。
- */
-const isRoundGoods = (g: ShowcaseGoods): boolean => {
-  const cat = g.goods?.category
-  if (!cat) return false
-  const text = `${cat.name || ''}/${cat.path_name || ''}`
-  if (ROUND_EXCLUDES.some((k) => text.includes(k))) return false
-  if (cat.shape_type === 'round') return true
-  return ROUND_KEYWORDS.some((k) => text.includes(k))
+const forwardGoodsContextMenuFromDom = (goodsId: string, event: MouseEvent) => {
+  emit('goodsContextMenuFromDom', goodsId, event)
 }
 
+const displayGroups = computed(() => groupShowcaseDisplayGoods(props.goods))
 /** 吧唧（圆形）谷子：上柜展示 */
-const roundGoods = computed(() => props.goods.filter(isRoundGoods))
+const roundGoods = computed(() => displayGroups.value.round)
+/** 纸制品谷子：收纳册展示 */
+const paperGoods = computed(() => displayGroups.value.paper)
 /** 其他形状谷子：保留下方网格 */
-const otherGoods = computed(() => props.goods.filter((g) => !isRoundGoods(g)))
+const otherGoods = computed(() => displayGroups.value.other)
 
 // ===== 展柜层板自适应列数（ResizeObserver） =====
 const cabinetRef = ref<HTMLElement | null>(null)
@@ -333,33 +333,28 @@ onBeforeUnmount(() => {
 })
 
 // ===== 吧唧展架拖曳排序 =====
-const showcaseStore = useShowcaseStore()
-
-/** 本地排序副本：拖曳时实时修改，松手后同步后端 */
-const localOrder = ref<ShowcaseGoods[]>([])
-const dragging = ref(false)
-const dragItemId = ref<string | null>(null)
-const dragGhost = ref<{
-  src: string | null
-  alt: string
-  ring: string
-  size: number
-  x: number
-  y: number
-} | null>(null)
-
-// 拖曳过程临时状态（非响应式，避免多余渲染）
-let pendingDragItem: ShowcaseGoods | null = null
-let pointerStart = { x: 0, y: 0 }
-let grabOffset = { x: 0, y: 0 }
-const flipRects = new Map<string, DOMRect>()
-let suppressClickUntil = 0
-let playRafId: number | null = null
-
-// 非拖曳时 localOrder 与 roundGoods 保持同步
-watch(roundGoods, (v) => {
-  if (!dragging.value) localOrder.value = v.slice()
-}, { immediate: true })
+const showcaseId = computed(() => props.showcase?.id)
+const readonlyRef = computed(() => props.readonly)
+const {
+  localOrder,
+  dragging,
+  dragItemId,
+  dragGhost,
+  onPointerDown: onBadgePointerDown,
+  shouldSuppressClick,
+  cleanupDrag,
+} = useShowcaseDisplayDragSort({
+  items: roundGoods,
+  showcaseId,
+  readonly: readonlyRef,
+  itemSelector: '.badge-item',
+  defaultRing: '#d4af37',
+  ghostSize: () => {
+    const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
+    const size = isMobile ? 84 : 116
+    return { width: size, height: size, radius: '50%' }
+  },
+})
 
 /** 按列数把吧唧切成若干层板（基于 localOrder，支持拖曳实时重排） */
 const roundRows = computed<ShowcaseGoods[][]>(() => {
@@ -372,216 +367,11 @@ const roundRows = computed<ShowcaseGoods[][]>(() => {
   return rows
 })
 
-// --- 拖曳核心逻辑 ---
-
-/** 指针按下：记录起点与抓取偏移，挂载全局监听 */
-const onBadgePointerDown = (e: PointerEvent, item: ShowcaseGoods) => {
-  if (props.readonly || e.button !== 0) return
-  pendingDragItem = item
-  pointerStart = { x: e.clientX, y: e.clientY }
-  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-  grabOffset = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  window.addEventListener('pointermove', onPointerMove)
-  window.addEventListener('pointerup', onPointerUp)
-}
-
-/** 超过移动阈值后真正进入拖曳状态 */
-const startDrag = (item: ShowcaseGoods, x: number, y: number) => {
-  dragging.value = true
-  dragItemId.value = item.id
-  const isMobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
-  const size = isMobile ? 84 : 116
-  const ring = item.goods.category?.color_tag || '#d4af37'
-  dragGhost.value = {
-    src: item.goods.main_photo || null,
-    alt: item.goods.name,
-    ring,
-    size,
-    x: x - grabOffset.x,
-    y: y - grabOffset.y,
-  }
-}
-
-/** 计算放置位置：在 localOrder 去掉拖曳项后的索引 */
-const computeDropIndex = (x: number, y: number): number => {
-  const el = document.elementFromPoint(x, y) as HTMLElement | null
-  if (!el) return -1
-  const badge = el.closest('.badge-item') as HTMLElement | null
-  if (!badge || badge.classList.contains('is-dragging')) return -1
-  const targetId = badge.dataset.id
-  if (!targetId) return -1
-  const others = localOrder.value.filter((g) => g.id !== dragItemId.value)
-  const oIdx = others.findIndex((g) => g.id === targetId)
-  if (oIdx < 0) return -1
-  const rect = badge.getBoundingClientRect()
-  const after = x > rect.left + rect.width / 2
-  return after ? oIdx + 1 : oIdx
-}
-
-/** FLIP 第一步：清除上次残留 transform，记录所有非拖曳项的真实布局位置 */
-const flipFirst = () => {
-  flipRects.clear()
-  const nodes = document.querySelectorAll<HTMLElement>('.badge-item:not(.is-dragging)')
-  nodes.forEach((n) => {
-    n.style.transition = 'none'
-    n.style.transform = ''
-    const id = n.dataset.id
-    if (id) flipRects.set(id, n.getBoundingClientRect())
-  })
-}
-
-/** FLIP 第三步：两遍法——先统一设置位移，强制 reflow，再 rAF 触发过渡动画 */
-const flipPlay = () => {
-  if (playRafId !== null) {
-    cancelAnimationFrame(playRafId)
-    playRafId = null
-  }
-  nextTick(() => {
-    const nodes = document.querySelectorAll<HTMLElement>('.badge-item:not(.is-dragging)')
-    const animated: HTMLElement[] = []
-    nodes.forEach((n) => {
-      const id = n.dataset.id
-      if (!id) return
-      const oldRect = flipRects.get(id)
-      if (!oldRect) return
-      const newRect = n.getBoundingClientRect()
-      const dx = oldRect.left - newRect.left
-      const dy = oldRect.top - newRect.top
-      if (dx === 0 && dy === 0) return
-      n.style.transition = 'none'
-      n.style.transform = `translate(${dx}px, ${dy}px)`
-      animated.push(n)
-    })
-    // 强制 reflow：让浏览器先"看到" translate 状态，过渡才能从该状态播放
-    if (animated.length > 0) {
-      void animated[0]!.offsetWidth
-    }
-    playRafId = requestAnimationFrame(() => {
-      playRafId = null
-      animated.forEach((n) => {
-        n.style.transition = 'transform 0.25s ease'
-        n.style.transform = ''
-      })
-    })
-    flipRects.clear()
-  })
-}
-
-/** 把拖曳项插入到 localOrder 的指定位置 */
-const applyReorder = (item: ShowcaseGoods, dropIdx: number) => {
-  const others = localOrder.value.filter((g) => g.id !== item.id)
-  const clamped = Math.max(0, Math.min(dropIdx, others.length))
-  localOrder.value = [...others.slice(0, clamped), item, ...others.slice(clamped)]
-}
-
-/** 指针移动：更新幽灵位置 + 实时重排 */
-const onPointerMove = (e: PointerEvent) => {
-  if (!pendingDragItem) return
-  // 安全兜底：按钮已松开但 pointerup 未触发（原生拖拽等场景），立即清理
-  if (e.buttons === 0) {
-    onPointerUp()
-    return
-  }
-  const x = e.clientX
-  const y = e.clientY
-
-  if (!dragging.value) {
-    const dist = Math.hypot(x - pointerStart.x, y - pointerStart.y)
-    if (dist < 6) return // 移动阈值，避免点击误触发
-    startDrag(pendingDragItem, x, y)
-  }
-
-  if (dragging.value && dragGhost.value) {
-    dragGhost.value.x = x - grabOffset.x
-    dragGhost.value.y = y - grabOffset.y
-
-    const dropIdx = computeDropIndex(x, y)
-    if (dropIdx >= 0) {
-      const currentIdx = localOrder.value.findIndex((g) => g.id === pendingDragItem!.id)
-      if (dropIdx !== currentIdx) {
-        flipFirst()
-        applyReorder(pendingDragItem!, dropIdx)
-        flipPlay()
-      }
-    }
-  }
-}
-
-/** 松手后提交排序到后端；失败则回滚 localOrder */
-const commitReorder = async (item: ShowcaseGoods) => {
-  const arr = localOrder.value
-  const idx = arr.findIndex((g) => g.id === item.id)
-  if (idx < 0 || arr.length <= 1) return
-
-  // 顺序是否真正变化
-  const origIds = roundGoods.value.map((g) => g.id)
-  const newIds = arr.map((g) => g.id)
-  const changed = origIds.some((id, i) => id !== newIds[i])
-  if (!changed) return
-
-  // 确定锚点：优先前一项（after），否则后一项（before）
-  let anchor: ShowcaseGoods | undefined
-  let position: 'before' | 'after'
-  if (idx > 0) {
-    anchor = arr[idx - 1]
-    position = 'after'
-  } else {
-    anchor = arr[idx + 1]
-    position = 'before'
-  }
-  if (!anchor) return
-
-  const showcaseId = props.showcase?.id
-  if (!showcaseId) return
-
-  const res = await showcaseStore.moveGoods(showcaseId, {
-    goods_id: item.goods.id,
-    anchor_goods_id: anchor.goods.id,
-    position,
-  })
-  if (!res) {
-    localOrder.value = roundGoods.value.slice()
-    ElMessage.error('排序更新失败，已恢复')
-  }
-}
-
-/** 指针抬起：结束拖曳，提交排序 */
-const onPointerUp = async () => {
-  window.removeEventListener('pointermove', onPointerMove)
-  window.removeEventListener('pointerup', onPointerUp)
-
-  if (dragging.value && pendingDragItem) {
-    suppressClickUntil = Date.now() + 300
-    const item = pendingDragItem
-    dragging.value = false
-    dragItemId.value = null
-    dragGhost.value = null
-    pendingDragItem = null
-    await commitReorder(item)
-  } else {
-    pendingDragItem = null
-  }
-}
-
 /** 点击：拖曳后短时间内抑制 click，避免误开详情 */
 const onBadgeClick = (item: ShowcaseGoods) => {
-  if (Date.now() < suppressClickUntil) return
+  if (shouldSuppressClick()) return
   if (props.readonly) return
   emit('openGoods', item.goods)
-}
-
-/** 清理拖曳状态与全局监听 */
-const cleanupDrag = () => {
-  if (playRafId !== null) {
-    cancelAnimationFrame(playRafId)
-    playRafId = null
-  }
-  window.removeEventListener('pointermove', onPointerMove)
-  window.removeEventListener('pointerup', onPointerUp)
-  dragging.value = false
-  dragItemId.value = null
-  dragGhost.value = null
-  pendingDragItem = null
 }
 </script>
 
