@@ -33,11 +33,33 @@ const firstPage: JournalPage = {
   width: 1080,
   height: 1440,
   background: '#fffaf0',
-  content: { version: 1, layers: [] },
+  content: { version: 2, layers: [] },
+  revision: 1,
   preview_image: null,
   created_at: '2026-06-26T00:00:00Z',
   updated_at: '2026-06-26T00:00:00Z',
 }
+
+const textContent = (id: string, text: string): JournalPageContent => ({
+  version: 2,
+  layers: [{
+    id,
+    type: 'text',
+    name: text,
+    opacity: 1,
+    z_index: 1,
+    items: [{
+      id: `${id}-item`,
+      type: 'text',
+      text,
+      x: 10,
+      y: 20,
+      font_size: 32,
+      fill: '#333333',
+      rotation: 0,
+    }],
+  }],
+})
 
 const book: JournalBook = {
   id: 'book-1',
@@ -54,8 +76,8 @@ const firstVersion: JournalPageVersion = {
   id: 'version-1',
   page: 'page-1',
   version_no: 1,
-  content: { version: 1, layers: [] },
   preview_image: null,
+  summary: { layer_count: 0 },
   created_at: '2026-06-26T00:00:00Z',
 }
 
@@ -102,9 +124,17 @@ describe('useJournalStore', () => {
     vi.mocked(patchJournalPage).mockResolvedValue({
       ...firstPage,
       content: {
-        version: 1,
-        layers: [{ id: 'draw-1', type: 'draw', points: [1, 2], stroke: '#000', stroke_width: 4, opacity: 1, z_index: 1 }],
+        version: 2,
+        layers: [{
+          id: 'draw-1',
+          type: 'draw',
+          name: 'draw',
+          opacity: 1,
+          z_index: 1,
+          items: [{ id: 'stroke-1', type: 'stroke', brush_type: 'pen', points: [1, 2], stroke: '#000000', stroke_width: 4, opacity: 1 }],
+        }],
       } as JournalPageContent,
+      revision: 2,
     })
     vi.mocked(getJournalPageVersions).mockResolvedValue({
       count: 1,
@@ -118,16 +148,13 @@ describe('useJournalStore', () => {
     store.pages = [firstPage]
     store.activePageId = 'page-1'
 
-    const content: JournalPageContent = {
-      version: 1,
-      layers: [{ id: 'text-1', type: 'text', text: 'Hi', x: 10, y: 20, font_size: 32, fill: '#333', rotation: 0, z_index: 1 }],
-    }
+    const content = textContent('text-1', 'Hi')
     store.updateActivePageContent(content)
     expect(store.dirty).toBe(true)
 
     await store.saveActivePage()
 
-    expect(patchJournalPage).toHaveBeenCalledWith('page-1', { content })
+    expect(patchJournalPage).toHaveBeenCalledWith('page-1', { content, revision: 1, create_version: true })
     expect(getJournalPageVersions).toHaveBeenCalledWith('page-1')
     expect(store.versions).toEqual([firstVersion])
     expect(store.dirty).toBe(false)
@@ -136,22 +163,8 @@ describe('useJournalStore', () => {
   it('loads and restores page versions', async () => {
     const restoredPage: JournalPage = {
       ...firstPage,
-      content: {
-        version: 1,
-        layers: [
-          {
-            id: 'text-restored',
-            type: 'text',
-            text: 'restored',
-            x: 10,
-            y: 20,
-            font_size: 32,
-            fill: '#333333',
-            rotation: 0,
-            z_index: 1,
-          },
-        ],
-      },
+      content: textContent('text-restored', 'restored'),
+      revision: 2,
     }
     vi.mocked(getJournalPageVersions).mockResolvedValue({
       count: 1,
@@ -193,5 +206,51 @@ describe('useJournalStore', () => {
     expect(deleted).toBe(true)
     expect(deleteJournalPageVersion).toHaveBeenCalledWith('version-1')
     expect(store.versions.map(version => version.id)).toEqual(['version-2'])
+  })
+
+  it('queues overlapping saves and sends auto saves without creating versions', async () => {
+    let resolveFirst!: (page: JournalPage) => void
+    vi.mocked(patchJournalPage)
+      .mockReturnValueOnce(new Promise(resolve => { resolveFirst = resolve }))
+      .mockResolvedValueOnce({ ...firstPage, revision: 3 })
+    vi.mocked(getJournalPageVersions).mockResolvedValue({
+      count: 1,
+      page: 1,
+      page_size: 50,
+      next: null,
+      previous: null,
+      results: [firstVersion],
+    })
+
+    const store = useJournalStore()
+    store.pages = [firstPage]
+    store.activePageId = 'page-1'
+
+    store.updateActivePageContent({
+      ...textContent('text-1', 'one'),
+    })
+    const firstSave = store.saveActivePage({ createVersion: false })
+
+    store.updateActivePageContent({
+      ...textContent('text-2', 'two'),
+    })
+    const secondSave = store.saveActivePage({ createVersion: false })
+
+    expect(patchJournalPage).toHaveBeenCalledTimes(1)
+    resolveFirst({ ...firstPage, revision: 2 })
+    await firstSave
+    await secondSave
+
+    expect(patchJournalPage).toHaveBeenCalledTimes(2)
+    expect(patchJournalPage).toHaveBeenNthCalledWith(1, 'page-1', {
+      content: expect.objectContaining({ layers: [expect.objectContaining({ id: 'text-1' })] }),
+      revision: 1,
+      create_version: false,
+    })
+    expect(patchJournalPage).toHaveBeenNthCalledWith(2, 'page-1', {
+      content: expect.objectContaining({ layers: [expect.objectContaining({ id: 'text-2' })] }),
+      revision: 2,
+      create_version: false,
+    })
   })
 })

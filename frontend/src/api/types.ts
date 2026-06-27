@@ -215,6 +215,8 @@ export interface GoodsSearchParams {
   search?: string
   page?: number
   page_size?: number
+  has_main_photo?: boolean
+  fields?: 'journal_asset' | string
   /**
    * 分组显示参数：
    * - ip：按 IP 作品分组
@@ -625,7 +627,16 @@ export interface ShowcaseMoveGoodsResponse {
 // BGM角色搜索结果
 // ==================== Journal ====================
 
-export interface JournalStickerLayer {
+export interface JournalLegacyLayerBase {
+  id: string
+  type: 'sticker' | 'text' | 'draw'
+  name?: string
+  locked?: boolean
+  visible?: boolean
+  z_index: number
+}
+
+export interface JournalLegacyStickerLayer extends JournalLegacyLayerBase {
   id: string
   type: 'sticker'
   goods_id: string
@@ -639,7 +650,7 @@ export interface JournalStickerLayer {
   z_index: number
 }
 
-export interface JournalTextLayer {
+export interface JournalLegacyTextLayer extends JournalLegacyLayerBase {
   id: string
   type: 'text'
   text: string
@@ -651,9 +662,12 @@ export interface JournalTextLayer {
   z_index: number
 }
 
-export interface JournalDrawLayer {
+export type JournalBrushType = 'pencil' | 'pen' | 'watercolor'
+
+export interface JournalLegacyDrawLayer extends JournalLegacyLayerBase {
   id: string
   type: 'draw'
+  brush_type: JournalBrushType
   points: number[]
   stroke: string
   stroke_width: number
@@ -661,10 +675,65 @@ export interface JournalDrawLayer {
   z_index: number
 }
 
-export type JournalLayer = JournalStickerLayer | JournalTextLayer | JournalDrawLayer
+export type JournalLegacyLayer = JournalLegacyStickerLayer | JournalLegacyTextLayer | JournalLegacyDrawLayer
+
+export interface JournalStrokeItem {
+  id: string
+  type: 'stroke'
+  brush_type: JournalBrushType
+  points: number[]
+  stroke: string
+  stroke_width: number
+  opacity: number
+}
+
+export interface JournalStickerItem {
+  id: string
+  type: 'sticker'
+  goods_id: string
+  src: string
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+}
+
+export interface JournalTextItem {
+  id: string
+  type: 'text'
+  text: string
+  x: number
+  y: number
+  font_size: number
+  fill: string
+  rotation: number
+}
+
+export type JournalLayerItem = JournalStrokeItem | JournalStickerItem | JournalTextItem
+
+export interface JournalLayer {
+  id: string
+  type: 'sticker' | 'text' | 'draw'
+  name?: string
+  locked?: boolean
+  visible?: boolean
+  opacity: number
+  z_index: number
+  items: JournalLayerItem[]
+}
+
+export type JournalStickerLayer = JournalLayer & { type: 'sticker'; items: JournalStickerItem[] }
+export type JournalTextLayer = JournalLayer & { type: 'text'; items: JournalTextItem[] }
+export type JournalDrawLayer = JournalLayer & { type: 'draw'; items: JournalStrokeItem[] }
+
+export interface JournalPageContentV1 {
+  version: 1
+  layers: JournalLegacyLayer[]
+}
 
 export interface JournalPageContent {
-  version: 1
+  version: 2
   layers: JournalLayer[]
 }
 
@@ -688,6 +757,7 @@ export interface JournalPage {
   height: number
   background: string
   content: JournalPageContent
+  revision: number
   preview_image?: string | null
   created_at?: string
   updated_at?: string
@@ -697,8 +767,11 @@ export interface JournalPageVersion {
   id: string
   page: string
   version_no: number
-  content: JournalPageContent
+  content?: JournalPageContent
   preview_image?: string | null
+  summary?: {
+    layer_count: number
+  }
   created_at?: string
 }
 
@@ -713,6 +786,8 @@ export interface JournalPageInput {
   height?: number
   background?: string
   content?: JournalPageContent
+  revision?: number
+  create_version?: boolean
 }
 
 export type PaginatedJournalBookResponse = PaginatedResponse<JournalBook>

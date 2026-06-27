@@ -14,8 +14,9 @@ import {
   uploadJournalPagePreview,
 } from '@/api/journal'
 import type { JournalBook, JournalPage, JournalPageContent, JournalPageVersion } from '@/api/types'
+import { emptyJournalContent } from '@/utils/journalContent'
 
-const emptyContent = (): JournalPageContent => ({ version: 1, layers: [] })
+const emptyContent = (): JournalPageContent => emptyJournalContent()
 
 export const useJournalStore = defineStore('journal', () => {
   const books = ref<JournalBook[]>([])
@@ -29,6 +30,10 @@ export const useJournalStore = defineStore('journal', () => {
   const error = ref<string | null>(null)
   const versions = ref<JournalPageVersion[]>([])
   const versionLoading = ref(false)
+  const saveInFlight = ref(false)
+  const saveQueued = ref(false)
+  let queuedSavePromise: Promise<JournalPage | null> | null = null
+  let resolveQueuedSave: ((page: JournalPage | null) => void) | null = null
 
   const activeBook = computed(() => books.value.find(book => book.id === activeBookId.value) || null)
   const activePage = computed(() => pages.value.find(page => page.id === activePageId.value) || null)
@@ -215,22 +220,51 @@ export const useJournalStore = defineStore('journal', () => {
     dirty.value = true
   }
 
-  const saveActivePage = async () => {
+  const saveActivePage = async (options: { createVersion?: boolean } = {}) => {
+    if (saveInFlight.value) {
+      saveQueued.value = true
+      if (!queuedSavePromise) {
+        queuedSavePromise = new Promise(resolve => {
+          resolveQueuedSave = resolve
+        })
+      }
+      return queuedSavePromise
+    }
     const page = activePage.value
     if (!page) return null
+    saveInFlight.value = true
     saving.value = true
     error.value = null
     try {
-      const saved = await patchJournalPage(page.id, { content: page.content })
-      pages.value = pages.value.map(item => (item.id === saved.id ? saved : item))
-      dirty.value = false
-      await fetchVersions(saved.id)
+      const saved = await patchJournalPage(page.id, {
+        content: page.content,
+        revision: page.revision,
+        create_version: options.createVersion ?? true,
+      })
+      const queued = saveQueued.value
+      pages.value = pages.value.map(item => (
+        item.id === saved.id
+          ? queued
+            ? { ...saved, content: item.content }
+            : saved
+          : item
+      ))
+      dirty.value = queued
+      if (options.createVersion ?? true) await fetchVersions(saved.id)
       return saved
     } catch (e: any) {
       error.value = e?.message || '保存页面失败'
       return null
     } finally {
+      saveInFlight.value = false
       saving.value = false
+      if (saveQueued.value) {
+        saveQueued.value = false
+        const queuedResult = await saveActivePage(options)
+        resolveQueuedSave?.(queuedResult)
+        queuedSavePromise = null
+        resolveQueuedSave = null
+      }
     }
   }
 
@@ -286,6 +320,8 @@ export const useJournalStore = defineStore('journal', () => {
     error,
     versions,
     versionLoading,
+    saveInFlight,
+    saveQueued,
     activeBook,
     activePage,
     fetchBooks,

@@ -50,18 +50,35 @@ const emit = defineEmits<{
   insertGoods: [goods: GoodsListItem]
 }>()
 
+const props = withDefaults(defineProps<{
+  ipId?: number
+  characterId?: number
+  categoryId?: number
+  themeId?: number
+  onlyWithImage?: boolean
+}>(), {
+  onlyWithImage: true,
+})
+
 const keyword = ref('')
 const loading = ref(false)
 const goodsList = ref<GoodsListItem[]>([])
+const page = ref(1)
 
 const loadGoods = async () => {
   loading.value = true
   try {
     const data = await getGoodsList({
-      page: 1,
+      page: page.value,
       page_size: 18,
       search: keyword.value || undefined,
       status__in: 'in_cabinet,outdoor',
+      has_main_photo: props.onlyWithImage,
+      fields: 'journal_asset',
+      ip: props.ipId,
+      character: props.characterId,
+      category: props.categoryId,
+      theme: props.themeId,
     })
     goodsList.value = data.results || []
   } finally {

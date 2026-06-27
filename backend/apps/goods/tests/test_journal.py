@@ -61,7 +61,8 @@ class JournalAPITestCase(TestCase):
         self.assertEqual(page["width"], 1080)
         self.assertEqual(page["height"], 1440)
         self.assertEqual(page["background"], "#fffaf0")
-        self.assertEqual(page["content"], {"version": 1, "layers": []})
+        self.assertEqual(page["content"], {"version": 2, "layers": []})
+        self.assertEqual(page["revision"], 1)
         self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 1)
 
     def test_normal_user_cannot_access_other_users_journal(self):
@@ -121,7 +122,306 @@ class JournalAPITestCase(TestCase):
         self.assertEqual(versions_response.status_code, status.HTTP_200_OK)
         versions = versions_response.json()["results"]
         self.assertEqual(versions[0]["version_no"], 2)
-        self.assertEqual(versions[0]["content"], content)
+        self.assertNotIn("content", versions[0])
+
+        version_detail = self.client.get(f"/api/journal-page-versions/{versions[0]['id']}/")
+        self.assertEqual(version_detail.status_code, status.HTTP_200_OK)
+        self.assertEqual(version_detail.json()["content"], content)
+
+    def test_auto_save_updates_page_without_creating_version(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 1,
+            "layers": [
+                {
+                    "id": "text-auto-save",
+                    "type": "text",
+                    "text": "auto",
+                    "x": 10,
+                    "y": 20,
+                    "font_size": 32,
+                    "fill": "#333333",
+                    "rotation": 0,
+                    "z_index": 1,
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": False, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["content"], content)
+        self.assertEqual(response.json()["revision"], page["revision"] + 1)
+        self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 1)
+
+    def test_manual_save_creates_version_and_checks_revision_conflict(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        first_content = {
+            "version": 1,
+            "layers": [
+                {
+                    "id": "text-first",
+                    "type": "text",
+                    "text": "first",
+                    "x": 10,
+                    "y": 20,
+                    "font_size": 32,
+                    "fill": "#333333",
+                    "rotation": 0,
+                    "z_index": 1,
+                }
+            ],
+        }
+
+        first_response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": first_content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+        self.assertEqual(first_response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first_response.json()["revision"], page["revision"] + 1)
+        self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 2)
+
+        stale_response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": first_content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(stale_response.status_code, status.HTTP_409_CONFLICT)
+        self.assertEqual(stale_response.json()["code"], "journal_revision_conflict")
+
+    def test_draw_layer_accepts_known_brush_type(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 1,
+            "layers": [
+                {
+                    "id": "draw-pencil",
+                    "type": "draw",
+                    "brush_type": "pencil",
+                    "points": [1, 2, 3, 4],
+                    "stroke": "#123abc",
+                    "stroke_width": 4,
+                    "opacity": 0.65,
+                    "z_index": 1,
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["content"], content)
+
+    def test_invalid_draw_layer_brush_type_is_rejected(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 1,
+            "layers": [
+                {
+                    "id": "draw-invalid",
+                    "type": "draw",
+                    "brush_type": "marker",
+                    "points": [1, 2, 3, 4],
+                    "stroke": "#123abc",
+                    "stroke_width": 4,
+                    "opacity": 0.65,
+                    "z_index": 1,
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("brush_type", str(response.json()))
+
+    def test_draw_layer_with_too_many_points_is_rejected(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 1,
+            "layers": [
+                {
+                    "id": "draw-too-large",
+                    "type": "draw",
+                    "brush_type": "watercolor",
+                    "points": list(range(12002)),
+                    "stroke": "#123abc",
+                    "stroke_width": 4,
+                    "opacity": 0.65,
+                    "z_index": 1,
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("points", str(response.json()))
+
+    def test_v2_logical_draw_layer_accepts_multiple_stroke_items(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "draw-layer-1",
+                    "type": "draw",
+                    "name": "画笔层 1",
+                    "opacity": 1,
+                    "visible": True,
+                    "locked": False,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "stroke-1",
+                            "type": "stroke",
+                            "brush_type": "pencil",
+                            "points": [1, 2, 3, 4],
+                            "stroke": "#123abc",
+                            "stroke_width": 4,
+                            "opacity": 0.65,
+                        },
+                        {
+                            "id": "stroke-2",
+                            "type": "stroke",
+                            "brush_type": "watercolor",
+                            "points": [5, 6, 7, 8],
+                            "stroke": "#abcdef",
+                            "stroke_width": 8,
+                            "opacity": 0.45,
+                        },
+                    ],
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertEqual(response.json()["content"], content)
+
+    def test_v2_unknown_item_type_is_rejected(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "draw-layer-1",
+                    "type": "draw",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [{"id": "bad-item", "type": "shape"}],
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("type", str(response.json()))
+
+    def test_v2_unknown_brush_type_is_rejected(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "draw-layer-1",
+                    "type": "draw",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "stroke-1",
+                            "type": "stroke",
+                            "brush_type": "marker",
+                            "points": [1, 2, 3, 4],
+                            "stroke": "#123abc",
+                            "stroke_width": 4,
+                            "opacity": 0.65,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("brush_type", str(response.json()))
+
+    def test_v2_total_draw_points_limit_is_enforced(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "draw-layer-1",
+                    "type": "draw",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "stroke-too-large",
+                            "type": "stroke",
+                            "brush_type": "pen",
+                            "points": list(range(12002)),
+                            "stroke": "#123abc",
+                            "stroke_width": 4,
+                            "opacity": 0.65,
+                        }
+                    ],
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {"content": content, "create_version": True, "revision": page["revision"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("points", str(response.json()))
 
     def test_page_versions_keep_latest_fifty(self):
         book = self._create_book()
@@ -188,9 +488,9 @@ class JournalAPITestCase(TestCase):
             status.HTTP_200_OK,
             getattr(restore_response, "data", restore_response.content),
         )
-        self.assertEqual(restore_response.json()["content"], {"version": 1, "layers": []})
+        self.assertEqual(restore_response.json()["content"], {"version": 2, "layers": []})
         refreshed = JournalPage.objects.get(id=page["id"])
-        self.assertEqual(refreshed.content, {"version": 1, "layers": []})
+        self.assertEqual(refreshed.content, {"version": 2, "layers": []})
         self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 3)
 
     def test_get_and_delete_page_version(self):
@@ -202,7 +502,7 @@ class JournalAPITestCase(TestCase):
         delete_response = self.client.delete(f"/api/journal-page-versions/{version.id}/")
 
         self.assertEqual(detail_response.status_code, status.HTTP_200_OK)
-        self.assertEqual(detail_response.json()["content"], {"version": 1, "layers": []})
+        self.assertEqual(detail_response.json()["content"], {"version": 2, "layers": []})
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertFalse(JournalPageVersion.objects.filter(id=version.id).exists())
 

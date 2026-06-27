@@ -122,7 +122,7 @@
                 @click="canvasRef?.selectLayer(layer.id)"
               >
                 <span>{{ layerLabel(layer) }}</span>
-                <small>z {{ layer.z_index }}</small>
+                <small>{{ layer.items.length }} 项 · z {{ layer.z_index }}</small>
               </button>
             </div>
 
@@ -141,7 +141,17 @@
                 <el-button size="small" @click="canvasRef?.moveSelectedLayer('bottom')">置底</el-button>
               </div>
 
-              <label v-if="'opacity' in selectedLayer" class="control-row">
+              <div class="layer-order-actions">
+                <el-button size="small" @click="canvasRef?.toggleSelectedLayerLock">
+                  {{ selectedLayer.locked ? '解锁' : '锁定' }}
+                </el-button>
+                <el-button size="small" @click="canvasRef?.toggleSelectedLayerVisibility">
+                  {{ selectedLayer.visible === false ? '显示' : '隐藏' }}
+                </el-button>
+                <el-button size="small" @click="canvasRef?.duplicateSelectedLayer">复制</el-button>
+              </div>
+
+              <label class="control-row">
                 <span>透明度</span>
                 <el-slider
                   :model-value="selectedLayer.opacity"
@@ -152,10 +162,10 @@
                 />
               </label>
 
-              <label v-if="selectedLayer.type !== 'draw'" class="control-row">
+              <label v-if="selectedLayer.type !== 'draw' && selectedItem" class="control-row">
                 <span>旋转</span>
                 <el-input-number
-                  :model-value="selectedLayer.rotation"
+                  :model-value="'rotation' in selectedItem ? selectedItem.rotation : 0"
                   :min="-180"
                   :max="180"
                   size="small"
@@ -163,11 +173,11 @@
                 />
               </label>
 
-              <template v-if="selectedLayer.type === 'sticker'">
+              <template v-if="selectedStickerItem">
                 <label class="control-row">
                   <span>宽度</span>
                   <el-input-number
-                    :model-value="selectedLayer.width"
+                    :model-value="selectedStickerItem.width"
                     :min="24"
                     size="small"
                     @update:model-value="updateStickerWidth"
@@ -176,7 +186,7 @@
                 <label class="control-row">
                   <span>高度</span>
                   <el-input-number
-                    :model-value="selectedLayer.height"
+                    :model-value="selectedStickerItem.height"
                     :min="24"
                     size="small"
                     @update:model-value="updateStickerHeight"
@@ -184,11 +194,11 @@
                 </label>
               </template>
 
-              <template v-if="selectedLayer.type === 'text'">
+              <template v-if="selectedTextItem">
                 <label class="control-row">
                   <span>内容</span>
                   <el-input
-                    :model-value="selectedLayer.text"
+                    :model-value="selectedTextItem.text"
                     size="small"
                     @update:model-value="updateTextContent"
                   />
@@ -196,7 +206,7 @@
                 <label class="control-row">
                   <span>字号</span>
                   <el-input-number
-                    :model-value="selectedLayer.font_size"
+                    :model-value="selectedTextItem.font_size"
                     :min="12"
                     :max="180"
                     size="small"
@@ -208,7 +218,7 @@
                   <input
                     class="journal-color-input"
                     type="color"
-                    :value="selectedLayer.fill"
+                    :value="selectedTextItem.fill"
                     @input="updateTextFill"
                   />
                 </label>
@@ -263,7 +273,7 @@ import { Delete, DocumentChecked, Download, Plus } from '@element-plus/icons-vue
 import { useJournalStore } from '@/stores/journal'
 import JournalCanvas from './JournalCanvas.vue'
 import JournalGoodsPicker from './JournalGoodsPicker.vue'
-import type { GoodsListItem, JournalLayer, JournalPageContent } from '@/api/types'
+import type { GoodsListItem, JournalLayer, JournalPageContent, JournalStickerItem, JournalTextItem } from '@/api/types'
 
 const journalStore = useJournalStore()
 const canvasRef = ref<InstanceType<typeof JournalCanvas> | null>(null)
@@ -295,7 +305,7 @@ const createBook = async () => {
 const deleteBook = async () => {
   if (!journalStore.activeBook) return
   try {
-    await ElMessageBox.confirm(`确认删除「${journalStore.activeBook.title}」吗？`, '删除手帐', {
+    await ElMessageBox.confirm(`确认删除《${journalStore.activeBook.title}》吗？`, '删除手帐', {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
@@ -312,14 +322,22 @@ const handleContentUpdate = (content: JournalPageContent) => {
 
 const canvasLayers = computed(() => canvasRef.value?.layers || [])
 const selectedLayer = computed(() => canvasRef.value?.selectedLayer || null)
+const selectedItem = computed(() => canvasRef.value?.selectedItem || null)
+const selectedStickerItem = computed(() => (
+  selectedItem.value?.type === 'sticker' ? selectedItem.value as JournalStickerItem : null
+))
+const selectedTextItem = computed(() => (
+  selectedItem.value?.type === 'text' ? selectedItem.value as JournalTextItem : null
+))
 
 const layerLabel = (layer: JournalLayer) => {
-  if (layer.type === 'sticker') return '贴纸'
-  if (layer.type === 'text') return `文字：${layer.text || '空白'}`
-  return '画笔'
+  if (layer.name) return layer.name
+  if (layer.type === 'sticker') return '贴纸层'
+  if (layer.type === 'text') return '文字层'
+  return '画笔层'
 }
 
-const updateSelectedLayer = (patch: Partial<JournalLayer>) => {
+const updateSelectedLayer = (patch: Record<string, unknown>) => {
   canvasRef.value?.updateSelectedLayer(patch)
 }
 
@@ -329,31 +347,31 @@ const toNumber = (value: unknown, fallback: number) => {
 }
 
 const updateLayerOpacity = (value: unknown) => {
-  updateSelectedLayer({ opacity: toNumber(value, 1) } as Partial<JournalLayer>)
+  updateSelectedLayer({ opacity: toNumber(value, 1) })
 }
 
 const updateLayerRotation = (value: unknown) => {
-  updateSelectedLayer({ rotation: toNumber(value, 0) } as Partial<JournalLayer>)
+  updateSelectedLayer({ rotation: toNumber(value, 0) })
 }
 
 const updateStickerWidth = (value: unknown) => {
-  updateSelectedLayer({ width: toNumber(value, 24) } as Partial<JournalLayer>)
+  updateSelectedLayer({ width: toNumber(value, 24) })
 }
 
 const updateStickerHeight = (value: unknown) => {
-  updateSelectedLayer({ height: toNumber(value, 24) } as Partial<JournalLayer>)
+  updateSelectedLayer({ height: toNumber(value, 24) })
 }
 
 const updateTextContent = (value: string | number) => {
-  updateSelectedLayer({ text: String(value) } as Partial<JournalLayer>)
+  updateSelectedLayer({ text: String(value) })
 }
 
 const updateTextFontSize = (value: unknown) => {
-  updateSelectedLayer({ font_size: toNumber(value, 12) } as Partial<JournalLayer>)
+  updateSelectedLayer({ font_size: toNumber(value, 12) })
 }
 
 const updateTextFill = (event: Event) => {
-  updateSelectedLayer({ fill: (event.target as HTMLInputElement).value } as Partial<JournalLayer>)
+  updateSelectedLayer({ fill: (event.target as HTMLInputElement).value })
 }
 
 const savePage = async () => {
@@ -403,7 +421,7 @@ watch(
     if (!journalStore.dirty) return
     if (autoSaveTimer !== null) window.clearTimeout(autoSaveTimer)
     autoSaveTimer = window.setTimeout(() => {
-      journalStore.saveActivePage()
+      journalStore.saveActivePage({ createVersion: false })
       autoSaveTimer = null
     }, 1200)
   },
@@ -578,6 +596,10 @@ onBeforeUnmount(() => {
   flex-wrap: wrap;
 }
 
+.layer-order-actions :deep(.el-button + .el-button) {
+  margin-left: 0 !important;
+}
+
 .control-row {
   display: grid;
   grid-template-columns: 58px minmax(0, 1fr);
@@ -585,6 +607,15 @@ onBeforeUnmount(() => {
   gap: 8px;
   color: var(--text-light);
   font-size: 12px;
+}
+
+.control-row > :not(span) {
+  min-width: 0;
+}
+
+.control-row :deep(.el-slider) {
+  padding: 0 10px;
+  box-sizing: border-box;
 }
 
 .version-list {

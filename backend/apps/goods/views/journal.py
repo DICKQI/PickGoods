@@ -1,6 +1,6 @@
 from django.db import transaction
 from django.db.models import Count, Max, Min
-from rest_framework import status, viewsets
+from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
@@ -13,6 +13,7 @@ from ..serializers.journal import (
     JournalBookListSerializer,
     JournalPageSerializer,
     JournalPageVersionSerializer,
+    JournalPageVersionSummarySerializer,
 )
 from ..utils import compress_image
 
@@ -128,7 +129,7 @@ class JournalBookViewSet(viewsets.ModelViewSet):
         serializer.is_valid(raise_exception=True)
         last_page = book.pages.order_by("-page_no").first()
         page_no = (last_page.page_no if last_page else 0) + 1
-        page = serializer.save(book=book, page_no=page_no, title=f"? {page_no} ?")
+        page = serializer.save(book=book, page_no=page_no, title=f"第 {page_no} 页")
         create_page_version(page)
         return Response(
             JournalPageSerializer(page, context=self.get_serializer_context()).data,
@@ -161,17 +162,47 @@ class JournalPageViewSet(viewsets.ModelViewSet):
         if getattr(obj.book, "user_id", None) != getattr(request.user, "id", None):
             self.permission_denied(request)
 
+    def update(self, request, *args, **kwargs):
+        partial = kwargs.pop("partial", False)
+        instance = self.get_object()
+        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        try:
+            serializer.is_valid(raise_exception=True)
+        except serializers.ValidationError as exc:
+            if self._is_revision_conflict(exc):
+                return Response(
+                    {
+                        "detail": "页面已被更新，请刷新后重试",
+                        "code": "journal_revision_conflict",
+                        "current_revision": instance.revision,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
+            raise
+        self.perform_update(serializer)
+        return Response(serializer.data)
+
+    def _is_revision_conflict(self, exc):
+        detail = getattr(exc, "detail", {})
+        revision_errors = detail.get("revision") if isinstance(detail, dict) else None
+        if not revision_errors:
+            return False
+        errors = revision_errors if isinstance(revision_errors, list) else [revision_errors]
+        return any(getattr(error, "code", None) == "journal_revision_conflict" for error in errors)
+
     def perform_update(self, serializer):
+        create_version_requested = serializer.validated_data.get("create_version", True)
         with transaction.atomic():
             page = serializer.save()
-            create_page_version(page)
+            if create_version_requested:
+                create_page_version(page)
 
     @action(detail=True, methods=["get"], url_path="versions")
     def versions(self, request, pk=None):
         page = self.get_object()
         paginator = JournalPageVersionPagination()
         paginated = paginator.paginate_queryset(page.versions.all(), request, view=self)
-        serializer = JournalPageVersionSerializer(paginated, many=True, context=self.get_serializer_context())
+        serializer = JournalPageVersionSummarySerializer(paginated, many=True, context=self.get_serializer_context())
         return paginator.get_paginated_response(serializer.data)
 
     @action(
@@ -185,7 +216,7 @@ class JournalPageViewSet(viewsets.ModelViewSet):
         preview_image = request.FILES.get("preview_image")
         if not preview_image:
             return Response(
-                {"detail": "??? form-data ?? preview_image ??"},
+                {"detail": "请通过 form-data 提供 preview_image 文件"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -223,11 +254,12 @@ class JournalPageVersionViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             page = version.page
             page.content = version.content
+            page.revision += 1
             if version.preview_image:
                 page.preview_image = version.preview_image
-                page.save(update_fields=["content", "preview_image", "updated_at"])
+                page.save(update_fields=["content", "revision", "preview_image", "updated_at"])
             else:
-                page.save(update_fields=["content", "updated_at"])
+                page.save(update_fields=["content", "revision", "updated_at"])
             create_page_version(page)
         return Response(
             JournalPageSerializer(page, context=self.get_serializer_context()).data,

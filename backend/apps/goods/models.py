@@ -668,7 +668,7 @@ class JournalBook(models.Model):
 
 
 def default_journal_page_content():
-    return {"version": 1, "layers": []}
+    return {"version": 2, "layers": []}
 
 
 class JournalPage(models.Model):
@@ -694,6 +694,7 @@ class JournalPage(models.Model):
     height = models.PositiveIntegerField(default=1440, verbose_name="画布高度")
     background = models.CharField(max_length=50, default="#fffaf0", verbose_name="背景")
     content = models.JSONField(default=default_journal_page_content, verbose_name="图层内容")
+    revision = models.PositiveIntegerField(default=1, verbose_name="内容修订号")
     preview_image = models.ImageField(
         upload_to="journals/previews/",
         null=True,
