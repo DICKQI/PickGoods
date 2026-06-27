@@ -209,6 +209,10 @@ class JournalPageSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError("revision conflict", code="journal_revision_conflict")
         return value
 
+    def create(self, validated_data):
+        validated_data.pop("create_version", None)
+        return super().create(validated_data)
+
     def update(self, instance, validated_data):
         validated_data.pop("create_version", None)
         if "content" in validated_data or any(key in validated_data for key in ("title", "width", "height", "background")):
