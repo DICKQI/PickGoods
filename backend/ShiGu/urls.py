@@ -30,6 +30,9 @@ from apps.goods.views import (
     CharacterViewSet,
     GoodsViewSet,
     IPViewSet,
+    JournalBookViewSet,
+    JournalPageVersionViewSet,
+    JournalPageViewSet,
     ShowcaseViewSet,
     ThemeViewSet,
 )
@@ -49,6 +52,9 @@ router.register("characters", CharacterViewSet, basename="characters")
 router.register("categories", CategoryViewSet, basename="categories")
 router.register("themes", ThemeViewSet, basename="themes")
 router.register("showcases", ShowcaseViewSet, basename="showcases")
+router.register("journals", JournalBookViewSet, basename="journals")
+router.register("journal-pages", JournalPageViewSet, basename="journal-pages")
+router.register("journal-page-versions", JournalPageVersionViewSet, basename="journal-page-versions")
 
 urlpatterns = [
     path('admin/', admin.site.urls),

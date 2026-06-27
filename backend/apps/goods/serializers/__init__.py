@@ -42,6 +42,12 @@ from .showcase import (
     ShowcaseGoodsSerializer,
     ShowcaseListSerializer,
 )
+from .journal import (
+    JournalBookDetailSerializer,
+    JournalBookListSerializer,
+    JournalPageSerializer,
+    JournalPageVersionSerializer,
+)
 from .bgm import (
     BGMCharacterSerializer,
     BGMCreateCharacterRequestSerializer,
@@ -100,6 +106,11 @@ __all__ = [
     "AddGoodsToShowcaseSerializer",
     "RemoveGoodsFromShowcaseSerializer",
     "MoveGoodsInShowcaseSerializer",
+    # Journal
+    "JournalBookListSerializer",
+    "JournalBookDetailSerializer",
+    "JournalPageSerializer",
+    "JournalPageVersionSerializer",
     # BGM
     "BGMSearchRequestSerializer",
     "BGMCharacterSerializer",

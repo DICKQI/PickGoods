@@ -114,6 +114,7 @@ const mountCloudShowcase = async ({
         GoodsDrawer: { template: '<aside />' },
         GoodsMultiDisplayDialog: { template: '<aside />' },
         StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
+        JournalWorkspace: { template: '<section data-test="journal-workspace" />' },
         ShowcaseManager: { template: '<section />' },
         'el-alert': { template: '<div />' },
         'el-button': { template: '<button><slot /></button>' },
@@ -250,6 +251,15 @@ describe('CloudShowcase mobile compact header', () => {
     const wrapper = await mountMobileCloudShowcase()
 
     expect(wrapper.find('[data-test="stats-dashboard"]').exists()).toBe(true)
+    expect(wrapper.find('.barn-section').exists()).toBe(false)
+  })
+
+  it('opens the journal tab when the route query requests it', async () => {
+    routeQuery.value = { tab: 'journal' }
+
+    const wrapper = await mountMobileCloudShowcase()
+
+    expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(true)
     expect(wrapper.find('.barn-section').exists()).toBe(false)
   })
 })

@@ -5,6 +5,7 @@
       <el-tab-pane label="展柜" name="showcase" />
       <el-tab-pane label="谷仓" name="barn" />
       <el-tab-pane label="统计看板" name="stats" />
+      <el-tab-pane label="手帐" name="journal" />
     </el-tabs>
 
     <!-- Tab 内容区域 - 添加过渡动画 -->
@@ -240,8 +241,12 @@
         <GoodsDrawer v-model="drawerVisible" :goods-id="selectedGoodsId" />
     </div>
 
-      <div v-else key="stats" class="stats-section" v-loading="statsRefreshing">
+      <div v-else-if="activeTab === 'stats'" key="stats" class="stats-section" v-loading="statsRefreshing">
         <StatsDashboard />
+      </div>
+
+      <div v-else key="journal" class="journal-section">
+        <JournalWorkspace />
       </div>
     </Transition>
   </div>
@@ -261,6 +266,7 @@ import GoodsDrawer from '@/components/GoodsDrawer.vue'
 import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
+import JournalWorkspace from '@/components/journal/JournalWorkspace.vue'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import type { GoodsListItem } from '@/api/types'
@@ -272,10 +278,10 @@ const guziStore = useGuziStore()
 const showcaseStore = useShowcaseStore()
 const { isMobile } = useResponsiveDevice()
 
-type CloudShowcaseTab = 'showcase' | 'barn' | 'stats'
+type CloudShowcaseTab = 'showcase' | 'barn' | 'stats' | 'journal'
 
 const isCloudShowcaseTab = (value: unknown): value is CloudShowcaseTab =>
-  value === 'showcase' || value === 'barn' || value === 'stats'
+  value === 'showcase' || value === 'barn' || value === 'stats' || value === 'journal'
 
 const activeTab = ref<CloudShowcaseTab>(isCloudShowcaseTab(route.query.tab) ? route.query.tab : 'barn')
 
@@ -959,7 +965,8 @@ watch(mobileFilterVisible, (visible) => {
   flex: none;
 }
 
-.stats-section {
+.stats-section,
+.journal-section {
   margin-top: 16px;
 }
 

@@ -1,6 +1,7 @@
 
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+import VueKonva from 'vue-konva'
 import ElementPlus from 'element-plus'
 import 'element-plus/dist/index.css'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
@@ -39,5 +40,6 @@ app.use(router)
 app.use(ElementPlus, {
   locale: zhCn,
 })
+app.use(VueKonva)
 
 app.mount('#app')

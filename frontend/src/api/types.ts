@@ -623,6 +623,101 @@ export interface ShowcaseMoveGoodsResponse {
 }
 
 // BGM角色搜索结果
+// ==================== Journal ====================
+
+export interface JournalStickerLayer {
+  id: string
+  type: 'sticker'
+  goods_id: string
+  src: string
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  opacity: number
+  z_index: number
+}
+
+export interface JournalTextLayer {
+  id: string
+  type: 'text'
+  text: string
+  x: number
+  y: number
+  font_size: number
+  fill: string
+  rotation: number
+  z_index: number
+}
+
+export interface JournalDrawLayer {
+  id: string
+  type: 'draw'
+  points: number[]
+  stroke: string
+  stroke_width: number
+  opacity: number
+  z_index: number
+}
+
+export type JournalLayer = JournalStickerLayer | JournalTextLayer | JournalDrawLayer
+
+export interface JournalPageContent {
+  version: 1
+  layers: JournalLayer[]
+}
+
+export interface JournalBook {
+  id: string
+  title: string
+  description?: string | null
+  cover_image?: string | null
+  order?: number
+  page_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface JournalPage {
+  id: string
+  book: string
+  title: string
+  page_no: number
+  width: number
+  height: number
+  background: string
+  content: JournalPageContent
+  preview_image?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface JournalPageVersion {
+  id: string
+  page: string
+  version_no: number
+  content: JournalPageContent
+  preview_image?: string | null
+  created_at?: string
+}
+
+export interface JournalBookInput {
+  title: string
+  description?: string | null
+}
+
+export interface JournalPageInput {
+  title?: string
+  width?: number
+  height?: number
+  background?: string
+  content?: JournalPageContent
+}
+
+export type PaginatedJournalBookResponse = PaginatedResponse<JournalBook>
+export type PaginatedJournalPageVersionResponse = PaginatedResponse<JournalPageVersion>
+
 export interface BGMCharacter {
   /** BGM 角色 ID（增量同步用），老接口可能不返回 */
   id?: number | null

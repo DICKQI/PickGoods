@@ -7,6 +7,9 @@ from .models import (
     GuziImage,
     IP,
     IPKeyword,
+    JournalBook,
+    JournalPage,
+    JournalPageVersion,
     Showcase,
     ShowcaseGoods,
     Theme,
@@ -140,4 +143,49 @@ class ShowcaseGoodsAdmin(admin.ModelAdmin):
     search_fields = ("showcase__name", "goods__name")
     autocomplete_fields = ("showcase", "goods")
     ordering = ("showcase", "order", "-created_at")
+
+
+class JournalPageInline(admin.TabularInline):
+    model = JournalPage
+    extra = 0
+    readonly_fields = ("created_at", "updated_at")
+
+
+class JournalPageVersionInline(admin.TabularInline):
+    model = JournalPageVersion
+    extra = 0
+    readonly_fields = ("version_no", "content", "preview_image", "created_at")
+    can_delete = False
+
+
+@admin.register(JournalBook)
+class JournalBookAdmin(admin.ModelAdmin):
+    list_display = ("id", "title", "user", "order", "updated_at")
+    list_filter = ("created_at", "updated_at")
+    search_fields = ("title", "description", "user__username")
+    autocomplete_fields = ("user",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("order", "-updated_at")
+    inlines = [JournalPageInline]
+
+
+@admin.register(JournalPage)
+class JournalPageAdmin(admin.ModelAdmin):
+    list_display = ("id", "book", "title", "page_no", "updated_at")
+    list_filter = ("created_at", "updated_at")
+    search_fields = ("book__title", "title")
+    autocomplete_fields = ("book",)
+    readonly_fields = ("created_at", "updated_at")
+    ordering = ("book", "page_no")
+    inlines = [JournalPageVersionInline]
+
+
+@admin.register(JournalPageVersion)
+class JournalPageVersionAdmin(admin.ModelAdmin):
+    list_display = ("id", "page", "version_no", "created_at")
+    list_filter = ("created_at",)
+    search_fields = ("page__title", "page__book__title")
+    autocomplete_fields = ("page",)
+    readonly_fields = ("created_at",)
+    ordering = ("page", "-version_no")
 
