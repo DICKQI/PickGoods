@@ -7,6 +7,9 @@
       <el-button size="small" :type="tool === 'draw' ? 'primary' : 'default'" @click="tool = 'draw'">
         <el-icon><EditPen /></el-icon>
       </el-button>
+      <el-button size="small" :type="tool === 'erase' ? 'primary' : 'default'" @click="tool = 'erase'">
+        橡皮
+      </el-button>
       <el-button size="small" @click="addTextLayer()">
         <el-icon><Document /></el-icon>
       </el-button>
@@ -15,6 +18,10 @@
       </el-button>
       <input v-model="brushColor" class="journal-color-input" type="color" aria-label="画笔颜色" />
       <input v-model.number="brushWidth" class="journal-width-input" type="range" min="2" max="28" aria-label="画笔粗细" />
+      <label v-if="tool === 'erase'" class="journal-eraser-size">
+        <span>橡皮 {{ eraserWidth }}px</span>
+        <input v-model.number="eraserWidth" type="range" min="4" max="80" aria-label="橡皮粗细" />
+      </label>
       <div class="journal-brush-presets" aria-label="画笔类型">
         <button
           v-for="preset in brushPresets"
@@ -48,6 +55,7 @@
         @mousedown="handlePointerStart"
         @mousemove="handlePointerMove"
         @mouseup="handlePointerEnd"
+        @mouseleave="handlePointerLeave"
         @touchstart="handlePointerStart"
         @touchmove="handlePointerMove"
         @touchend="handlePointerEnd"
@@ -63,7 +71,7 @@
                 v-if="item.type === 'sticker' && layer.type === 'sticker'"
                 :ref="setNodeRef(layer.id)"
                 :config="imageConfig(layer, item)"
-                @click="selectLayer(layer.id)"
+                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
                 @tap="selectLayer(layer.id)"
                 @dragend="handleDragEnd($event, layer.id)"
                 @transformend="handleTransformEnd($event, layer.id)"
@@ -72,7 +80,7 @@
                 v-else-if="item.type === 'text' && layer.type === 'text'"
                 :ref="setNodeRef(layer.id)"
                 :config="textConfig(layer, item)"
-                @click="selectLayer(layer.id)"
+                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
                 @tap="selectLayer(layer.id)"
                 @dblclick="editTextLayer(layer.id)"
                 @dbltap="editTextLayer(layer.id)"
@@ -84,8 +92,17 @@
           </template>
 
           <v-transformer v-if="selectedLayerId" ref="transformerRef" :config="{ rotateEnabled: true }" />
+          <v-circle v-if="eraserPreviewConfig.visible" :config="eraserPreviewConfig" />
         </v-layer>
       </v-stage>
+    </div>
+
+    <div class="journal-zoom-controls">
+      <el-button size="small" @click="setZoom(1)">100%</el-button>
+      <el-button size="small" @click="setZoom(zoomLevel - 0.1)">-</el-button>
+      <span>{{ Math.round(zoomLevel * 100) }}%</span>
+      <el-button size="small" @click="setZoom(zoomLevel + 0.1)">+</el-button>
+      <small>按住方向键微调，Shift 可加速移动</small>
     </div>
   </div>
 </template>
@@ -119,21 +136,27 @@ const emit = defineEmits<{
   'update:modelValue': [content: JournalPageContent]
 }>()
 
-type ToolMode = 'select' | 'draw'
+type ToolMode = 'select' | 'draw' | 'erase'
 type AlignDirection = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
+type DistributeDirection = 'horizontal' | 'vertical'
 type LayerMoveDirection = 'top' | 'up' | 'down' | 'bottom'
 type LayerPatch = Partial<JournalLayer> & Record<string, unknown>
+type Point2D = [number, number]
 
 const stageRef = ref<any>(null)
 const transformerRef = ref<any>(null)
 const viewportRef = ref<HTMLElement | null>(null)
 const tool = ref<ToolMode>('select')
 const selectedLayerId = ref<string | null>(null)
+const selectedLayerIds = ref<string[]>([])
 const brushColor = ref('#8e7dff')
 const brushWidth = ref(8)
 const brushType = ref<JournalBrushType>('pen')
 const brushOpacity = ref(1)
 const drawing = ref(false)
+const erasing = ref(false)
+const eraserWidth = ref(20)
+const eraserPointer = ref<{ x: number; y: number } | null>(null)
 const zoomLevel = ref(1)
 const canvasOffset = ref({ x: 0, y: 0 })
 const imageCache = new Map<string, HTMLImageElement>()
@@ -194,6 +217,18 @@ const stageConfig = computed(() => ({
   y: canvasOffset.value.y,
 }))
 
+const eraserPreviewConfig = computed(() => ({
+  x: eraserPointer.value?.x ?? 0,
+  y: eraserPointer.value?.y ?? 0,
+  radius: Math.max(1, eraserWidth.value / 2),
+  visible: tool.value === 'erase' && Boolean(eraserPointer.value),
+  stroke: 'rgba(17, 24, 39, 0.78)',
+  strokeWidth: Math.max(1, 1.5 / scale.value),
+  dash: [6 / scale.value, 4 / scale.value],
+  fill: 'rgba(17, 24, 39, 0.08)',
+  listening: false,
+}))
+
 const cloneContent = (): JournalPageContent => ({
   version: 2,
   layers: localContent.value.layers.map(cloneJournalLayer),
@@ -219,6 +254,42 @@ const createLayerId = (prefix: string) => (
     : `${prefix}-${Date.now()}-${Math.round(Math.random() * 10000)}`
 )
 
+const setSelectedLayerIds = (ids: string[]) => {
+  selectedLayerIds.value = [...new Set(ids)].filter(id => localContent.value.layers.some(layer => layer.id === id))
+  selectedLayerId.value = selectedLayerIds.value[selectedLayerIds.value.length - 1] || null
+}
+
+const canEditLayer = (layer: JournalLayer) => !layer.locked && layer.visible !== false && layer.type !== 'draw'
+
+const firstPositionedItem = (layer: JournalLayer) => {
+  const item = layer.items[0]
+  return item && 'x' in item && 'y' in item ? item : null
+}
+
+const patchLayerItem = (layer: JournalLayer, patch: Record<string, unknown>): JournalLayer => ({
+  ...layer,
+  items: layer.items.map((item, index) => index === 0 ? { ...item, ...patch } as JournalLayerItem : item),
+} as JournalLayer)
+
+const simplifyPoints = (points: number[], minDistance = 1.5) => {
+  const simplified: number[] = []
+  for (let index = 0; index < points.length; index += 2) {
+    const x = points[index]
+    const y = points[index + 1]
+    if (typeof x !== 'number' || typeof y !== 'number') continue
+    if (simplified.length < 2) {
+      simplified.push(x, y)
+      continue
+    }
+    const lastX = simplified[simplified.length - 2]!
+    const lastY = simplified[simplified.length - 1]!
+    if (Math.hypot(x - lastX, y - lastY) >= minDistance || index >= points.length - 2) {
+      simplified.push(x, y)
+    }
+  }
+  return simplified.length >= 2 ? simplified : points
+}
+
 const resolveGoodsImage = (goods: GoodsListItem) => goods.main_photo || ''
 
 const addGoodsSticker = (goods: GoodsListItem, src = resolveGoodsImage(goods)) => {
@@ -242,7 +313,7 @@ const addGoodsSticker = (goods: GoodsListItem, src = resolveGoodsImage(goods)) =
     }],
   }
   emitLayers([...localContent.value.layers, layer])
-  selectedLayerId.value = layer.id
+  setSelectedLayerIds([layer.id])
 }
 
 const addTextLayer = (text = '写点什么') => {
@@ -264,7 +335,7 @@ const addTextLayer = (text = '写点什么') => {
     }],
   }
   emitLayers([...localContent.value.layers, layer])
-  selectedLayerId.value = layer.id
+  setSelectedLayerIds([layer.id])
 }
 
 const setBrushType = (type: JournalBrushType) => {
@@ -274,6 +345,10 @@ const setBrushType = (type: JournalBrushType) => {
 
 const setBrushWidth = (width: number) => {
   brushWidth.value = Math.min(80, Math.max(1, Math.round(Number(width) || 1)))
+}
+
+const setEraserWidth = (width: number) => {
+  eraserWidth.value = Math.min(120, Math.max(4, Math.round(Number(width) || 20)))
 }
 
 const selectPaletteColor = (color: string) => {
@@ -300,6 +375,21 @@ const appendStrokeToLayer = (layerId: string, strokeItem: JournalStrokeItem) => 
   )))
 }
 
+const nextDrawLayerName = () => `画笔层 ${localContent.value.layers.filter(item => item.type === 'draw').length + 1}`
+
+const addBrushLayer = () => {
+  const layer: JournalDrawLayer = {
+    id: createLayerId('draw'),
+    type: 'draw',
+    name: nextDrawLayerName(),
+    opacity: 1,
+    z_index: nextZIndex(),
+    items: [],
+  }
+  emitLayers([...localContent.value.layers, layer])
+  setSelectedLayerIds([layer.id])
+}
+
 const addDrawLayer = (
   points: number[],
   stroke = brushColor.value,
@@ -314,7 +404,7 @@ const addDrawLayer = (
     id: createLayerId('stroke'),
     type: 'stroke',
     brush_type: type,
-    points: [...points],
+    points: simplifyPoints(points),
     stroke,
     stroke_width: strokeWidth,
     opacity,
@@ -329,7 +419,7 @@ const addDrawLayer = (
     layer.type === 'draw' && !layer.locked && layer.visible !== false
   ))
   if (reusableDrawLayer) {
-    selectedLayerId.value = reusableDrawLayer.id
+    setSelectedLayerIds([reusableDrawLayer.id])
     appendStrokeToLayer(reusableDrawLayer.id, strokeItem)
     return
   }
@@ -337,19 +427,19 @@ const addDrawLayer = (
   const layer: JournalDrawLayer = {
     id: createLayerId('draw'),
     type: 'draw',
-    name: `画笔层 ${localContent.value.layers.filter(item => item.type === 'draw').length + 1}`,
+    name: nextDrawLayerName(),
     opacity: 1,
     z_index: nextZIndex(),
     items: [strokeItem],
   }
   emitLayers([...localContent.value.layers, layer])
-  selectedLayerId.value = layer.id
+  setSelectedLayerIds([layer.id])
 }
 
 const deleteSelectedLayer = () => {
   if (!selectedLayerId.value) return
   emitLayers(localContent.value.layers.filter(layer => layer.id !== selectedLayerId.value))
-  selectedLayerId.value = null
+  setSelectedLayerIds([])
 }
 
 const patchLayer = (layer: JournalLayer, patch: LayerPatch): JournalLayer => {
@@ -418,7 +508,7 @@ const duplicateSelectedLayer = () => {
     }),
   }
   emitLayers([...localContent.value.layers, copy])
-  selectedLayerId.value = copy.id
+  setSelectedLayerIds([copy.id])
 }
 
 const getLayerBounds = (layer: JournalLayer) => {
@@ -440,6 +530,269 @@ const alignSelectedLayer = (direction: AlignDirection) => {
   if (direction === 'middle') patch.y = Math.round((props.height - bounds.height) / 2)
   if (direction === 'bottom') patch.y = Math.round(props.height - bounds.height)
   updateSelectedLayer(patch)
+}
+
+const alignSelectedLayers = (direction: AlignDirection) => {
+  const selected = localContent.value.layers.filter(layer => selectedLayerIds.value.includes(layer.id) && canEditLayer(layer))
+  if (selected.length <= 1) {
+    alignSelectedLayer(direction)
+    return
+  }
+  const positioned = selected.map(layer => ({ layer, item: firstPositionedItem(layer), bounds: getLayerBounds(layer) }))
+    .filter(entry => entry.item)
+  if (positioned.length === 0) return
+
+  const xs = positioned.map(entry => entry.item!.x)
+  const ys = positioned.map(entry => entry.item!.y)
+  const rights = positioned.map(entry => entry.item!.x + entry.bounds.width)
+  const bottoms = positioned.map(entry => entry.item!.y + entry.bounds.height)
+  const targetLeft = Math.min(...xs)
+  const targetTop = Math.min(...ys)
+  const targetRight = Math.max(...rights)
+  const targetBottom = Math.max(...bottoms)
+  const centerX = Math.round((targetLeft + targetRight) / 2)
+  const centerY = Math.round((targetTop + targetBottom) / 2)
+
+  emitLayers(localContent.value.layers.map(layer => {
+    const entry = positioned.find(item => item.layer.id === layer.id)
+    if (!entry?.item) return layer
+    const patch: Record<string, unknown> = {}
+    if (direction === 'left') patch.x = targetLeft
+    if (direction === 'center') patch.x = Math.round(centerX - entry.bounds.width / 2)
+    if (direction === 'right') patch.x = Math.round(targetRight - entry.bounds.width)
+    if (direction === 'top') patch.y = targetTop
+    if (direction === 'middle') patch.y = Math.round(centerY - entry.bounds.height / 2)
+    if (direction === 'bottom') patch.y = Math.round(targetBottom - entry.bounds.height)
+    return patchLayerItem(layer, patch)
+  }))
+}
+
+const distributeSelectedLayers = (direction: DistributeDirection) => {
+  const positioned = localContent.value.layers
+    .filter(layer => selectedLayerIds.value.includes(layer.id) && canEditLayer(layer))
+    .map(layer => ({ layer, item: firstPositionedItem(layer) }))
+    .filter(entry => entry.item)
+    .sort((a, b) => direction === 'horizontal' ? a.item!.x - b.item!.x : a.item!.y - b.item!.y)
+  if (positioned.length < 3) return
+  const first = positioned[0]!.item!
+  const last = positioned[positioned.length - 1]!.item!
+  const start = direction === 'horizontal' ? first.x : first.y
+  const end = direction === 'horizontal' ? last.x : last.y
+  const gap = (end - start) / (positioned.length - 1)
+
+  emitLayers(localContent.value.layers.map(layer => {
+    const index = positioned.findIndex(entry => entry.layer.id === layer.id)
+    if (index < 0) return layer
+    const next = Math.round(start + gap * index)
+    return patchLayerItem(layer, direction === 'horizontal' ? { x: next } : { y: next })
+  }))
+}
+
+const nudgeSelectedLayers = (deltaX: number, deltaY: number) => {
+  const selected = selectedLayerIds.value.length > 0 ? selectedLayerIds.value : selectedLayerId.value ? [selectedLayerId.value] : []
+  if (selected.length === 0) return
+  emitLayers(localContent.value.layers.map(layer => {
+    if (!selected.includes(layer.id) || !canEditLayer(layer)) return layer
+    const item = firstPositionedItem(layer)
+    if (!item) return layer
+    return patchLayerItem(layer, {
+      x: Math.round(item.x + deltaX),
+      y: Math.round(item.y + deltaY),
+    })
+  }))
+}
+
+const getSnapPosition = (layerId: string, position: { x: number; y: number }, threshold = 6) => {
+  const guides: Array<{ axis: 'x' | 'y'; value: number }> = []
+  let nextX = position.x
+  let nextY = position.y
+  const xGuides = [0, Math.round(props.width / 2), props.width]
+  const yGuides = [0, Math.round(props.height / 2), props.height]
+  localContent.value.layers.forEach(layer => {
+    if (layer.id === layerId || layer.visible === false) return
+    const item = firstPositionedItem(layer)
+    if (!item) return
+    const bounds = getLayerBounds(layer)
+    xGuides.push(item.x, Math.round(item.x + bounds.width / 2), item.x + bounds.width)
+    yGuides.push(item.y, Math.round(item.y + bounds.height / 2), item.y + bounds.height)
+  })
+  const xGuide = xGuides.find(value => Math.abs(value - position.x) <= threshold)
+  const yGuide = yGuides.find(value => Math.abs(value - position.y) <= threshold)
+  if (typeof xGuide === 'number') {
+    nextX = xGuide
+    guides.push({ axis: 'x', value: xGuide })
+  }
+  if (typeof yGuide === 'number') {
+    nextY = yGuide
+    guides.push({ axis: 'y', value: yGuide })
+  }
+  return { x: nextX, y: nextY, guides }
+}
+
+const distanceToSegment = (
+  x: number,
+  y: number,
+  startX: number,
+  startY: number,
+  endX: number,
+  endY: number,
+) => {
+  const deltaX = endX - startX
+  const deltaY = endY - startY
+  const lengthSquared = deltaX * deltaX + deltaY * deltaY
+  if (lengthSquared === 0) return Math.hypot(x - startX, y - startY)
+  const ratio = Math.max(0, Math.min(1, ((x - startX) * deltaX + (y - startY) * deltaY) / lengthSquared))
+  const projectionX = startX + ratio * deltaX
+  const projectionY = startY + ratio * deltaY
+  return Math.hypot(x - projectionX, y - projectionY)
+}
+
+const strokeHitsPoint = (stroke: JournalStrokeItem, x: number, y: number, radius = 10) => {
+  for (let index = 0; index < stroke.points.length; index += 2) {
+    const px = stroke.points[index]
+    const py = stroke.points[index + 1]
+    if (typeof px === 'number' && typeof py === 'number' && Math.hypot(px - x, py - y) <= radius) {
+      return true
+    }
+    const previousX = stroke.points[index - 2]
+    const previousY = stroke.points[index - 1]
+    if (
+      typeof previousX === 'number' &&
+      typeof previousY === 'number' &&
+      typeof px === 'number' &&
+      typeof py === 'number' &&
+      distanceToSegment(x, y, previousX, previousY, px, py) <= radius
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+const cloneStrokeWithPoints = (stroke: JournalStrokeItem, points: number[], index: number): JournalStrokeItem => ({
+  ...stroke,
+  id: index === 0 ? stroke.id : createLayerId('stroke'),
+  points,
+})
+
+const roundEraserPoint = (value: number) => Math.round(value * 1000) / 1000
+
+const addPointToRun = (run: number[], point: Point2D) => {
+  const x = roundEraserPoint(point[0])
+  const y = roundEraserPoint(point[1])
+  const lastX = run[run.length - 2]
+  const lastY = run[run.length - 1]
+  if (lastX === x && lastY === y) return
+  run.push(x, y)
+}
+
+const interpolatePoint = (start: Point2D, end: Point2D, ratio: number): Point2D => [
+  start[0] + (end[0] - start[0]) * ratio,
+  start[1] + (end[1] - start[1]) * ratio,
+]
+
+const segmentCircleIntersections = (start: Point2D, end: Point2D, x: number, y: number, radius: number) => {
+  const deltaX = end[0] - start[0]
+  const deltaY = end[1] - start[1]
+  const fromCenterX = start[0] - x
+  const fromCenterY = start[1] - y
+  const a = deltaX * deltaX + deltaY * deltaY
+  if (a === 0) return []
+  const b = 2 * (fromCenterX * deltaX + fromCenterY * deltaY)
+  const c = fromCenterX * fromCenterX + fromCenterY * fromCenterY - radius * radius
+  const discriminant = b * b - 4 * a * c
+  if (discriminant <= 0) return []
+  const root = Math.sqrt(discriminant)
+  return [(-b - root) / (2 * a), (-b + root) / (2 * a)]
+    .filter(ratio => ratio > 0 && ratio < 1)
+    .sort((left, right) => left - right)
+    .filter((ratio, index, ratios) => index === 0 || Math.abs(ratio - ratios[index - 1]!) > 0.0001)
+}
+
+const pointOutsideEraser = (point: Point2D, x: number, y: number, radius: number) => (
+  Math.hypot(point[0] - x, point[1] - y) > radius
+)
+
+const segmentOutsideIntervals = (start: Point2D, end: Point2D, x: number, y: number, radius: number) => {
+  const boundaries = [0, ...segmentCircleIntersections(start, end, x, y, radius), 1]
+  const intervals: Array<{ start: number; end: number }> = []
+  for (let index = 0; index < boundaries.length - 1; index += 1) {
+    const startRatio = boundaries[index]!
+    const endRatio = boundaries[index + 1]!
+    if (endRatio - startRatio <= 0.0001) continue
+    const middle = interpolatePoint(start, end, (startRatio + endRatio) / 2)
+    if (pointOutsideEraser(middle, x, y, radius)) {
+      intervals.push({ start: startRatio, end: endRatio })
+    }
+  }
+  return intervals
+}
+
+const splitStrokeByEraser = (stroke: JournalStrokeItem, x: number, y: number, radius: number) => {
+  const pointPairs: Point2D[] = []
+  for (let index = 0; index < stroke.points.length; index += 2) {
+    const px = stroke.points[index]
+    const py = stroke.points[index + 1]
+    if (typeof px === 'number' && typeof py === 'number') pointPairs.push([px, py])
+  }
+  if (pointPairs.length < 2) {
+    return strokeHitsPoint(stroke, x, y, radius) ? [] : [stroke]
+  }
+
+  const keptRuns: number[][] = []
+  let currentRun: number[] = []
+  let changed = false
+  const finishRun = () => {
+    if (currentRun.length >= 4) keptRuns.push(currentRun)
+    currentRun = []
+  }
+
+  for (let index = 1; index < pointPairs.length; index += 1) {
+    const previous = pointPairs[index - 1]!
+    const current = pointPairs[index]!
+    const intervals = segmentOutsideIntervals(previous, current, x, y, radius)
+    if (intervals.length === 0) {
+      changed = true
+      finishRun()
+      continue
+    }
+
+    intervals.forEach((interval, intervalIndex) => {
+      const hadGapBefore = intervalIndex > 0 || interval.start > 0.0001
+      const hasGapAfter = interval.end < 0.9999
+      if (hadGapBefore) {
+        changed = true
+        finishRun()
+      }
+      addPointToRun(currentRun, interpolatePoint(previous, current, interval.start))
+      addPointToRun(currentRun, interpolatePoint(previous, current, interval.end))
+      if (hasGapAfter) {
+        changed = true
+        finishRun()
+      }
+    })
+  }
+
+  finishRun()
+  return changed ? keptRuns.map((points, index) => cloneStrokeWithPoints(stroke, points, index)) : [stroke]
+}
+
+const eraseStrokeAtPoint = (x: number, y: number, width = eraserWidth.value) => {
+  const targetLayerId = selectedLayer.value?.type === 'draw' ? selectedLayer.value.id : null
+  if (!targetLayerId) return
+  let changed = false
+  const radius = Math.max(1, (Number(width) || eraserWidth.value) / 2)
+  const layers = localContent.value.layers.map(layer => {
+    if (layer.id !== targetLayerId || layer.type !== 'draw' || layer.locked || layer.visible === false) return layer
+    const items: JournalLayerItem[] = layer.items.flatMap((item): JournalLayerItem[] => {
+      if (item.type !== 'stroke') return [item]
+      const nextItems = splitStrokeByEraser(item, x, y, radius)
+      if (nextItems.length !== 1 || nextItems[0]?.points !== item.points) changed = true
+      return nextItems
+    })
+    return { ...layer, items } as JournalLayer
+  })
+  if (changed) emitLayers(layers)
 }
 
 const normalizeZIndexes = (layers: JournalLayer[]) => (
@@ -492,16 +845,35 @@ const getPointer = () => {
   }
 }
 
-const handlePointerStart = (event: any) => {
-  if (tool.value !== 'draw') return
+const updateEraserPointer = () => {
   const pointer = getPointer()
+  eraserPointer.value = pointer
+  return pointer
+}
+
+const handlePointerStart = (event: any) => {
+  const pointer = tool.value === 'erase' ? updateEraserPointer() : getPointer()
   if (!pointer) return
+  if (tool.value === 'erase') {
+    erasing.value = true
+    eraseStrokeAtPoint(pointer.x, pointer.y)
+    event?.evt?.preventDefault?.()
+    return
+  }
+  if (tool.value !== 'draw') return
   drawing.value = true
   addDrawLayer([pointer.x, pointer.y])
   event?.evt?.preventDefault?.()
 }
 
 const handlePointerMove = (event: any) => {
+  if (tool.value === 'erase') {
+    const pointer = updateEraserPointer()
+    if (!erasing.value) return
+    if (pointer) eraseStrokeAtPoint(pointer.x, pointer.y)
+    event?.evt?.preventDefault?.()
+    return
+  }
   if (!drawing.value || tool.value !== 'draw') return
   const pointer = getPointer()
   const layer = selectedLayer.value
@@ -519,24 +891,39 @@ const handlePointerMove = (event: any) => {
 
 const handlePointerEnd = () => {
   drawing.value = false
+  erasing.value = false
+}
+
+const handlePointerLeave = () => {
+  handlePointerEnd()
+  eraserPointer.value = null
 }
 
 const handleStageClick = (event: any) => {
   if (event?.target === event?.target?.getStage?.()) {
-    selectedLayerId.value = null
+    setSelectedLayerIds([])
   }
 }
 
-const selectLayer = (id: string) => {
+const selectLayer = (id: string, additive = false) => {
   if (tool.value === 'draw') return
-  selectedLayerId.value = id
+  if (additive) {
+    setSelectedLayerIds(
+      selectedLayerIds.value.includes(id)
+        ? selectedLayerIds.value.filter(item => item !== id)
+        : [...selectedLayerIds.value, id],
+    )
+    return
+  }
+  setSelectedLayerIds([id])
 }
 
 const handleDragEnd = (event: any, id: string) => {
   const node = event.target
+  const snapped = getSnapPosition(id, { x: Math.round(node.x()), y: Math.round(node.y()) })
   updateLayer(id, {
-    x: Math.round(node.x()),
-    y: Math.round(node.y()),
+    x: snapped.x,
+    y: snapped.y,
   })
 }
 
@@ -588,6 +975,8 @@ const imageConfig = (layer: JournalLayer, item: JournalStickerItem) => ({
   y: item.y,
   width: item.width,
   height: item.height,
+  scaleX: item.flip_x ? -1 : 1,
+  scaleY: item.flip_y ? -1 : 1,
   rotation: item.rotation,
   opacity: layer.opacity,
   draggable: isDraggable(layer),
@@ -600,6 +989,11 @@ const textConfig = (layer: JournalLayer, item: JournalTextItem) => ({
   x: item.x,
   y: item.y,
   fontSize: item.font_size,
+  fontFamily: item.font_family,
+  fontStyle: item.font_weight && item.font_weight !== '400' ? item.font_weight : undefined,
+  width: item.width,
+  lineHeight: item.line_height,
+  align: item.align,
   fill: item.fill,
   rotation: item.rotation,
   opacity: layer.opacity,
@@ -665,6 +1059,18 @@ const handleKeydown = (event: KeyboardEvent) => {
   if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLayerId.value) {
     event.preventDefault()
     deleteSelectedLayer()
+    return
+  }
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
+    const step = event.shiftKey ? 10 : 1
+    const delta = {
+      ArrowUp: [0, -step],
+      ArrowDown: [0, step],
+      ArrowLeft: [-step, 0],
+      ArrowRight: [step, 0],
+    }[event.key] || [0, 0]
+    event.preventDefault()
+    nudgeSelectedLayers(delta[0] ?? 0, delta[1] ?? 0)
   }
 }
 
@@ -701,7 +1107,9 @@ watch(
       selectedLayerId.value &&
       !localContent.value.layers.some(layer => layer.id === selectedLayerId.value)
     ) {
-      selectedLayerId.value = null
+      setSelectedLayerIds([])
+    } else {
+      setSelectedLayerIds(selectedLayerIds.value)
     }
   },
   { deep: true },
@@ -709,6 +1117,12 @@ watch(
 
 watch(selectedLayerId, attachTransformer)
 watch(() => localContent.value.layers, attachTransformer, { deep: true })
+watch(tool, (mode) => {
+  if (mode !== 'erase') {
+    eraserPointer.value = null
+    erasing.value = false
+  }
+})
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
@@ -725,17 +1139,23 @@ defineExpose({
   selectedLayer,
   selectedItem,
   selectedLayerId,
+  selectedLayerIds,
   addGoodsSticker,
   addTextLayer,
+  addBrushLayer,
   addDrawLayer,
   setBrushType,
   setBrushWidth,
+  setEraserWidth,
   selectPaletteColor,
   recentColors,
   paletteColors,
   brushType,
   brushColor,
   brushWidth,
+  eraserWidth,
+  eraserPointer,
+  eraserPreviewConfig,
   zoomLevel,
   canvasOffset,
   setZoom,
@@ -745,6 +1165,11 @@ defineExpose({
   undo,
   redo,
   selectLayer,
+  nudgeSelectedLayers,
+  alignSelectedLayers,
+  distributeSelectedLayers,
+  getSnapPosition,
+  eraseStrokeAtPoint,
   updateSelectedLayer,
   renameSelectedLayer,
   toggleSelectedLayerLock,
@@ -788,6 +1213,19 @@ defineExpose({
 
 .journal-width-input {
   width: 104px;
+}
+
+.journal-eraser-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-light);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.journal-eraser-size input {
+  width: 96px;
 }
 
 .journal-brush-presets,
@@ -843,5 +1281,26 @@ defineExpose({
 .journal-canvas-viewport :deep(.konvajs-content) {
   margin: 0 auto;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+}
+
+.journal-zoom-controls {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.journal-zoom-controls :deep(.el-button + .el-button) {
+  margin-left: 0 !important;
+}
+
+.journal-zoom-controls span {
+  min-width: 42px;
+  text-align: center;
+  color: var(--text-dark);
+  font-weight: 700;
 }
 </style>

@@ -5,24 +5,34 @@ import type { JournalBook, JournalPage, JournalPageContent, JournalPageVersion }
 
 vi.mock('@/api/journal', () => ({
   createJournalBook: vi.fn(),
+  createJournalPageDuplicate: vi.fn(),
   getJournalBooks: vi.fn(),
+  patchJournalBook: vi.fn(),
+  getJournalPage: vi.fn(),
   getJournalPages: vi.fn(),
   getJournalPageVersions: vi.fn(),
   patchJournalPage: vi.fn(),
+  reorderJournalPages: vi.fn(),
   restoreJournalPageVersion: vi.fn(),
   deleteJournalPageVersion: vi.fn(),
   deleteJournalBook: vi.fn(),
+  deleteJournalPage: vi.fn(),
   uploadJournalPagePreview: vi.fn(),
 }))
 
 import {
   createJournalBook,
+  createJournalPageDuplicate,
+  getJournalPage,
   getJournalBooks,
+  patchJournalBook,
   getJournalPages,
   getJournalPageVersions,
   patchJournalPage,
+  reorderJournalPages,
   restoreJournalPageVersion,
   deleteJournalPageVersion,
+  deleteJournalPage,
 } from '@/api/journal'
 
 const firstPage: JournalPage = {
@@ -120,6 +130,20 @@ describe('useJournalStore', () => {
     expect(store.activePage?.id).toBe('page-1')
   })
 
+  it('renames a book from the local book list', async () => {
+    vi.mocked(patchJournalBook).mockResolvedValue({ ...book, title: '夏日手帐' })
+    const store = useJournalStore()
+    store.books = [book]
+    store.activeBookId = 'book-1'
+
+    const result = await store.renameBook('book-1', '夏日手帐')
+
+    expect(result?.title).toBe('夏日手帐')
+    expect(patchJournalBook).toHaveBeenCalledWith('book-1', { title: '夏日手帐' })
+    expect(store.books[0]?.title).toBe('夏日手帐')
+    expect(store.activeBook?.title).toBe('夏日手帐')
+  })
+
   it('saves page content and clears dirty state', async () => {
     vi.mocked(patchJournalPage).mockResolvedValue({
       ...firstPage,
@@ -208,6 +232,32 @@ describe('useJournalStore', () => {
     expect(store.versions.map(version => version.id)).toEqual(['version-2'])
   })
 
+  it('deletes the active page and selects the next remaining page', async () => {
+    vi.mocked(deleteJournalPage).mockResolvedValue({} as never)
+    vi.mocked(getJournalPageVersions).mockResolvedValue({
+      count: 1,
+      page: 1,
+      page_size: 50,
+      next: null,
+      previous: null,
+      results: [firstVersion],
+    })
+
+    const secondPage: JournalPage = { ...firstPage, id: 'page-2', title: '第 2 页', page_no: 2 }
+    const thirdPage: JournalPage = { ...firstPage, id: 'page-3', title: '第 3 页', page_no: 3 }
+    const store = useJournalStore()
+    store.pages = [firstPage, secondPage, thirdPage]
+    store.activePageId = 'page-2'
+
+    const deleted = await store.removePage('page-2')
+
+    expect(deleted).toBe(true)
+    expect(deleteJournalPage).toHaveBeenCalledWith('page-2')
+    expect(store.pages.map(page => page.id)).toEqual(['page-1', 'page-3'])
+    expect(store.activePageId).toBe('page-3')
+    expect(getJournalPageVersions).toHaveBeenCalledWith('page-3')
+  })
+
   it('queues overlapping saves and sends auto saves without creating versions', async () => {
     let resolveFirst!: (page: JournalPage) => void
     vi.mocked(patchJournalPage)
@@ -252,5 +302,86 @@ describe('useJournalStore', () => {
       revision: 2,
       create_version: false,
     })
+  })
+
+  it('loads summary pages and fetches page detail when activating a summary row', async () => {
+    const summaryPage = { ...firstPage, content: undefined as unknown as JournalPageContent }
+    vi.mocked(getJournalPages).mockResolvedValue([summaryPage])
+    vi.mocked(getJournalPage).mockResolvedValue({ ...firstPage, content: textContent('text-1', 'detail') })
+    vi.mocked(getJournalPageVersions).mockResolvedValue({
+      count: 0,
+      page: 1,
+      page_size: 50,
+      next: null,
+      previous: null,
+      results: [],
+    })
+
+    const store = useJournalStore()
+    store.activeBookId = 'book-1'
+    await store.fetchPages('book-1')
+    await store.setActivePage('page-1')
+
+    expect(getJournalPages).toHaveBeenCalledWith('book-1', { fields: 'summary' })
+    expect(getJournalPage).toHaveBeenCalledWith('page-1')
+    expect(store.activePage?.content!.layers[0]?.id).toBe('text-1')
+  })
+
+  it('duplicates a page and selects the duplicated copy', async () => {
+    const duplicated: JournalPage = { ...firstPage, id: 'page-2', title: '第 2 页', page_no: 2 }
+    vi.mocked(createJournalPageDuplicate).mockResolvedValue(duplicated)
+    vi.mocked(getJournalPageVersions).mockResolvedValue({
+      count: 0,
+      page: 1,
+      page_size: 50,
+      next: null,
+      previous: null,
+      results: [],
+    })
+
+    const store = useJournalStore()
+    store.pages = [firstPage]
+    store.activePageId = 'page-1'
+
+    const result = await store.duplicatePage('page-1')
+
+    expect(result).toEqual(duplicated)
+    expect(createJournalPageDuplicate).toHaveBeenCalledWith('page-1')
+    expect(store.pages.map(page => page.id)).toEqual(['page-1', 'page-2'])
+    expect(store.activePageId).toBe('page-2')
+  })
+
+  it('renames a page without creating a version snapshot', async () => {
+    vi.mocked(patchJournalPage).mockResolvedValue({ ...firstPage, title: '旅行手帐' })
+    const store = useJournalStore()
+    store.pages = [firstPage]
+
+    const result = await store.renamePage('page-1', '旅行手帐')
+
+    expect(result?.title).toBe('旅行手帐')
+    expect(patchJournalPage).toHaveBeenCalledWith('page-1', {
+      title: '旅行手帐',
+      revision: 1,
+      create_version: false,
+    })
+    expect(store.pages[0]?.title).toBe('旅行手帐')
+  })
+
+  it('reorders pages locally from the backend response', async () => {
+    const secondPage: JournalPage = { ...firstPage, id: 'page-2', title: '第 2 页', page_no: 2 }
+    vi.mocked(reorderJournalPages).mockResolvedValue([
+      { ...secondPage, page_no: 1 },
+      { ...firstPage, page_no: 2 },
+    ])
+
+    const store = useJournalStore()
+    store.activeBookId = 'book-1'
+    store.pages = [firstPage, secondPage]
+
+    const result = await store.reorderPages(['page-2', 'page-1'])
+
+    expect(result).toBe(true)
+    expect(reorderJournalPages).toHaveBeenCalledWith('book-1', ['page-2', 'page-1'])
+    expect(store.pages.map(page => `${page.id}:${page.page_no}`)).toEqual(['page-2:1', 'page-1:2'])
   })
 })

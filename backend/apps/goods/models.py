@@ -693,6 +693,7 @@ class JournalPage(models.Model):
     width = models.PositiveIntegerField(default=1080, verbose_name="画布宽度")
     height = models.PositiveIntegerField(default=1440, verbose_name="画布高度")
     background = models.CharField(max_length=50, default="#fffaf0", verbose_name="背景")
+    background_style = models.CharField(max_length=20, default="plain", verbose_name="背景样式")
     content = models.JSONField(default=default_journal_page_content, verbose_name="图层内容")
     revision = models.PositiveIntegerField(default=1, verbose_name="内容修订号")
     preview_image = models.ImageField(

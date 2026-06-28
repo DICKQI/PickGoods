@@ -697,6 +697,9 @@ export interface JournalStickerItem {
   width: number
   height: number
   rotation: number
+  flip_x?: boolean
+  flip_y?: boolean
+  aspect_locked?: boolean
 }
 
 export interface JournalTextItem {
@@ -708,6 +711,11 @@ export interface JournalTextItem {
   font_size: number
   fill: string
   rotation: number
+  font_family?: string
+  font_weight?: string
+  width?: number
+  line_height?: number
+  align?: 'left' | 'center' | 'right'
 }
 
 export type JournalLayerItem = JournalStrokeItem | JournalStickerItem | JournalTextItem
@@ -756,7 +764,8 @@ export interface JournalPage {
   width: number
   height: number
   background: string
-  content: JournalPageContent
+  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  content?: JournalPageContent
   revision: number
   preview_image?: string | null
   created_at?: string
@@ -785,6 +794,7 @@ export interface JournalPageInput {
   width?: number
   height?: number
   background?: string
+  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
   content?: JournalPageContent
   revision?: number
   create_version?: boolean

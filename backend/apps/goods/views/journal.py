@@ -1,3 +1,6 @@
+from copy import deepcopy
+import re
+
 from django.db import transaction
 from django.db.models import Count, Max, Min
 from rest_framework import serializers, status, viewsets
@@ -12,10 +15,13 @@ from ..serializers.journal import (
     JournalBookDetailSerializer,
     JournalBookListSerializer,
     JournalPageSerializer,
+    JournalPageSummarySerializer,
     JournalPageVersionSerializer,
     JournalPageVersionSummarySerializer,
 )
 from ..utils import compress_image
+
+DEFAULT_PAGE_TITLE_RE = re.compile(r"^第 \d+ 页$")
 
 
 class JournalBookPagination(PageNumberPagination):
@@ -122,7 +128,12 @@ class JournalBookViewSet(viewsets.ModelViewSet):
         book = self.get_object()
         if request.method == "GET":
             pages = book.pages.all()
-            serializer = JournalPageSerializer(pages, many=True, context=self.get_serializer_context())
+            serializer_class = (
+                JournalPageSummarySerializer
+                if request.query_params.get("fields") == "summary"
+                else JournalPageSerializer
+            )
+            serializer = serializer_class(pages, many=True, context=self.get_serializer_context())
             return Response(serializer.data)
 
         serializer = JournalPageSerializer(data=request.data, context=self.get_serializer_context())
@@ -135,6 +146,34 @@ class JournalBookViewSet(viewsets.ModelViewSet):
             JournalPageSerializer(page, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
         )
+
+    @action(detail=True, methods=["post"], url_path="pages/reorder")
+    def reorder_pages(self, request, pk=None):
+        book = self.get_object()
+        page_ids = request.data.get("page_ids")
+        if not isinstance(page_ids, list) or not page_ids or any(not isinstance(item, str) for item in page_ids):
+            return Response({"page_ids": "page_ids must be a non-empty list of ids"}, status=status.HTTP_400_BAD_REQUEST)
+
+        pages = list(book.pages.all())
+        pages_by_id = {str(page.id): page for page in pages}
+        if set(page_ids) != set(pages_by_id):
+            return Response({"page_ids": "page_ids must include every page in this journal"}, status=status.HTTP_400_BAD_REQUEST)
+
+        ordered_pages = [pages_by_id[page_id] for page_id in page_ids]
+        with transaction.atomic():
+            for index, page in enumerate(ordered_pages, start=1):
+                page.page_no = 100000 + index
+                page.save(update_fields=["page_no", "updated_at"])
+            for index, page in enumerate(ordered_pages, start=1):
+                page.page_no = index
+                if DEFAULT_PAGE_TITLE_RE.match(page.title or ""):
+                    page.title = f"第 {index} 页"
+                    page.save(update_fields=["page_no", "title", "updated_at"])
+                else:
+                    page.save(update_fields=["page_no", "updated_at"])
+
+        serializer = JournalPageSerializer(ordered_pages, many=True, context=self.get_serializer_context())
+        return Response(serializer.data)
 
 
 class JournalPageViewSet(viewsets.ModelViewSet):
@@ -225,6 +264,27 @@ class JournalPageViewSet(viewsets.ModelViewSet):
         page.save(update_fields=["preview_image", "updated_at"])
         serializer = self.get_serializer(page)
         return Response(serializer.data, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="duplicate")
+    def duplicate(self, request, pk=None):
+        page = self.get_object()
+        book = page.book
+        last_page = book.pages.order_by("-page_no").first()
+        page_no = (last_page.page_no if last_page else 0) + 1
+        with transaction.atomic():
+            duplicated = JournalPage.objects.create(
+                book=book,
+                title=f"第 {page_no} 页",
+                page_no=page_no,
+                width=page.width,
+                height=page.height,
+                background=page.background,
+                background_style=page.background_style,
+                content=deepcopy(page.content),
+            )
+            create_page_version(duplicated)
+        serializer = self.get_serializer(duplicated)
+        return Response(serializer.data, status=status.HTTP_201_CREATED)
 
 
 class JournalPageVersionViewSet(viewsets.ModelViewSet):

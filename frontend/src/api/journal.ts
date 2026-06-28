@@ -24,8 +24,8 @@ export function deleteJournalBook(id: string) {
   return request.delete(`/api/journals/${id}/`)
 }
 
-export function getJournalPages(bookId: string) {
-  return request.get<JournalPage[]>(`/api/journals/${bookId}/pages/`)
+export function getJournalPages(bookId: string, params?: { fields?: 'summary' }) {
+  return request.get<JournalPage[]>(`/api/journals/${bookId}/pages/`, { params })
 }
 
 export function createJournalPage(bookId: string, data?: JournalPageInput) {
@@ -42,6 +42,14 @@ export function patchJournalPage(id: string, data: JournalPageInput) {
 
 export function deleteJournalPage(id: string) {
   return request.delete(`/api/journal-pages/${id}/`)
+}
+
+export function createJournalPageDuplicate(id: string) {
+  return request.post<JournalPage>(`/api/journal-pages/${id}/duplicate/`)
+}
+
+export function reorderJournalPages(bookId: string, pageIds: string[]) {
+  return request.post<JournalPage[]>(`/api/journals/${bookId}/pages/reorder/`, { page_ids: pageIds })
 }
 
 export function uploadJournalPagePreview(id: string, file: File) {

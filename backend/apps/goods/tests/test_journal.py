@@ -65,6 +65,27 @@ class JournalAPITestCase(TestCase):
         self.assertEqual(page["revision"], 1)
         self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 1)
 
+    def test_create_journal_page_with_empty_payload_uses_defaults(self):
+        book = self._create_book()
+
+        response = self.client.post(
+            f"/api/journals/{book['id']}/pages/",
+            {},
+            format="json",
+        )
+
+        self.assertEqual(
+            response.status_code,
+            status.HTTP_201_CREATED,
+            getattr(response, "data", response.content),
+        )
+        page = response.json()
+        self.assertEqual(page["title"], "第 2 页")
+        self.assertEqual(page["page_no"], 2)
+        self.assertEqual(page["content"], {"version": 2, "layers": []})
+        self.assertEqual(page["revision"], 1)
+        self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 1)
+
     def test_normal_user_cannot_access_other_users_journal(self):
         book = self._create_book("自己的手帐")
 
@@ -565,3 +586,231 @@ class JournalAPITestCase(TestCase):
         self.assertEqual(delete_response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(page_response.status_code, status.HTTP_404_NOT_FOUND)
         self.assertEqual(JournalPageVersion.objects.filter(page_id=page["id"]).count(), 0)
+
+    def test_pages_summary_omits_content_and_keeps_preview_metadata(self):
+        book = self._create_book()
+
+        response = self.client.get(f"/api/journals/{book['id']}/pages/?fields=summary")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        page = response.json()[0]
+        self.assertIn("title", page)
+        self.assertIn("preview_image", page)
+        self.assertNotIn("content", page)
+
+    def test_duplicate_page_copies_canvas_data_with_new_page_number(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "text-layer",
+                    "type": "text",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "text-item",
+                            "type": "text",
+                            "text": "hello",
+                            "x": 10,
+                            "y": 20,
+                            "font_size": 32,
+                            "fill": "#333333",
+                            "rotation": 0,
+                            "font_family": "serif",
+                            "font_weight": "700",
+                            "width": 300,
+                            "line_height": 1.4,
+                            "align": "center",
+                        }
+                    ],
+                }
+            ],
+        }
+        patch_response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {
+                "content": content,
+                "background_style": "grid",
+                "create_version": False,
+                "revision": page["revision"],
+            },
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK, patch_response.json())
+
+        response = self.client.post(f"/api/journal-pages/{page['id']}/duplicate/")
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED, response.json())
+        duplicated = response.json()
+        self.assertNotEqual(duplicated["id"], page["id"])
+        self.assertEqual(duplicated["page_no"], 2)
+        self.assertEqual(duplicated["content"], content)
+        self.assertEqual(duplicated["background_style"], "grid")
+        self.assertEqual(duplicated["revision"], 1)
+        self.assertEqual(JournalPageVersion.objects.filter(page_id=duplicated["id"]).count(), 1)
+
+    def test_reorder_pages_updates_page_numbers_inside_current_book(self):
+        book = self._create_book()
+        first = self._first_page(book["id"])
+        second = self.client.post(f"/api/journals/{book['id']}/pages/", {}, format="json").json()
+        third = self.client.post(f"/api/journals/{book['id']}/pages/", {}, format="json").json()
+
+        response = self.client.post(
+            f"/api/journals/{book['id']}/pages/reorder/",
+            {"page_ids": [third["id"], first["id"], second["id"]]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertEqual([page["id"] for page in response.json()], [third["id"], first["id"], second["id"]])
+        self.assertEqual([page["page_no"] for page in response.json()], [1, 2, 3])
+
+    def test_reorder_pages_keeps_user_custom_titles(self):
+        book = self._create_book()
+        first = self._first_page(book["id"])
+        second = self.client.post(f"/api/journals/{book['id']}/pages/", {}, format="json").json()
+        patch_response = self.client.patch(
+            f"/api/journal-pages/{second['id']}/",
+            {"title": "第 一次旅行", "revision": second["revision"], "create_version": False},
+            format="json",
+        )
+        self.assertEqual(patch_response.status_code, status.HTTP_200_OK, patch_response.json())
+
+        response = self.client.post(
+            f"/api/journals/{book['id']}/pages/reorder/",
+            {"page_ids": [second["id"], first["id"]]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        pages_by_id = {page["id"]: page for page in response.json()}
+        self.assertEqual(pages_by_id[second["id"]]["title"], "第 一次旅行")
+        self.assertEqual(pages_by_id[first["id"]]["title"], "第 2 页")
+
+    def test_reorder_pages_rejects_unknown_or_foreign_page_ids(self):
+        book = self._create_book()
+
+        response = self.client.post(
+            f"/api/journals/{book['id']}/pages/reorder/",
+            {"page_ids": ["00000000-0000-0000-0000-000000000000"]},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("page_ids", str(response.json()))
+
+    def test_v2_extended_text_sticker_and_background_fields_are_validated(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "text-layer",
+                    "type": "text",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "text-item",
+                            "type": "text",
+                            "text": "styled",
+                            "x": 10,
+                            "y": 20,
+                            "font_size": 32,
+                            "fill": "#333333",
+                            "rotation": 0,
+                            "font_family": "serif",
+                            "font_weight": "700",
+                            "width": 320,
+                            "line_height": 1.5,
+                            "align": "right",
+                        }
+                    ],
+                },
+                {
+                    "id": "sticker-layer",
+                    "type": "sticker",
+                    "opacity": 1,
+                    "z_index": 2,
+                    "items": [
+                        {
+                            "id": "sticker-item",
+                            "type": "sticker",
+                            "goods_id": "goods-1",
+                            "src": "/media/goods/main/a.png",
+                            "x": 20,
+                            "y": 30,
+                            "width": 120,
+                            "height": 130,
+                            "rotation": 0,
+                            "flip_x": True,
+                            "flip_y": False,
+                            "aspect_locked": True,
+                        }
+                    ],
+                },
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {
+                "content": content,
+                "background_style": "dot",
+                "create_version": True,
+                "revision": page["revision"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertEqual(response.json()["content"], content)
+        self.assertEqual(response.json()["background_style"], "dot")
+
+    def test_invalid_extended_journal_fields_are_rejected(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 2,
+            "layers": [
+                {
+                    "id": "text-layer",
+                    "type": "text",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "text-item",
+                            "type": "text",
+                            "text": "bad",
+                            "x": 10,
+                            "y": 20,
+                            "font_size": 32,
+                            "fill": "#333333",
+                            "rotation": 0,
+                            "width": -1,
+                            "line_height": 20,
+                            "align": "sideways",
+                        }
+                    ],
+                }
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {
+                "content": content,
+                "background_style": "unknown",
+                "create_version": True,
+                "revision": page["revision"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("background_style", str(response.json()))

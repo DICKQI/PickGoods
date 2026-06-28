@@ -2,13 +2,17 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 import {
   createJournalBook,
+  createJournalPageDuplicate,
   createJournalPage,
   deleteJournalBook,
   deleteJournalPage,
+  getJournalPage,
   getJournalBooks,
   getJournalPages,
   getJournalPageVersions,
+  patchJournalBook,
   patchJournalPage,
+  reorderJournalPages,
   restoreJournalPageVersion,
   deleteJournalPageVersion,
   uploadJournalPagePreview,
@@ -47,13 +51,23 @@ export const useJournalStore = defineStore('journal', () => {
   }
 
   const setActivePage = async (pageId: string) => {
-    if (activePageId.value === pageId) return
+    const current = pages.value.find(page => page.id === pageId)
+    if (activePageId.value === pageId && current?.content) return
     if (dirty.value) {
       await saveActivePage()
     }
     activePageId.value = pageId
+    if (!current?.content) {
+      await fetchPageDetail(pageId)
+    }
     dirty.value = false
     await fetchVersions(pageId)
+  }
+
+  const fetchPageDetail = async (pageId: string) => {
+    const page = await getJournalPage(pageId)
+    pages.value = pages.value.map(item => (item.id === page.id ? page : item))
+    return page
   }
 
   const fetchBooks = async () => {
@@ -89,11 +103,13 @@ export const useJournalStore = defineStore('journal', () => {
     pageLoading.value = true
     error.value = null
     try {
-      const data = await getJournalPages(bookId)
+      const data = await getJournalPages(bookId, { fields: 'summary' })
       pages.value = data
       activePageId.value = data[0]?.id || null
       dirty.value = false
       if (activePageId.value) {
+        const firstPage = data.find(page => page.id === activePageId.value)
+        if (!firstPage?.content) await fetchPageDetail(activePageId.value)
         await fetchVersions(activePageId.value)
       } else {
         versions.value = []
@@ -168,6 +184,23 @@ export const useJournalStore = defineStore('journal', () => {
     }
   }
 
+  const renameBook = async (bookId: string, title: string) => {
+    const book = books.value.find(item => item.id === bookId)
+    if (!book) return null
+    saving.value = true
+    error.value = null
+    try {
+      const saved = await patchJournalBook(book.id, { title })
+      books.value = books.value.map(item => (item.id === saved.id ? { ...item, ...saved } : item))
+      return saved
+    } catch (e: any) {
+      error.value = e?.message || '重命名手帐本失败'
+      return null
+    } finally {
+      saving.value = false
+    }
+  }
+
   const createPage = async () => {
     if (!activeBookId.value) return null
     saving.value = true
@@ -192,10 +225,12 @@ export const useJournalStore = defineStore('journal', () => {
     saving.value = true
     error.value = null
     try {
+      const deletingIndex = pages.value.findIndex(page => page.id === pageId)
       await deleteJournalPage(pageId)
-      pages.value = pages.value.filter(page => page.id !== pageId)
+      const nextPages = pages.value.filter(page => page.id !== pageId)
+      pages.value = nextPages
       if (activePageId.value === pageId) {
-        activePageId.value = pages.value[0]?.id || null
+        activePageId.value = nextPages[deletingIndex]?.id || nextPages[deletingIndex - 1]?.id || null
         if (activePageId.value) {
           await fetchVersions(activePageId.value)
         } else {
@@ -206,6 +241,61 @@ export const useJournalStore = defineStore('journal', () => {
       return true
     } catch (e: any) {
       error.value = e?.message || '删除页面失败'
+      return false
+    } finally {
+      saving.value = false
+    }
+  }
+
+  const duplicatePage = async (pageId: string) => {
+    saving.value = true
+    error.value = null
+    try {
+      const duplicated = await createJournalPageDuplicate(pageId)
+      pages.value = [...pages.value, duplicated].sort((a, b) => a.page_no - b.page_no)
+      activePageId.value = duplicated.id
+      dirty.value = false
+      await fetchVersions(duplicated.id)
+      return duplicated
+    } catch (e: any) {
+      error.value = e?.message || '复制页面失败'
+      return null
+    } finally {
+      saving.value = false
+    }
+  }
+
+  const renamePage = async (pageId: string, title: string) => {
+    const page = pages.value.find(item => item.id === pageId)
+    if (!page) return null
+    saving.value = true
+    error.value = null
+    try {
+      const saved = await patchJournalPage(page.id, {
+        title,
+        revision: page.revision,
+        create_version: false,
+      })
+      pages.value = pages.value.map(item => (item.id === saved.id ? { ...item, ...saved } : item))
+      return saved
+    } catch (e: any) {
+      error.value = e?.message || '重命名页面失败'
+      return null
+    } finally {
+      saving.value = false
+    }
+  }
+
+  const reorderPages = async (pageIds: string[]) => {
+    if (!activeBookId.value) return false
+    saving.value = true
+    error.value = null
+    try {
+      const ordered = await reorderJournalPages(activeBookId.value, pageIds)
+      pages.value = ordered
+      return true
+    } catch (e: any) {
+      error.value = e?.message || '页面排序失败'
       return false
     } finally {
       saving.value = false
@@ -231,7 +321,7 @@ export const useJournalStore = defineStore('journal', () => {
       return queuedSavePromise
     }
     const page = activePage.value
-    if (!page) return null
+    if (!page || !page.content) return null
     saveInFlight.value = true
     saving.value = true
     error.value = null
@@ -329,10 +419,15 @@ export const useJournalStore = defineStore('journal', () => {
     fetchVersions,
     setActiveBook,
     setActivePage,
+    fetchPageDetail,
     createBook,
     removeBook,
+    renameBook,
     createPage,
     removePage,
+    duplicatePage,
+    renamePage,
+    reorderPages,
     updateActivePageContent,
     saveActivePage,
     uploadPreview,

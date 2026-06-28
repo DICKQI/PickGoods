@@ -9,6 +9,8 @@ from ..utils import compress_image
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 BRUSH_TYPES = {"pencil", "pen", "watercolor"}
 LAYER_TYPES = {"sticker", "text", "draw"}
+BACKGROUND_STYLES = {"plain", "dot", "line", "grid", "note"}
+TEXT_ALIGNMENTS = {"left", "center", "right"}
 MAX_LAYERS = 200
 MAX_ITEMS_PER_LAYER = 1000
 MAX_DRAW_POINTS = 12000
@@ -72,6 +74,21 @@ def validate_text_item(obj, owner_id):
     font_size = obj.get("font_size")
     if not isinstance(font_size, (int, float)) or font_size < 8 or font_size > 240:
         raise serializers.ValidationError({"font_size": f"{owner_id} font_size is out of range"})
+    font_family = obj.get("font_family")
+    if font_family is not None and (not isinstance(font_family, str) or len(font_family) > 80):
+        raise serializers.ValidationError({"font_family": f"{owner_id} font_family is invalid"})
+    font_weight = obj.get("font_weight")
+    if font_weight is not None and (not isinstance(font_weight, str) or len(font_weight) > 20):
+        raise serializers.ValidationError({"font_weight": f"{owner_id} font_weight is invalid"})
+    width = obj.get("width")
+    if width is not None and (not isinstance(width, (int, float)) or width <= 0 or width > 5000):
+        raise serializers.ValidationError({"width": f"{owner_id} width is out of range"})
+    line_height = obj.get("line_height")
+    if line_height is not None and (not isinstance(line_height, (int, float)) or line_height < 0.5 or line_height > 4):
+        raise serializers.ValidationError({"line_height": f"{owner_id} line_height is out of range"})
+    align = obj.get("align")
+    if align is not None and align not in TEXT_ALIGNMENTS:
+        raise serializers.ValidationError({"align": f"{owner_id} align is invalid"})
 
 
 def validate_sticker_item(obj, owner_id):
@@ -83,6 +100,10 @@ def validate_sticker_item(obj, owner_id):
         value_num = obj.get(key)
         if not isinstance(value_num, (int, float)) or value_num <= 0 or value_num > 5000:
             raise serializers.ValidationError({key: f"{owner_id} {key} is out of range"})
+    for key in ("flip_x", "flip_y", "aspect_locked"):
+        value_bool = obj.get(key)
+        if value_bool is not None and not isinstance(value_bool, bool):
+            raise serializers.ValidationError({key: f"{owner_id} {key} must be a boolean"})
 
 
 def validate_stroke_item(obj, owner_id):
@@ -192,6 +213,7 @@ class JournalPageSerializer(serializers.ModelSerializer):
             "width",
             "height",
             "background",
+            "background_style",
             "content",
             "revision",
             "create_version",
@@ -204,6 +226,11 @@ class JournalPageSerializer(serializers.ModelSerializer):
     def validate_content(self, value):
         return validate_journal_content(value)
 
+    def validate_background_style(self, value):
+        if value not in BACKGROUND_STYLES:
+            raise serializers.ValidationError("unsupported background style")
+        return value
+
     def validate_revision(self, value):
         if self.instance is not None and value != self.instance.revision:
             raise serializers.ValidationError("revision conflict", code="journal_revision_conflict")
@@ -215,9 +242,29 @@ class JournalPageSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         validated_data.pop("create_version", None)
-        if "content" in validated_data or any(key in validated_data for key in ("title", "width", "height", "background")):
+        if "content" in validated_data or any(key in validated_data for key in ("title", "width", "height", "background", "background_style")):
             validated_data["revision"] = instance.revision + 1
         return super().update(instance, validated_data)
+
+
+class JournalPageSummarySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = JournalPage
+        fields = (
+            "id",
+            "book",
+            "title",
+            "page_no",
+            "width",
+            "height",
+            "background",
+            "background_style",
+            "revision",
+            "preview_image",
+            "created_at",
+            "updated_at",
+        )
+        read_only_fields = fields
 
 
 class JournalPageVersionSerializer(serializers.ModelSerializer):
