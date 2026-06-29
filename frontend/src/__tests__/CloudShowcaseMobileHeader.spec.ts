@@ -173,6 +173,15 @@ describe('CloudShowcase mobile compact header', () => {
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-to')
   })
 
+  it('places the journal tab before the stats dashboard tab', () => {
+    const journalIndex = cloudShowcaseSource.indexOf('name="journal"')
+    const statsIndex = cloudShowcaseSource.indexOf('name="stats"')
+
+    expect(journalIndex).toBeGreaterThan(-1)
+    expect(statsIndex).toBeGreaterThan(-1)
+    expect(journalIndex).toBeLessThan(statsIndex)
+  })
+
   it('does not render the desktop floating page-size selector', async () => {
     const wrapper = await mountDesktopCloudShowcase({ goodsResults: [sampleGoods] })
     await flushPromises()

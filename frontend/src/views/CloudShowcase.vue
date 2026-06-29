@@ -4,8 +4,8 @@
     <el-tabs v-model="activeTab" class="cloud-tabs">
       <el-tab-pane label="展柜" name="showcase" />
       <el-tab-pane label="谷仓" name="barn" />
-      <el-tab-pane label="统计看板" name="stats" />
       <el-tab-pane label="手帐" name="journal" />
+      <el-tab-pane label="统计看板" name="stats" />
     </el-tabs>
 
     <!-- Tab 内容区域 - 添加过渡动画 -->
