@@ -114,6 +114,7 @@ const mountCloudShowcase = async ({
         GoodsDrawer: { template: '<aside />' },
         GoodsMultiDisplayDialog: { template: '<aside />' },
         StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
+        JournalWorkspace: { template: '<section data-test="journal-workspace" />' },
         ShowcaseManager: { template: '<section />' },
         'el-alert': { template: '<div />' },
         'el-button': { template: '<button><slot /></button>' },
@@ -170,6 +171,15 @@ describe('CloudShowcase mobile compact header', () => {
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-active')
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-enter-from')
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-to')
+  })
+
+  it('places the journal tab before the stats dashboard tab', () => {
+    const journalIndex = cloudShowcaseSource.indexOf('name="journal"')
+    const statsIndex = cloudShowcaseSource.indexOf('name="stats"')
+
+    expect(journalIndex).toBeGreaterThan(-1)
+    expect(statsIndex).toBeGreaterThan(-1)
+    expect(journalIndex).toBeLessThan(statsIndex)
   })
 
   it('does not render the desktop floating page-size selector', async () => {
@@ -250,6 +260,15 @@ describe('CloudShowcase mobile compact header', () => {
     const wrapper = await mountMobileCloudShowcase()
 
     expect(wrapper.find('[data-test="stats-dashboard"]').exists()).toBe(true)
+    expect(wrapper.find('.barn-section').exists()).toBe(false)
+  })
+
+  it('opens the journal tab when the route query requests it', async () => {
+    routeQuery.value = { tab: 'journal' }
+
+    const wrapper = await mountMobileCloudShowcase()
+
+    expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(true)
     expect(wrapper.find('.barn-section').exists()).toBe(false)
   })
 })

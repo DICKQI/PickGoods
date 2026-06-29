@@ -11,9 +11,9 @@ from PIL import Image, ImageDraw
 from django.utils import timezone
 
 from apps.users.models import User, Role
-from .models import Goods, IP, Character, Category, Theme, ThemeImage
-from .similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
-from .utils import compress_image
+from ..models import Goods, IP, Character, Category, Theme, ThemeImage
+from ..similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
+from ..utils import compress_image
 
 
 class SimilarityAlgorithmTestCase(TestCase):
@@ -1076,7 +1076,7 @@ class CompressImageTestCase(TestCase):
             self.assertTrue(result.name.endswith('.jpg'))
 
 
-from .classifier import classify_goods_image
+from ..classifier import classify_goods_image
 
 
 class GoodsImageClassifierTests(TestCase):

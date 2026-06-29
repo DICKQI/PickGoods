@@ -176,6 +176,8 @@ REST_FRAMEWORK = {
         "goods_search": "60/minute",
         # OCR 识别接口限流
         "ocr": "20/minute",
+        # 公开手帐页读取接口限流，避免匿名 token 枚举和异常流量
+        "journal_public": "60/minute",
     },
     # 指定使用的 Schema 类
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',

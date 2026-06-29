@@ -30,6 +30,10 @@ from apps.goods.views import (
     CharacterViewSet,
     GoodsViewSet,
     IPViewSet,
+    JournalBookViewSet,
+    JournalPageVersionViewSet,
+    JournalPageViewSet,
+    PublicJournalPageViewSet,
     ShowcaseViewSet,
     ThemeViewSet,
 )
@@ -49,6 +53,9 @@ router.register("characters", CharacterViewSet, basename="characters")
 router.register("categories", CategoryViewSet, basename="categories")
 router.register("themes", ThemeViewSet, basename="themes")
 router.register("showcases", ShowcaseViewSet, basename="showcases")
+router.register("journals", JournalBookViewSet, basename="journals")
+router.register("journal-pages", JournalPageViewSet, basename="journal-pages")
+router.register("journal-page-versions", JournalPageVersionViewSet, basename="journal-page-versions")
 
 urlpatterns = [
     path('admin/', admin.site.urls),
@@ -62,6 +69,11 @@ urlpatterns = [
     # 展柜独立接口
     path("api/showcases/public/", ShowcaseViewSet.as_view({"get": "public_list"}), name="showcases-public"),
     path("api/showcases/private/", ShowcaseViewSet.as_view({"get": "private_list"}), name="showcases-private"),
+    path(
+        "api/journal-public/<str:token>/",
+        PublicJournalPageViewSet.as_view({"get": "retrieve"}),
+        name="journal-public-page",
+    ),
     # 核心检索接口
     path("api/", include(router.urls)),
     # BGM API接口

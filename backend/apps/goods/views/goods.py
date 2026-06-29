@@ -213,6 +213,7 @@ class GoodsFilter(FilterSet):
     status = CharFilter(field_name="status", lookup_expr="exact")
     status__in = BaseInFilter(field_name="status", lookup_expr="in")
     is_official = BooleanFilter(field_name="is_official", lookup_expr="exact")
+    has_main_photo = BooleanFilter(method="filter_has_main_photo")
     
     # 单个角色筛选：?character=1387（精确匹配包含该角色的谷子）
     character = ModelMultipleChoiceFilter(
@@ -233,8 +234,16 @@ class GoodsFilter(FilterSet):
             "status",
             "status__in",
             "is_official",
+            "has_main_photo",
             "character",
         ]
+
+    def filter_has_main_photo(self, queryset, name, value):
+        if value is True:
+            return queryset.exclude(main_photo="")
+        if value is False:
+            return queryset.filter(Q(main_photo__isnull=True) | Q(main_photo=""))
+        return queryset
 
     def _get_category_descendant_ids(self, category: Category) -> list[int]:
         """

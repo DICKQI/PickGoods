@@ -215,6 +215,8 @@ export interface GoodsSearchParams {
   search?: string
   page?: number
   page_size?: number
+  has_main_photo?: boolean
+  fields?: 'journal_asset' | string
   /**
    * 分组显示参数：
    * - ip：按 IP 作品分组
@@ -623,6 +625,210 @@ export interface ShowcaseMoveGoodsResponse {
 }
 
 // BGM角色搜索结果
+// ==================== Journal ====================
+
+export interface JournalLegacyLayerBase {
+  id: string
+  type: 'sticker' | 'text' | 'draw'
+  name?: string
+  locked?: boolean
+  visible?: boolean
+  z_index: number
+}
+
+export interface JournalLegacyStickerLayer extends JournalLegacyLayerBase {
+  id: string
+  type: 'sticker'
+  goods_id: string
+  src: string
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  opacity: number
+  z_index: number
+}
+
+export interface JournalLegacyTextLayer extends JournalLegacyLayerBase {
+  id: string
+  type: 'text'
+  text: string
+  x: number
+  y: number
+  font_size: number
+  fill: string
+  rotation: number
+  z_index: number
+}
+
+export type JournalBrushType = 'pencil' | 'pen' | 'watercolor' | 'marker' | 'highlighter'
+
+export interface JournalLegacyDrawLayer extends JournalLegacyLayerBase {
+  id: string
+  type: 'draw'
+  brush_type: JournalBrushType
+  points: number[]
+  stroke: string
+  stroke_width: number
+  opacity: number
+  z_index: number
+}
+
+export type JournalLegacyLayer = JournalLegacyStickerLayer | JournalLegacyTextLayer | JournalLegacyDrawLayer
+
+export interface JournalStrokeItem {
+  id: string
+  type: 'stroke'
+  brush_type: JournalBrushType
+  points: number[]
+  stroke: string
+  stroke_width: number
+  opacity: number
+}
+
+export interface JournalStickerItem {
+  id: string
+  type: 'sticker'
+  goods_id: string
+  src: string
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  flip_x?: boolean
+  flip_y?: boolean
+  aspect_locked?: boolean
+}
+
+export interface JournalTextItem {
+  id: string
+  type: 'text'
+  text: string
+  x: number
+  y: number
+  font_size: number
+  fill: string
+  rotation: number
+  font_family?: string
+  font_weight?: string
+  width?: number
+  line_height?: number
+  align?: 'left' | 'center' | 'right'
+  stroke?: string
+  stroke_width?: number
+  shadow_enabled?: boolean
+  shadow_color?: string
+  shadow_blur?: number
+}
+
+export interface JournalShapeItem {
+  id: string
+  type: 'shape'
+  shape_type: 'rect' | 'circle' | 'line'
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  fill: string
+  stroke: string
+  stroke_width: number
+}
+
+export type JournalLayerItem = JournalStrokeItem | JournalStickerItem | JournalTextItem | JournalShapeItem
+
+export interface JournalLayer {
+  id: string
+  type: 'sticker' | 'text' | 'draw' | 'shape'
+  name?: string
+  locked?: boolean
+  visible?: boolean
+  opacity: number
+  z_index: number
+  items: JournalLayerItem[]
+}
+
+export type JournalStickerLayer = JournalLayer & { type: 'sticker'; items: JournalStickerItem[] }
+export type JournalTextLayer = JournalLayer & { type: 'text'; items: JournalTextItem[] }
+export type JournalDrawLayer = JournalLayer & { type: 'draw'; items: JournalStrokeItem[] }
+export type JournalShapeLayer = JournalLayer & { type: 'shape'; items: JournalShapeItem[] }
+
+export interface JournalPageContentV1 {
+  version: 1
+  layers: JournalLegacyLayer[]
+}
+
+export interface JournalPageContent {
+  version: 2 | 3
+  layers: JournalLayer[]
+}
+
+export interface JournalPublicShare {
+  token: string
+  url?: string
+}
+
+export interface JournalBook {
+  id: string
+  title: string
+  description?: string | null
+  cover_image?: string | null
+  order?: number
+  page_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface JournalPage {
+  id: string
+  book: string
+  title: string
+  page_no: number
+  width: number
+  height: number
+  background: string
+  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  content?: JournalPageContent
+  revision: number
+  share_token?: string | null
+  preview_image?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface JournalPageVersion {
+  id: string
+  page: string
+  version_no: number
+  content?: JournalPageContent
+  preview_image?: string | null
+  summary?: {
+    layer_count: number
+  }
+  created_at?: string
+}
+
+export interface JournalBookInput {
+  title: string
+  description?: string | null
+}
+
+export interface JournalPageInput {
+  title?: string
+  width?: number
+  height?: number
+  background?: string
+  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  content?: JournalPageContent
+  revision?: number
+  create_version?: boolean
+}
+
+export type PaginatedJournalBookResponse = PaginatedResponse<JournalBook>
+export type PaginatedJournalPageVersionResponse = PaginatedResponse<JournalPageVersion>
+
 export interface BGMCharacter {
   /** BGM 角色 ID（增量同步用），老接口可能不返回 */
   id?: number | null

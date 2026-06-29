@@ -39,6 +39,7 @@
 | `name`         | Char(100), 唯一, 索引 | 作品名，如：`崩坏：星穹铁道`                          |
 | `subject_type` | Integer (可空)        | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄 |
 | `order`        | Integer               | 展示排序，越小越靠前，默认 `0`                        |
+| `bgm_subject_id`| Integer (可空, 唯一) | 绑定的 BGM 作品 ID，用于 BGM 增量同步                 |
 
 #### `IPKeyword` IP 多关键词表
 
@@ -76,6 +77,7 @@
 | `path_name`| Char(200), 索引         | 冗余完整路径，如：`周边/吧唧/圆形吧唧`                              |
 | `color_tag`| Char(20，可空)          | 颜色标签，用于UI展示的颜色标识，例如：`#FF5733`                    |
 | `order`    | Integer                 | 同级展示顺序，越小越靠前，默认 0                                     |
+| `shape_type`| Char(20，可空)        | 形状类型标记，用于标识该品类的外观形状，如 `round`(圆形) / `rectangle`(矩形)。影响图片分类引擎的建议排序 |
 
 #### `Theme` 主题表
 
@@ -707,8 +709,9 @@ GET /api/location/nodes/2/goods/?include_children=true
 | `status`      | string | 单状态过滤：`draft` / `in_cabinet` / `outdoor` / `sold`                                     |
 | `status__in`  | string | **多状态过滤**：逗号分隔的状态列表，如：`in_cabinet,sold`                                   |
 | `is_official` | bool   | 是否官谷筛选：`true`=只看官谷，`false`=只看非官谷。不传则不过滤                               |
+| `has_main_photo` | bool | 主图筛选：`true`=只看有主图的谷子，`false`=只看无主图的谷子。不传则不过滤                    |
 | `location`    | int    | 位置节点 ID，过滤收纳在某一具体节点下的谷子                                                 |
-| `search`      | string | 轻量模糊搜索：会同时在 `Goods.name`、`IP.name`、`IPKeyword.value` 上匹配    |
+| `search`      | string | 轻量模糊搜索：会同时在 `Goods.name`、`IP.name`、`IPKeyword.value`、`Character.name` 上匹配    |
 | `group_by`    | string | **分组显示**：按指定字段分组显示谷子列表。可选值：`ip`（IP作品）、`character`（角色）、`category`（品类）、`theme`（主题）。使用此参数时，返回格式与普通列表相同，只是谷子按分组字段排序，同一分组的谷子会聚集在一起 |
 | `page`        | int    | 分页页码，从 1 开始，例如 `?page=1` 表示第一页                                               |
 | `page_size`   | int    | 每页数量，默认 18 条，最大 100 条，例如 `?page_size=50`                                      |
@@ -1404,6 +1407,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | `status`      | string | 单状态过滤：`draft` / `in_cabinet` / `outdoor` / `sold`                                     |
 | `status__in`  | string | 多状态过滤，逗号分隔，如：`in_cabinet,sold`                                                 |
 | `is_official` | bool   | 是否官谷：`true`=只看官谷，`false`=只看非官谷                                                 |
+| `has_main_photo` | bool | 主图筛选：`true`=只看有主图，`false`=只看无主图                                                |
 | `location`    | int    | 位置节点 ID，过滤收纳在某一具体节点下的谷子                                                 |
 | `search`      | string | 轻量搜索：在 `Goods.name`、`IP.name`、`IPKeyword.value`、`Character.name` 上匹配             |
 | `page`        | int    | 分页页码，从 1 开始                                                                           |
@@ -1522,6 +1526,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | `status`      | string | 单状态过滤：`draft` / `in_cabinet` / `outdoor` / `sold`                                     |
 | `status__in`  | string | 多状态过滤，逗号分隔，如：`in_cabinet,sold`                                                 |
 | `is_official` | bool   | 是否官谷：`true`=只看官谷，`false`=只看非官谷                                                 |
+| `has_main_photo` | bool | 主图筛选：`true`=只看有主图，`false`=只看无主图                                                |
 | `location`    | int    | 树形位置筛选：节点 ID，自动包含该节点及其所有子节点                                          |
 | `search`      | string | 轻量搜索：在 `Goods.name`、`IP.name`、`IPKeyword.value`、`Character.name` 上匹配              |
 
@@ -2188,19 +2193,17 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 ---
 
-#### 5.1.8 BGM 角色差异预览
+#### 5.1.8 预览 BGM 角色同步
 
 - **URL**：`POST /api/ips/{id}/bgm-preview/`
-- **说明**：
-  - 从 Bangumi 拉取该 IP 绑定的 BGM 作品的角色列表，与本地的角色列表进行差异对比。
-  - **不会**写入本地数据库，仅用于前端展示差异，供用户勾选确认。
-  - 如果 IP 已绑定 `bgm_subject_id`，可省略 `subject_id`；否则必须传入。
+- **说明**：从 Bangumi(BGM) API 拉取指定作品（subject）的最新角色列表，与本地数据库中该 IP 下的角色进行对比（diff），返回新增/缺失/匹配的角色列表。**不会写入数据库**，仅用于前端预览。
+- **鉴权**：需要登录，仅 Admin 可写，User 可读。
 
 ##### 路径参数
 
-| 参数名 | 类型 | 说明 |
-| ------ | ---- | ---- |
-| `id`   | int  | IP 作品主键 `id` |
+| 参数名 | 类型 | 说明            |
+| ------ | ---- | --------------- |
+| `id`   | int  | IP作品主键 `id` |
 
 ##### 请求体（JSON）
 
@@ -2210,9 +2213,9 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 }
 ```
 
-| 字段名 | 类型 | 必填 | 说明 |
-| ------ | ---- | ---- | ---- |
-| `subject_id` | integer | 否 | BGM 作品 ID。如果 IP 尚未绑定此字段则必填，已绑定则可省略 |
+| 字段名       | 类型    | 必填 | 说明                                                                 |
+| ------------ | ------- | ---- | -------------------------------------------------------------------- |
+| `subject_id` | integer | 否   | BGM 作品 ID。如果 IP 已绑定 `bgm_subject_id` 可不传；首次同步时需要传入 |
 
 ##### 响应示例
 
@@ -2224,50 +2227,55 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
   "bgm_subject_name": "崩坏：星穹铁道",
   "bgm_subject_type": 4,
   "subject_type_will_update": false,
-  "will_link_subject": false,
+  "will_link_subject": true,
   "items": [
     {
-      "action": "new",
-      "bgm_character_id": 9999,
-      "name": "流萤",
-      "relation": "主角",
-      "avatar": "https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg",
-      "local_character_id": null
+      "character_name": "流萤",
+      "bgm_character_id": 123456,
+      "action": "create",
+      "reason": null
+    },
+    {
+      "character_name": "花火",
+      "bgm_character_id": 123457,
+      "action": "create",
+      "reason": null
     }
   ],
   "summary": {
-    "new": 2,
-    "link_by_name": 1,
-    "matched": 5,
-    "local_only": 0,
-    "skipped_duplicate": 0
+    "create": 2,
+    "match": 0,
+    "resolve": 0
   }
 }
 ```
 
-**字段说明**：
-- `items[].action`：差异操作类型
-  - `new`：BGM 有但本地没有，可新建
-  - `link_by_name`：本地存在同名角色但未绑定 BGM ID，可回填
-  - `matched`：已匹配，无需操作
-  - `local_only`：仅本地存在
-  - `skipped_duplicate`：BGM 端重复条目已跳过
-- `summary`：各类操作的汇总计数
+##### 字段说明
+
+| 字段名                    | 类型           | 说明                                               |
+| ------------------------- | -------------- | -------------------------------------------------- |
+| `ip_id`                   | int            | IP 作品 ID                                         |
+| `bgm_subject_id`          | int            | BGM 作品 ID                                        |
+| `bgm_subject_type`        | int            | BGM 作品类型                                       |
+| `subject_type_will_update`| bool           | 是否将更新 IP 的 `subject_type`                    |
+| `will_link_subject`       | bool           | 是否将绑定 BGM subject_id                          |
+| `items`                   | array[object]  | diff 明细，每项包含角色名、BGM ID、操作类型        |
+| `action`                  | string         | 操作类型：`create`（创建）、`match`（已有匹配）、`resolve`（冲突待解） |
+| `summary`                 | object         | summary：各操作类型的总数                           |
 
 ---
 
-#### 5.1.9 BGM 角色同步（应用差异）
+#### 5.1.9 执行 BGM 角色同步
 
 - **URL**：`POST /api/ips/{id}/bgm-sync/`
-- **说明**：
-  - 应用用户在预览接口（5.1.8）确认后的差异操作，实际写入数据库。
-  - 支持新建角色、回填 BGM ID 等操作。
+- **说明**：应用用户确认的 BGM diff，批量新增角色、回填 BGM 角色 ID，可选同步 `subject_type`。服务端会重新拉取 BGM subject 信息以确保最新。
+- **鉴权**：需要登录，仅 Admin 可写，User 可读。
 
 ##### 路径参数
 
-| 参数名 | 类型 | 说明 |
-| ------ | ---- | ---- |
-| `id`   | int  | IP 作品主键 `id` |
+| 参数名 | 类型 | 说明            |
+| ------ | ---- | --------------- |
+| `id`   | int  | IP作品主键 `id` |
 
 ##### 请求体（JSON）
 
@@ -2275,56 +2283,45 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 {
   "subject_id": 12345,
   "items": [
-    {
-      "action": "new",
-      "bgm_character_id": 9999,
-      "name": "流萤",
-      "avatar": "https://lain.bgm.tv/pic/crt/l/xx/xx/12345.jpg"
-    }
+    { "character_name": "流萤", "bgm_character_id": 123456, "action": "create" },
+    { "character_name": "花火", "bgm_character_id": 123457, "action": "create" }
   ],
   "update_subject_type": true
 }
 ```
 
-| 字段名 | 类型 | 必填 | 说明 |
-| ------ | ---- | ---- | ---- |
-| `subject_id` | integer | 否 | BGM 作品 ID，未绑定时必填 |
-| `items` | array[object] | 是 | 用户确认的差异操作列表 |
-| `items[].action` | string | 是 | `"new"`（新建角色）或 `"link_by_name"`（回填 BGM ID） |
-| `items[].bgm_character_id` | integer | 否 | BGM 角色 ID |
-| `items[].name` | string | 是 | 角色名称 |
-| `items[].avatar` | string | 否 | 头像 URL |
-| `items[].local_character_id` | integer | 否 | `link_by_name` 时需要指定本地角色 ID |
-| `update_subject_type` | boolean | 否 | 是否同步 BGM 的作品类型到本地，默认 `true` |
+| 字段名                | 类型           | 必填 | 说明                                               |
+| --------------------- | -------------- | ---- | -------------------------------------------------- |
+| `subject_id`          | integer        | 否   | BGM 作品 ID，同 bgm-preview                        |
+| `items`               | array[object]  | 是   | 基于 bgm-preview 的结果，用户勾选后传回            |
+| `update_subject_type` | boolean        | 否   | 是否同步更新 IP 的 `subject_type`，默认 `true`     |
 
 ##### 响应示例
 
 ```json
 {
   "ip_id": 1,
+  "ip_name": "崩坏：星穹铁道",
   "bgm_subject_id": 12345,
-  "created_count": 2,
-  "linked_count": 1,
-  "subject_linked": false,
-  "subject_type_updated": true,
-  "last_synced_at": "2025-06-28T12:00:00Z",
-  "details": [
+  "items": [
     {
-      "action": "new",
-      "name": "新角色",
-      "character_id": 100,
-      "status": "created"
+      "character_name": "流萤",
+      "bgm_character_id": 123456,
+      "action": "create",
+      "status": "created",
+      "character_id": 5,
+      "error": null
     }
-  ]
+  ],
+  "summary": { "created": 2, "skipped": 0, "errors": 0 }
 }
 ```
 
-**字段说明**：
-- `created_count`：新建角色数
-- `linked_count`：回填 BGM ID 数
-- `subject_linked`：是否将 BGM 作品绑定到该 IP
-- `subject_type_updated`：是否更新了作品类型
-- `last_synced_at`：最后同步时间
+##### 使用流程
+
+1. 调用 `bgm-preview` 获取 diff 预览（不写库）
+2. 前端展示 diff 列表，用户勾选确认
+3. 调用 `bgm-sync` 将用户选择的结果提交，后端执行新增/匹配
 
 ---
 
@@ -2524,91 +2521,69 @@ gender: female
 
 ---
 
-#### 5.2.6 角色统计大图
+#### 5.2.6 角色统计（推し力 / 热度 / 排行）
 
 - **URL**：`GET /api/characters/{id}/stats/`
-- **说明**：
-  - 获取指定角色的完整统计数据，包括：概览卡片、厨力评分、IP热度、分布、趋势和排行榜。
-  - 数据范围按当前用户筛选（管理员可查看全部）。
+- **说明**：获取指定角色的综合统计数据，包含推し力评分、作品热度、各类分布和排行。适合用于角色详情页的统计面板展示。
+- **鉴权**：需要登录，管理员可查看全站数据，普通用户只看自己的数据。
 
 ##### 路径参数
 
-| 参数名 | 类型 | 说明 |
-| ------ | ---- | ---- |
-| `id`   | int  | 角色主键 `id` |
+| 参数名 | 类型 | 说明            |
+| ------ | ---- | --------------- |
+| `id`   | int  | 角色主键 `id`   |
 
-##### 响应结构
+##### 响应结构总览
 
 ```json
 {
-  "character": {
-    "id": 42,
-    "ip": 1,
-    "name": "荧",
-    "ip_name": "原神",
-    "avatar": null,
-    "gender": null,
-    "bgm_character_id": null,
-    "created_at": "2025-01-01T00:00:00Z"
-  },
-  "overview": {
-    "goods_count": 5,
-    "quantity_sum": 12,
-    "value_sum": "350.00",
-    "category_count": 3
-  },
-  "oshi_power": {
-    "score": 65,
-    "level": "本命",
-    "rank": 3,
-    "total_characters": 150,
-    "components": {
-      "value": { "percentile": 85.33, "weight": 0.45, "contribution": 38.40 },
-      "quantity": { "percentile": 60.0, "weight": 0.25, "contribution": 15.0 },
-      "goods_count": { "percentile": 50.0, "weight": 0.20, "contribution": 10.0 },
-      "category_breadth": { "percentile": 30.0, "weight": 0.10, "contribution": 3.0 }
-    },
-    "raw_metrics": {
-      "goods_count": 5,
-      "quantity_sum": 12,
-      "value_sum": "350.00",
-      "category_count": 3
-    }
-  },
+  "character": { "id": 5, "name": "流萤", "ip": {...}, "avatar": null, "gender": "female" },
+  "overview": { "goods_count": 25, "quantity_sum": 35, "value_sum": "1800.00", "category_count": 5 },
+  "oshi_power": { "score": 85, "level": "本命", "rank": 3, "total_characters": 50, "components": {...}, "raw_metrics": {...} },
   "ip_heat": {
-    "ip": {
-      "id": 1,
-      "name": "原神",
-      "subject_type": 4
-    },
-    "platform_heat": { "score": 72, "level": "热门", "rank": 5, "total_ips": 200, "components": {}, "raw_metrics": {} },
-    "my_heat": { "score": 45, "level": "升温", "rank": 10, "total_ips": 50, "components": {}, "raw_metrics": {} }
+    "ip": { "id": 1, "name": "崩坏：星穹铁道", "subject_type": 4 },
+    "platform_heat": { "score": 78, "level": "热门", "rank": 2, "total_ips": 10, "components": {...}, "raw_metrics": {...} },
+    "my_heat": { "score": 65, "level": "升温", "rank": 1, "total_ips": 5, "components": {...}, "raw_metrics": {...} }
   },
   "distributions": {
-    "status": [ { "status": "in_cabinet", "goods_count": 4, "quantity_sum": 10, "label": "在馆" } ],
-    "is_official": [ { "is_official": true, "goods_count": 5, "quantity_sum": 12, "label": "官谷" } ],
-    "category_top": [ { "category_id": 10, "category__name": "吧唧", "category__path_name": "徽章/吧唧", "category__color_tag": null, "goods_count": 3, "quantity_sum": 6, "value_sum": "150.00" } ]
+    "status": [{ "status": "in_cabinet", "label": "在馆", "goods_count": 20, "quantity_sum": 28 }],
+    "is_official": [{ "is_official": true, "label": "官谷", "goods_count": 22, "quantity_sum": 30 }],
+    "category_top": [{ "category_id": 2, "category__name": "立牌", "goods_count": 10, "quantity_sum": 12, "value_sum": "800.00" }]
   },
   "trends": {
-    "purchase_date": [ { "bucket": "2025-01-15", "goods_count": 2, "quantity_sum": 4, "value_sum": "100.00" } ],
-    "created_at": [ { "bucket": "2025-01-15", "goods_count": 1, "quantity_sum": 2 } ]
+    "purchase_date": [{ "bucket": "2024-01-01", "goods_count": 2, "quantity_sum": 3, "value_sum": "200.00" }],
+    "created_at": [{ "bucket": "2024-01-01", "goods_count": 5, "quantity_sum": 6 }]
   },
   "rankings": {
-    "global_top": [ { "id": 42, "name": "荧", "ip_name": "原神", "score": 88, "goods_count": 10, "quantity_sum": 25, "value_sum": "1000.00" } ],
-    "current": { "id": 42, "name": "荧", "ip_name": "原神", "score": 65, "goods_count": 5, "quantity_sum": 12, "value_sum": "350.00" }
+    "global_top": [{ "id": 5, "name": "流萤", "ip_name": "崩坏：星穹铁道", "score": 85, "goods_count": 25 }],
+    "current": { "id": 5, "name": "流萤", "ip_name": "崩坏：星穹铁道", "score": 85, "goods_count": 25 }
   }
 }
 ```
 
-**字段说明**：
-- `overview`：概览卡片（商品数、数量合计、金额合计、品类覆盖数）
-- `oshi_power`：厨力评分（0~100），基于价值(45%)、数量(25%)、商品数(20%)、品类广度(10%)的加权百分位排名
-  - `level`：0="未开厨"，1-19="初识"，20-39="心动"，40-59="上头"，60-79="本命"，80+="神推"
-- `ip_heat`：IP 热度，分为全平台（`platform_heat`，所有用户数据）和个人（`my_heat`，仅当前用户）
-  - `level`：0="无热度"，1-29="小众"，30-59="升温"，60-79="热门"，80+="爆热"
-- `distributions`：状态 / 官谷非官谷 / 品类 TopN 分布
-- `trends`：入手日期和创建日期的时间趋势
-- `rankings`：全角色排行榜（Top50）及当前角色的排名位置
+##### 字段说明
+
+| 字段名          | 类型   | 说明                                                                 |
+| --------------- | ------ | -------------------------------------------------------------------- |
+| `character`     | object | 角色基本信息（同 5.2.2 响应格式）                                    |
+| `overview`      | object | 概览卡片：`goods_count`（谷子种数）、`quantity_sum`（总数量）、`value_sum`（总金额）、`category_count`（覆盖品类数） |
+| `oshi_power`    | object | **推し力评分**：基于数量、金额、品类覆盖度等计算的用户个人评分       |
+| `score`         | int    | 推し力综合评分（0~100）                                              |
+| `level`         | string | 推し力等级：未开厨 / 初识 / 心动 / 上头 / 本命 / 神推                |
+| `rank`          | int    | 在所有角色中的排名                                                   |
+| `total_characters` | int | 参与排行的角色总数                                                |
+| `components`    | object | 各维度百分位贡献明细（`{value, quantity, goods_count, category_breadth}`） |
+| `ip_heat`       | object | **作品热度**：分全站热度（`platform_heat`）和个人热度（`my_heat`）   |
+| `platform_heat` | object | 全站热度：基于收藏人数、总数量等计算的 IP 热度                       |
+| `my_heat`       | object | 个人热度：基于个人收藏、品类覆盖等计算的 IP 热度                     |
+| `level`         | string | 热度等级：无热度 / 小众 / 升温 / 热门 / 爆热                         |
+| `distributions` | object | 各类分布（状态、官非、品类 Top10）                                   |
+| `trends`        | object | 时间趋势（入手日期、创建日期）                                       |
+| `rankings`      | object | 角色排行（全站 Top10 + 当前角色排名）                                |
+
+> **推し力说明**：推し力评分基于用户个人的角色收藏数据，包括金额（45%权重）、总数量（25%）、谷子种数（20%）、品类覆盖（10%）四个维度，综合百分位算法计算。0 分表示无收藏，100 分为满分。
+>
+> **热度说明**：全站热度基于所有用户的收藏数据计算，包括收藏人数（45%）、总数量（20%）、谷子种数（15%）、金额（10%）、近期活跃度（10%）。
 
 ---
 
@@ -2629,10 +2604,12 @@ gender: female
 | `parent`     | int    | 父级品类 ID，精确过滤，例如 `/api/categories/?parent=1`              |
 | `parent__isnull` | boolean | 是否根节点，`true` 表示只获取顶层品类（没有父节点的品类）        |
 | `search`     | string | 轻量搜索：在 `name`、`path_name` 上匹配                             |
+| `goods_count_scope` | string | 管理员专用，设为 `all` 时统计全站谷子数量（默认按当前用户统计） |
 
 > 示例：
 > - 获取所有顶层品类：`GET /api/categories/?parent__isnull=true`
 > - 获取某个品类下的所有子品类：`GET /api/categories/?parent=1`
+> - 管理员查看全站品类谷子统计：`GET /api/categories/?goods_count_scope=all`
 
 ##### 响应示例
 
@@ -2644,7 +2621,8 @@ gender: female
     "parent": null,
     "path_name": "周边",
     "color_tag": "#FF5733",
-    "order": 0
+    "order": 0,
+    "goods_count": 42
   },
   {
     "id": 2,
@@ -2652,7 +2630,8 @@ gender: female
     "parent": 1,
     "path_name": "周边/吧唧",
     "color_tag": "#33C3F0",
-    "order": 0
+    "order": 0,
+    "goods_count": 20
   },
   {
     "id": 3,
@@ -2660,7 +2639,8 @@ gender: female
     "parent": 2,
     "path_name": "周边/吧唧/圆形吧唧",
     "color_tag": null,
-    "order": 0
+    "order": 0,
+    "goods_count": 12
   },
   {
     "id": 4,
@@ -2668,7 +2648,8 @@ gender: female
     "parent": 1,
     "path_name": "周边/立牌",
     "color_tag": "#FFC300",
-    "order": 10
+    "order": 10,
+    "goods_count": 8
   }
 ]
 ```
@@ -2680,6 +2661,7 @@ gender: female
 - `path_name`：完整路径，如：`周边/吧唧/圆形吧唧`。
 - `color_tag`：颜色标签，用于UI展示，例如：`#FF5733`。可为 `null`。
 - `order`：排序值，控制同级节点的展示顺序，值越小越靠前。
+- `goods_count`：当前品类下（含所有子品类）的谷子总数量（`quantity` 汇总），默认按当前用户统计；草稿状态不统计。管理员可传 `?goods_count_scope=all` 查看全站。**该字段仅在列表和树接口返回，详情接口不返回**。
 
 ---
 
@@ -2873,9 +2855,15 @@ gender: female
   - 前端在内存中使用 `id`/`parent` 组装树结构（建议存入 Pinia/Vuex）。
   - 更新频率极低，后续可在此视图外层加缓存（例如 Redis）。
 
-##### 请求参数
+##### 请求参数（全部可选，同 5.3.1）
 
-无（后续如需分页/筛选再扩展）。
+| 参数名        | 类型   | 说明                                                                 |
+| ------------ | ------ | -------------------------------------------------------------------- |
+| `name`       | string | 按品类名精确或模糊匹配                                                |
+| `parent`     | int    | 父级品类 ID，精确过滤                                                 |
+| `parent__isnull` | boolean | 是否根节点                                                        |
+| `search`     | string | 轻量搜索                                                             |
+| `goods_count_scope` | string | 管理员专用，设为 `all` 时统计全站谷子数量                  |
 
 ##### 响应示例
 
@@ -2887,7 +2875,8 @@ gender: female
     "parent": null,
     "path_name": "周边",
     "color_tag": "#FF5733",
-    "order": 0
+    "order": 0,
+    "goods_count": 42
   },
   {
     "id": 2,
@@ -2895,7 +2884,8 @@ gender: female
     "parent": 1,
     "path_name": "周边/吧唧",
     "color_tag": "#33C3F0",
-    "order": 0
+    "order": 0,
+    "goods_count": 20
   },
   {
     "id": 3,
@@ -2903,7 +2893,8 @@ gender: female
     "parent": 2,
     "path_name": "周边/吧唧/圆形吧唧",
     "color_tag": null,
-    "order": 0
+    "order": 0,
+    "goods_count": 12
   },
   {
     "id": 4,
@@ -2911,7 +2902,8 @@ gender: female
     "parent": 1,
     "path_name": "周边/立牌",
     "color_tag": "#FFC300",
-    "order": 10
+    "order": 10,
+    "goods_count": 8
   }
 ]
 ```
@@ -3963,27 +3955,24 @@ gender: female
 本系统将展柜列表拆分为两个独立接口：
 
 1. **公共展柜**：`GET /api/showcases/public/`
-   - **说明**：获取所有**已公开**的展柜列表。无需登录即可访问。
+   - **说明**：获取所有**已公开**的展柜列表，随机返回 10 条。无需登录即可访问。
+   - **无分页**，不支持 `page` / `page_size` 参数。
    
 2. **私有展柜**：`GET /api/showcases/private/`
    - **说明**：获取**当前登录用户**的所有展柜列表（包含公开和私有）。需要登录。
+   - **支持分页**，详见下方参数。
 
-##### 查询参数（全部可选）
+##### 查询参数（全部可选，仅私有接口有效）
 
-| 参数名      | 类型   | 说明                                    |
-| ----------- | ------ | --------------------------------------- |
-| `page`      | int    | 分页页码，从 1 开始，例如 `?page=1`     |
-| `page_size` | int    | 每页数量，默认 20 条，最大 100 条        |
+| 参数名      | 类型 | 说明                                      |
+| ----------- | ---- | ----------------------------------------- |
+| `page`      | int  | 分页页码，从 1 开始，例如 `?page=1`       |
+| `page_size` | int  | 每页数量，默认 20 条，最大 100 条          |
 
-##### 响应示例（分页）
+##### 公共展柜响应示例（无分页）
 
 ```json
 {
-  "count": 5,
-  "page": 1,
-  "page_size": 20,
-  "next": null,
-  "previous": null,
   "results": [
     {
       "id": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
