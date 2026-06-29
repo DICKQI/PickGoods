@@ -160,3 +160,82 @@ div[class*="fab"]:active {
   outline: none !important;
 }
 
+.brand-add-btn {
+  --brand-add-bg: linear-gradient(135deg, var(--accent-purple) 0%, var(--accent-purple-hover) 100%);
+  --brand-add-shadow: var(--shadow-purple-soft);
+  --brand-add-shadow-hover: var(--shadow-purple-hover);
+  --brand-add-radius: 999px;
+  --brand-add-padding-y: 10px;
+  --brand-add-padding-x: 18px;
+  --brand-add-font-size: 14px;
+  --brand-add-font-weight: 600;
+  --brand-add-gap: 8px;
+  --brand-add-min-height: 40px;
+  --brand-add-icon-size: 16px;
+  --brand-add-focus-ring: 0 0 0 3px rgba(196, 181, 253, 0.34);
+  background: var(--brand-add-bg) !important;
+  border: none !important;
+  border-radius: var(--brand-add-radius) !important;
+  color: #fff !important;
+  box-shadow: var(--brand-add-shadow);
+  min-height: var(--brand-add-min-height);
+  padding: var(--brand-add-padding-y) var(--brand-add-padding-x) !important;
+  font-size: var(--brand-add-font-size) !important;
+  font-weight: var(--brand-add-font-weight) !important;
+  letter-spacing: 0.01em;
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    filter var(--transition-fast);
+}
+
+.brand-add-btn:hover,
+.brand-add-btn:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: var(--brand-add-shadow-hover), var(--brand-add-focus-ring);
+  filter: saturate(1.03);
+}
+
+.brand-add-btn:active {
+  transform: translateY(0);
+  box-shadow: var(--brand-add-shadow);
+}
+
+.brand-add-btn.is-disabled,
+.brand-add-btn.is-disabled:hover,
+.brand-add-btn[disabled],
+.brand-add-btn[disabled]:hover {
+  opacity: 0.6;
+  transform: none;
+  box-shadow: none;
+  filter: none;
+}
+
+.brand-add-btn .el-icon,
+.brand-add-btn [class*='el-icon'] {
+  font-size: var(--brand-add-icon-size);
+}
+
+.brand-add-btn--compact {
+  --brand-add-padding-y: 10px;
+  --brand-add-padding-x: 18px;
+  --brand-add-min-height: 40px;
+  --brand-add-font-size: 14px;
+}
+
+.brand-add-btn--hero {
+  --brand-add-padding-y: 12px;
+  --brand-add-padding-x: 24px;
+  --brand-add-min-height: 48px;
+  --brand-add-font-size: 15px;
+  --brand-add-shadow: 0 10px 24px rgba(142, 125, 255, 0.2);
+  --brand-add-shadow-hover: 0 14px 28px rgba(142, 125, 255, 0.28);
+}
+
+.brand-add-btn__content {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--brand-add-gap);
+  line-height: 1;
+}

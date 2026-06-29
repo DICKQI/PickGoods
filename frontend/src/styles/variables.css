@@ -13,6 +13,8 @@
   --accent-purple: #A29BFE;
   --accent-purple-light: #C4B5FD;
   --accent-purple-dark: #9980FA;
+  --accent-purple-hover: #8E7DFF;
+  --accent-purple-soft: #F6F4FF;
   
   /* 背景色 */
   --bg-white: #FFFFFF;
@@ -36,6 +38,8 @@
   --shadow-md: 0 4px 15px rgba(212, 175, 55, 0.15);
   --shadow-lg: 0 8px 20px rgba(212, 175, 55, 0.25);
   --shadow-purple: 0 4px 15px rgba(162, 155, 254, 0.5);
+  --shadow-purple-soft: 0 8px 18px rgba(142, 125, 255, 0.24);
+  --shadow-purple-hover: 0 10px 22px rgba(142, 125, 255, 0.32);
   
   /* 过渡动画 */
   --transition-fast: 0.2s ease;
@@ -67,4 +71,3 @@
   --z-admin-header: 50;
   --z-admin-overlay: 99;
 }
-

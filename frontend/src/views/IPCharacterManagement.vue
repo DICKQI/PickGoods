@@ -527,51 +527,67 @@
     <!-- BGM导入弹窗 (保持不变) -->
     <el-dialog
       v-model="bgmDialogVisible"
-      title="从Bangumi导入角色"
       :width="bgmDialogWidth"
       class="custom-dialog bgm-dialog"
       align-center
       :close-on-click-modal="false"
     >
+      <template #header>
+        <div class="bgm-dialog-header">
+          <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
+          <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+          <p class="bgm-dialog-subtitle">
+            从 Bangumi 获取角色资料并整理成可批量导入的候选列表，帮助你更快完成作品角色建档。
+          </p>
+        </div>
+      </template>
       <div class="bgm-import-container">
         <!-- 搜索阶段 -->
         <div v-if="bgmStep === 'search'" class="bgm-step-search">
-          <el-form @submit.prevent="handleBGMSearch">
-            <el-form-item label="IP作品名称">
-              <el-input
-                v-model="bgmSearchInput"
-                placeholder="例如：崩坏：星穹铁道"
-                clearable
-                @keyup.enter="handleBGMSearch"
-                :disabled="bgmSearching"
-              >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
-                </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="作品类型（可选）">
-              <el-select
-                v-model="bgmSubjectType"
-                placeholder="选择作品类型（不选则搜索所有类型）"
-                clearable
-                :disabled="bgmSearching"
-                style="width: 100%"
-              >
-                <el-option label="所有类型" :value="undefined" />
-                <el-option label="书籍" :value="1" />
-                <el-option label="动画" :value="2" />
-                <el-option label="音乐" :value="3" />
-                <el-option label="游戏" :value="4" />
-                <el-option label="三次元/特摄" :value="6" />
-              </el-select>
-            </el-form-item>
-            <div class="bgm-search-actions">
-              <el-button type="primary" @click="handleBGMSearch" :loading="bgmSearching" :disabled="!bgmSearchInput.trim()">
-                搜索BGM
-              </el-button>
-            </div>
-          </el-form>
+          <div class="bgm-flow-panel">
+            <el-form @submit.prevent="handleBGMSearch" class="bgm-search-form" label-width="136px">
+              <el-form-item label="IP作品名称">
+                <el-input
+                  v-model="bgmSearchInput"
+                  placeholder="例如：崩坏：星穹铁道"
+                  clearable
+                  @keyup.enter="handleBGMSearch"
+                  :disabled="bgmSearching"
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="作品类型（可选）">
+                <el-select
+                  v-model="bgmSubjectType"
+                  placeholder="选择作品类型（不选则搜索所有类型）"
+                  clearable
+                  :disabled="bgmSearching"
+                  style="width: 100%"
+                >
+                  <el-option label="所有类型" :value="undefined" />
+                  <el-option label="书籍" :value="1" />
+                  <el-option label="动画" :value="2" />
+                  <el-option label="音乐" :value="3" />
+                  <el-option label="游戏" :value="4" />
+                  <el-option label="三次元/特摄" :value="6" />
+                </el-select>
+              </el-form-item>
+              <div class="bgm-search-actions">
+                <el-button
+                  type="primary"
+                  class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"
+                  @click="handleBGMSearch"
+                  :loading="bgmSearching"
+                  :disabled="!bgmSearchInput.trim()"
+                >
+                  搜索BGM
+                </el-button>
+              </div>
+            </el-form>
+          </div>
         </div>
 
         <!-- 搜索中等待页面 -->
@@ -588,40 +604,42 @@
 
         <!-- 作品列表展示 -->
         <div v-if="bgmStep === 'subjects'" class="bgm-step-subjects">
-          <div class="results-header">
-            <h3>选择作品</h3>
-            <p class="results-subtitle">找到 {{ bgmSubjects.length }} 个相关作品，请点击选择一个</p>
-          </div>
-          <div class="bgm-subjects-list">
-             <div
-               v-for="subject in bgmSubjects"
-               :key="subject.id"
-               class="bgm-subject-item"
-               @click="handleBGMSelectSubject(subject)"
-             >
-                <el-image
-                  :src="subject.image"
-                  class="bgm-subject-cover"
-                  fit="cover"
-                  loading="lazy"
-                >
-                  <template #error>
-                    <div class="image-slot">
-                      <el-icon><Picture /></el-icon>
+          <div class="bgm-results-shell">
+            <div class="results-header">
+              <h3>选择作品</h3>
+              <p class="results-subtitle">找到 {{ bgmSubjects.length }} 个相关作品，请点击选择一个</p>
+            </div>
+            <div class="bgm-subjects-list">
+               <div
+                 v-for="subject in bgmSubjects"
+                 :key="subject.id"
+                 class="bgm-subject-item"
+                 @click="handleBGMSelectSubject(subject)"
+               >
+                  <el-image
+                    :src="subject.image"
+                    class="bgm-subject-cover"
+                    fit="cover"
+                    loading="lazy"
+                  >
+                    <template #error>
+                      <div class="image-slot">
+                        <el-icon><Picture /></el-icon>
+                      </div>
+                    </template>
+                  </el-image>
+                  <div class="bgm-subject-info">
+                    <h4 class="subject-name" :title="subject.name">{{ subject.name }}</h4>
+                    <div class="subject-meta">
+                      <el-tag size="small" type="info">{{ subject.type_name }}</el-tag>
+                      <span class="subject-cn" v-if="subject.name_cn && subject.name_cn !== subject.name">{{ subject.name_cn }}</span>
                     </div>
-                  </template>
-                </el-image>
-                <div class="bgm-subject-info">
-                  <h4 class="subject-name" :title="subject.name">{{ subject.name }}</h4>
-                  <div class="subject-meta">
-                    <el-tag size="small" type="info">{{ subject.type_name }}</el-tag>
-                    <span class="subject-cn" v-if="subject.name_cn && subject.name_cn !== subject.name">{{ subject.name_cn }}</span>
                   </div>
-                </div>
-                <div class="bgm-subject-arrow">
-                  <el-icon><ArrowRight /></el-icon>
-                </div>
-             </div>
+                  <div class="bgm-subject-arrow">
+                    <el-icon><ArrowRight /></el-icon>
+                  </div>
+               </div>
+            </div>
           </div>
         </div>
 
@@ -636,56 +654,58 @@
 
         <!-- 搜索结果展示 -->
         <div v-if="bgmStep === 'results'" class="bgm-step-results">
-          <div class="results-header">
-            <h3>搜索结果：{{ bgmSearchResult?.ip_name }}</h3>
-            <p class="results-subtitle">找到 {{ bgmSearchResult?.characters.length || 0 }} 个角色，请勾选需要导入的角色</p>
-          </div>
-          <div class="results-actions-top">
-            <el-button size="small" @click="handleBGMSelectAll">全选</el-button>
-            <el-button size="small" @click="handleBGMSelectNone">取消全选</el-button>
-            <span class="selected-count">已选择 {{ bgmSelectedCharacters.length }} 个角色</span>
-          </div>
-          <div class="results-filter">
-            <el-input
-              v-model="bgmCharacterKeyword"
-              size="small"
-              placeholder="按角色名搜索"
-              clearable
-              class="results-filter-input"
-            >
-              <template #prefix>
-                <el-icon><Search /></el-icon>
-              </template>
-            </el-input>
-          </div>
-          <div class="character-list-container">
-            <div
-              v-for="(char, index) in bgmSearchResult?.characters || []"
-              :key="index"
-              class="bgm-character-item"
-              :class="{ selected: bgmSelectedCharacters.includes(index) }"
-              v-show="
-                !bgmCharacterKeyword.trim() ||
-                char.name.toLowerCase().includes(bgmCharacterKeyword.trim().toLowerCase())
-              "
-              @click="handleBGMToggleCharacter(index)"
-            >
-              <el-checkbox
-                :model-value="bgmSelectedCharacters.includes(index)"
-                @change="handleBGMToggleCharacter(index)"
-                @click.stop
-              />
-              <el-avatar :size="50" :src="char.avatar || undefined" shape="square" class="char-avatar">
-                <el-icon><UserFilled /></el-icon>
-              </el-avatar>
-              <div class="char-info">
-                <div class="char-name">{{ char.name }}</div>
-                <div class="char-relation">{{ char.relation }}</div>
+          <div class="bgm-results-shell">
+            <div class="results-header">
+              <h3>搜索结果：{{ bgmSearchResult?.ip_name }}</h3>
+              <p class="results-subtitle">找到 {{ bgmSearchResult?.characters.length || 0 }} 个角色，请勾选需要导入的角色</p>
+            </div>
+            <div class="results-actions-top">
+              <el-button size="small" @click="handleBGMSelectAll">全选</el-button>
+              <el-button size="small" @click="handleBGMSelectNone">取消全选</el-button>
+              <span class="selected-count">已选择 {{ bgmSelectedCharacters.length }} 个角色</span>
+            </div>
+            <div class="results-filter">
+              <el-input
+                v-model="bgmCharacterKeyword"
+                size="small"
+                placeholder="按角色名搜索"
+                clearable
+                class="results-filter-input"
+              >
+                <template #prefix>
+                  <el-icon><Search /></el-icon>
+                </template>
+              </el-input>
+            </div>
+            <div class="character-list-container">
+              <div
+                v-for="(char, index) in bgmSearchResult?.characters || []"
+                :key="index"
+                class="bgm-character-item"
+                :class="{ selected: bgmSelectedCharacters.includes(index) }"
+                v-show="
+                  !bgmCharacterKeyword.trim() ||
+                  char.name.toLowerCase().includes(bgmCharacterKeyword.trim().toLowerCase())
+                "
+                @click="handleBGMToggleCharacter(index)"
+              >
+                <el-checkbox
+                  :model-value="bgmSelectedCharacters.includes(index)"
+                  @change="handleBGMToggleCharacter(index)"
+                  @click.stop
+                />
+                <el-avatar :size="50" :src="char.avatar || undefined" shape="square" class="char-avatar">
+                  <el-icon><UserFilled /></el-icon>
+                </el-avatar>
+                <div class="char-info">
+                  <div class="char-name">{{ char.name }}</div>
+                  <div class="char-relation">{{ char.relation }}</div>
+                </div>
               </div>
             </div>
-          </div>
-          <div v-if="!bgmSearchResult?.characters.length" class="empty-results">
-            <el-empty description="未找到角色信息" />
+            <div v-if="!bgmSearchResult?.characters.length" class="empty-results">
+              <el-empty description="未找到角色信息" />
+            </div>
           </div>
         </div>
 
@@ -706,7 +726,7 @@
           <div class="imported-content">
             <el-icon class="success-icon"><CircleCheck /></el-icon>
             <h3>导入完成！</h3>
-            <div class="import-summary">
+            <div class="import-summary bgm-summary-card">
               <p>成功创建：<strong>{{ bgmImportResult?.created || 0 }}</strong> 个角色</p>
               <p>已存在跳过：<strong>{{ bgmImportResult?.skipped || 0 }}</strong> 个角色</p>
             </div>
@@ -738,11 +758,12 @@
         </div>
       </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button v-if="bgmStep === 'search'" @click="bgmDialogVisible = false">取消</el-button>
-          <el-button v-if="bgmStep === 'subjects'" @click="handleBGMReset">返回搜索</el-button>
+        <div class="bgm-dialog-footer">
+          <el-button v-if="bgmStep === 'search'" class="bgm-dialog-cancel" @click="bgmDialogVisible = false">取消</el-button>
+          <el-button v-if="bgmStep === 'subjects'" class="bgm-dialog-cancel" @click="handleBGMReset">返回搜索</el-button>
           <el-button
             v-if="bgmStep === 'results'"
+            class="bgm-dialog-cancel"
             @click="bgmStep = 'subjects'"
           >
             返回作品列表
@@ -750,6 +771,7 @@
           <el-button
             v-if="bgmStep === 'results'"
             type="primary"
+            class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"
             @click="handleBGMConfirmImport"
             :disabled="bgmSelectedCharacters.length === 0"
             :loading="bgmImporting"
@@ -759,6 +781,7 @@
           <el-button
             v-if="bgmStep === 'imported'"
             type="primary"
+            class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"
             @click="handleBGMClose"
           >
             完成
@@ -770,66 +793,79 @@
     <!-- BGM 增量更新弹窗 -->
     <el-dialog
       v-model="bgmSyncDialogVisible"
-      title="从 Bangumi 更新角色"
       :width="bgmDialogWidth"
       class="custom-dialog bgm-dialog"
       align-center
       :close-on-click-modal="false"
     >
+      <template #header>
+        <div class="bgm-dialog-header">
+          <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
+          <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+          <p class="bgm-dialog-subtitle">
+            对比本地角色与 Bangumi 最新条目，预览差异后再应用更新，保持角色资料与关联信息一致。
+          </p>
+        </div>
+      </template>
       <div class="bgm-import-container">
         <!-- 步骤：未绑定 subject 时的搜索回填 -->
         <div v-if="bgmSyncStep === 'link_search'" class="bgm-step-search">
-          <el-alert
-            type="info"
-            :closable="false"
-            show-icon
-            class="bgm-sync-alert"
-          >
-            <template #title>
-              该作品尚未关联 Bangumi 条目。请搜索并选择对应的 BGM 作品以建立关联，后续更新将自动识别。
-            </template>
-          </el-alert>
-          <el-form @submit.prevent="handleBGMSyncSearch">
-            <el-form-item label="搜索关键词">
-              <el-input
-                v-model="bgmSyncSearchInput"
-                :placeholder="bgmSyncTargetIP?.name || '例如：崩坏：星穹铁道'"
-                clearable
-                @keyup.enter="handleBGMSyncSearch"
-                :disabled="bgmSyncSearching"
+          <div class="bgm-flow-panel">
+            <div class="bgm-sync-alert-card">
+              <el-alert
+                type="info"
+                :closable="false"
+                show-icon
+                class="bgm-sync-alert"
               >
-                <template #prefix>
-                  <el-icon><Search /></el-icon>
+                <template #title>
+                  该作品尚未关联 Bangumi 条目。请搜索并选择对应的 BGM 作品以建立关联，后续更新将自动识别。
                 </template>
-              </el-input>
-            </el-form-item>
-            <el-form-item label="作品类型（可选）">
-              <el-select
-                v-model="bgmSyncSubjectType"
-                placeholder="选择作品类型（不选则搜索所有类型）"
-                clearable
-                :disabled="bgmSyncSearching"
-                style="width: 100%"
-              >
-                <el-option label="所有类型" :value="undefined" />
-                <el-option label="书籍" :value="1" />
-                <el-option label="动画" :value="2" />
-                <el-option label="音乐" :value="3" />
-                <el-option label="游戏" :value="4" />
-                <el-option label="三次元/特摄" :value="6" />
-              </el-select>
-            </el-form-item>
-            <div class="bgm-search-actions">
-              <el-button
-                type="primary"
-                @click="handleBGMSyncSearch"
-                :loading="bgmSyncSearching"
-                :disabled="!bgmSyncSearchInput.trim()"
-              >
-                搜索BGM
-              </el-button>
+              </el-alert>
             </div>
-          </el-form>
+            <el-form @submit.prevent="handleBGMSyncSearch" class="bgm-search-form" label-width="136px">
+              <el-form-item label="搜索关键词">
+                <el-input
+                  v-model="bgmSyncSearchInput"
+                  :placeholder="bgmSyncTargetIP?.name || '例如：崩坏：星穹铁道'"
+                  clearable
+                  @keyup.enter="handleBGMSyncSearch"
+                  :disabled="bgmSyncSearching"
+                >
+                  <template #prefix>
+                    <el-icon><Search /></el-icon>
+                  </template>
+                </el-input>
+              </el-form-item>
+              <el-form-item label="作品类型（可选）">
+                <el-select
+                  v-model="bgmSyncSubjectType"
+                  placeholder="选择作品类型（不选则搜索所有类型）"
+                  clearable
+                  :disabled="bgmSyncSearching"
+                  style="width: 100%"
+                >
+                  <el-option label="所有类型" :value="undefined" />
+                  <el-option label="书籍" :value="1" />
+                  <el-option label="动画" :value="2" />
+                  <el-option label="音乐" :value="3" />
+                  <el-option label="游戏" :value="4" />
+                  <el-option label="三次元/特摄" :value="6" />
+                </el-select>
+              </el-form-item>
+              <div class="bgm-search-actions">
+                <el-button
+                  type="primary"
+                  class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"
+                  @click="handleBGMSyncSearch"
+                  :loading="bgmSyncSearching"
+                  :disabled="!bgmSyncSearchInput.trim()"
+                >
+                  搜索BGM
+                </el-button>
+              </div>
+            </el-form>
+          </div>
         </div>
 
         <!-- 步骤：搜索中 -->
@@ -843,30 +879,32 @@
 
         <!-- 步骤：选择 subject（仅未绑定时出现） -->
         <div v-if="bgmSyncStep === 'link_subjects'" class="bgm-step-subjects">
-          <div class="results-header">
-            <h3>选择作品</h3>
-            <p class="results-subtitle">找到 {{ bgmSyncSubjects.length }} 个相关作品，请点击选择一个进行关联</p>
-          </div>
-          <div class="bgm-subjects-list">
-            <div
-              v-for="subject in bgmSyncSubjects"
-              :key="subject.id"
-              class="bgm-subject-item"
-              @click="handleBGMSyncPickSubject(subject)"
-            >
-              <el-image :src="subject.image" class="bgm-subject-cover" fit="cover" loading="lazy">
-                <template #error>
-                  <div class="image-slot"><el-icon><Picture /></el-icon></div>
-                </template>
-              </el-image>
-              <div class="bgm-subject-info">
-                <h4 class="subject-name" :title="subject.name">{{ subject.name }}</h4>
-                <div class="subject-meta">
-                  <el-tag size="small" type="info">{{ subject.type_name }}</el-tag>
-                  <span class="subject-cn" v-if="subject.name_cn && subject.name_cn !== subject.name">{{ subject.name_cn }}</span>
+          <div class="bgm-results-shell">
+            <div class="results-header">
+              <h3>选择作品</h3>
+              <p class="results-subtitle">找到 {{ bgmSyncSubjects.length }} 个相关作品，请点击选择一个进行关联</p>
+            </div>
+            <div class="bgm-subjects-list">
+              <div
+                v-for="subject in bgmSyncSubjects"
+                :key="subject.id"
+                class="bgm-subject-item"
+                @click="handleBGMSyncPickSubject(subject)"
+              >
+                <el-image :src="subject.image" class="bgm-subject-cover" fit="cover" loading="lazy">
+                  <template #error>
+                    <div class="image-slot"><el-icon><Picture /></el-icon></div>
+                  </template>
+                </el-image>
+                <div class="bgm-subject-info">
+                  <h4 class="subject-name" :title="subject.name">{{ subject.name }}</h4>
+                  <div class="subject-meta">
+                    <el-tag size="small" type="info">{{ subject.type_name }}</el-tag>
+                    <span class="subject-cn" v-if="subject.name_cn && subject.name_cn !== subject.name">{{ subject.name_cn }}</span>
+                  </div>
                 </div>
+                <div class="bgm-subject-arrow"><el-icon><ArrowRight /></el-icon></div>
               </div>
-              <div class="bgm-subject-arrow"><el-icon><ArrowRight /></el-icon></div>
             </div>
           </div>
         </div>
@@ -882,75 +920,79 @@
 
         <!-- 步骤：预览 diff -->
         <div v-if="bgmSyncStep === 'preview' && bgmSyncPreview" class="bgm-step-results">
-          <div class="results-header">
-            <h3>更新预览：{{ bgmSyncPreview.bgm_subject_name }}</h3>
-            <p class="results-subtitle">
-              本地「{{ bgmSyncPreview.ip_name }}」与 BGM 比对结果：
-              新增 <strong>{{ bgmSyncPreview.summary.new || 0 }}</strong> ·
-              回填ID <strong>{{ bgmSyncPreview.summary.link_by_name || 0 }}</strong> ·
-              已关联 <strong>{{ bgmSyncPreview.summary.matched || 0 }}</strong> ·
-              本地独有 <strong>{{ bgmSyncPreview.summary.local_only || 0 }}</strong>
-            </p>
-          </div>
+          <div class="bgm-results-shell">
+            <div class="results-header">
+              <h3>更新预览：{{ bgmSyncPreview.bgm_subject_name }}</h3>
+              <p class="results-subtitle">
+                本地「{{ bgmSyncPreview.ip_name }}」与 BGM 比对结果：
+                新增 <strong>{{ bgmSyncPreview.summary.new || 0 }}</strong> ·
+                回填ID <strong>{{ bgmSyncPreview.summary.link_by_name || 0 }}</strong> ·
+                已关联 <strong>{{ bgmSyncPreview.summary.matched || 0 }}</strong> ·
+                本地独有 <strong>{{ bgmSyncPreview.summary.local_only || 0 }}</strong>
+              </p>
+            </div>
 
-          <div v-if="bgmSyncPreview.subject_type_will_update" class="bgm-sync-notice">
-            <el-alert type="warning" :closable="false" show-icon>
-              <template #title>
-                将更新本地作品类型为「{{ getSubjectTypeLabel(bgmSyncPreview.bgm_subject_type) }}」
-              </template>
-            </el-alert>
-          </div>
+            <div v-if="bgmSyncPreview.subject_type_will_update" class="bgm-sync-notice">
+              <div class="bgm-sync-alert-card">
+                <el-alert type="warning" :closable="false" show-icon>
+                  <template #title>
+                    将更新本地作品类型为「{{ getSubjectTypeLabel(bgmSyncPreview.bgm_subject_type) }}」
+                  </template>
+                </el-alert>
+              </div>
+            </div>
 
-          <div class="results-actions-top">
-            <el-button size="small" @click="handleBGMSyncSelectAllNew">全选新增</el-button>
-            <el-button size="small" @click="handleBGMSyncSelectNone">取消全选</el-button>
-            <span class="selected-count">已选择 {{ bgmSyncSelectedItems.length }} 项</span>
-          </div>
+            <div class="results-actions-top">
+              <el-button size="small" @click="handleBGMSyncSelectAllNew">全选新增</el-button>
+              <el-button size="small" @click="handleBGMSyncSelectNone">取消全选</el-button>
+              <span class="selected-count">已选择 {{ bgmSyncSelectedItems.length }} 项</span>
+            </div>
 
-          <div class="results-filter">
-            <el-input
-              v-model="bgmSyncFilter"
-              size="small"
-              placeholder="按角色名筛选"
-              clearable
-              class="results-filter-input"
-            >
-              <template #prefix><el-icon><Search /></el-icon></template>
-            </el-input>
-          </div>
+            <div class="results-filter">
+              <el-input
+                v-model="bgmSyncFilter"
+                size="small"
+                placeholder="按角色名筛选"
+                clearable
+                class="results-filter-input"
+              >
+                <template #prefix><el-icon><Search /></el-icon></template>
+              </el-input>
+            </div>
 
-          <div class="character-list-container bgm-sync-list">
-            <div
-              v-for="(item, idx) in bgmSyncPreview.items"
-              :key="idx"
-              class="bgm-character-item bgm-sync-item"
-              :class="[
-                `action-${item.action}`,
-                {
-                  selected: isBGMSyncItemSelected(idx),
-                  selectable: isBGMSyncItemSelectable(item),
-                },
-              ]"
-              v-show="!bgmSyncFilter.trim() || item.name.toLowerCase().includes(bgmSyncFilter.trim().toLowerCase())"
-              @click="handleBGMSyncToggle(idx)"
-            >
-              <el-checkbox
-                v-if="isBGMSyncItemSelectable(item)"
-                :model-value="isBGMSyncItemSelected(idx)"
-                @change="handleBGMSyncToggle(idx)"
-                @click.stop
-              />
-              <el-icon v-else class="sync-fixed-icon">
-                <CircleCheck v-if="item.action === 'matched'" />
-                <Minus v-else-if="item.action === 'local_only'" />
-                <Warning v-else-if="item.action === 'skipped_duplicate'" />
-              </el-icon>
-              <el-avatar :size="42" :src="item.avatar || undefined" shape="square" class="char-avatar">
-                <el-icon><UserFilled /></el-icon>
-              </el-avatar>
-              <div class="char-info">
-                <div class="char-name">{{ item.name }}</div>
-                <div class="char-relation">{{ getBGMSyncActionLabel(item.action) }}</div>
+            <div class="character-list-container bgm-sync-list">
+              <div
+                v-for="(item, idx) in bgmSyncPreview.items"
+                :key="idx"
+                class="bgm-character-item bgm-sync-item"
+                :class="[
+                  `action-${item.action}`,
+                  {
+                    selected: isBGMSyncItemSelected(idx),
+                    selectable: isBGMSyncItemSelectable(item),
+                  },
+                ]"
+                v-show="!bgmSyncFilter.trim() || item.name.toLowerCase().includes(bgmSyncFilter.trim().toLowerCase())"
+                @click="handleBGMSyncToggle(idx)"
+              >
+                <el-checkbox
+                  v-if="isBGMSyncItemSelectable(item)"
+                  :model-value="isBGMSyncItemSelected(idx)"
+                  @change="handleBGMSyncToggle(idx)"
+                  @click.stop
+                />
+                <el-icon v-else class="sync-fixed-icon">
+                  <CircleCheck v-if="item.action === 'matched'" />
+                  <Minus v-else-if="item.action === 'local_only'" />
+                  <Warning v-else-if="item.action === 'skipped_duplicate'" />
+                </el-icon>
+                <el-avatar :size="42" :src="item.avatar || undefined" shape="square" class="char-avatar">
+                  <el-icon><UserFilled /></el-icon>
+                </el-avatar>
+                <div class="char-info">
+                  <div class="char-name">{{ item.name }}</div>
+                  <div class="char-relation">{{ getBGMSyncActionLabel(item.action) }}</div>
+                </div>
               </div>
             </div>
           </div>
@@ -970,7 +1012,7 @@
           <div class="imported-content">
             <el-icon class="success-icon"><CircleCheck /></el-icon>
             <h3>更新完成！</h3>
-            <div class="import-summary">
+            <div class="import-summary bgm-summary-card">
               <p>新增角色：<strong>{{ bgmSyncApplyResult.created_count }}</strong></p>
               <p>回填 ID：<strong>{{ bgmSyncApplyResult.linked_count }}</strong></p>
               <p v-if="bgmSyncApplyResult.subject_linked">已建立 BGM 关联</p>
@@ -1003,20 +1045,21 @@
       </div>
 
       <template #footer>
-        <div class="dialog-footer">
-          <el-button v-if="bgmSyncStep === 'link_search'" @click="bgmSyncDialogVisible = false">取消</el-button>
-          <el-button v-if="bgmSyncStep === 'link_subjects'" @click="handleBGMSyncResetToSearch">返回搜索</el-button>
-          <el-button v-if="bgmSyncStep === 'preview'" @click="bgmSyncDialogVisible = false">取消</el-button>
+        <div class="bgm-dialog-footer">
+          <el-button v-if="bgmSyncStep === 'link_search'" class="bgm-dialog-cancel" @click="bgmSyncDialogVisible = false">取消</el-button>
+          <el-button v-if="bgmSyncStep === 'link_subjects'" class="bgm-dialog-cancel" @click="handleBGMSyncResetToSearch">返回搜索</el-button>
+          <el-button v-if="bgmSyncStep === 'preview'" class="bgm-dialog-cancel" @click="bgmSyncDialogVisible = false">取消</el-button>
           <el-button
             v-if="bgmSyncStep === 'preview'"
             type="primary"
+            class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"
             @click="handleBGMSyncApply"
             :disabled="bgmSyncSelectedItems.length === 0 && !bgmSyncPreview?.subject_type_will_update && !bgmSyncPreview?.will_link_subject"
             :loading="bgmSyncApplying"
           >
             应用更新 ({{ bgmSyncSelectedItems.length }})
           </el-button>
-          <el-button v-if="bgmSyncStep === 'done'" type="primary" @click="handleBGMSyncClose">完成</el-button>
+          <el-button v-if="bgmSyncStep === 'done'" type="primary" class="bgm-dialog-submit brand-add-btn brand-add-btn--compact" @click="handleBGMSyncClose">完成</el-button>
         </div>
       </template>
     </el-dialog>
@@ -1692,6 +1735,7 @@ const characterFormRules: FormRules = {
 
 // BGM导入相关
 const bgmDialogVisible = ref(false)
+const bgmDialogMode = computed<'import' | 'sync'>(() => (bgmDialogVisible.value ? 'import' : 'sync'))
 type BGMStep = 'search' | 'searching' | 'subjects' | 'loading-characters' | 'results' | 'importing' | 'imported'
 const bgmStep = ref<BGMStep>('search')
 const bgmSearchInput = ref('')
@@ -3759,105 +3803,310 @@ const handleBGMSyncClose = () => {
   }
 }
 
-/* BGM导入对话框样式 */
+/* BGM导入/更新对话框样式 */
+.bgm-dialog :deep(.el-dialog) {
+  padding: 0;
+  overflow: hidden;
+  border-radius: 30px;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.985), rgba(249, 247, 255, 0.97));
+  box-shadow:
+    0 28px 70px rgba(41, 34, 24, 0.18),
+    0 10px 24px rgba(41, 34, 24, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.bgm-dialog :deep(.el-dialog__header) {
+  margin-right: 0;
+  padding: 28px 30px 18px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.bgm-dialog :deep(.el-dialog__headerbtn) {
+  top: 22px;
+  right: 24px;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  transition: background-color var(--transition-fast), transform var(--transition-fast);
+}
+
+.bgm-dialog :deep(.el-dialog__headerbtn:hover) {
+  background: rgba(162, 155, 254, 0.14);
+  transform: rotate(90deg);
+}
+
+.bgm-dialog :deep(.el-dialog__headerbtn .el-dialog__close) {
+  color: #7d7892;
+  font-size: 16px;
+}
+
 .bgm-dialog :deep(.el-dialog__body) {
-  padding: 24px;
-  min-height: 400px;
+  padding: 24px 30px 0;
+  min-height: 420px;
+}
+
+.bgm-dialog :deep(.el-dialog__footer) {
+  padding: 18px 30px 24px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: inset 0 18px 24px -28px rgba(212, 175, 55, 0.28);
+}
+
+.bgm-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  max-width: 560px;
+}
+
+.bgm-dialog-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(162, 155, 254, 0.12);
+  color: #7c6fda;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bgm-dialog-title {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.12;
+  font-weight: 700;
+  color: #2f2a20;
+}
+
+.bgm-dialog-subtitle {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
+  color: #7a748c;
 }
 
 .bgm-import-container {
   width: 100%;
 }
 
-/* 搜索阶段 */
-.bgm-step-search {
-  padding: 20px 0;
+.bgm-flow-panel,
+.bgm-results-shell,
+.bgm-summary-card {
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: 22px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.88)),
+    radial-gradient(circle at top right, rgba(162, 155, 254, 0.1), transparent 32%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.bgm-flow-panel,
+.bgm-results-shell {
+  padding: 22px 22px 20px;
+}
+
+.bgm-summary-card {
+  padding: 18px 20px;
+}
+
+.bgm-search-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.bgm-search-form :deep(.el-form-item__content) {
+  min-width: 0;
+}
+
+.bgm-search-form :deep(.el-form-item) {
+  margin-bottom: 0;
+  align-items: center;
+}
+
+.bgm-search-form :deep(.el-form-item__label) {
+  color: #5f5874;
+  display: inline-flex;
+  align-items: center;
+  font-weight: 700;
+  line-height: 1.2;
+  min-height: 40px;
+  padding-right: 18px;
+  white-space: nowrap;
+}
+
+.bgm-search-form :deep(.el-input__wrapper),
+.bgm-search-form :deep(.el-select__wrapper),
+.results-filter-input :deep(.el-input__wrapper) {
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  background: rgba(255, 255, 255, 0.84);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px rgba(162, 155, 254, 0.06);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.bgm-search-form :deep(.el-input__wrapper),
+.results-filter-input :deep(.el-input__wrapper) {
+  padding: 6px 12px;
+}
+
+.bgm-search-form :deep(.el-input__wrapper:hover),
+.bgm-search-form :deep(.el-select__wrapper:hover),
+.results-filter-input :deep(.el-input__wrapper:hover) {
+  border-color: rgba(162, 155, 254, 0.24);
+}
+
+.bgm-search-form :deep(.el-input__wrapper.is-focus),
+.bgm-search-form :deep(.el-select__wrapper.is-focused),
+.results-filter-input :deep(.el-input__wrapper.is-focus) {
+  border-color: rgba(162, 155, 254, 0.46);
+  box-shadow:
+    0 0 0 3px rgba(196, 181, 253, 0.2),
+    0 12px 28px rgba(162, 155, 254, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.bgm-search-form :deep(.el-input__inner::placeholder),
+.results-filter-input :deep(.el-input__inner::placeholder) {
+  color: #b1adbf;
+}
+
+.bgm-step-search,
+.bgm-step-results,
+.bgm-step-subjects {
+  padding: 6px 0 2px;
 }
 
 .bgm-search-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: 16px;
+  margin-top: 4px;
+  padding-left: 136px;
 }
 
-/* 搜索中等待页面 */
-.bgm-step-searching {
+.bgm-step-searching,
+.bgm-step-importing,
+.bgm-step-imported {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 400px;
-  padding: 40px 20px;
+  min-height: 420px;
+  padding: 28px 18px;
 }
 
-.searching-content {
+.searching-content,
+.importing-content,
+.imported-content {
+  width: min(100%, 520px);
   text-align: center;
-  max-width: 400px;
 }
 
-.searching-icon {
+.searching-icon,
+.importing-icon,
+.success-icon {
   font-size: 64px;
-  color: #a396ff;
+  margin-bottom: 18px;
+}
+
+.searching-icon,
+.importing-icon {
+  color: #8f82eb;
   animation: rotate 2s linear infinite;
-  margin-bottom: 20px;
+}
+
+.success-icon {
+  color: #67c23a;
 }
 
 @keyframes rotate {
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }
 }
 
-.searching-content h3 {
-  margin: 16px 0 8px;
-  font-size: 18px;
-  color: #303133;
+.searching-content h3,
+.importing-content h3,
+.imported-content h3 {
+  margin: 0 0 10px;
+  font-size: 22px;
+  color: #2f2a20;
 }
 
-.searching-content p {
-  color: #909399;
+.searching-content p,
+.importing-content p,
+.results-subtitle,
+.detail-status {
+  color: #8f899f;
+}
+
+.searching-content p,
+.importing-content p {
   font-size: 14px;
-  margin-bottom: 24px;
+  line-height: 1.7;
+  margin: 0 0 24px;
 }
 
-.searching-progress {
+.searching-progress,
+.importing-progress {
   width: 100%;
 }
 
-/* 搜索结果展示 */
-.bgm-step-results {
-  padding: 20px 0;
+.searching-content :deep(.el-progress-bar__outer),
+.importing-content :deep(.el-progress-bar__outer) {
+  background: rgba(162, 155, 254, 0.12);
+}
+
+.searching-content :deep(.el-progress-bar__inner),
+.importing-content :deep(.el-progress-bar__inner) {
+  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
 }
 
 .results-header {
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 
 .results-header h3 {
-  font-size: 18px;
-  color: #303133;
   margin: 0 0 8px;
+  font-size: 22px;
+  line-height: 1.2;
+  color: #2f2a20;
 }
 
 .results-subtitle {
-  color: #909399;
-  font-size: 14px;
   margin: 0;
+  font-size: 14px;
+  line-height: 1.7;
 }
 
 .results-actions-top {
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-bottom: 16px;
-  padding-bottom: 16px;
-  border-bottom: 1px solid #f2f6fc;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+}
+
+.results-actions-top :deep(.el-button) {
+  border-radius: 999px;
+  border-color: rgba(162, 155, 254, 0.18);
+  color: #6a6578;
+  background: rgba(255, 255, 255, 0.78);
 }
 
 .results-filter {
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .results-filter-input :deep(.el-input__wrapper) {
@@ -3866,12 +4115,13 @@ const handleBGMSyncClose = () => {
 
 .selected-count {
   margin-left: auto;
-  color: #606266;
-  font-size: 14px;
+  color: #6f6982;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .character-list-container {
-  max-height: 400px;
+  max-height: 420px;
   overflow-y: auto;
   padding-right: 8px;
 }
@@ -3879,126 +4129,86 @@ const handleBGMSyncClose = () => {
 .bgm-character-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  border: 1px solid #f2f6fc;
-  border-radius: 8px;
-  margin-bottom: 8px;
+  gap: 14px;
+  padding: 14px 14px 14px 12px;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: 18px;
+  margin-bottom: 10px;
   cursor: pointer;
-  transition: all 0.2s;
-  background: #fff;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.88)),
+    radial-gradient(circle at top right, rgba(162, 155, 254, 0.08), transparent 34%);
 }
 
 .bgm-character-item:hover {
-  border-color: #a396ff;
-  background: #f6f4ff;
+  transform: translateY(-1px);
+  border-color: rgba(162, 155, 254, 0.28);
+  box-shadow: 0 12px 26px rgba(162, 155, 254, 0.1);
 }
 
 .bgm-character-item.selected {
-  border-color: #a396ff;
-  background: linear-gradient(135deg, #f6f4ff 0%, #ebe7ff 100%);
-  box-shadow: 0 2px 8px rgba(163, 150, 255, 0.2);
+  border-color: rgba(162, 155, 254, 0.48);
+  background:
+    linear-gradient(135deg, rgba(246, 244, 255, 0.98), rgba(239, 234, 255, 0.96)),
+    radial-gradient(circle at right top, rgba(162, 155, 254, 0.15), transparent 34%);
+  box-shadow:
+    0 16px 28px rgba(162, 155, 254, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+.bgm-character-item :deep(.el-checkbox) {
+  margin-right: 2px;
+}
+
+.bgm-character-item :deep(.el-checkbox__inner) {
+  border-color: rgba(162, 155, 254, 0.36);
+}
+
+.bgm-character-item :deep(.el-checkbox__input.is-checked .el-checkbox__inner) {
+  background-color: #8f82eb;
+  border-color: #8f82eb;
+}
+
+.bgm-character-item .char-avatar {
+  border-radius: 16px;
+  box-shadow: 0 10px 20px -14px rgba(41, 34, 24, 0.35);
 }
 
 .bgm-character-item .char-info {
   flex: 1;
+  min-width: 0;
 }
 
 .bgm-character-item .char-name {
-  font-size: 15px;
-  font-weight: 500;
-  color: #303133;
   margin-bottom: 4px;
+  font-size: 15px;
+  font-weight: 700;
+  color: #322c21;
 }
 
 .bgm-character-item .char-relation {
   font-size: 12px;
-  color: #909399;
+  line-height: 1.6;
+  color: #8f899f;
 }
 
 .empty-results {
-  padding: 40px 0;
+  padding: 34px 0 8px;
 }
 
-/* 导入中 */
-.bgm-step-importing {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  padding: 40px 20px;
-}
-
-.importing-content {
-  text-align: center;
-  max-width: 400px;
-}
-
-.importing-icon {
-  font-size: 64px;
-  color: #a396ff;
-  animation: rotate 2s linear infinite;
-  margin-bottom: 20px;
-}
-
-.importing-content h3 {
-  margin: 16px 0 8px;
-  font-size: 18px;
-  color: #303133;
-}
-
-.importing-content p {
-  color: #909399;
-  font-size: 14px;
-  margin-bottom: 24px;
-}
-
-.importing-progress {
-  width: 100%;
-}
-
-/* 导入完成 */
-.bgm-step-imported {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 400px;
-  padding: 40px 20px;
-}
-
-.imported-content {
-  text-align: center;
-  max-width: 500px;
-  width: 100%;
-}
-
-.success-icon {
-  font-size: 64px;
-  color: #67c23a;
-  margin-bottom: 20px;
-}
-
-.imported-content h3 {
-  margin: 16px 0 24px;
-  font-size: 20px;
-  color: #303133;
-}
-
-.import-summary {
-  background: #f8f9fc;
-  padding: 20px;
-  border-radius: 8px;
+.bgm-summary-card {
   margin-bottom: 20px;
 }
 
 .import-summary p {
   margin: 8px 0;
   font-size: 15px;
-  color: #606266;
+  color: #5f5874;
 }
 
 .import-summary strong {
-  color: #a396ff;
+  color: #8f82eb;
   font-size: 18px;
 }
 
@@ -4007,11 +4217,29 @@ const handleBGMSyncClose = () => {
   margin-top: 20px;
 }
 
+.import-details :deep(.el-collapse) {
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.import-details :deep(.el-collapse-item__header) {
+  padding: 0 16px;
+  font-weight: 700;
+  color: #5f5874;
+  background: rgba(249, 247, 255, 0.82);
+}
+
+.import-details :deep(.el-collapse-item__wrap) {
+  background: rgba(255, 255, 255, 0.94);
+}
+
 .detail-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 0;
+  gap: 10px;
+  padding: 10px 0;
   font-size: 14px;
 }
 
@@ -4033,12 +4261,27 @@ const handleBGMSyncClose = () => {
 
 .detail-text {
   flex: 1;
-  color: #606266;
+  color: #5f5874;
 }
 
 .detail-status {
-  color: #909399;
   font-size: 12px;
+}
+
+.bgm-sync-alert-card {
+  margin-bottom: 18px;
+}
+
+.bgm-sync-alert-card :deep(.el-alert) {
+  border-radius: 16px;
+  border: 1px solid rgba(162, 155, 254, 0.18);
+  background: linear-gradient(135deg, rgba(248, 246, 255, 0.96), rgba(243, 239, 255, 0.94));
+  padding: 12px 14px;
+}
+
+.bgm-sync-alert-card :deep(.el-alert__title) {
+  line-height: 1.6;
+  color: #5f5874;
 }
 
 /* 作品列表样式 */
@@ -4048,37 +4291,40 @@ const handleBGMSyncClose = () => {
   gap: 16px;
   overflow-y: auto;
   max-height: 500px;
-  padding: 4px 4px 12px 4px; /* 底部增加padding防止阴影被切 */
+  padding: 4px 4px 12px;
 }
 
 .bgm-subject-item {
   display: flex;
-  background: #fff;
-  border-radius: 12px;
-  border: 1px solid #ebeef5;
+  height: 116px;
+  position: relative;
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
-  height: 110px;
-  position: relative;
+  border-radius: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.88)),
+    radial-gradient(circle at top right, rgba(162, 155, 254, 0.08), transparent 32%);
+  box-shadow: 0 10px 26px -22px rgba(41, 34, 24, 0.28);
+  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
 }
 
 .bgm-subject-item:hover {
-  border-color: #a396ff;
-  box-shadow: 0 8px 16px -4px rgba(163, 150, 255, 0.2);
   transform: translateY(-2px);
+  border-color: rgba(162, 155, 254, 0.26);
+  box-shadow: 0 18px 30px -22px rgba(162, 155, 254, 0.28);
   z-index: 1;
 }
 
 .bgm-subject-cover {
-  width: 80px;
+  width: 84px;
   height: 100%;
   flex-shrink: 0;
   background: #f5f7fa;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-right: 1px solid #f2f6fc;
+  border-right: 1px solid rgba(212, 175, 55, 0.08);
 }
 
 .bgm-subject-cover :deep(img) {
@@ -4103,20 +4349,20 @@ const handleBGMSyncClose = () => {
 
 .bgm-subject-info {
   flex: 1;
-  padding: 12px 14px;
+  min-width: 0;
+  padding: 14px 14px 14px 16px;
   display: flex;
   flex-direction: column;
   justify-content: center;
   overflow: hidden;
-  min-width: 0;
 }
 
 .subject-name {
   margin: 0 0 8px;
   font-size: 15px;
   line-height: 1.4;
-  font-weight: 600;
-  color: #303133;
+  font-weight: 700;
+  color: #322c21;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4129,9 +4375,16 @@ const handleBGMSyncClose = () => {
   align-items: center;
 }
 
+.subject-meta :deep(.el-tag) {
+  border-radius: 999px;
+  border-color: rgba(162, 155, 254, 0.18);
+  color: #6f63d5;
+  background: rgba(162, 155, 254, 0.08);
+}
+
 .subject-cn {
   font-size: 12px;
-  color: #909399;
+  color: #8f899f;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4139,17 +4392,41 @@ const handleBGMSyncClose = () => {
 }
 
 .bgm-subject-arrow {
-  width: 32px;
+  width: 40px;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #dcdfe6;
-  transition: all 0.2s;
+  color: #c7c1d9;
+  transition: color var(--transition-fast), transform var(--transition-fast);
 }
 
 .bgm-subject-item:hover .bgm-subject-arrow {
-  color: #a396ff;
+  color: #8f82eb;
   transform: translateX(-2px);
+}
+
+.bgm-dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.bgm-dialog-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  border-color: rgba(162, 155, 254, 0.18);
+  color: #6a6578;
+  background: rgba(255, 255, 255, 0.78);
+  min-height: 40px;
+  padding: 10px 18px;
+}
+
+.bgm-dialog-submit {
+  min-width: 112px;
+  box-shadow: 0 12px 24px rgba(162, 155, 254, 0.18);
 }
 
 /* 响应式适配 */

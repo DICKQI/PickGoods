@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
+import { ElMessageBox } from 'element-plus'
 import JournalWorkspace from '@/components/journal/JournalWorkspace.vue'
 import type { JournalBook, JournalLayer, JournalPage } from '@/api/types'
 
@@ -92,7 +93,10 @@ const mountWorkspace = () => mount(JournalWorkspace, {
     stubs: {
       JournalGoodsPicker: true,
       'el-alert': true,
-      'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+      'el-button': {
+        emits: ['click'],
+        template: '<button v-bind="$attrs" @click="$emit(\'click\')"><slot /></button>',
+      },
       'el-drawer': { template: '<section class="drawer-stub"><slot /></section>' },
       'el-empty': { template: '<div><slot /></div>' },
       'el-icon': { template: '<i><slot /></i>' },
@@ -126,6 +130,7 @@ describe('JournalWorkspace', () => {
     canvasState.distributeSelectedLayers.mockClear()
     canvasState.toggleLayerLock.mockClear()
     canvasState.toggleLayerVisibility.mockClear()
+    vi.spyOn(ElMessageBox, 'prompt').mockResolvedValue({ value: '我的手帐' } as never)
   })
 
   it('shows a visual save status indicator for saved, dirty, and saving states', async () => {
@@ -220,5 +225,91 @@ describe('JournalWorkspace', () => {
     expect(canvasState.alignSelectedLayers).toHaveBeenCalledWith('left')
     expect(canvasState.distributeSelectedLayers).toHaveBeenCalledWith('horizontal')
     expect(canvasState.toggleLayerLock).toHaveBeenCalledWith('sticker-1')
+  })
+
+  it('shows only the empty-state create entry when there is no active page', async () => {
+    const wrapper = mountWorkspace()
+    await nextTick()
+
+    const emptyCreateButton = wrapper.get('[data-test="journal-create-book-empty"]')
+
+    expect(wrapper.find('[data-test="journal-create-book-top"]').exists()).toBe(false)
+    expect(emptyCreateButton.classes()).toContain('brand-add-btn')
+    expect(emptyCreateButton.classes()).toContain('brand-add-btn--hero')
+  })
+
+  it('shows only the top create entry after a book page is active', async () => {
+    journalStore.books = [{
+      id: 'book-1',
+      title: '旅行手帐',
+      cover_image: '/media/journals/covers/a.png',
+      page_count: 1,
+    }]
+    journalStore.activeBookId = 'book-1'
+    journalStore.activeBook = journalStore.books[0]
+    journalStore.activePageId = 'page-1'
+    journalStore.activePage = {
+      id: 'page-1',
+      book: 'book-1',
+      title: '第 1 页',
+      page_no: 1,
+      width: 1080,
+      height: 1440,
+      background: '#fffaf0',
+      background_style: 'plain',
+      content: { version: 2, layers: [] },
+      revision: 1,
+      preview_image: null,
+      created_at: '2026-06-26T00:00:00Z',
+      updated_at: '2026-06-26T00:00:00Z',
+    }
+
+    const wrapper = mountWorkspace()
+    await nextTick()
+
+    const topCreateButton = wrapper.get('[data-test="journal-create-book-top"]')
+
+    expect(topCreateButton.classes()).toContain('brand-add-btn')
+    expect(topCreateButton.classes()).toContain('brand-add-btn--compact')
+    expect(wrapper.find('[data-test="journal-create-book-empty"]').exists()).toBe(false)
+  })
+
+  it('keeps the currently visible create-book entry wired to createBook', async () => {
+    const wrapper = mountWorkspace()
+    await nextTick()
+
+    await wrapper.get('[data-test="journal-create-book-empty"]').trigger('click')
+
+    expect(journalStore.createBook).toHaveBeenCalledTimes(1)
+
+    journalStore.books = [{
+      id: 'book-1',
+      title: '旅行手帐',
+      cover_image: '/media/journals/covers/a.png',
+      page_count: 1,
+    }]
+    journalStore.activeBookId = 'book-1'
+    journalStore.activeBook = journalStore.books[0]
+    journalStore.activePageId = 'page-1'
+    journalStore.activePage = {
+      id: 'page-1',
+      book: 'book-1',
+      title: '第 1 页',
+      page_no: 1,
+      width: 1080,
+      height: 1440,
+      background: '#fffaf0',
+      background_style: 'plain',
+      content: { version: 2, layers: [] },
+      revision: 1,
+      preview_image: null,
+      created_at: '2026-06-26T00:00:00Z',
+      updated_at: '2026-06-26T00:00:00Z',
+    }
+    await nextTick()
+
+    await wrapper.get('[data-test="journal-create-book-top"]').trigger('click')
+
+    expect(journalStore.createBook).toHaveBeenCalledTimes(2)
   })
 })

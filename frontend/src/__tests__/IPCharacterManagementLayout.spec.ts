@@ -91,4 +91,58 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('grid-row: 2;')
     expect(source).not.toContain('.search-flex,\n  .filter-flex {\n    flex-direction: column;')
   })
+
+  it('uses a branded header shell for both Bangumi import and sync dialogs instead of plain title strings', () => {
+    expect(source).toContain('class="custom-dialog bgm-dialog"')
+    expect(source).toContain('<template #header>')
+    expect(source).toContain('class="bgm-dialog-header"')
+    expect(source).toContain('class="bgm-dialog-kicker"')
+    expect(source).toContain('class="bgm-dialog-title"')
+    expect(source).toContain('class="bgm-dialog-subtitle"')
+    expect(source).toContain("{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}")
+    expect(source).toContain("{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}")
+  })
+
+  it('wraps Bangumi search stages in a branded flow panel and uses a shared footer action bar', () => {
+    expect(source).toContain('class="bgm-flow-panel"')
+    expect(source).toContain('class="bgm-search-form"')
+    expect(source.match(/label-width="136px"/g)?.length).toBe(2)
+    expect(source).toContain('white-space: nowrap;')
+    expect(source).toContain('class="bgm-dialog-footer"')
+    expect(source).toContain('class="bgm-dialog-cancel"')
+    expect(source).toContain('class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"')
+    expect(source.match(/class="bgm-dialog-footer"/g)?.length).toBe(2)
+  })
+
+  it('vertically centers Bangumi form labels with their input controls', () => {
+    expect(source).toContain('.bgm-search-form :deep(.el-form-item__label) {')
+    expect(source).toContain('display: inline-flex;')
+    expect(source).toContain('align-items: center;')
+    expect(source).toContain('min-height: 40px;')
+  })
+
+  it('keeps Bangumi footer actions aligned on the same height and center axis', () => {
+    const footerRuleStart = source.indexOf('.bgm-dialog-footer {')
+    const footerRuleEnd = source.indexOf('}', footerRuleStart)
+    const footerRule = source.slice(footerRuleStart, footerRuleEnd)
+    const cancelRuleStart = source.indexOf('.bgm-dialog-cancel {')
+    const cancelRuleEnd = source.indexOf('}', cancelRuleStart)
+    const cancelRule = source.slice(cancelRuleStart, cancelRuleEnd)
+
+    expect(footerRuleStart).toBeGreaterThan(-1)
+    expect(cancelRuleStart).toBeGreaterThan(-1)
+    expect(footerRule).toContain('align-items: center;')
+    expect(cancelRule).toContain('display: inline-flex;')
+    expect(cancelRule).toContain('align-items: center;')
+    expect(cancelRule).toContain('justify-content: center;')
+    expect(cancelRule).toContain('min-height: 40px;')
+  })
+
+  it('keeps Bangumi sync alert, diff list, and result summary inside dedicated branded containers', () => {
+    expect(source).toContain('class="bgm-sync-alert-card"')
+    expect(source).toContain('class="bgm-results-shell"')
+    expect(source).toContain('class="import-summary bgm-summary-card"')
+    expect(source).toContain('class="character-list-container bgm-sync-list"')
+    expect(source).toContain('class="bgm-character-item bgm-sync-item"')
+  })
 })

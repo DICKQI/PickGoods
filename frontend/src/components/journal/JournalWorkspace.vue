@@ -10,7 +10,13 @@
       </div>
       <div class="journal-actions">
         <input ref="coverInputRef" class="sr-only-input" type="file" accept="image/*" @change="handleCoverUpload" />
-        <el-button :loading="journalStore.saving" @click="createBook">
+        <el-button
+          v-if="journalStore.books.length > 0"
+          data-test="journal-create-book-top"
+          class="brand-add-btn brand-add-btn--compact journal-create-btn"
+          :loading="journalStore.saving"
+          @click="createBook"
+        >
           <el-icon class="el-icon--left"><Plus /></el-icon>
           新手帐
         </el-button>
@@ -150,7 +156,12 @@
             <i />
           </div>
           <el-empty description="创建一本手帐开始拼贴吧">
-            <el-button type="primary" class="btn-accent" @click="createBook">创建手帐</el-button>
+            <el-button
+              data-test="journal-create-book-empty"
+              type="primary"
+              class="brand-add-btn brand-add-btn--hero journal-create-btn journal-create-btn--hero"
+              @click="createBook"
+            >创建手帐</el-button>
           </el-empty>
         </div>
         <JournalCanvas
@@ -1223,6 +1234,14 @@ onBeforeUnmount(() => {
   justify-content: flex-end;
 }
 
+.journal-create-btn {
+  flex-shrink: 0;
+}
+
+.journal-create-btn--hero {
+  margin-top: 8px;
+}
+
 .journal-error {
   margin-top: -4px;
 }
@@ -1718,6 +1737,20 @@ onBeforeUnmount(() => {
 
   .journal-actions :deep(.el-button) {
     flex: 0 0 auto;
+  }
+
+  .journal-create-btn {
+    --brand-add-padding-y: 9px;
+    --brand-add-padding-x: 14px;
+    --brand-add-font-size: 13px;
+    --brand-add-min-height: 36px;
+  }
+
+  .journal-create-btn--hero {
+    --brand-add-padding-y: 11px;
+    --brand-add-padding-x: 20px;
+    --brand-add-font-size: 14px;
+    --brand-add-min-height: 44px;
   }
 
   .journal-layout {
