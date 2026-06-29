@@ -49,6 +49,8 @@ describe('JournalGoodsPicker', () => {
         stubs: {
           'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div />' },
           'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+          'el-option': { template: '<option><slot /></option>' },
+          'el-select': { props: ['modelValue'], emits: ['update:modelValue'], template: '<select><slot /></select>' },
           'el-skeleton': true,
           'el-empty': true,
           'el-image': true,
@@ -96,6 +98,8 @@ describe('JournalGoodsPicker', () => {
         stubs: {
           'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div />' },
           'el-button': { emits: ['click'], template: '<button class="load-more" @click="$emit(\'click\')"><slot /></button>' },
+          'el-option': { template: '<option><slot /></option>' },
+          'el-select': { props: ['modelValue'], emits: ['update:modelValue'], template: '<select><slot /></select>' },
           'el-skeleton': true,
           'el-empty': true,
           'el-image': { template: '<img />' },
@@ -127,6 +131,8 @@ describe('JournalGoodsPicker', () => {
         stubs: {
           'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div />' },
           'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+          'el-option': { template: '<option><slot /></option>' },
+          'el-select': { props: ['modelValue'], emits: ['update:modelValue'], template: '<select><slot /></select>' },
           'el-skeleton': true,
           'el-empty': true,
           'el-image': { template: '<img />' },
@@ -142,5 +148,84 @@ describe('JournalGoodsPicker', () => {
     expect(recent).toEqual([
       expect.objectContaining({ id: 'goods-1', name: 'Badge', main_photo: '/media/goods/main/goods-1.png' }),
     ])
+  })
+
+  it('renders recently used goods above the asset grid and inserts them again', async () => {
+    localStorage.setItem('journal:recent-goods', JSON.stringify([
+      { id: 'goods-recent', name: 'Recent Badge', main_photo: '/media/goods/main/recent.png' },
+    ]))
+    vi.mocked(getGoodsList).mockResolvedValue({
+      count: 1,
+      page: 1,
+      page_size: 18,
+      next: null,
+      previous: null,
+      results: [goodsItem('goods-1', 'Badge')],
+    })
+
+    const wrapper = mount(JournalGoodsPicker, {
+      global: {
+        stubs: {
+          'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div />' },
+          'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+          'el-option': { template: '<option><slot /></option>' },
+          'el-select': { props: ['modelValue'], emits: ['update:modelValue'], template: '<select><slot /></select>' },
+          'el-skeleton': true,
+          'el-empty': true,
+          'el-image': { props: ['src'], template: '<img :src="src" />' },
+          'el-icon': true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.recent-goods-strip').exists()).toBe(true)
+    expect(wrapper.find('.recent-goods-item').text()).toContain('Recent Badge')
+
+    await wrapper.find('.recent-goods-item').trigger('click')
+
+    expect(wrapper.emitted('insertGoods')?.[0]?.[0]).toMatchObject({
+      id: 'goods-recent',
+      name: 'Recent Badge',
+      main_photo: '/media/goods/main/recent.png',
+    })
+  })
+
+  it('offers sticker and upload sections beside goods assets', async () => {
+    vi.mocked(getGoodsList).mockResolvedValue({
+      count: 0,
+      page: 1,
+      page_size: 18,
+      next: null,
+      previous: null,
+      results: [],
+    })
+
+    const wrapper = mount(JournalGoodsPicker, {
+      global: {
+        stubs: {
+          'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div />' },
+          'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
+          'el-option': { template: '<option><slot /></option>' },
+          'el-select': { props: ['modelValue'], emits: ['update:modelValue'], template: '<select><slot /></select>' },
+          'el-skeleton': true,
+          'el-empty': true,
+          'el-image': true,
+          'el-icon': true,
+        },
+      },
+    })
+    await flushPromises()
+
+    expect(wrapper.find('.picker-tabs').text()).toContain('谷子')
+    expect(wrapper.find('.picker-tabs').text()).toContain('贴纸')
+    expect(wrapper.find('.picker-tabs').text()).toContain('上传')
+
+    await wrapper.find('[data-test="picker-tab-stickers"]').trigger('click')
+    await wrapper.find('.decor-sticker-item').trigger('click')
+    expect(wrapper.emitted('insertDecorSticker')?.[0]?.[0]).toMatchObject({
+      type: 'decor',
+      src: expect.stringContaining('data:image/svg+xml'),
+    })
   })
 })

@@ -7,10 +7,11 @@ from ..utils import compress_image
 
 
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
-BRUSH_TYPES = {"pencil", "pen", "watercolor"}
-LAYER_TYPES = {"sticker", "text", "draw"}
+BRUSH_TYPES = {"pencil", "pen", "watercolor", "marker", "highlighter"}
+LAYER_TYPES = {"sticker", "text", "draw", "shape"}
 BACKGROUND_STYLES = {"plain", "dot", "line", "grid", "note"}
 TEXT_ALIGNMENTS = {"left", "center", "right"}
+SHAPE_TYPES = {"rect", "circle", "line"}
 MAX_LAYERS = 200
 MAX_ITEMS_PER_LAYER = 1000
 MAX_DRAW_POINTS = 12000
@@ -20,16 +21,16 @@ def validate_journal_content(value):
     if not isinstance(value, dict):
         raise serializers.ValidationError("content must be an object")
     version = value.get("version")
-    if version not in (1, 2):
-        raise serializers.ValidationError({"version": "Only journal content version 1 or 2 is supported"})
+    if version not in (1, 2, 3):
+        raise serializers.ValidationError({"version": "Only journal content version 1, 2 or 3 is supported"})
     layers = value.get("layers")
     if not isinstance(layers, list):
         raise serializers.ValidationError({"layers": "layers must be a list"})
     if len(layers) > MAX_LAYERS:
         raise serializers.ValidationError({"layers": f"layers cannot exceed {MAX_LAYERS}"})
 
-    if version == 2:
-        return validate_journal_content_v2(value, layers)
+    if version in (2, 3):
+        return validate_journal_content_v2_plus(value, layers)
 
     return validate_journal_content_v1(value, layers)
 
@@ -89,12 +90,30 @@ def validate_text_item(obj, owner_id):
     align = obj.get("align")
     if align is not None and align not in TEXT_ALIGNMENTS:
         raise serializers.ValidationError({"align": f"{owner_id} align is invalid"})
+    stroke = obj.get("stroke")
+    if stroke is not None and (not isinstance(stroke, str) or not HEX_COLOR_RE.match(stroke)):
+        raise serializers.ValidationError({"stroke": f"{owner_id} stroke must be a hex color"})
+    stroke_width = obj.get("stroke_width")
+    if stroke_width is not None and (not isinstance(stroke_width, (int, float)) or stroke_width < 0 or stroke_width > 20):
+        raise serializers.ValidationError({"stroke_width": f"{owner_id} stroke_width is out of range"})
+    shadow_enabled = obj.get("shadow_enabled")
+    if shadow_enabled is not None and not isinstance(shadow_enabled, bool):
+        raise serializers.ValidationError({"shadow_enabled": f"{owner_id} shadow_enabled must be a boolean"})
+    shadow_color = obj.get("shadow_color")
+    if shadow_color is not None and (not isinstance(shadow_color, str) or not HEX_COLOR_RE.match(shadow_color)):
+        raise serializers.ValidationError({"shadow_color": f"{owner_id} shadow_color must be a hex color"})
+    shadow_blur = obj.get("shadow_blur")
+    if shadow_blur is not None and (not isinstance(shadow_blur, (int, float)) or shadow_blur < 0 or shadow_blur > 80):
+        raise serializers.ValidationError({"shadow_blur": f"{owner_id} shadow_blur is out of range"})
 
 
 def validate_sticker_item(obj, owner_id):
-    for key in ("goods_id", "src"):
-        if not isinstance(obj.get(key), str) or not obj.get(key):
-            raise serializers.ValidationError({key: f"{owner_id} {key} is required"})
+    goods_id = obj.get("goods_id")
+    if goods_id is not None and not isinstance(goods_id, str):
+        raise serializers.ValidationError({"goods_id": f"{owner_id} goods_id must be a string"})
+    src = obj.get("src")
+    if not isinstance(src, str) or not src:
+        raise serializers.ValidationError({"src": f"{owner_id} src is required"})
     validate_position_fields(obj, owner_id)
     for key in ("width", "height"):
         value_num = obj.get(key)
@@ -104,6 +123,24 @@ def validate_sticker_item(obj, owner_id):
         value_bool = obj.get(key)
         if value_bool is not None and not isinstance(value_bool, bool):
             raise serializers.ValidationError({key: f"{owner_id} {key} must be a boolean"})
+
+
+def validate_shape_item(obj, owner_id):
+    shape_type = obj.get("shape_type")
+    if shape_type not in SHAPE_TYPES:
+        raise serializers.ValidationError({"shape_type": f"{owner_id} shape_type is invalid"})
+    validate_position_fields(obj, owner_id)
+    for key in ("width", "height"):
+        value_num = obj.get(key)
+        if not isinstance(value_num, (int, float)) or value_num <= 0 or value_num > 5000:
+            raise serializers.ValidationError({key: f"{owner_id} {key} is out of range"})
+    for key in ("fill", "stroke"):
+        value_color = obj.get(key)
+        if not isinstance(value_color, str) or not HEX_COLOR_RE.match(value_color):
+            raise serializers.ValidationError({key: f"{owner_id} {key} must be a hex color"})
+    stroke_width = obj.get("stroke_width")
+    if not isinstance(stroke_width, (int, float)) or stroke_width < 0 or stroke_width > 80:
+        raise serializers.ValidationError({"stroke_width": f"{owner_id} stroke_width is out of range"})
 
 
 def validate_stroke_item(obj, owner_id):
@@ -155,7 +192,7 @@ def validate_journal_content_v1(value, layers):
     return value
 
 
-def validate_journal_content_v2(value, layers):
+def validate_journal_content_v2_plus(value, layers):
     seen_ids = set()
     seen_item_ids = set()
     total_points = 0
@@ -193,6 +230,11 @@ def validate_journal_content_v2(value, layers):
                     raise serializers.ValidationError({"type": f"sticker layer {layer_id} only supports sticker items"})
                 validate_sticker_item(item, owner_id)
                 continue
+            if layer_type == "shape":
+                if item_type != "shape":
+                    raise serializers.ValidationError({"type": f"shape layer {layer_id} only supports shape items"})
+                validate_shape_item(item, owner_id)
+                continue
             if item_type != "text":
                 raise serializers.ValidationError({"type": f"text layer {layer_id} only supports text items"})
             validate_text_item(item, owner_id)
@@ -216,12 +258,13 @@ class JournalPageSerializer(serializers.ModelSerializer):
             "background_style",
             "content",
             "revision",
+            "share_token",
             "create_version",
             "preview_image",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "book", "page_no", "created_at", "updated_at")
+        read_only_fields = ("id", "book", "page_no", "share_token", "created_at", "updated_at")
 
     def validate_content(self, value):
         return validate_journal_content(value)
@@ -260,6 +303,7 @@ class JournalPageSummarySerializer(serializers.ModelSerializer):
             "background",
             "background_style",
             "revision",
+            "share_token",
             "preview_image",
             "created_at",
             "updated_at",

@@ -178,7 +178,16 @@ describe('useJournalStore', () => {
 
     await store.saveActivePage()
 
-    expect(patchJournalPage).toHaveBeenCalledWith('page-1', { content, revision: 1, create_version: true })
+    expect(patchJournalPage).toHaveBeenCalledWith('page-1', expect.objectContaining({
+      content,
+      width: firstPage.width,
+      height: firstPage.height,
+      background: firstPage.background,
+      background_style: 'plain',
+      title: firstPage.title,
+      revision: 1,
+      create_version: true,
+    }))
     expect(getJournalPageVersions).toHaveBeenCalledWith('page-1')
     expect(store.versions).toEqual([firstVersion])
     expect(store.dirty).toBe(false)
@@ -292,16 +301,26 @@ describe('useJournalStore', () => {
     await secondSave
 
     expect(patchJournalPage).toHaveBeenCalledTimes(2)
-    expect(patchJournalPage).toHaveBeenNthCalledWith(1, 'page-1', {
+    expect(patchJournalPage).toHaveBeenNthCalledWith(1, 'page-1', expect.objectContaining({
       content: expect.objectContaining({ layers: [expect.objectContaining({ id: 'text-1' })] }),
+      width: firstPage.width,
+      height: firstPage.height,
+      background: firstPage.background,
+      background_style: 'plain',
+      title: firstPage.title,
       revision: 1,
       create_version: false,
-    })
-    expect(patchJournalPage).toHaveBeenNthCalledWith(2, 'page-1', {
+    }))
+    expect(patchJournalPage).toHaveBeenNthCalledWith(2, 'page-1', expect.objectContaining({
       content: expect.objectContaining({ layers: [expect.objectContaining({ id: 'text-2' })] }),
+      width: firstPage.width,
+      height: firstPage.height,
+      background: firstPage.background,
+      background_style: 'plain',
+      title: firstPage.title,
       revision: 2,
       create_version: false,
-    })
+    }))
   })
 
   it('loads summary pages and fetches page detail when activating a summary row', async () => {

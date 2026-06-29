@@ -1,13 +1,17 @@
 from copy import deepcopy
 import re
+import secrets
 
 from django.db import transaction
 from django.db.models import Count, Max, Min
+from django.urls import reverse
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
+from rest_framework.throttling import ScopedRateThrottle
 
 from core.permissions import IsOwnerOnly, is_admin
 from ..models import JournalBook, JournalPage, JournalPageVersion
@@ -175,6 +179,27 @@ class JournalBookViewSet(viewsets.ModelViewSet):
         serializer = JournalPageSerializer(ordered_pages, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
 
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="upload-cover",
+        parser_classes=[MultiPartParser, FormParser],
+    )
+    def upload_cover(self, request, pk=None):
+        book = self.get_object()
+        cover_image = request.FILES.get("cover_image")
+        if not cover_image:
+            return Response(
+                {"detail": "请通过 form-data 提供 cover_image 文件"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        compressed = compress_image(cover_image, max_size_kb=300)
+        book.cover_image = compressed or cover_image
+        book.save(update_fields=["cover_image", "updated_at"])
+        serializer = self.get_serializer(book)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
 
 class JournalPageViewSet(viewsets.ModelViewSet):
     queryset = JournalPage.objects.select_related("book", "book__user")
@@ -285,6 +310,38 @@ class JournalPageViewSet(viewsets.ModelViewSet):
             create_page_version(duplicated)
         serializer = self.get_serializer(duplicated)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="share")
+    def share(self, request, pk=None):
+        page = self.get_object()
+        if not page.share_token:
+            token = secrets.token_urlsafe(32)
+            while JournalPage.objects.filter(share_token=token).exists():
+                token = secrets.token_urlsafe(32)
+            page.share_token = token
+            page.save(update_fields=["share_token", "updated_at"])
+        public_path = reverse("journal-public-page", kwargs={"token": page.share_token})
+        return Response(
+            {
+                "token": page.share_token,
+                "url": request.build_absolute_uri(public_path),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class PublicJournalPageViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = JournalPage.objects.select_related("book", "book__user")
+    serializer_class = JournalPageSerializer
+    permission_classes = [AllowAny]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = "journal_public"
+    lookup_field = "share_token"
+    lookup_url_kwarg = "token"
+    http_method_names = ["get", "head", "options"]
+
+    def get_queryset(self):
+        return super().get_queryset().filter(share_token__isnull=False).exclude(share_token="")
 
 
 class JournalPageVersionViewSet(viewsets.ModelViewSet):

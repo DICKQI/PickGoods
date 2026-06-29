@@ -45,6 +45,7 @@ const textLayer = (id: string, text: string, zIndex: number, x = 0, y = 0) => ({
 })
 
 let pointerPosition = { x: 0, y: 0 }
+let stageToDataURL = vi.fn(() => 'data:image/png;base64,ZmFrZQ==')
 
 const StageStub = {
   emits: ['mousedown', 'mousemove', 'mouseup', 'mouseleave', 'touchstart', 'touchmove', 'touchend', 'click', 'tap'],
@@ -52,6 +53,7 @@ const StageStub = {
     expose({
       getNode: () => ({
         getPointerPosition: () => pointerPosition,
+        toDataURL: stageToDataURL,
       }),
     })
     const emitPointer = (eventName: string, event: Event) => emit(eventName, { evt: event })
@@ -68,12 +70,13 @@ const StageStub = {
   },
 }
 
-const mountCanvas = (modelValue = emptyContent) => mount(JournalCanvas, {
+const mountCanvas = (modelValue = emptyContent, extraProps: Record<string, unknown> = {}) => mount(JournalCanvas, {
   props: {
     modelValue,
     width: 1080,
     height: 1440,
     background: '#fffaf0',
+    ...extraProps,
   },
   global: {
     stubs: {
@@ -81,12 +84,14 @@ const mountCanvas = (modelValue = emptyContent) => mount(JournalCanvas, {
       'v-layer': { template: '<div class="layer-stub"><slot /></div>' },
       'v-rect': { template: '<div class="rect-stub" />' },
       'v-image': { template: '<div class="image-stub" />' },
-      'v-line': { template: '<div class="line-stub" />' },
+      'v-line': { props: ['config'], template: '<div class="line-stub" />' },
       'v-circle': { props: ['config'], template: '<div class="circle-stub" />' },
       'v-text': { template: '<div class="text-stub" />' },
       'v-transformer': { template: '<div class="transformer-stub" />' },
       'el-button': { emits: ['click'], template: '<button @click="$emit(\'click\')"><slot /></button>' },
       'el-icon': { template: '<i><slot /></i>' },
+      'el-popover': { template: '<div class="popover-stub"><slot name="reference" /><slot /></div>' },
+      'el-tooltip': { props: ['content'], template: '<span class="tooltip-stub" :data-content="content"><slot /></span>' },
     },
   },
 })
@@ -96,9 +101,16 @@ const latestContent = (wrapper: ReturnType<typeof mountCanvas>) => {
   return events[events.length - 1]?.[0] as JournalPageContent
 }
 
+const findToolButton = (wrapper: ReturnType<typeof mountCanvas>, label: string) => (
+  wrapper.findAll('.tooltip-stub')
+    .find(item => item.attributes('data-content') === label)
+    ?.find('button')
+)
+
 describe('JournalCanvas', () => {
   beforeEach(() => {
     pointerPosition = { x: 0, y: 0 }
+    stageToDataURL = vi.fn(() => 'data:image/png;base64,ZmFrZQ==')
   })
 
   it('adds a goods sticker as one logical sticker layer containing one sticker item', async () => {
@@ -124,6 +136,43 @@ describe('JournalCanvas', () => {
         }),
       ],
     })
+  })
+
+  it('renders configured page background styles as Konva pattern primitives', () => {
+    const dotWrapper = mountCanvas(emptyContent, { width: 144, height: 144, backgroundStyle: 'dot' })
+    expect(dotWrapper.vm.backgroundPattern.dots).toHaveLength(4)
+    expect(dotWrapper.vm.backgroundPattern.lines).toHaveLength(0)
+
+    const gridWrapper = mountCanvas(emptyContent, { width: 144, height: 144, backgroundStyle: 'grid' })
+    expect(gridWrapper.vm.backgroundPattern.lines.map(line => line.points)).toEqual([
+      [48, 0, 48, 144],
+      [96, 0, 96, 144],
+      [0, 48, 144, 48],
+      [0, 96, 144, 96],
+    ])
+
+    const noteWrapper = mountCanvas(emptyContent, { width: 200, height: 144, backgroundStyle: 'note' })
+    const lastLine = noteWrapper.vm.backgroundPattern.lines[noteWrapper.vm.backgroundPattern.lines.length - 1]
+    expect(lastLine).toMatchObject({
+      points: [24, 0, 24, 144],
+    })
+  })
+
+  it('groups the toolbar, adds semantic tooltips, and keeps tool status in the toolbar', async () => {
+    const wrapper = mountCanvas(emptyContent)
+
+    expect(wrapper.find('.toolbar-tools').exists()).toBe(true)
+    expect(wrapper.find('.toolbar-brush').exists()).toBe(true)
+    expect(wrapper.find('.toolbar-palette').exists()).toBe(true)
+    expect(wrapper.findAll('.tooltip-stub').map(item => item.attributes('data-content'))).toEqual(
+      expect.arrayContaining(['选择', '画笔', '橡皮', '文字', '删除图层']),
+    )
+
+    expect(wrapper.find('.canvas-status-chip').exists()).toBe(false)
+    expect(wrapper.find('.toolbar-brush').text()).toContain('钢笔 · 8px')
+    const eraserButton = findToolButton(wrapper, '橡皮')
+    await eraserButton!.trigger('click')
+    expect(wrapper.find('.toolbar-brush').text()).toContain('橡皮 · 20px')
   })
 
   it('adds text layers and drawing strokes without mutating the original content object', () => {
@@ -255,6 +304,27 @@ describe('JournalCanvas', () => {
     emitted = latestContent(wrapper)
     const aligned = emitted.layers.find(layer => layer.id === 'text-2')
     expect(aligned?.items[0] && 'x' in aligned.items[0] ? aligned.items[0].x : undefined).toBe(540)
+  })
+
+  it('copies and pastes selected layers with keyboard shortcuts', async () => {
+    const wrapper = mountCanvas({
+      version: 2,
+      layers: [textLayer('text-1', 'A', 1, 10, 20)],
+    } as unknown as JournalPageContent)
+
+    wrapper.vm.selectLayer('text-1')
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'c', ctrlKey: true }))
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'v', ctrlKey: true }))
+    await wrapper.vm.$nextTick()
+
+    let emitted = latestContent(wrapper)
+    expect(emitted.layers).toHaveLength(2)
+    expect(emitted.layers[1]!.items[0]).toMatchObject({ x: 34, y: 44 })
+
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'd', ctrlKey: true }))
+    await wrapper.vm.$nextTick()
+    emitted = latestContent(wrapper)
+    expect(emitted.layers).toHaveLength(3)
   })
 
   it('updates selected sticker item properties through the exposed layer API', () => {
@@ -572,7 +642,7 @@ describe('JournalCanvas', () => {
     } as unknown as JournalPageContent)
 
     wrapper.vm.selectLayer('draw-1')
-    const eraserButton = wrapper.findAll('button').find(button => button.text().includes('橡皮'))
+    const eraserButton = findToolButton(wrapper, '橡皮')
     await eraserButton!.trigger('click')
     await wrapper.find('.stage-stub').trigger('mousemove')
 
@@ -622,7 +692,7 @@ describe('JournalCanvas', () => {
 
   it('shows an eraser preview circle that follows the pointer and matches eraser width', async () => {
     const wrapper = mountCanvas(emptyContent)
-    const eraserButton = wrapper.findAll('button').find(button => button.text().includes('橡皮') || button.text().includes('姗＄毊'))
+    const eraserButton = findToolButton(wrapper, '橡皮')
     const autoFitScale = 760 / 1080
 
     pointerPosition = { x: 120, y: 80 }
@@ -667,5 +737,18 @@ describe('JournalCanvas', () => {
       line_height: 1.4,
       align: 'center',
     })
+  })
+
+  it('exports with a chosen pixel ratio while hiding helper overlays', async () => {
+    global.fetch = vi.fn(async () => ({
+      blob: async () => new Blob(['fake'], { type: 'image/png' }),
+    })) as unknown as typeof fetch
+    const wrapper = mountCanvas(emptyContent)
+    wrapper.vm.setEraserWidth(32)
+
+    await wrapper.vm.exportPngBlob(3)
+
+    expect(stageToDataURL).toHaveBeenCalledWith({ pixelRatio: 3 })
+    expect(wrapper.vm.exporting).toBe(false)
   })
 })

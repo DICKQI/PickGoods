@@ -15,9 +15,11 @@ import {
   reorderJournalPages,
   restoreJournalPageVersion,
   deleteJournalPageVersion,
+  createJournalPublicShare,
+  uploadJournalBookCover,
   uploadJournalPagePreview,
 } from '@/api/journal'
-import type { JournalBook, JournalPage, JournalPageContent, JournalPageVersion } from '@/api/types'
+import type { JournalBook, JournalPage, JournalPageContent, JournalPageVersion, JournalPublicShare } from '@/api/types'
 import { emptyJournalContent } from '@/utils/journalContent'
 
 const emptyContent = (): JournalPageContent => emptyJournalContent()
@@ -32,6 +34,7 @@ export const useJournalStore = defineStore('journal', () => {
   const saving = ref(false)
   const dirty = ref(false)
   const error = ref<string | null>(null)
+  const revisionConflict = ref<{ pageId: string; currentRevision?: number } | null>(null)
   const versions = ref<JournalPageVersion[]>([])
   const versionLoading = ref(false)
   const saveInFlight = ref(false)
@@ -310,6 +313,20 @@ export const useJournalStore = defineStore('journal', () => {
     dirty.value = true
   }
 
+  const updateActivePageSettings = (
+    patch: Pick<Partial<JournalPage>, 'background' | 'background_style' | 'width' | 'height' | 'title' | 'content'>,
+  ) => {
+    if (!activePageId.value) return
+    pages.value = pages.value.map(page => (
+      page.id === activePageId.value ? { ...page, ...patch } : page
+    ))
+    dirty.value = true
+  }
+
+  const updateActivePageBackground = (patch: Pick<Partial<JournalPage>, 'background' | 'background_style'>) => {
+    updateActivePageSettings(patch)
+  }
+
   const saveActivePage = async (options: { createVersion?: boolean } = {}) => {
     if (saveInFlight.value) {
       saveQueued.value = true
@@ -326,11 +343,17 @@ export const useJournalStore = defineStore('journal', () => {
     saving.value = true
     error.value = null
     try {
-      const saved = await patchJournalPage(page.id, {
+      const payload = {
         content: page.content,
+        width: page.width,
+        height: page.height,
+        background: page.background,
+        background_style: page.background_style || 'plain',
+        title: page.title,
         revision: page.revision,
         create_version: options.createVersion ?? true,
-      })
+      } as const
+      const saved = await patchJournalPage(page.id, payload)
       const queued = saveQueued.value
       pages.value = pages.value.map(item => (
         item.id === saved.id
@@ -343,6 +366,12 @@ export const useJournalStore = defineStore('journal', () => {
       if (options.createVersion ?? true) await fetchVersions(saved.id)
       return saved
     } catch (e: any) {
+      if (e?.response?.status === 409 || e?.response?.data?.code === 'journal_revision_conflict') {
+        revisionConflict.value = {
+          pageId: page.id,
+          currentRevision: e?.response?.data?.current_revision,
+        }
+      }
       error.value = e?.message || '保存页面失败'
       return null
     } finally {
@@ -363,6 +392,25 @@ export const useJournalStore = defineStore('journal', () => {
     const saved = await uploadJournalPagePreview(activePageId.value, file)
     pages.value = pages.value.map(page => (page.id === saved.id ? saved : page))
     return saved
+  }
+
+  const uploadBookCover = async (bookId: string, file: File) => {
+    const saved = await uploadJournalBookCover(bookId, file)
+    books.value = books.value.map(book => (book.id === saved.id ? { ...book, ...saved } : book))
+    return saved
+  }
+
+  const createPublicShare = async (pageId = activePageId.value): Promise<JournalPublicShare | null> => {
+    if (!pageId) return null
+    const share = await createJournalPublicShare(pageId)
+    pages.value = pages.value.map(page => (
+      page.id === pageId ? { ...page, share_token: share.token } : page
+    ))
+    return share
+  }
+
+  const clearRevisionConflict = () => {
+    revisionConflict.value = null
   }
 
   const restoreVersion = async (versionId: string) => {
@@ -408,6 +456,7 @@ export const useJournalStore = defineStore('journal', () => {
     saving,
     dirty,
     error,
+    revisionConflict,
     versions,
     versionLoading,
     saveInFlight,
@@ -429,8 +478,13 @@ export const useJournalStore = defineStore('journal', () => {
     renamePage,
     reorderPages,
     updateActivePageContent,
+    updateActivePageSettings,
+    updateActivePageBackground,
     saveActivePage,
     uploadPreview,
+    uploadBookCover,
+    createPublicShare,
+    clearRevisionConflict,
     restoreVersion,
     deleteVersion,
   }

@@ -662,7 +662,7 @@ export interface JournalLegacyTextLayer extends JournalLegacyLayerBase {
   z_index: number
 }
 
-export type JournalBrushType = 'pencil' | 'pen' | 'watercolor'
+export type JournalBrushType = 'pencil' | 'pen' | 'watercolor' | 'marker' | 'highlighter'
 
 export interface JournalLegacyDrawLayer extends JournalLegacyLayerBase {
   id: string
@@ -716,13 +716,32 @@ export interface JournalTextItem {
   width?: number
   line_height?: number
   align?: 'left' | 'center' | 'right'
+  stroke?: string
+  stroke_width?: number
+  shadow_enabled?: boolean
+  shadow_color?: string
+  shadow_blur?: number
 }
 
-export type JournalLayerItem = JournalStrokeItem | JournalStickerItem | JournalTextItem
+export interface JournalShapeItem {
+  id: string
+  type: 'shape'
+  shape_type: 'rect' | 'circle' | 'line'
+  x: number
+  y: number
+  width: number
+  height: number
+  rotation: number
+  fill: string
+  stroke: string
+  stroke_width: number
+}
+
+export type JournalLayerItem = JournalStrokeItem | JournalStickerItem | JournalTextItem | JournalShapeItem
 
 export interface JournalLayer {
   id: string
-  type: 'sticker' | 'text' | 'draw'
+  type: 'sticker' | 'text' | 'draw' | 'shape'
   name?: string
   locked?: boolean
   visible?: boolean
@@ -734,6 +753,7 @@ export interface JournalLayer {
 export type JournalStickerLayer = JournalLayer & { type: 'sticker'; items: JournalStickerItem[] }
 export type JournalTextLayer = JournalLayer & { type: 'text'; items: JournalTextItem[] }
 export type JournalDrawLayer = JournalLayer & { type: 'draw'; items: JournalStrokeItem[] }
+export type JournalShapeLayer = JournalLayer & { type: 'shape'; items: JournalShapeItem[] }
 
 export interface JournalPageContentV1 {
   version: 1
@@ -741,8 +761,13 @@ export interface JournalPageContentV1 {
 }
 
 export interface JournalPageContent {
-  version: 2
+  version: 2 | 3
   layers: JournalLayer[]
+}
+
+export interface JournalPublicShare {
+  token: string
+  url?: string
 }
 
 export interface JournalBook {
@@ -767,6 +792,7 @@ export interface JournalPage {
   background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
   content?: JournalPageContent
   revision: number
+  share_token?: string | null
   preview_image?: string | null
   created_at?: string
   updated_at?: string

@@ -4,6 +4,7 @@ import type {
   JournalBookInput,
   JournalPage,
   JournalPageInput,
+  JournalPublicShare,
   PaginatedJournalBookResponse,
   PaginatedJournalPageVersionResponse,
 } from './types'
@@ -18,6 +19,12 @@ export function createJournalBook(data: JournalBookInput) {
 
 export function patchJournalBook(id: string, data: Partial<JournalBookInput>) {
   return request.patch<JournalBook>(`/api/journals/${id}/`, data)
+}
+
+export function uploadJournalBookCover(id: string, file: File) {
+  const formData = new FormData()
+  formData.append('cover_image', file)
+  return request.post<JournalBook>(`/api/journals/${id}/upload-cover/`, formData)
 }
 
 export function deleteJournalBook(id: string) {
@@ -74,4 +81,12 @@ export function restoreJournalPageVersion(versionId: string) {
 
 export function deleteJournalPageVersion(versionId: string) {
   return request.delete(`/api/journal-page-versions/${versionId}/`)
+}
+
+export function createJournalPublicShare(pageId: string) {
+  return request.post<JournalPublicShare>(`/api/journal-pages/${pageId}/share/`)
+}
+
+export function getPublicJournalPage(token: string) {
+  return request.get<JournalPage>(`/api/journal-public/${token}/`)
 }

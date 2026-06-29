@@ -1,40 +1,97 @@
 <template>
   <div class="journal-canvas-shell">
     <div class="journal-canvas-toolbar">
-      <el-button size="small" :type="tool === 'select' ? 'primary' : 'default'" @click="tool = 'select'">
-        <el-icon><Pointer /></el-icon>
-      </el-button>
-      <el-button size="small" :type="tool === 'draw' ? 'primary' : 'default'" @click="tool = 'draw'">
-        <el-icon><EditPen /></el-icon>
-      </el-button>
-      <el-button size="small" :type="tool === 'erase' ? 'primary' : 'default'" @click="tool = 'erase'">
-        橡皮
-      </el-button>
-      <el-button size="small" @click="addTextLayer()">
-        <el-icon><Document /></el-icon>
-      </el-button>
-      <el-button size="small" :disabled="!selectedLayerId" @click="deleteSelectedLayer">
-        <el-icon><Delete /></el-icon>
-      </el-button>
-      <input v-model="brushColor" class="journal-color-input" type="color" aria-label="画笔颜色" />
-      <input v-model.number="brushWidth" class="journal-width-input" type="range" min="2" max="28" aria-label="画笔粗细" />
-      <label v-if="tool === 'erase'" class="journal-eraser-size">
-        <span>橡皮 {{ eraserWidth }}px</span>
-        <input v-model.number="eraserWidth" type="range" min="4" max="80" aria-label="橡皮粗细" />
-      </label>
-      <div class="journal-brush-presets" aria-label="画笔类型">
-        <button
-          v-for="preset in brushPresets"
-          :key="preset.type"
-          class="brush-preset-btn"
-          :class="{ 'is-active': brushType === preset.type }"
-          type="button"
-          @click="setBrushType(preset.type)"
-        >
-          {{ preset.label }}
-        </button>
+      <div class="toolbar-tools" aria-label="画布工具">
+        <el-tooltip content="选择" placement="bottom">
+          <el-button size="small" :type="tool === 'select' ? 'primary' : 'default'" @click="tool = 'select'">
+            <el-icon><Pointer /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="画笔" placement="bottom">
+          <el-button size="small" :type="tool === 'draw' ? 'primary' : 'default'" @click="tool = 'draw'">
+            <el-icon><EditPen /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="橡皮" placement="bottom">
+          <el-button size="small" :type="tool === 'erase' ? 'primary' : 'default'" @click="tool = 'erase'">
+            <el-icon><Brush /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="文字" placement="bottom">
+          <el-button size="small" @click="addTextLayer()">
+            <el-icon><Document /></el-icon>
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="矩形" placement="bottom">
+          <el-button size="small" @click="addShapeLayer('rect')">
+            □
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="圆形" placement="bottom">
+          <el-button size="small" @click="addShapeLayer('circle')">
+            ○
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="吸管取色" placement="bottom">
+          <el-button size="small" :type="tool === 'eyedropper' ? 'primary' : 'default'" @click="tool = 'eyedropper'">
+            ◉
+          </el-button>
+        </el-tooltip>
+        <el-tooltip content="删除图层" placement="bottom">
+          <el-button size="small" :disabled="!selectedLayerId" @click="deleteSelectedLayer">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </el-tooltip>
       </div>
-      <div class="journal-palette" aria-label="常用颜色">
+
+      <el-popover placement="bottom" trigger="click" width="260">
+        <template #reference>
+          <el-button class="toolbar-brush" size="small">
+            {{ currentBrushLabel }} · {{ currentStrokeWidth }}px
+          </el-button>
+        </template>
+        <div class="toolbar-brush-panel">
+          <label class="toolbar-control-row">
+            <span>颜色</span>
+            <input v-model="brushColor" class="journal-color-input" type="color" aria-label="画笔颜色" />
+          </label>
+          <label class="toolbar-control-row">
+            <span>{{ tool === 'erase' ? '橡皮' : '粗细' }}</span>
+            <input
+              v-if="tool === 'erase'"
+              v-model.number="eraserWidth"
+              class="journal-width-input"
+              type="range"
+              min="4"
+              max="80"
+              aria-label="橡皮粗细"
+            />
+            <input
+              v-else
+              v-model.number="brushWidth"
+              class="journal-width-input"
+              type="range"
+              min="2"
+              max="28"
+              aria-label="画笔粗细"
+            />
+          </label>
+          <div class="journal-brush-presets" aria-label="画笔类型">
+            <button
+              v-for="preset in brushPresets"
+              :key="preset.type"
+              class="brush-preset-btn"
+              :class="{ 'is-active': brushType === preset.type }"
+              type="button"
+              @click="setBrushType(preset.type)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </div>
+      </el-popover>
+
+      <div class="toolbar-palette journal-palette" aria-label="常用颜色">
         <button
           v-for="color in paletteColors"
           :key="color"
@@ -65,6 +122,13 @@
         <v-layer>
           <v-rect :config="{ id: 'journal-background', x: 0, y: 0, width, height, fill: background }" />
 
+          <template v-for="(line, lineIndex) in backgroundPattern.lines" :key="`bg-line-${lineIndex}`">
+            <v-line :config="{ points: line.points, stroke: line.stroke, strokeWidth: 1, listening: false, perfectDrawEnabled: false }" />
+          </template>
+          <template v-for="(dot, dotIndex) in backgroundPattern.dots" :key="`bg-dot-${dotIndex}`">
+            <v-circle :config="{ x: dot.x, y: dot.y, radius: 1.6, fill: 'rgba(120, 120, 140, 0.28)', listening: false, perfectDrawEnabled: false }" />
+          </template>
+
           <template v-for="layer in sortedLayers" :key="layer.id">
             <template v-for="item in layer.items" :key="item.id">
               <v-image
@@ -88,13 +152,44 @@
                 @transformend="handleTransformEnd($event, layer.id)"
               />
               <v-line v-else-if="item.type === 'stroke' && layer.type === 'draw'" :config="drawConfig(layer, item)" />
+              <v-rect
+                v-else-if="item.type === 'shape' && item.shape_type === 'rect'"
+                :ref="setNodeRef(layer.id)"
+                :config="rectShapeConfig(layer, item)"
+                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
+                @tap="selectLayer(layer.id)"
+                @dragend="handleDragEnd($event, layer.id)"
+                @transformend="handleTransformEnd($event, layer.id)"
+              />
+              <v-circle
+                v-else-if="item.type === 'shape' && item.shape_type === 'circle'"
+                :ref="setNodeRef(layer.id)"
+                :config="circleShapeConfig(layer, item)"
+                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
+                @tap="selectLayer(layer.id)"
+                @dragend="handleDragEnd($event, layer.id)"
+                @transformend="handleTransformEnd($event, layer.id)"
+              />
             </template>
           </template>
 
-          <v-transformer v-if="selectedLayerId" ref="transformerRef" :config="{ rotateEnabled: true }" />
-          <v-circle v-if="eraserPreviewConfig.visible" :config="eraserPreviewConfig" />
+          <template v-for="(guide, guideIndex) in activeGuides" :key="`guide-${guideIndex}`">
+            <v-line :config="guideConfig(guide)" />
+          </template>
+
+          <v-transformer v-if="selectedLayerId && !exporting" ref="transformerRef" :config="{ rotateEnabled: true }" />
+          <v-circle v-if="eraserPreviewConfig.visible && !exporting" :config="eraserPreviewConfig" />
         </v-layer>
       </v-stage>
+      <textarea
+        v-if="textEditor.visible"
+        ref="textEditorRef"
+        v-model="textEditor.value"
+        class="text-inline-editor"
+        :style="textEditorStyle"
+        @keydown.stop
+        @blur="commitInlineTextEdit"
+      />
     </div>
 
     <div class="journal-zoom-controls">
@@ -109,7 +204,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Delete, Document, EditPen, Pointer } from '@element-plus/icons-vue'
+import { Brush, Delete, Document, EditPen, Pointer } from '@element-plus/icons-vue'
 import type {
   GoodsListItem,
   JournalBrushType,
@@ -117,6 +212,8 @@ import type {
   JournalLayer,
   JournalLayerItem,
   JournalPageContent,
+  JournalShapeItem,
+  JournalShapeLayer,
   JournalStickerItem,
   JournalStickerLayer,
   JournalStrokeItem,
@@ -125,18 +222,21 @@ import type {
 } from '@/api/types'
 import { cloneJournalContent, cloneJournalLayer, normalizeJournalContent } from '@/utils/journalContent'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: JournalPageContent
   width: number
   height: number
   background: string
-}>()
+  backgroundStyle?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+}>(), {
+  backgroundStyle: 'plain',
+})
 
 const emit = defineEmits<{
   'update:modelValue': [content: JournalPageContent]
 }>()
 
-type ToolMode = 'select' | 'draw' | 'erase'
+type ToolMode = 'select' | 'draw' | 'erase' | 'eyedropper'
 type AlignDirection = 'left' | 'center' | 'right' | 'top' | 'middle' | 'bottom'
 type DistributeDirection = 'horizontal' | 'vertical'
 type LayerMoveDirection = 'top' | 'up' | 'down' | 'bottom'
@@ -164,11 +264,29 @@ const nodeRefs = new Map<string, any>()
 const undoStack = ref<JournalPageContent[]>([])
 const redoStack = ref<JournalPageContent[]>([])
 const recentColors = ref<string[]>([])
+const clipboardLayer = ref<JournalLayer | null>(null)
+const exporting = ref(false)
+const activeGuides = ref<Array<{ axis: 'x' | 'y'; value: number }>>([])
+const textEditorRef = ref<HTMLTextAreaElement | null>(null)
+const textEditor = ref({
+  visible: false,
+  layerId: '',
+  value: '',
+  x: 0,
+  y: 0,
+  width: 240,
+  fontSize: 32,
+  lineHeight: 1.25,
+  color: '#333333',
+  fontFamily: 'sans-serif',
+})
 
 const brushPresets: Array<{ type: JournalBrushType; label: string; opacity: number; tension: number }> = [
   { type: 'pencil', label: '铅笔', opacity: 0.72, tension: 0.18 },
   { type: 'pen', label: '钢笔', opacity: 1, tension: 0.35 },
   { type: 'watercolor', label: '水彩', opacity: 0.46, tension: 0.5 },
+  { type: 'marker', label: '马克笔', opacity: 0.66, tension: 0.24 },
+  { type: 'highlighter', label: '荧光笔', opacity: 0.38, tension: 0.2 },
 ]
 
 const paletteColors = [
@@ -198,6 +316,23 @@ const selectedLayer = computed(() =>
 )
 
 const selectedItem = computed(() => selectedLayer.value?.items[0] || null)
+const currentBrushLabel = computed(() => (
+  tool.value === 'erase'
+    ? '橡皮'
+    : brushPresets.find(preset => preset.type === brushType.value)?.label || '画笔'
+))
+const currentStrokeWidth = computed(() => (tool.value === 'erase' ? eraserWidth.value : brushWidth.value))
+const toolStatusText = computed(() => `当前：${currentBrushLabel.value} ${currentStrokeWidth.value}px`)
+const textEditorStyle = computed(() => ({
+  left: `${canvasOffset.value.x + textEditor.value.x * scale.value}px`,
+  top: `${canvasOffset.value.y + textEditor.value.y * scale.value}px`,
+  width: `${Math.max(120, textEditor.value.width * scale.value)}px`,
+  minHeight: `${Math.max(44, textEditor.value.fontSize * textEditor.value.lineHeight * scale.value * 2)}px`,
+  fontSize: `${textEditor.value.fontSize * scale.value}px`,
+  lineHeight: String(textEditor.value.lineHeight),
+  color: textEditor.value.color,
+  fontFamily: textEditor.value.fontFamily,
+}))
 
 const layersForPanel = computed(() =>
   [...localContent.value.layers].sort((a, b) => b.z_index - a.z_index).map(cloneJournalLayer),
@@ -216,6 +351,38 @@ const stageConfig = computed(() => ({
   x: canvasOffset.value.x,
   y: canvasOffset.value.y,
 }))
+
+const backgroundPattern = computed(() => {
+  const style = props.backgroundStyle || 'plain'
+  if (style === 'plain') {
+    return {
+      lines: [] as Array<{ points: number[]; stroke: string }>,
+      dots: [] as Array<{ x: number; y: number }>,
+    }
+  }
+  const gap = 48
+  const lineColor = 'rgba(120, 120, 140, 0.16)'
+  const lines: Array<{ points: number[]; stroke: string }> = []
+  const dots: Array<{ x: number; y: number }> = []
+
+  if (style === 'dot') {
+    for (let y = gap; y < props.height; y += gap) {
+      for (let x = gap; x < props.width; x += gap) {
+        dots.push({ x, y })
+      }
+    }
+  } else if (style === 'grid') {
+    for (let x = gap; x < props.width; x += gap) lines.push({ points: [x, 0, x, props.height], stroke: lineColor })
+    for (let y = gap; y < props.height; y += gap) lines.push({ points: [0, y, props.width, y], stroke: lineColor })
+  } else if (style === 'line' || style === 'note') {
+    for (let y = gap; y < props.height; y += gap) lines.push({ points: [0, y, props.width, y], stroke: lineColor })
+    if (style === 'note') {
+      const margin = Math.round(props.width * 0.12)
+      lines.push({ points: [margin, 0, margin, props.height], stroke: 'rgba(220, 120, 120, 0.32)' })
+    }
+  }
+  return { lines, dots }
+})
 
 const eraserPreviewConfig = computed(() => ({
   x: eraserPointer.value?.x ?? 0,
@@ -316,6 +483,55 @@ const addGoodsSticker = (goods: GoodsListItem, src = resolveGoodsImage(goods)) =
   setSelectedLayerIds([layer.id])
 }
 
+const addLocalSticker = (payload: { name: string; src: string; source?: 'decor' | 'upload' }) => {
+  if (!payload.src) return
+  const layer: JournalStickerLayer = {
+    id: createLayerId('sticker'),
+    type: 'sticker',
+    name: payload.name || '贴纸层',
+    opacity: 1,
+    z_index: nextZIndex(),
+    items: [{
+      id: createLayerId('sticker-item'),
+      type: 'sticker',
+      goods_id: '',
+      src: payload.src,
+      x: Math.round(props.width * 0.32),
+      y: Math.round(props.height * 0.22),
+      width: payload.source === 'decor' ? 220 : 280,
+      height: payload.source === 'decor' ? 180 : 280,
+      rotation: 0,
+    }],
+  }
+  emitLayers([...localContent.value.layers, layer])
+  setSelectedLayerIds([layer.id])
+}
+
+const addShapeLayer = (shapeType: JournalShapeItem['shape_type'] = 'rect') => {
+  const layer: JournalShapeLayer = {
+    id: createLayerId('shape'),
+    type: 'shape',
+    name: shapeType === 'circle' ? '圆形' : '矩形',
+    opacity: 1,
+    z_index: nextZIndex(),
+    items: [{
+      id: createLayerId('shape-item'),
+      type: 'shape',
+      shape_type: shapeType,
+      x: Math.round(props.width * 0.24),
+      y: Math.round(props.height * 0.22),
+      width: 220,
+      height: 160,
+      rotation: 0,
+      fill: '#ffffff',
+      stroke: brushColor.value,
+      stroke_width: Math.max(2, Math.round(brushWidth.value / 2)),
+    }],
+  }
+  emitLayers([...localContent.value.layers, layer])
+  setSelectedLayerIds([layer.id])
+}
+
 const addTextLayer = (text = '写点什么') => {
   const layer: JournalTextLayer = {
     id: createLayerId('text'),
@@ -341,6 +557,10 @@ const addTextLayer = (text = '写点什么') => {
 const setBrushType = (type: JournalBrushType) => {
   brushType.value = type
   brushOpacity.value = brushPresets.find(item => item.type === type)?.opacity ?? 1
+}
+
+const setTool = (mode: ToolMode) => {
+  tool.value = mode
 }
 
 const setBrushWidth = (width: number) => {
@@ -486,9 +706,21 @@ const toggleSelectedLayerLock = () => {
   updateSelectedLayer({ locked: !selectedLayer.value.locked })
 }
 
+const toggleLayerLock = (id: string) => {
+  const layer = localContent.value.layers.find(item => item.id === id)
+  if (!layer) return
+  updateLayer(id, { locked: !layer.locked })
+}
+
 const toggleSelectedLayerVisibility = () => {
   if (!selectedLayer.value) return
   updateSelectedLayer({ visible: selectedLayer.value.visible === false })
+}
+
+const toggleLayerVisibility = (id: string) => {
+  const layer = localContent.value.layers.find(item => item.id === id)
+  if (!layer) return
+  updateLayer(id, { visible: layer.visible === false })
 }
 
 const duplicateSelectedLayer = () => {
@@ -511,10 +743,38 @@ const duplicateSelectedLayer = () => {
   setSelectedLayerIds([copy.id])
 }
 
+const cloneLayerForPaste = (source: JournalLayer): JournalLayer => ({
+  ...cloneJournalLayer(source),
+  id: createLayerId(source.type),
+  name: source.name ? `${source.name} 副本` : undefined,
+  z_index: nextZIndex(),
+  items: source.items.map(item => {
+    const next = { ...item, id: createLayerId(item.type) } as JournalLayerItem
+    if ('x' in next && 'y' in next) {
+      return { ...next, x: next.x + 24, y: next.y + 24 } as JournalLayerItem
+    }
+    return next
+  }),
+})
+
+const copySelectedLayer = () => {
+  if (!selectedLayer.value) return
+  clipboardLayer.value = cloneJournalLayer(selectedLayer.value)
+}
+
+const pasteLayer = () => {
+  if (!clipboardLayer.value) return
+  const copy = cloneLayerForPaste(clipboardLayer.value)
+  emitLayers([...localContent.value.layers, copy])
+  setSelectedLayerIds([copy.id])
+  clipboardLayer.value = cloneJournalLayer(copy)
+}
+
 const getLayerBounds = (layer: JournalLayer) => {
   const item = layer.items[0]
   if (item?.type === 'sticker') return { width: item.width, height: item.height }
   if (item?.type === 'text') return { width: 0, height: item.font_size }
+  if (item?.type === 'shape') return { width: item.width, height: item.height }
   return { width: 0, height: 0 }
 }
 
@@ -830,7 +1090,31 @@ const moveSelectedLayer = (direction: LayerMoveDirection) => {
 const editTextLayer = (id = selectedLayerId.value || '') => {
   const layer = localContent.value.layers.find(item => item.id === id)
   if (!layer || layer.type !== 'text') return
-  selectedLayerId.value = layer.id
+  setSelectedLayerIds([layer.id])
+  const item = layer.items[0]
+  if (!item || item.type !== 'text') return
+  textEditor.value = {
+    visible: true,
+    layerId: layer.id,
+    value: item.text,
+    x: item.x,
+    y: item.y,
+    width: item.width || 260,
+    fontSize: item.font_size,
+    lineHeight: item.line_height || 1.25,
+    color: item.fill,
+    fontFamily: item.font_family || 'sans-serif',
+  }
+  nextTick(() => {
+    textEditorRef.value?.focus()
+    textEditorRef.value?.select()
+  })
+}
+
+const commitInlineTextEdit = () => {
+  if (!textEditor.value.visible || !textEditor.value.layerId) return
+  updateLayer(textEditor.value.layerId, { text: textEditor.value.value || '写点什么' })
+  textEditor.value.visible = false
 }
 
 const getStage = () => stageRef.value?.getNode?.()
@@ -854,6 +1138,12 @@ const updateEraserPointer = () => {
 const handlePointerStart = (event: any) => {
   const pointer = tool.value === 'erase' ? updateEraserPointer() : getPointer()
   if (!pointer) return
+  if (tool.value === 'eyedropper') {
+    pickColorAtPoint(pointer.x, pointer.y)
+    tool.value = 'draw'
+    event?.evt?.preventDefault?.()
+    return
+  }
   if (tool.value === 'erase') {
     erasing.value = true
     eraseStrokeAtPoint(pointer.x, pointer.y)
@@ -892,6 +1182,7 @@ const handlePointerMove = (event: any) => {
 const handlePointerEnd = () => {
   drawing.value = false
   erasing.value = false
+  activeGuides.value = []
 }
 
 const handlePointerLeave = () => {
@@ -921,6 +1212,7 @@ const selectLayer = (id: string, additive = false) => {
 const handleDragEnd = (event: any, id: string) => {
   const node = event.target
   const snapped = getSnapPosition(id, { x: Math.round(node.x()), y: Math.round(node.y()) })
+  activeGuides.value = snapped.guides
   updateLayer(id, {
     x: snapped.x,
     y: snapped.y,
@@ -943,6 +1235,17 @@ const handleTransformEnd = (event: any, id: string) => {
       y: Math.round(node.y()),
       width: Math.max(24, Math.round(item.width * scaleX)),
       height: Math.max(24, Math.round(item.height * scaleY)),
+      rotation: Math.round(node.rotation()),
+    })
+    return
+  }
+
+  if (item.type === 'shape') {
+    updateLayer(id, {
+      x: Math.round(node.x()),
+      y: Math.round(node.y()),
+      width: Math.max(12, Math.round(item.width * scaleX)),
+      height: Math.max(12, Math.round(item.height * scaleY)),
       rotation: Math.round(node.rotation()),
     })
     return
@@ -995,6 +1298,40 @@ const textConfig = (layer: JournalLayer, item: JournalTextItem) => ({
   lineHeight: item.line_height,
   align: item.align,
   fill: item.fill,
+  stroke: item.stroke,
+  strokeWidth: item.stroke_width,
+  shadowEnabled: item.shadow_enabled,
+  shadowColor: item.shadow_color,
+  shadowBlur: item.shadow_blur,
+  rotation: item.rotation,
+  opacity: layer.opacity,
+  draggable: isDraggable(layer),
+  visible: isVisible(layer),
+})
+
+const rectShapeConfig = (layer: JournalLayer, item: JournalShapeItem) => ({
+  id: layer.id,
+  x: item.x,
+  y: item.y,
+  width: item.width,
+  height: item.height,
+  fill: item.fill,
+  stroke: item.stroke,
+  strokeWidth: item.stroke_width,
+  rotation: item.rotation,
+  opacity: layer.opacity,
+  draggable: isDraggable(layer),
+  visible: isVisible(layer),
+})
+
+const circleShapeConfig = (layer: JournalLayer, item: JournalShapeItem) => ({
+  id: layer.id,
+  x: item.x + item.width / 2,
+  y: item.y + item.height / 2,
+  radius: Math.min(item.width, item.height) / 2,
+  fill: item.fill,
+  stroke: item.stroke,
+  strokeWidth: item.stroke_width,
   rotation: item.rotation,
   opacity: layer.opacity,
   draggable: isDraggable(layer),
@@ -1036,12 +1373,54 @@ const attachTransformer = async () => {
   transformer.getLayer()?.batchDraw?.()
 }
 
-const exportPngBlob = async (): Promise<Blob | null> => {
+const pickColorAtPoint = (x: number, y: number) => {
+  const positioned = [...localContent.value.layers]
+    .filter(layer => layer.visible !== false)
+    .sort((a, b) => b.z_index - a.z_index)
+  const found = positioned.find(layer => {
+    const item = firstPositionedItem(layer)
+    const bounds = getLayerBounds(layer)
+    return item && x >= item.x && y >= item.y && x <= item.x + bounds.width && y <= item.y + bounds.height
+  })
+  const item = found?.items[0]
+  if (item?.type === 'text') brushColor.value = item.fill
+  else if (item?.type === 'shape') brushColor.value = item.stroke || item.fill
+  else if (item?.type === 'stroke') brushColor.value = item.stroke
+}
+
+const guideConfig = (guide: { axis: 'x' | 'y'; value: number }) => ({
+  points: guide.axis === 'x' ? [guide.value, 0, guide.value, props.height] : [0, guide.value, props.width, guide.value],
+  stroke: '#8e7dff',
+  strokeWidth: 1,
+  dash: [6, 6],
+  listening: false,
+})
+
+const exportPngBlob = async (pixelRatio = 1): Promise<Blob | null> => {
   const stage = getStage()
-  const dataUrl = stage?.toDataURL?.({ pixelRatio: 1 })
-  if (!dataUrl) return null
-  const response = await fetch(dataUrl)
-  return response.blob()
+  exporting.value = true
+  await nextTick()
+  try {
+    const ratio = Math.min(3, Math.max(1, Math.round(Number(pixelRatio) || 1)))
+    const dataUrl = stage?.toDataURL?.({ pixelRatio: ratio })
+    if (!dataUrl) return null
+    const response = await fetch(dataUrl)
+    return response.blob()
+  } finally {
+    exporting.value = false
+  }
+}
+
+const exportPngDataUrl = async (pixelRatio = 1): Promise<string | null> => {
+  const stage = getStage()
+  exporting.value = true
+  await nextTick()
+  try {
+    const ratio = Math.min(3, Math.max(1, Math.round(Number(pixelRatio) || 1)))
+    return stage?.toDataURL?.({ pixelRatio: ratio }) || null
+  } finally {
+    exporting.value = false
+  }
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -1054,6 +1433,21 @@ const handleKeydown = (event: KeyboardEvent) => {
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
     event.preventDefault()
     redo()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'c') {
+    event.preventDefault()
+    copySelectedLayer()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'v') {
+    event.preventDefault()
+    pasteLayer()
+    return
+  }
+  if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'd') {
+    event.preventDefault()
+    duplicateSelectedLayer()
     return
   }
   if ((event.key === 'Delete' || event.key === 'Backspace') && selectedLayerId.value) {
@@ -1141,13 +1535,23 @@ defineExpose({
   selectedLayerId,
   selectedLayerIds,
   addGoodsSticker,
+  addLocalSticker,
   addTextLayer,
   addBrushLayer,
   addDrawLayer,
   setBrushType,
+  setTool,
   setBrushWidth,
   setEraserWidth,
   selectPaletteColor,
+  addShapeLayer,
+  backgroundPattern,
+  pickColorAtPoint,
+  activeGuides,
+  currentBrushLabel,
+  currentStrokeWidth,
+  toolStatusText,
+  exporting,
   recentColors,
   paletteColors,
   brushType,
@@ -1174,12 +1578,17 @@ defineExpose({
   renameSelectedLayer,
   toggleSelectedLayerLock,
   toggleSelectedLayerVisibility,
+  toggleLayerLock,
+  toggleLayerVisibility,
   duplicateSelectedLayer,
+  copySelectedLayer,
+  pasteLayer,
   alignSelectedLayer,
   moveSelectedLayer,
   deleteSelectedLayer,
   editTextLayer,
   exportPngBlob,
+  exportPngDataUrl,
 })
 </script>
 
@@ -1235,14 +1644,46 @@ defineExpose({
   gap: 6px;
 }
 
+.toolbar-brush-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.toolbar-control-row {
+  display: grid;
+  grid-template-columns: auto 52px auto minmax(120px, 1fr);
+  align-items: center;
+  gap: 8px;
+  color: var(--text-light);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.toolbar-control-row .journal-color-input {
+  width: 52px;
+  height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 7px;
+}
+
+.toolbar-brush-panel .journal-brush-presets {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 8px;
+}
+
 .brush-preset-btn {
-  height: 30px;
+  min-width: 0;
+  height: 34px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 7px;
   background: #fff;
   color: var(--text-dark);
-  padding: 0 9px;
+  padding: 0 8px;
   font-size: 12px;
+  line-height: 1;
+  white-space: nowrap;
   cursor: pointer;
 }
 
@@ -1265,6 +1706,7 @@ defineExpose({
 }
 
 .journal-canvas-viewport {
+  position: relative;
   min-width: 0;
   overflow: auto;
   padding: 12px;
@@ -1281,6 +1723,19 @@ defineExpose({
 .journal-canvas-viewport :deep(.konvajs-content) {
   margin: 0 auto;
   box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+}
+
+.text-inline-editor {
+  position: absolute;
+  z-index: 8;
+  min-width: 120px;
+  border: 1px solid rgba(142, 125, 255, 0.52);
+  border-radius: 6px;
+  padding: 6px 8px;
+  outline: 2px solid rgba(142, 125, 255, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  resize: both;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.14);
 }
 
 .journal-zoom-controls {

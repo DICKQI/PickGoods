@@ -8,7 +8,7 @@ from .character import CharacterViewSet
 from .category import CategoryViewSet
 from .theme import ThemeViewSet
 from .showcase import ShowcaseViewSet
-from .journal import JournalBookViewSet, JournalPageVersionViewSet, JournalPageViewSet
+from .journal import JournalBookViewSet, JournalPageVersionViewSet, JournalPageViewSet, PublicJournalPageViewSet
 from .bgm import (
     bgm_create_characters,
     bgm_search_characters,
@@ -28,6 +28,7 @@ __all__ = [
     "JournalBookViewSet",
     "JournalPageViewSet",
     "JournalPageVersionViewSet",
+    "PublicJournalPageViewSet",
     "bgm_search_characters",
     "bgm_create_characters",
     "bgm_search_subjects",

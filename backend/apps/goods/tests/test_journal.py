@@ -5,8 +5,10 @@ from django.test import TestCase
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
 
 from apps.goods.models import JournalPage, JournalPageVersion
+from apps.goods.views.journal import PublicJournalPageViewSet
 from apps.users.models import Role, User
 
 
@@ -255,7 +257,7 @@ class JournalAPITestCase(TestCase):
                 {
                     "id": "draw-invalid",
                     "type": "draw",
-                    "brush_type": "marker",
+                    "brush_type": "spray",
                     "points": [1, 2, 3, 4],
                     "stroke": "#123abc",
                     "stroke_width": 4,
@@ -389,7 +391,7 @@ class JournalAPITestCase(TestCase):
                         {
                             "id": "stroke-1",
                             "type": "stroke",
-                            "brush_type": "marker",
+                            "brush_type": "spray",
                             "points": [1, 2, 3, 4],
                             "stroke": "#123abc",
                             "stroke_width": 4,
@@ -814,3 +816,140 @@ class JournalAPITestCase(TestCase):
 
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("background_style", str(response.json()))
+
+    def test_content_v3_accepts_shape_new_brush_text_effects_and_local_sticker(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+        content = {
+            "version": 3,
+            "layers": [
+                {
+                    "id": "draw-layer",
+                    "type": "draw",
+                    "opacity": 1,
+                    "z_index": 1,
+                    "items": [
+                        {
+                            "id": "stroke-item",
+                            "type": "stroke",
+                            "brush_type": "highlighter",
+                            "points": [0, 0, 20, 20],
+                            "stroke": "#fff176",
+                            "stroke_width": 18,
+                            "opacity": 0.38,
+                        }
+                    ],
+                },
+                {
+                    "id": "shape-layer",
+                    "type": "shape",
+                    "opacity": 1,
+                    "z_index": 2,
+                    "items": [
+                        {
+                            "id": "shape-item",
+                            "type": "shape",
+                            "shape_type": "rect",
+                            "x": 10,
+                            "y": 20,
+                            "width": 160,
+                            "height": 90,
+                            "rotation": 0,
+                            "fill": "#ffffff",
+                            "stroke": "#d4af37",
+                            "stroke_width": 4,
+                        }
+                    ],
+                },
+                {
+                    "id": "text-layer",
+                    "type": "text",
+                    "opacity": 1,
+                    "z_index": 3,
+                    "items": [
+                        {
+                            "id": "text-item",
+                            "type": "text",
+                            "text": "加一点手写感",
+                            "x": 10,
+                            "y": 120,
+                            "font_size": 32,
+                            "fill": "#333333",
+                            "rotation": 0,
+                            "stroke": "#ffffff",
+                            "stroke_width": 2,
+                            "shadow_enabled": True,
+                            "shadow_color": "#999999",
+                            "shadow_blur": 6,
+                        }
+                    ],
+                },
+                {
+                    "id": "decor-sticker-layer",
+                    "type": "sticker",
+                    "opacity": 1,
+                    "z_index": 4,
+                    "items": [
+                        {
+                            "id": "decor-sticker-item",
+                            "type": "sticker",
+                            "goods_id": "",
+                            "src": "data:image/svg+xml;utf8,%3Csvg%3E%3C/svg%3E",
+                            "x": 50,
+                            "y": 180,
+                            "width": 120,
+                            "height": 80,
+                            "rotation": 0,
+                        }
+                    ],
+                },
+            ],
+        }
+
+        response = self.client.patch(
+            f"/api/journal-pages/{page['id']}/",
+            {
+                "content": content,
+                "create_version": True,
+                "revision": page["revision"],
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertEqual(response.json()["content"], content)
+
+    def test_public_share_token_exposes_read_only_page_without_login(self):
+        book = self._create_book()
+        page = self._first_page(book["id"])
+
+        share_response = self.client.post(f"/api/journal-pages/{page['id']}/share/")
+
+        self.assertEqual(share_response.status_code, status.HTTP_200_OK, share_response.json())
+        token = share_response.json()["token"]
+        self.assertGreaterEqual(len(token), 32)
+
+        self.client.credentials()
+        public_response = self.client.get(f"/api/journal-public/{token}/")
+        patch_response = self.client.patch(f"/api/journal-public/{token}/", {"title": "bad"}, format="json")
+
+        self.assertEqual(public_response.status_code, status.HTTP_200_OK, public_response.json())
+        self.assertEqual(public_response.json()["id"], page["id"])
+        self.assertEqual(patch_response.status_code, status.HTTP_405_METHOD_NOT_ALLOWED)
+
+    def test_public_journal_page_view_uses_scoped_throttle(self):
+        self.assertEqual(PublicJournalPageViewSet.throttle_classes, [ScopedRateThrottle])
+        self.assertEqual(PublicJournalPageViewSet.throttle_scope, "journal_public")
+
+    def test_upload_journal_book_cover_updates_cover_image(self):
+        book = self._create_book()
+        image = self._image_file("cover.png", "gold")
+
+        response = self.client.post(
+            f"/api/journals/{book['id']}/upload-cover/",
+            {"cover_image": image},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.json())
+        self.assertIn("/media/journals/covers/", response.json()["cover_image"])
