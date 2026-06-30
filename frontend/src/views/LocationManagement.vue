@@ -1,817 +1,2194 @@
 <template>
-  <div class="location-management">
-    <el-row :gutter="20" class="main-layout">
-      <!-- 左侧树形导航 -->
-      <el-col :xs="24" :sm="8" :md="8" class="tree-col">
-        <el-card class="tree-card" :body-style="{ padding: '0', height: '100%', display: 'flex', flexDirection: 'column' }">
-          <template #header>
-            <div class="card-header">
-              <span>收纳位置</span>
-              <el-button type="primary" size="small" @click="handleAddNode">
-                <el-icon><Plus /></el-icon>
-                新增
-              </el-button>
-            </div>
-          </template>
+  <div class="location-management location-workbench">
+    <section class="location-shell">
+      <aside class="location-sidebar">
+        <div class="sidebar-header">
+          <div>
+            <p class="eyebrow">收纳地图</p>
+            <h1>位置作业台</h1>
+          </div>
+          <el-button type="primary" size="small" :icon="Plus" @click="handleAddNode">新增</el-button>
+        </div>
 
-          <!-- 下拉刷新容器 wrapper -->
-          <div 
-            class="pull-refresh-wrapper"
-            ref="scrollContainerRef"
-            @touchstart="handleTouchStart"
-            @touchmove="handleTouchMove"
-            @touchend="handleTouchEnd"
+        <el-input
+          v-model="treeKeyword"
+          class="tree-search"
+          placeholder="搜索位置、路径或编号"
+          clearable
+          :prefix-icon="Search"
+        />
+
+        <div v-if="locationStore.recentNodes.length || locationStore.favoriteNodes.length" class="shortcut-blocks">
+          <div v-if="locationStore.recentNodes.length" class="shortcut-block">
+            <span class="shortcut-title">最近使用</span>
+            <button
+              v-for="node in locationStore.recentNodes"
+              :key="`recent-${node.id}`"
+              class="location-chip"
+              type="button"
+              @click="selectNodeById(node.id)"
+            >
+              {{ node.code || node.name }}
+            </button>
+          </div>
+          <div v-if="locationStore.favoriteNodes.length" class="shortcut-block">
+            <span class="shortcut-title">常用位置</span>
+            <button
+              v-for="node in locationStore.favoriteNodes"
+              :key="`favorite-${node.id}`"
+              class="location-chip location-chip--favorite"
+              type="button"
+              @click="selectNodeById(node.id)"
+            >
+              {{ node.code || node.name }}
+            </button>
+          </div>
+        </div>
+
+        <div class="tree-panel">
+          <el-skeleton v-if="locationStore.loading" :rows="6" animated />
+          <el-tree
+            v-else
+            ref="treeRef"
+            :data="locationStore.treeData"
+            :props="{ label: 'label', children: 'children' }"
+            :filter-node-method="filterTreeNode"
+            :expand-on-click-node="false"
+            node-key="id"
+            highlight-current
+            class="custom-tree"
+            @node-click="handleNodeClick"
           >
-            <!-- 下拉加载提示区 -->
-            <div class="pull-indicator" :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }">
-              <div class="indicator-content">
-                <el-icon v-if="isRefreshing" class="is-loading"><Loading /></el-icon>
-                <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
-                <span class="indicator-text">
-                  {{ isRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}
-                </span>
+            <template #default="{ node, data }">
+              <div class="tree-node" :class="{ 'is-empty': (data.count || 0) === 0 }">
+                <div class="tree-node-main">
+                  <span class="node-label">{{ node.label }}</span>
+                  <span v-if="data.data?.path_name" class="node-path">{{ data.data.path_name }}</span>
+                </div>
+                <span class="node-count" :class="{ empty: (data.count || 0) === 0 }">{{ data.count || 0 }}</span>
               </div>
+            </template>
+          </el-tree>
+        </div>
+      </aside>
+
+      <main class="location-detail">
+        <template v-if="selectedNode">
+          <section class="location-plate">
+            <div class="plate-copy">
+              <div class="breadcrumb-line">{{ selectedNode.path_name }}</div>
+              <div class="plate-title-row">
+                <h2>{{ selectedNode.name }}</h2>
+                <el-tag v-if="selectedNode.code" effect="plain">{{ selectedNode.code }}</el-tag>
+                <el-tag v-if="selectedNode.is_favorite" type="warning" effect="plain">常用</el-tag>
+              </div>
+              <p v-if="selectedNode.description" class="plate-description">{{ selectedNode.description }}</p>
+              <p v-else class="plate-description muted">还没有备注，可以记录这个位置放什么、怎么找。</p>
             </div>
+            <div class="plate-actions">
+              <el-button :icon="Edit" @click="handleEditNode(selectedNode)">编辑</el-button>
+              <el-button :icon="Sort" @click="handleMoveNode(selectedNode)">移动节点</el-button>
+              <el-button :icon="Delete" type="danger" plain @click="handleDeleteNode(selectedNode)">删除</el-button>
+            </div>
+          </section>
 
-            <!-- 内容区域 -->
-            <div class="tree-content-inner" :style="{ transform: `translateY(${pullDistance}px)` }">
-              <div v-if="locationStore.loading && !isRefreshing" class="loading-container">
-                <el-skeleton :rows="5" animated />
-              </div>
+          <section class="summary-grid">
+            <div class="summary-tile">
+              <span>当前位置</span>
+              <strong>{{ summary?.direct_goods_count ?? selectedNode.goods_count ?? 0 }}</strong>
+            </div>
+            <div class="summary-tile">
+              <span>含子位置</span>
+              <strong>{{ summary?.descendant_goods_count ?? selectedNode.descendant_goods_count ?? 0 }}</strong>
+            </div>
+            <div class="summary-tile">
+              <span>子位置</span>
+              <strong>{{ summary?.child_node_count ?? childCount }}</strong>
+            </div>
+            <div class="summary-tile">
+              <span>容量</span>
+              <strong>{{ capacityText }}</strong>
+            </div>
+          </section>
 
-              <el-tree
-                v-else
-                ref="treeRef"
-                :data="locationStore.treeData"
-                :props="{ label: 'label', children: 'children' }"
-                :expand-on-click-node="false"
-                node-key="id"
-                :default-expand-all="false"
-                @node-click="handleNodeClick"
-                class="custom-tree"
+          <section class="workbench-toolbar">
+            <div class="toolbar-left">
+              <el-segmented v-model="goodsScope" :options="scopeOptions" @change="handleScopeChange" />
+              <el-input
+                v-model="goodsKeyword"
+                class="goods-search"
+                placeholder="在当前位置结果中筛选"
+                clearable
+                :prefix-icon="Search"
+              />
+            </div>
+            <div class="toolbar-right">
+              <el-button :icon="Box" @click="openUnassignedGoodsDialog">待整理 {{ unassignedPagination.count }}</el-button>
+              <el-button :icon="Refresh" @click="refreshSelectedNode">刷新</el-button>
+            </div>
+          </section>
+
+          <section class="goods-filter-row" aria-label="谷子筛选">
+            <el-select v-model="goodsStatusFilter" placeholder="状态" clearable class="mini-filter">
+              <el-option
+                v-for="option in goodsStatusOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="goodsIpFilter" placeholder="IP" clearable filterable class="mini-filter">
+              <el-option
+                v-for="option in goodsIpOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+            <el-select v-model="goodsCategoryFilter" placeholder="品类" clearable filterable class="mini-filter">
+              <el-option
+                v-for="option in goodsCategoryOptions"
+                :key="option.value"
+                :label="option.label"
+                :value="option.value"
+              />
+            </el-select>
+          </section>
+
+          <section v-if="selectedGoodsIds.length" class="batch-bar">
+            <span>已选择 {{ selectedGoodsIds.length }} 件</span>
+            <el-tree-select
+              v-model="batchTargetLocation"
+              :data="locationStore.treeData"
+              :props="{ label: 'label', value: 'id', children: 'children' }"
+              placeholder="移动到..."
+              clearable
+              filterable
+              check-strictly
+              class="batch-target"
+            />
+            <el-button type="primary" :disabled="batchTargetLocation === undefined" @click="handleBatchMove">
+              移动
+            </el-button>
+            <el-button @click="handleBatchMoveToUnassigned">移到待整理</el-button>
+            <el-button text @click="clearSelection">取消选择</el-button>
+          </section>
+
+          <section class="goods-section">
+            <div v-if="summary?.recent_goods?.length" class="recent-strip">
+              <span class="strip-title">最近入库</span>
+              <button
+                v-for="goods in summary.recent_goods.slice(0, 4)"
+                :key="goods.id"
+                class="recent-goods"
+                type="button"
+                @click="openGoodsDetail(goods)"
               >
-                <template #default="{ node, data }">
-                  <div class="tree-node">
-                    <span class="node-label">{{ node.label }}</span>
-                    <!-- PC端操作按钮 -->
-                    <span class="node-actions hidden-xs-only">
-                      <el-button text size="small" @click.stop="handleEditNode(data)">
-                        <el-icon><Edit /></el-icon>
-                      </el-button>
-                      <el-button text size="small" type="danger" @click.stop="handleDeleteNode(data)">
-                        <el-icon><Delete /></el-icon>
-                      </el-button>
-                    </span>
-                    <!-- 移动端箭头 -->
-                    <el-icon class="node-arrow hidden-sm-and-up"><ArrowRight /></el-icon>
-                  </div>
-                </template>
-              </el-tree>
+                {{ goods.name }}
+              </button>
             </div>
-          </div>
-        </el-card>
-      </el-col>
 
-      <!-- 右侧详情 (PC) -->
-      <el-col :xs="0" :sm="16" :md="16" class="detail-col hidden-xs-only">
-        <el-card v-if="selectedNode" class="detail-card">
-          <template #header>
-            <div class="card-header">
-              <span>{{ selectedNode.name }}</span>
+            <el-skeleton v-if="goodsLoading" :rows="6" animated />
+            <el-empty v-else-if="filteredGoodsList.length === 0" description="这里暂时没有符合条件的谷子" />
+            <div v-else class="guzi-grid">
+              <div v-for="goods in filteredGoodsList" :key="goods.id" class="goods-card-shell">
+                <label class="select-mark">
+                  <input
+                    type="checkbox"
+                    :checked="selectedGoodsIds.includes(goods.id)"
+                    @change="toggleGoodsSelection(goods.id)"
+                  />
+                  <span></span>
+                </label>
+                <GoodsCard :goods="goods" :show-menu="false" @click="openGoodsDetail(goods)" />
+              </div>
             </div>
-          </template>
-          <NodeDetailContent 
-            :node="selectedNode" 
-            :guzi-list="locationGuziList"
-            :loading="goodsLoading"
-            :include-children="includeChildren"
-            @update:include-children="val => includeChildren = val"
-            @change-include="handleIncludeChildrenChange"
-            @click-guzi="handleGuziClick"
-          />
-        </el-card>
-        <el-empty v-else description="请选择一个位置节点" class="detail-empty" />
-      </el-col>
-    </el-row>
 
-    <!-- 移动端详情抽屉 -->
-    <el-drawer
-      v-model="mobileDrawerVisible"
-      direction="btt"
-      size="85%"
-      :with-header="false"
-      class="mobile-detail-drawer"
-      destroy-on-close
+            <div v-if="locationPagination.count > locationPagination.page_size" class="pagination-row">
+              <el-pagination
+                layout="prev, pager, next"
+                :page-size="locationPagination.page_size"
+                :total="locationPagination.count"
+                :current-page="locationPagination.page"
+                @current-change="handlePageChange"
+              />
+            </div>
+          </section>
+        </template>
+
+        <section v-else class="empty-workbench">
+          <el-empty description="选择一个位置开始整理">
+            <el-button type="primary" :icon="Box" @click="openUnassignedGoodsDialog">查看待整理谷子</el-button>
+          </el-empty>
+        </section>
+      </main>
+    </section>
+
+    <el-dialog
+      v-model="unassignedVisible"
+      title="待整理谷子"
+      width="min(1080px, calc(100vw - 32px))"
+      class="unassigned-goods-dialog"
+      data-test="unassigned-goods-dialog"
+      align-center
+      append-to-body
     >
-      <div class="mobile-drawer-content" v-if="selectedNode">
-        <div class="drawer-handle"></div>
-        <div class="drawer-header sticky-header">
-          <h2 class="drawer-title">{{ selectedNode.name }}</h2>
-          <div class="drawer-actions">
-            <el-button circle size="small" @click="handleEditNode({ id: selectedNode.id, data: selectedNode } as any)">
-              <el-icon><Edit /></el-icon>
-            </el-button>
-            <el-button circle size="small" type="danger" @click="handleDeleteNode({ id: selectedNode.id, data: selectedNode } as any)">
-              <el-icon><Delete /></el-icon>
-            </el-button>
-            <el-button circle size="small" @click="mobileDrawerVisible = false">
-              <el-icon><Close /></el-icon>
-            </el-button>
+      <div class="unassigned-shell">
+        <div class="unassigned-toolbar">
+          <el-input
+            v-model="unassignedFilters.search"
+            class="unassigned-search"
+            data-test="unassigned-search-input"
+            placeholder="搜索名称 / IP / 角色..."
+            clearable
+            :prefix-icon="Search"
+            @keyup.enter="fetchUnassignedGoods(1)"
+          >
+            <template #append>
+              <el-button :loading="unassignedLoading" @click="fetchUnassignedGoods(1)">搜索</el-button>
+            </template>
+          </el-input>
+          <el-button class="reset-button" :icon="RefreshLeft" @click="resetUnassignedFilters">重置</el-button>
+        </div>
+
+        <el-form class="unassigned-filters" label-position="top" @submit.prevent>
+          <div class="unassigned-filter-grid">
+            <el-form-item label="IP">
+              <el-select
+                v-model="unassignedFilters.ip"
+                data-test="unassigned-ip-filter"
+                placeholder="全部 IP"
+                clearable
+                filterable
+                @change="handleUnassignedIPChange"
+              >
+                <el-option v-for="ip in metadataStore.ips" :key="ip.id" :label="ip.name" :value="ip.id" />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="角色">
+              <el-select
+                v-model="unassignedFilters.character"
+                data-test="unassigned-character-filter"
+                placeholder="先选择 IP"
+                clearable
+                filterable
+                :disabled="!unassignedFilters.ip"
+                @change="fetchUnassignedGoods(1)"
+              >
+                <el-option
+                  v-for="character in unassignedCharacterOptions"
+                  :key="character.id"
+                  :label="character.name"
+                  :value="character.id"
+                />
+              </el-select>
+            </el-form-item>
+
+            <el-form-item label="品类">
+              <el-tree-select
+                v-model="unassignedFilters.category"
+                data-test="unassigned-category-filter"
+                :data="unassignedCategoryTreeData"
+                placeholder="全部品类"
+                clearable
+                check-strictly
+                :props="{ label: 'label', value: 'id', children: 'children' }"
+                @change="fetchUnassignedGoods(1)"
+              />
+            </el-form-item>
+
+            <el-form-item label="官谷 / 同人">
+              <el-select
+                v-model="unassignedFilters.is_official"
+                data-test="unassigned-official-filter"
+                placeholder="全部"
+                clearable
+                @change="fetchUnassignedGoods(1)"
+              >
+                <el-option label="官谷" :value="true" />
+                <el-option label="同人" :value="false" />
+              </el-select>
+            </el-form-item>
+          </div>
+
+          <div class="unassigned-status-strip">
+            <span class="unassigned-status-title">状态</span>
+            <el-checkbox-group
+              v-model="selectedUnassignedStatuses"
+              class="unassigned-status-group"
+              @change="() => fetchUnassignedGoods(1)"
+            >
+              <el-checkbox-button data-test="unassigned-status-draft" label="draft">草稿</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-in-cabinet" label="in_cabinet">在柜</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-outdoor" label="outdoor">外带</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-sold" label="sold">已出</el-checkbox-button>
+            </el-checkbox-group>
+          </div>
+        </el-form>
+
+        <el-alert
+          v-if="!selectedNode"
+          title="先选择左侧位置后可放入"
+          type="warning"
+          :closable="false"
+          show-icon
+        />
+
+        <div class="unassigned-result-area">
+          <div v-if="unassignedError" class="unassigned-state-box">
+            <el-alert :title="unassignedError" type="error" :closable="false" />
+          </div>
+
+          <div v-else-if="unassignedLoading && unassignedGoods.length === 0" class="unassigned-state-box">
+            <el-skeleton :rows="6" animated />
+          </div>
+
+          <div v-else-if="unassignedGoods.length === 0" class="unassigned-state-box">
+            <el-empty description="没有待整理谷子" image-size="90" />
+          </div>
+
+          <div v-else class="unassigned-result-grid">
+            <article
+              v-for="goods in unassignedGoods"
+              :key="goods.id"
+              class="unassigned-result-card"
+              :data-test="`unassigned-card-${goods.id}`"
+            >
+              <button class="unassigned-preview" type="button" @click="openGoodsDetail(goods)">
+                <el-image :src="goods.main_photo || ''" fit="cover" class="unassigned-thumb">
+                  <template #error>
+                    <div class="unassigned-thumb-placeholder">
+                      <el-icon><Picture /></el-icon>
+                    </div>
+                  </template>
+                </el-image>
+                <div class="unassigned-info">
+                  <div class="unassigned-name" :title="goods.name">{{ goods.name }}</div>
+                  <div class="unassigned-meta">
+                    <span>{{ goods.ip.name }}</span>
+                    <span v-if="goods.category?.name">{{ goods.category.name }}</span>
+                    <span v-if="formatGoodsCharacters(goods)">{{ formatGoodsCharacters(goods) }}</span>
+                  </div>
+                </div>
+              </button>
+
+              <div class="unassigned-card-footer">
+                <div class="unassigned-tags">
+                  <el-tag size="small" effect="plain">{{ statusLabelMap[goods.status] }}</el-tag>
+                  <el-tag size="small" effect="plain" :type="goods.is_official ? 'success' : 'info'">
+                    {{ goods.is_official ? '官谷' : '同人' }}
+                  </el-tag>
+                </div>
+
+                <el-button
+                  :data-test="`unassigned-move-${goods.id}`"
+                  type="primary"
+                  size="small"
+                  :disabled="!selectedNode"
+                  :loading="movingUnassignedGoodsId === goods.id"
+                  @click="moveUnassignedGoodsToCurrent(goods.id)"
+                >
+                  放入当前位置
+                </el-button>
+              </div>
+            </article>
           </div>
         </div>
-        <div class="drawer-body">
-           <NodeDetailContent 
-            :node="selectedNode" 
-            :guzi-list="locationGuziList"
-            :loading="goodsLoading"
-            :include-children="includeChildren"
-            @update:include-children="val => includeChildren = val"
-            @change-include="handleIncludeChildrenChange"
-            @click-guzi="handleGuziClick"
+
+        <div class="unassigned-pager-row">
+          <el-pagination
+            v-if="unassignedPagination.count > 0"
+            v-model:current-page="unassignedPagination.page"
+            :page-size="unassignedPagination.page_size"
+            :total="unassignedPagination.count"
+            layout="total, prev, pager, next"
+            small
+            @current-change="fetchUnassignedGoods"
           />
-        </div>
-        <div class="mobile-action-bar hidden-sm-and-up">
-          <el-button class="edit-btn" type="primary" @click="handleEditNode(selectedNode as any)">编辑位置</el-button>
-          <el-button class="delete-btn" plain @click="handleDeleteNode(selectedNode as any)">删除节点</el-button>
         </div>
       </div>
-    </el-drawer>
+    </el-dialog>
 
-    <!-- 弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="dialogTitle"
-      :width="isMobile ? '100%' : '600px'"
+      :width="isMobile ? '100%' : 'min(94vw, 760px)'"
       :fullscreen="isMobile"
-      class="responsive-dialog"
+      class="location-node-dialog"
+      data-test="location-node-dialog"
+      align-center
       @close="handleDialogClose"
       append-to-body
     >
-      <el-form :model="formData" label-width="100px" label-position="left" class="dialog-form">
-        <el-form-item label="位置名称" required>
-          <el-input v-model="formData.name" placeholder="请输入位置名称" maxlength="50" show-word-limit />
-        </el-form-item>
-        <el-form-item label="父节点位置">
-          <div class="parent-select-wrapper">
-            <el-tree-select
-              v-model="formData.parent"
-              :data="parentNodeOptions"
-              placeholder="选择父节点"
-              clearable
-              :props="{ label: 'label', value: 'id', children: 'children' }"
-              check-strictly
-              style="width: 100%"
-              filterable
-              :filter-method="filterParentNodes"
-            />
+      <template #header>
+        <div class="location-dialog-header">
+          <span class="location-dialog-kicker">{{ isEdit ? 'Refine location' : 'Create location' }}</span>
+          <h3 class="location-dialog-title">{{ dialogTitle }}</h3>
+          <p class="location-dialog-subtitle">
+            {{ isEdit ? '调整位置标签、层级和容量，让收纳路径保持清晰。' : '先给这个收纳点贴上好找的标签，之后可以继续整理谷子。' }}
+          </p>
+        </div>
+      </template>
+
+      <el-form :model="formData" label-position="top" class="location-dialog-form">
+        <section class="location-form-section location-form-section--identity">
+          <div class="location-section-title">基础信息</div>
+          <div class="location-dialog-form-grid">
+            <el-form-item label="位置名称" required class="location-field location-field--wide">
+              <el-input v-model="formData.name" placeholder="例如 书房展示柜" maxlength="50" show-word-limit />
+            </el-form-item>
+            <el-form-item label="位置编号" class="location-field">
+              <el-input v-model="formData.code" placeholder="例如 A-03-02" maxlength="50" clearable />
+            </el-form-item>
           </div>
-        </el-form-item>
-        <el-form-item label="显示顺序">
-          <el-input-number v-model="formData.order" :min="0" :max="9999" style="width: 100%" controls-position="right" />
-          <div class="form-tip-mobile">数字越小越靠前</div>
-        </el-form-item>
-        <el-form-item label="备注说明">
-          <el-input v-model="formData.description" type="textarea" :rows="3" placeholder="可选备注信息" maxlength="500" show-word-limit />
-        </el-form-item>
+        </section>
+
+        <section class="location-form-section location-form-section--structure">
+          <div class="location-section-title">结构设置</div>
+          <div class="location-dialog-form-grid">
+            <el-form-item label="父节点位置" class="location-field location-field--wide">
+              <el-tree-select
+                v-model="formData.parent"
+                :data="parentNodeOptions"
+                placeholder="选择父节点"
+                clearable
+                :props="{ label: 'label', value: 'id', children: 'children' }"
+                check-strictly
+                filterable
+                :filter-node-method="filterParentNode"
+              />
+            </el-form-item>
+            <el-form-item label="位置类型" class="location-field">
+              <el-select v-model="formData.node_type">
+                <el-option label="房间" value="room" />
+                <el-option label="柜子" value="cabinet" />
+                <el-option label="层板" value="shelf" />
+                <el-option label="抽屉" value="drawer" />
+                <el-option label="收纳盒" value="box" />
+                <el-option label="自定义" value="custom" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="容量" class="location-field">
+              <el-input-number
+                v-model="formData.capacity"
+                class="location-number-input"
+                :min="0"
+                :max="9999"
+                :controls="false"
+              />
+            </el-form-item>
+            <el-form-item label="显示顺序" class="location-field">
+              <el-input-number
+                v-model="formData.order"
+                class="location-number-input"
+                :min="0"
+                :max="9999"
+                :controls="false"
+              />
+            </el-form-item>
+          </div>
+        </section>
+
+        <section class="location-form-section location-form-section--notes">
+          <div class="favorite-location-row">
+            <div class="favorite-location-copy">
+              <span class="favorite-location-title">常用位置</span>
+              <span class="favorite-location-desc">开启后会出现在位置选择和作业台快捷入口里。</span>
+            </div>
+            <div class="favorite-switch-control">
+              <el-switch v-model="formData.is_favorite" class="favorite-location-switch" />
+            </div>
+          </div>
+
+          <el-form-item label="备注说明" class="location-field location-field--wide">
+            <el-input
+              v-model="formData.description"
+              type="textarea"
+              :rows="3"
+              placeholder="例如：最上层放徽章，底层放纸片和吧唧。"
+              maxlength="500"
+              show-word-limit
+            />
+          </el-form-item>
+        </section>
       </el-form>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="dialogVisible = false">取消</el-button>
-          <el-button type="primary" @click="handleSubmit">确定</el-button>
+        <div class="location-dialog-footer">
+          <el-button class="location-dialog-cancel" @click="dialogVisible = false">取消</el-button>
+          <el-button type="primary" class="location-dialog-submit" @click="handleSubmit">保存</el-button>
         </div>
       </template>
     </el-dialog>
+
+    <GoodsDrawer v-model="detailDrawerVisible" :goods-id="selectedGoodsId" />
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, defineComponent, h } from 'vue'
-import { Plus, Edit, Delete, ArrowRight, Close, Loading, Top } from '@element-plus/icons-vue'
-import { ElMessage, ElMessageBox, ElSkeleton, ElEmpty } from 'element-plus'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { Box, Delete, Edit, Picture, Plus, Refresh, RefreshLeft, Search, Sort } from '@element-plus/icons-vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { useLocationStore } from '@/stores/location'
+import { useMetadataStore } from '@/stores/metadata'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { getGoodsList } from '@/api/goods'
 import {
   createLocationNode,
-  patchLocationNode,
   deleteLocationNode,
   getLocationNodeDetail,
   getLocationNodeGoods,
+  getLocationNodeSummary,
+  moveLocationGoods,
+  moveLocationNode,
+  patchLocationNode,
 } from '@/api/location'
 import GoodsCard from '@/components/GoodsCard.vue'
-import type { StorageNode, GoodsListItem } from '@/api/types'
+import GoodsDrawer from '@/components/GoodsDrawer.vue'
+import type { Category, GoodsListItem, GoodsSearchParams, GoodsStatus, LocationNodeSummary, PaginatedResponse, StorageNode } from '@/api/types'
 import type { TreeNode } from '@/utils/tree'
 
-// --- 详情内容组件 (PC/Mobile 复用) ---
-const NodeDetailContent = defineComponent({
-  props: ['node', 'guziList', 'loading', 'includeChildren'],
-  emits: ['update:includeChildren', 'changeInclude', 'clickGuzi'],
-  setup(props, { emit }) {
-    return () => h('div', { class: 'node-detail' }, [
-      props.node.image && h('div', { class: 'node-image' }, [
-        h('img', { src: props.node.image, style: 'width:100%; height:100%; object-fit:cover;' })
-      ]),
-      h('div', { class: 'node-info' }, [
-        h('div', { class: 'info-item' }, [
-          h('span', { class: 'info-label' }, '完整路径'),
-          h('span', { class: 'info-value path-value' }, props.node.path_name)
-        ]),
-        props.node.description && h('div', { class: 'info-item column-layout' }, [
-          h('span', { class: 'info-label' }, '备注'),
-          h('div', { class: 'info-value notes' }, props.node.description)
-        ])
-      ]),
-      h('div', { class: 'guzi-list-section' }, [
-        h('div', { class: 'section-header mobile-optimize' }, [
-          h('h3', { class: 'section-title' }, [
-            '该位置的谷子',
-            h('span', { class: 'count-badge' }, props.guziList.length)
-          ]),
-          h('label', { class: 'custom-switch-label' }, [
-            h('input', { 
-              type: 'checkbox', 
-              checked: props.includeChildren, 
-              onChange: (e: any) => {
-                emit('update:includeChildren', e.target.checked);
-                emit('changeInclude', e.target.checked);
-              }
-            }),
-            h('span', { class: 'switch-text' }, props.includeChildren ? '含子节点' : '仅当前')
-          ])
-        ]),
-        props.loading 
-          ? h('div', { class: 'loading-skeleton' }, [
-              h(ElSkeleton, { rows: 3, animated: true })
-            ]) 
-          : (props.guziList.length === 0 
-              ? h(ElEmpty, { description: '这里空空如也', imageSize: 60 }) 
-              : h('div', { class: 'guzi-grid tight-grid' }, 
-                  props.guziList.map((goods: any) => 
-                    h(GoodsCard, { 
-                      key: goods.id, 
-                      goods, 
-                      onClick: () => emit('clickGuzi', goods) 
-                    })
-                  )
-                )
-            )
-      ])
-    ])
-  }
-})
+type NodeType = NonNullable<StorageNode['node_type']>
 
+interface CategoryTreeNode {
+  id: number
+  label: string
+  children?: CategoryTreeNode[]
+}
+
+interface LocationFormData {
+  name: string
+  code: string
+  parent: number | null
+  order: number
+  description: string
+  capacity: number | null
+  node_type: NodeType
+  is_favorite: boolean
+}
+
+const route = useRoute()
 const locationStore = useLocationStore()
+const metadataStore = useMetadataStore()
 const { isMobile } = useResponsiveDevice()
-const treeRef = ref()
-const scrollContainerRef = ref<HTMLElement | null>(null) // 滚动容器引用
 
-// 基础数据
+const treeRef = ref()
 const selectedNode = ref<StorageNode | null>(null)
+const summary = ref<LocationNodeSummary | null>(null)
+const treeKeyword = ref('')
+const goodsKeyword = ref('')
+const goodsStatusFilter = ref<GoodsStatus | ''>('')
+const goodsIpFilter = ref<number | ''>('')
+const goodsCategoryFilter = ref<number | ''>('')
+const goodsScope = ref<'current' | 'children'>('children')
 const locationGuziList = ref<GoodsListItem[]>([])
 const goodsLoading = ref(false)
-const includeChildren = ref(true)
+const summaryLoading = ref(false)
+const selectedGoodsIds = ref<string[]>([])
+const batchTargetLocation = ref<number | null | undefined>(undefined)
 const dialogVisible = ref(false)
-const mobileDrawerVisible = ref(false)
 const isEdit = ref(false)
 const editingNodeId = ref<number | null>(null)
-const formData = ref({ name: '', parent: null as number | null, order: 0, description: '' })
+const detailDrawerVisible = ref(false)
+const selectedGoodsId = ref<string>()
+const unassignedVisible = ref(false)
+const unassignedLoading = ref(false)
+const unassignedError = ref<string | null>(null)
+const unassignedGoods = ref<GoodsListItem[]>([])
+const movingUnassignedGoodsId = ref<string | null>(null)
+const unassignedFilters = reactive<{
+  search: string
+  ip?: number
+  character?: number
+  category?: number
+  is_official?: boolean
+}>({
+  search: '',
+  ip: undefined,
+  character: undefined,
+  category: undefined,
+  is_official: undefined,
+})
+const selectedUnassignedStatuses = ref<GoodsStatus[]>([])
+const unassignedPagination = ref<PaginatedResponse<GoodsListItem>>({
+  count: 0,
+  page: 1,
+  page_size: 18,
+  next: null,
+  previous: null,
+  results: [],
+})
+const locationPagination = ref({ count: 0, page: 1, page_size: 18, next: null as number | null, previous: null as number | null })
 
-// 下拉刷新相关状态
-const startY = ref(0)
-const pullDistance = ref(0)
-const isRefreshing = ref(false)
-const MAX_PULL = 80       // 最大下拉距离
-const TRIGGER_DIST = 50   // 触发刷新的阈值
+const formData = ref<LocationFormData>({
+  name: '',
+  code: '',
+  parent: null,
+  order: 0,
+  description: '',
+  capacity: null,
+  node_type: 'custom',
+  is_favorite: false,
+})
 
-// 计算属性
+const scopeOptions = [
+  { label: '含子位置', value: 'children' },
+  { label: '仅当前', value: 'current' },
+]
+
+const goodsStatusOptions: Array<{ label: string; value: GoodsStatus }> = [
+  { label: '草稿', value: 'draft' },
+  { label: '在柜', value: 'in_cabinet' },
+  { label: '外带', value: 'outdoor' },
+  { label: '已出', value: 'sold' },
+]
+
+const statusLabelMap: Record<GoodsStatus, string> = {
+  draft: '草稿',
+  in_cabinet: '在柜',
+  outdoor: '外带',
+  sold: '已出',
+}
+
 const dialogTitle = computed(() => (isEdit.value ? '编辑位置' : '新增位置'))
+const childCount = computed(() => selectedNode.value ? locationStore.nodes.filter((node) => node.parent === selectedNode.value!.id).length : 0)
+const capacityText = computed(() => {
+  if (!summary.value?.capacity) return '未设置'
+  return `${summary.value.descendant_goods_count}/${summary.value.capacity}`
+})
+
 const parentNodeOptions = computed(() => {
   const treeData = locationStore.treeData
   if (!isEdit.value || !editingNodeId.value) return treeData
   const excludeIds = locationStore.getChildrenIds(editingNodeId.value)
-  const filterTree = (nodes: TreeNode[]): TreeNode[] => {
-    return nodes
-      .filter((node) => !excludeIds.includes(node.id))
-      .map((node) => ({
-        ...node,
-        children: node.children && node.children.length > 0 ? filterTree(node.children) : undefined,
-      }))
-  }
+  const filterTree = (nodes: TreeNode[]): TreeNode[] => nodes
+    .filter((node) => !excludeIds.includes(node.id))
+    .map((node) => ({
+      ...node,
+      children: node.children && node.children.length > 0 ? filterTree(node.children) : undefined,
+    }))
   return filterTree(treeData)
 })
 
-// --- 下拉刷新逻辑 ---
-// 修复：获取页面滚动高度的辅助函数
-const getScrollTop = () => {
-  return window.pageYOffset || document.documentElement.scrollTop || document.body.scrollTop || 0
-}
+const filteredGoodsList = computed(() => {
+  const keyword = goodsKeyword.value.trim().toLowerCase()
+  return locationGuziList.value.filter((goods) => {
+    if (goodsStatusFilter.value && goods.status !== goodsStatusFilter.value) return false
+    if (goodsIpFilter.value && goods.ip?.id !== goodsIpFilter.value) return false
+    if (goodsCategoryFilter.value && goods.category?.id !== goodsCategoryFilter.value) return false
+    if (!keyword) return true
+    const haystack = [
+      goods.name,
+      goods.ip?.name,
+      goods.category?.name,
+      goods.location_path,
+      ...(goods.characters?.map((character) => character.name) ?? []),
+    ].filter(Boolean).join(' ').toLowerCase()
+    return haystack.includes(keyword)
+  })
+})
 
-const handleTouchStart = (e: TouchEvent) => {
-  // 如果不在移动端，或者正在刷新中，忽略
-  if (!isMobile.value || isRefreshing.value) return
-  
-  // 核心修复：检查 window 的滚动高度，只有在页面最顶端时才记录触摸点
-  if (getScrollTop() > 0) {
-    startY.value = 0 // 确保非顶端时不记录有效起始点
-    return
-  }
-  
-  // 只有当滚动条在顶部时才允许触发
-  if (scrollContainerRef.value && scrollContainerRef.value.scrollTop > 0) return
+const goodsIpOptions = computed(() => {
+  const options = new Map<number, string>()
+  locationGuziList.value.forEach((goods) => {
+    if (goods.ip?.id) options.set(goods.ip.id, goods.ip.name)
+  })
+  return Array.from(options, ([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'))
+})
 
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  startY.value = firstTouch.clientY
-}
+const goodsCategoryOptions = computed(() => {
+  const options = new Map<number, string>()
+  locationGuziList.value.forEach((goods) => {
+    if (goods.category?.id) options.set(goods.category.id, goods.category.name)
+  })
+  return Array.from(options, ([value, label]) => ({ value, label }))
+    .sort((a, b) => a.label.localeCompare(b.label, 'zh-Hans-CN'))
+})
 
-const handleTouchMove = (e: TouchEvent) => {
-  // 如果起始点无效（说明开始触摸时不在顶部），直接忽略
-  if (!isMobile.value || isRefreshing.value || startY.value === 0) return
-  
-  // 双重保险：移动过程中如果页面被卷下去了，也不处理
-  if (getScrollTop() > 0) return
-  
-  const firstTouch = e.touches?.[0]
-  if (!firstTouch) return
-  const currentY = firstTouch.clientY
-  const distance = currentY - startY.value
-  
-  // 滚动条不在顶部，不处理
-  if (scrollContainerRef.value && scrollContainerRef.value.scrollTop > 0) return
+const unassignedCharacterOptions = computed(() => {
+  if (!unassignedFilters.ip) return []
+  return metadataStore.charactersByIP[unassignedFilters.ip] || []
+})
 
-  if (distance > 0) {
-    // 阻止原生滚动，防止冲突（注意：这可能需要 touch-action: none 或 passive: false，但在 Vue 中 prevent 修饰符更简单，这里手动调用）
-    if (e.cancelable) e.preventDefault()
-    
-    // 增加阻尼效果，拉得越长越难拉
-    pullDistance.value = Math.min(distance * 0.4, MAX_PULL)
-  } else {
-    pullDistance.value = 0
-  }
-}
+const unassignedCategoryTreeData = computed<CategoryTreeNode[]>(() => buildCategoryTree(metadataStore.categories))
 
-const handleTouchEnd = async () => {
-  if (!isMobile.value || isRefreshing.value) return
-  
-  if (pullDistance.value >= TRIGGER_DIST) {
-    // 触发刷新
-    isRefreshing.value = true
-    pullDistance.value = TRIGGER_DIST // 停留在加载位置
-    
-    try {
-      await locationStore.fetchNodes(true)
-      ElMessage.success('刷新成功')
-    } catch (error) {
-      ElMessage.error('刷新失败')
-    } finally {
-      // 延迟一下让动画自然
-      setTimeout(() => {
-        isRefreshing.value = false
-        pullDistance.value = 0
-        startY.value = 0
-      }, 500)
-    }
-  } else {
-    // 距离不够，回弹
-    pullDistance.value = 0
-    startY.value = 0
-  }
-}
-// ----------------
+const filterTreeNode = (keyword: string, data: TreeNode) => filterNodeByKeyword(keyword, data)
+const filterParentNode = (keyword: string, data: TreeNode) => filterNodeByKeyword(keyword, data)
 
-const filterParentNodes = (query: string, node: TreeNode) => {
+function filterNodeByKeyword(keyword: string, data: TreeNode) {
+  const query = keyword.trim().toLowerCase()
   if (!query) return true
-  const label = node.label || ''
-  const pathName = node.data?.path_name || ''
-  return label.toLowerCase().includes(query.toLowerCase()) || pathName.toLowerCase().includes(query.toLowerCase())
+  const node = data.data
+  return [data.label, node?.name, node?.path_name, node?.code]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query))
 }
 
-const handleNodeClick = async (data: TreeNode) => {
+function resetGoodsFilters() {
+  goodsKeyword.value = ''
+  goodsStatusFilter.value = ''
+  goodsIpFilter.value = ''
+  goodsCategoryFilter.value = ''
+}
+
+function normalizeForm(node?: StorageNode | null): LocationFormData {
+  return {
+    name: node?.name ?? '',
+    code: node?.code ?? '',
+    parent: node?.parent ?? null,
+    order: node?.order ?? 0,
+    description: node?.description ?? '',
+    capacity: node?.capacity ?? null,
+    node_type: node?.node_type ?? 'custom',
+    is_favorite: Boolean(node?.is_favorite),
+  }
+}
+
+async function selectNodeById(id: number) {
+  const treeNode = locationStore.treeData.flatMap(flattenTree).find((node) => node.id === id)
+  if (treeNode) {
+    await handleNodeClick(treeNode)
+    await nextTick()
+    treeRef.value?.setCurrentKey(id)
+    await scrollCurrentTreeNodeIntoView()
+  }
+}
+
+function flattenTree(node: TreeNode): TreeNode[] {
+  return [node, ...(node.children ?? []).flatMap(flattenTree)]
+}
+
+async function scrollCurrentTreeNodeIntoView() {
+  await nextTick()
+  const currentNode = treeRef.value?.$el?.querySelector?.('.el-tree-node.is-current')
+  currentNode?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
+}
+
+async function applyHighlightFromRoute() {
+  const highlight = route.query.highlight
+  if (typeof highlight !== 'string' || !highlight.trim()) return
+  await locationStore.fetchNodes()
+  const node = locationStore.getNodeByPathName(highlight)
+  if (!node) return
+  await selectNodeById(node.id)
+  const keys = getExpandedKeys(node)
+  await nextTick()
+  keys.forEach((key) => {
+    const treeNode = treeRef.value?.getNode?.(key)
+    if (treeNode) treeNode.expanded = true
+  })
+  await scrollCurrentTreeNodeIntoView()
+}
+
+function getExpandedKeys(node: StorageNode) {
+  const keys: number[] = []
+  let parentId = node.parent
+  while (parentId) {
+    keys.unshift(parentId)
+    parentId = locationStore.getNodeById(parentId)?.parent ?? null
+  }
+  return keys
+}
+
+async function handleNodeClick(data: TreeNode) {
   if (!data.data) return
   try {
     const nodeDetail = await getLocationNodeDetail(data.id)
     selectedNode.value = nodeDetail
-    await loadNodeGoods(data.id, includeChildren.value)
-    if (isMobile.value) mobileDrawerVisible.value = true
+    locationStore.markRecentLocation(nodeDetail.id)
+    selectedGoodsIds.value = []
+    batchTargetLocation.value = undefined
+    resetGoodsFilters()
+    locationPagination.value.page = 1
+    await Promise.all([loadNodeSummary(nodeDetail.id), loadNodeGoods(nodeDetail.id)])
   } catch (err: any) {
     ElMessage.error(err.message || '获取节点详情失败')
   }
 }
 
-const loadNodeGoods = async (nodeId: number, includeChildrenFlag: boolean = false) => {
-  if (!nodeId) return
+async function loadNodeSummary(nodeId: number) {
+  summaryLoading.value = true
+  try {
+    summary.value = await getLocationNodeSummary(nodeId)
+  } catch {
+    summary.value = null
+  } finally {
+    summaryLoading.value = false
+  }
+}
+
+async function loadNodeGoods(nodeId: number, page = locationPagination.value.page) {
   goodsLoading.value = true
   try {
-    const response = await getLocationNodeGoods(nodeId, includeChildrenFlag)
-    let results: GoodsListItem[] = []
-    if (Array.isArray(response)) {
-      results = response
-    } else if (response && typeof response === 'object') {
-      const responseObj = response as any
-      if ('results' in responseObj && Array.isArray(responseObj.results)) {
-        results = responseObj.results
-      } else if (responseObj.id) {
-        results = [responseObj]
-      }
+    const response = await getLocationNodeGoods(nodeId, goodsScope.value === 'children', page, locationPagination.value.page_size)
+    locationGuziList.value = response.results || []
+    locationPagination.value = {
+      count: response.count ?? locationGuziList.value.length,
+      page: response.page ?? page,
+      page_size: response.page_size ?? locationPagination.value.page_size,
+      next: response.next ?? null,
+      previous: response.previous ?? null,
     }
-    locationGuziList.value = results
-  } catch (err: any) {
+  } catch {
     locationGuziList.value = []
   } finally {
     goodsLoading.value = false
   }
 }
 
-const handleIncludeChildrenChange = (value: boolean) => {
-  if (selectedNode.value) loadNodeGoods(selectedNode.value.id, value)
+function handleScopeChange() {
+  if (!selectedNode.value) return
+  locationPagination.value.page = 1
+  selectedGoodsIds.value = []
+  resetGoodsFilters()
+  loadNodeGoods(selectedNode.value.id, 1)
 }
 
-const handleAddNode = () => {
+function handlePageChange(page: number) {
+  if (!selectedNode.value) return
+  locationPagination.value.page = page
+  loadNodeGoods(selectedNode.value.id, page)
+}
+
+async function refreshSelectedNode() {
+  await locationStore.fetchNodes(true)
+  if (selectedNode.value) {
+    const id = selectedNode.value.id
+    selectedNode.value = await getLocationNodeDetail(id)
+    await Promise.all([loadNodeSummary(id), loadNodeGoods(id)])
+  }
+}
+
+function handleAddNode() {
   isEdit.value = false
   editingNodeId.value = null
-  formData.value = { name: '', parent: null, order: 0, description: '' }
+  formData.value = normalizeForm(null)
+  if (selectedNode.value) formData.value.parent = selectedNode.value.id
   dialogVisible.value = true
 }
 
-const handleEditNode = (data: any) => {
-  const rawData = data.data || data
-  if (!rawData) return
+function handleEditNode(node: StorageNode) {
   isEdit.value = true
-  editingNodeId.value = data.id || rawData.id
-  formData.value = {
-    name: rawData.name,
-    parent: rawData.parent,
-    order: rawData.order,
-    description: rawData.description || '',
-  }
+  editingNodeId.value = node.id
+  formData.value = normalizeForm(node)
   dialogVisible.value = true
 }
 
-const handleDeleteNode = async (data: any) => {
-  const nodeId = data.id || data.data?.id
-  if (!nodeId) return
-  const childrenIds = locationStore.getChildrenIds(nodeId)
+function handleMoveNode(node: StorageNode) {
+  handleEditNode(node)
+}
+
+async function handleDeleteNode(node: StorageNode) {
+  const childrenIds = locationStore.getChildrenIds(node.id)
   const hasChildren = childrenIds.length > 1
+  const impactCount = summary.value?.descendant_goods_count ?? node.descendant_goods_count ?? 0
   try {
     await ElMessageBox.confirm(
-      hasChildren ? `包含 ${childrenIds.length - 1} 个子节点，确认删除？` : '确定要删除这个位置吗？',
-      '警告',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+      hasChildren
+        ? `将删除 ${childrenIds.length} 个位置，并将 ${impactCount} 件谷子设为未定位。确认删除？`
+        : `将把 ${impactCount} 件谷子设为未定位。确认删除？`,
+      '删除位置',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
     )
-    await deleteLocationNode(nodeId)
+    await deleteLocationNode(node.id)
     ElMessage.success('删除成功')
-    if (isMobile.value && selectedNode.value?.id === nodeId) {
-      mobileDrawerVisible.value = false
-      selectedNode.value = null
-      }
+    selectedNode.value = null
+    summary.value = null
+    locationGuziList.value = []
     await locationStore.fetchNodes(true)
-    if (!isMobile.value && selectedNode.value?.id === nodeId) {
-      selectedNode.value = null
-      locationGuziList.value = []
-    }
-  } catch (err) { /* cancel */ }
+  } catch {
+    // 用户取消
+  }
 }
 
-const handleSubmit = async () => {
-  if (!formData.value.name.trim()) {
+async function handleSubmit() {
+  const payload: Partial<StorageNode> = {
+    name: formData.value.name.trim(),
+    code: formData.value.code.trim() || null,
+    parent: formData.value.parent,
+    order: formData.value.order,
+    description: formData.value.description,
+    capacity: formData.value.capacity || null,
+    node_type: formData.value.node_type,
+    is_favorite: formData.value.is_favorite,
+  }
+  if (!payload.name) {
     ElMessage.warning('请输入位置名称')
     return
   }
   try {
     if (isEdit.value && editingNodeId.value) {
-      const updateData: Partial<StorageNode> = {}
-      if (formData.value.name) updateData.name = formData.value.name
-      if (formData.value.parent !== undefined) updateData.parent = formData.value.parent
-      if (formData.value.order !== undefined) updateData.order = formData.value.order
-      if (formData.value.description !== undefined) updateData.description = formData.value.description
-      await patchLocationNode(editingNodeId.value, updateData)
-      ElMessage.success('更新成功')
-      if (selectedNode.value && selectedNode.value.id === editingNodeId.value) {
-         selectedNode.value = await getLocationNodeDetail(editingNodeId.value)
-      }
+      await patchLocationNode(editingNodeId.value, payload)
+      await moveLocationNode(editingNodeId.value, { parent: payload.parent ?? null, order: payload.order })
+      ElMessage.success('位置已更新')
     } else {
-      await createLocationNode(formData.value)
-      ElMessage.success('创建成功')
+      await createLocationNode(payload)
+      ElMessage.success('位置已创建')
     }
     dialogVisible.value = false
-    await locationStore.fetchNodes(true)
+    await refreshSelectedNode()
   } catch (err: any) {
-    ElMessage.error(err.message || '操作失败')
+    ElMessage.error(err.message || '保存失败')
   }
 }
 
-const handleDialogClose = () => {
-  formData.value = { name: '', parent: null, order: 0, description: '' }
+function handleDialogClose() {
+  formData.value = normalizeForm(null)
 }
 
-const handleGuziClick = (goods: any) => {}
+function openGoodsDetail(goods: GoodsListItem) {
+  selectedGoodsId.value = goods.id
+  detailDrawerVisible.value = true
+}
+
+function toggleGoodsSelection(id: string) {
+  selectedGoodsIds.value = selectedGoodsIds.value.includes(id)
+    ? selectedGoodsIds.value.filter((item) => item !== id)
+    : [...selectedGoodsIds.value, id]
+}
+
+function clearSelection() {
+  selectedGoodsIds.value = []
+  batchTargetLocation.value = undefined
+}
+
+async function handleBatchMove() {
+  if (batchTargetLocation.value === undefined) return
+  await moveSelectedGoods(batchTargetLocation.value)
+}
+
+async function handleBatchMoveToUnassigned() {
+  await moveSelectedGoods(null)
+}
+
+async function moveSelectedGoods(targetLocation: number | null) {
+  try {
+    await moveLocationGoods({
+      goods_ids: selectedGoodsIds.value,
+      target_location: targetLocation,
+    })
+    ElMessage.success('移动成功')
+    clearSelection()
+    await refreshSelectedNode()
+    if (unassignedVisible.value) await fetchUnassignedGoods(unassignedPagination.value.page)
+  } catch (err: any) {
+    ElMessage.error(err.message || '移动失败')
+  }
+}
+
+function buildUnassignedSearchParams(page: number): GoodsSearchParams {
+  const params: GoodsSearchParams = {
+    page,
+    page_size: unassignedPagination.value.page_size,
+    location__isnull: true,
+  }
+  const search = unassignedFilters.search.trim()
+  if (search) params.search = search
+  if (unassignedFilters.ip) params.ip = unassignedFilters.ip
+  if (unassignedFilters.character) params.character = unassignedFilters.character
+  if (unassignedFilters.category) params.category = unassignedFilters.category
+  if (unassignedFilters.is_official !== undefined) params.is_official = unassignedFilters.is_official
+  if (selectedUnassignedStatuses.value.length === 1) {
+    params.status = selectedUnassignedStatuses.value[0]
+  } else if (selectedUnassignedStatuses.value.length > 1) {
+    params.status__in = selectedUnassignedStatuses.value.join(',')
+  }
+  return params
+}
+
+function resetUnassignedFilterState() {
+  unassignedFilters.search = ''
+  unassignedFilters.ip = undefined
+  unassignedFilters.character = undefined
+  unassignedFilters.category = undefined
+  unassignedFilters.is_official = undefined
+  selectedUnassignedStatuses.value = []
+}
+
+async function fetchUnassignedMetadata() {
+  await Promise.all([
+    metadataStore.fetchIPs(),
+    metadataStore.fetchCategories(),
+  ])
+}
+
+async function openUnassignedGoodsDialog() {
+  unassignedVisible.value = true
+  resetUnassignedFilterState()
+  await Promise.all([
+    fetchUnassignedMetadata(),
+    fetchUnassignedGoods(1),
+  ])
+}
+
+async function fetchUnassignedGoods(page: number | Event = 1) {
+  const nextPage = typeof page === 'number' ? page : 1
+  unassignedLoading.value = true
+  unassignedError.value = null
+  try {
+    const response = await getGoodsList(buildUnassignedSearchParams(nextPage))
+    unassignedGoods.value = response.results || []
+    unassignedPagination.value = {
+      count: response.count ?? unassignedGoods.value.length,
+      page: response.page ?? nextPage,
+      page_size: response.page_size ?? unassignedPagination.value.page_size,
+      next: response.next ?? null,
+      previous: response.previous ?? null,
+      results: response.results || [],
+    }
+  } catch (err: any) {
+    unassignedGoods.value = []
+    unassignedError.value = err.message || '加载待整理谷子失败'
+  } finally {
+    unassignedLoading.value = false
+  }
+}
+
+async function handleUnassignedIPChange() {
+  unassignedFilters.character = undefined
+  if (unassignedFilters.ip) {
+    await metadataStore.fetchIPCharacters(unassignedFilters.ip)
+  }
+  await fetchUnassignedGoods(1)
+}
+
+async function resetUnassignedFilters() {
+  resetUnassignedFilterState()
+  await fetchUnassignedGoods(1)
+}
+
+async function moveUnassignedGoodsToCurrent(goodsId: string) {
+  if (!selectedNode.value) {
+    ElMessage.warning('先选择左侧位置后可放入')
+    return
+  }
+  movingUnassignedGoodsId.value = goodsId
+  try {
+    await moveLocationGoods({
+      goods_ids: [goodsId],
+      target_location: selectedNode.value.id,
+    })
+    ElMessage.success('已放入当前位置')
+    await refreshSelectedNode()
+    await fetchUnassignedGoods(unassignedPagination.value.page)
+    if (unassignedGoods.value.length === 0 && unassignedPagination.value.page > 1) {
+      await fetchUnassignedGoods(unassignedPagination.value.page - 1)
+    }
+  } catch (err: any) {
+    ElMessage.error(err.message || '放入当前位置失败')
+  } finally {
+    movingUnassignedGoodsId.value = null
+  }
+}
+
+function formatGoodsCharacters(goods: GoodsListItem) {
+  const names = goods.characters?.map((character) => character.name).filter(Boolean) ?? []
+  if (names.length === 0) return ''
+  if (names.length <= 2) return names.join('、')
+  return `${names.slice(0, 2).join('、')} 等 ${names.length} 人`
+}
+
+function buildCategoryTree(categories: Category[]): CategoryTreeNode[] {
+  if (!categories.length) return []
+
+  const nodeMap = new Map<number, CategoryTreeNode>()
+  const rootNodes: CategoryTreeNode[] = []
+
+  categories.forEach((category) => {
+    nodeMap.set(category.id, {
+      id: category.id,
+      label: category.name,
+      children: [],
+    })
+  })
+
+  categories.forEach((category) => {
+    const node = nodeMap.get(category.id)
+    if (!node) return
+
+    if (category.parent === null) {
+      rootNodes.push(node)
+      return
+    }
+
+    const parent = nodeMap.get(category.parent)
+    if (parent) {
+      parent.children = parent.children || []
+      parent.children.push(node)
+    }
+  })
+
+  const sortNodes = (nodes: CategoryTreeNode[]) => {
+    nodes.sort((a, b) => {
+      const categoryA = categories.find((category) => category.id === a.id)
+      const categoryB = categories.find((category) => category.id === b.id)
+      return (categoryA?.order ?? 0) - (categoryB?.order ?? 0) || a.label.localeCompare(b.label, 'zh-Hans-CN')
+    })
+    nodes.forEach((node) => {
+      if (node.children?.length) sortNodes(node.children)
+      if (node.children?.length === 0) delete node.children
+    })
+  }
+
+  sortNodes(rootNodes)
+  return rootNodes
+}
+
+watch(treeKeyword, (keyword) => {
+  treeRef.value?.filter(keyword)
+})
+
+watch(
+  () => route.query.highlight,
+  () => {
+    applyHighlightFromRoute()
+  },
+)
 
 onMounted(async () => {
   await locationStore.fetchNodes()
+  await applyHighlightFromRoute()
 })
-
-onUnmounted(() => {})
 </script>
 
 <style scoped>
-:root {
-  --primary-gold: #cba26c;
-  --text-dark: #333;
-  --text-light: #666;
-  --bg-gray: #f5f7fa;
+.location-workbench {
+  --loc-gold: #d4af37;
+  --loc-ink: #243042;
+  --loc-muted: #6b7280;
+  --loc-line: #e5e7eb;
+  --loc-panel: #ffffff;
+  --loc-soft: #f6f7f9;
+  min-height: calc(100vh - 60px);
+  padding: 18px;
+  color: var(--loc-ink);
 }
 
-.location-management {
-  padding: 20px;
-  max-width: 1400px;
+.location-shell {
+  display: grid;
+  grid-template-columns: minmax(300px, 360px) minmax(0, 1fr);
+  gap: 18px;
+  max-width: 1480px;
   margin: 0 auto;
-  height: calc(100vh - 60px);
+  min-height: calc(100vh - 96px);
 }
 
-@media only screen and (max-width: 767px) {
-  .location-management {
-    padding: 10px;
-    height: calc(100vh - 50px);
-  }
-  .main-layout {
-    height: 100%;
-    margin: 0 !important;
-  }
-  .tree-col {
-    height: 100%;
-    padding: 0 !important;
-  }
+.location-sidebar,
+.location-detail {
+  background: var(--loc-panel);
+  border: 1px solid var(--loc-line);
+  border-radius: 8px;
+  min-width: 0;
 }
 
-.tree-card,
-.detail-card {
-  height: 100%;
+.location-sidebar {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 14px;
+}
+
+.sidebar-header,
+.plate-title-row,
+.plate-actions,
+.workbench-toolbar,
+.toolbar-left,
+.toolbar-right,
+.batch-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sidebar-header,
+.workbench-toolbar {
+  justify-content: space-between;
+}
+
+.eyebrow {
+  margin: 0 0 2px;
+  font-size: 12px;
+  color: var(--loc-gold);
+  font-weight: 700;
+}
+
+h1,
+h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+h1 {
+  font-size: 22px;
+}
+
+h2 {
+  font-size: 26px;
+}
+
+.tree-search,
+.goods-search {
+  width: 100%;
+}
+
+.goods-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 0;
+}
+
+.mini-filter {
+  width: 148px;
+}
+
+.shortcut-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shortcut-block {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.shortcut-title {
+  width: 64px;
+  font-size: 12px;
+  color: var(--loc-muted);
+  font-weight: 600;
+}
+
+.location-chip {
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 9px;
+  color: #334155;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.location-chip--favorite {
+  border-color: rgba(212, 175, 55, 0.45);
+  color: #8a650b;
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.tree-panel {
+  min-height: 0;
+  flex: 1;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.custom-tree {
+  --el-tree-node-hover-bg-color: #f7f3e8;
+}
+
+:deep(.el-tree-node__content) {
+  min-height: 48px;
+  height: auto;
+  border-radius: 7px;
+  margin: 2px 0;
+}
+
+.tree-node {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px 5px 0;
+}
+
+.tree-node-main {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
 }
 
-.card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  font-weight: bold;
-  padding: 0 10px; /* 增加一点内边距适配移动端 */
-}
-
-/* 下拉刷新相关样式 */
-.pull-refresh-wrapper {
-  position: relative;
-  flex: 1;
-  overflow-y: auto; /* 关键：让这个容器负责滚动 */
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-}
-
-.pull-indicator {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  overflow: hidden;
-  display: flex;
-  align-items: flex-end; /* 让内容在底部 */
-  justify-content: center;
-  z-index: 10;
-  pointer-events: none; /* 穿透点击 */
-}
-
-.indicator-content {
-  height: 50px; /* 阈值高度 */
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #909399;
-  padding-bottom: 10px;
-}
-
-.indicator-content .el-icon {
-  font-size: 18px;
-  transition: transform 0.3s;
-}
-
-.tree-content-inner {
-  transition: transform 0.2s cubic-bezier(0.18, 0.89, 0.32, 1.28); /* 平滑回弹 */
-  will-change: transform;
-  min-height: 100%;
-}
-/* ---------------- */
-
-.custom-tree {
-  padding: 10px;
-}
-
-.tree-node {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex: 1;
-  padding-right: 8px;
-  width: 100%;
-}
-
-.node-label {
-  flex: 1;
-  font-size: 15px;
+.node-label,
+.node-path {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-:deep(.el-tree-node__content) {
-  height: 44px;
-  border-radius: 4px;
+.node-label {
+  font-size: 14px;
+  font-weight: 700;
 }
 
-:deep(.el-tree-node__content:hover) {
-  background-color: var(--el-fill-color-light);
+.node-path {
+  font-size: 11px;
+  color: var(--loc-muted);
 }
 
-.node-actions { display: flex; gap: 4px; }
-.node-arrow { color: #ccc; font-size: 12px; }
-
-/* 详情样式 */
-:deep(.node-detail) { padding: 16px; display: flex; flex-direction: column; gap: 20px; }
-:deep(.node-image) { width: 100%; aspect-ratio: 16/9; border-radius: 8px; overflow: hidden; background-color: #f0f0f0; }
-:deep(.node-info) { display: flex; flex-direction: column; gap: 12px; }
-:deep(.info-item) { display: flex; gap: 12px; font-size: 14px; align-items: baseline; }
-:deep(.info-item.column-layout) { flex-direction: column; gap: 6px; }
-:deep(.info-label) { min-width: 70px; color: #909399; font-weight: 500; }
-:deep(.info-value) { color: #303133; line-height: 1.5; }
-:deep(.path-value) { font-family: monospace; background: #f4f4f5; padding: 2px 6px; border-radius: 4px; color: #666; font-size: 12px; }
-:deep(.notes) { padding: 10px; background-color: #f9fafe; border-radius: 6px; width: 100%; box-sizing: border-box; font-size: 13px; color: #666; }
-:deep(.section-header) { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid #eee; }
-:deep(.section-title) { font-size: 16px; font-weight: bold; margin: 0; display: flex; align-items: center; gap: 6px; }
-:deep(.count-badge) { background: #f0f2f5; color: #909399; font-size: 12px; padding: 2px 6px; border-radius: 10px; }
-:deep(.custom-switch-label) { display: flex; align-items: center; gap: 6px; font-size: 13px; color: #606266; }
-:deep(.guzi-grid) { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
-@media only screen and (max-width: 767px) {
-  :deep(.guzi-grid) { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-}
-:deep(.empty-guzi) { text-align: center; padding: 30px 0; color: #999; font-size: 14px; }
-
-/* 移动端抽屉 */
-.mobile-detail-drawer { border-radius: 16px 16px 0 0 !important; }
-.mobile-drawer-content { height: 100%; display: flex; flex-direction: column; }
-.sticky-header { position: sticky; top: 0; background: #fff; z-index: 10; padding: 16px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
-.drawer-title { font-size: 18px; font-weight: bold; margin: 0; color: #333; }
-.drawer-actions { display: flex; gap: 8px; }
-.drawer-body { flex: 1; overflow-y: auto; padding-bottom: 20px; }
-
-.drawer-handle {
-  width: 40px;
-  height: 5px;
-  background: #ddd;
-  border-radius: 3px;
-  margin: 10px auto 0;
+.node-count {
+  min-width: 26px;
+  height: 22px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(212, 175, 55, 0.13);
+  color: #8a650b;
+  font-size: 12px;
+  font-weight: 700;
 }
 
-.mobile-action-bar {
+.node-count.empty {
+  background: #f1f5f9;
+  color: #94a3b8;
+}
+
+.location-detail {
+  padding: 18px;
+  overflow: auto;
+}
+
+.location-plate {
   display: flex;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 8px;
+  background:
+    linear-gradient(90deg, rgba(212, 175, 55, 0.11), rgba(255, 255, 255, 0) 44%),
+    #fff;
+}
+
+.plate-copy {
+  min-width: 0;
+}
+
+.breadcrumb-line {
+  margin-bottom: 6px;
+  color: var(--loc-muted);
+  font-size: 13px;
+}
+
+.plate-description {
+  margin: 8px 0 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.muted {
+  color: #94a3b8;
+}
+
+.plate-actions {
+  align-self: flex-start;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
-  padding: 16px;
-  background: #fff;
-  border-top: 1px solid #eee;
+  margin: 14px 0;
 }
 
-.mobile-action-bar .el-button {
+.summary-tile {
+  padding: 14px;
+  border-radius: 8px;
+  background: var(--loc-soft);
+  border: 1px solid #eef2f7;
+}
+
+.summary-tile span {
+  display: block;
+  color: var(--loc-muted);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.summary-tile strong {
+  font-size: 24px;
+}
+
+.workbench-toolbar {
+  margin: 12px 0;
+  flex-wrap: wrap;
+}
+
+.toolbar-left {
   flex: 1;
+  min-width: 280px;
 }
 
-.mobile-action-bar .edit-btn {
-  background-color: var(--primary-gold);
-  border-color: var(--primary-gold);
-  color: #fff;
+.goods-search {
+  max-width: 320px;
 }
 
-.mobile-action-bar .edit-btn:hover,
-.mobile-action-bar .edit-btn:focus {
-  filter: brightness(1.05);
+.batch-bar {
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff8e6;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  flex-wrap: wrap;
 }
 
-.mobile-action-bar .delete-btn {
-  color: var(--primary-gold);
-  border-color: rgba(203, 162, 108, 0.4);
-  background-color: #fff;
+.batch-target {
+  width: 260px;
 }
 
-.mobile-action-bar .delete-btn:hover,
-.mobile-action-bar .delete-btn:focus {
-  background-color: rgba(203, 162, 108, 0.04);
-  border-color: rgba(203, 162, 108, 0.8);
+.goods-section {
+  margin-top: 12px;
 }
 
-/* 弹窗 */
-.responsive-dialog { max-width: 100vw; }
-.dialog-form { padding: 10px 0; }
-.parent-select-wrapper { width: 100%; }
-.form-tip-mobile { font-size: 12px; color: #909399; margin-top: 4px; }
-
-@media only screen and (max-width: 767px) {
-  .hidden-xs-only { display: none !important; }
-}
-@media only screen and (min-width: 768px) {
-  .hidden-sm-and-up { display: none !important; }
+.recent-strip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 10px;
 }
 
-/* 移动端样式优化 */
-@media only screen and (max-width: 767px) {
-  :deep(.el-tree-node__content) {
-    height: 56px;
-    margin-bottom: 4px;
-    background: #fff;
-    border-bottom: 0.5px solid #f0f0f0;
-  }
-
-  .node-label {
-    font-weight: 500;
-    color: var(--text-dark);
-  }
-
-  .pull-indicator {
-    background: linear-gradient(to bottom, #f5f7fa, transparent);
-  }
-
-  :deep(.guzi-grid) {
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 8px !important;
-  }
-
-  :deep(.el-drawer.btt) {
-    border-radius: 20px 20px 0 0 !important;
-    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
-  }
+.strip-title {
+  flex: 0 0 auto;
+  color: var(--loc-muted);
+  font-size: 12px;
+  font-weight: 700;
 }
 
-/* NodeDetailContent 细节样式 */
-:deep(.mobile-optimize) {
-  padding-top: 4px;
+.recent-goods {
+  flex: 0 0 auto;
+  border: 1px solid #e2e8f0;
+  background: #fff;
+  border-radius: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+  color: #334155;
 }
 
-.loading-skeleton {
-  padding: 12px 4px;
+.guzi-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  .location-management {
+.goods-card-shell {
+  position: relative;
+  min-width: 0;
+}
+
+.select-mark {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  z-index: 5;
+  width: 28px;
+  height: 28px;
+}
+
+.select-mark input {
+  position: absolute;
+  opacity: 0;
+}
+
+.select-mark span {
+  display: block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: rgba(15, 23, 42, 0.35);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.2);
+}
+
+.select-mark input:checked + span {
+  background: var(--loc-gold);
+}
+
+.pagination-row {
+  display: flex;
+  justify-content: center;
+  margin-top: 18px;
+}
+
+.empty-workbench {
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+:global(.unassigned-goods-dialog) {
+  max-height: 80vh;
+}
+
+:global(.unassigned-goods-dialog .el-dialog__body) {
+  padding: 0 20px 18px;
+}
+
+.unassigned-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: calc(80vh - 96px);
+  min-height: min(520px, calc(100vh - 160px));
+}
+
+.unassigned-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.unassigned-search {
+  flex: 1;
+  min-width: 0;
+}
+
+.unassigned-filters {
+  padding: 12px;
+  border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.unassigned-filter-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.unassigned-filters :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
+.unassigned-filters :deep(.el-form-item__label) {
+  margin-bottom: 5px;
+  color: var(--loc-muted);
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.unassigned-filters :deep(.el-select),
+.unassigned-filters :deep(.el-tree-select) {
+  width: 100%;
+}
+
+.unassigned-status-strip {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  min-width: 0;
+}
+
+.unassigned-status-title {
+  flex: 0 0 auto;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--loc-muted);
+}
+
+.unassigned-status-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.unassigned-status-group :deep(.el-checkbox-button__inner) {
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  padding: 6px 11px;
+  box-shadow: none;
+  font-size: 12px;
+}
+
+.unassigned-status-group :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
+.unassigned-status-group :deep(.el-checkbox-button:last-child .el-checkbox-button__inner) {
+  border-radius: 999px;
+}
+
+.unassigned-status-group :deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
+  border-color: rgba(212, 175, 55, 0.85);
+  background: rgba(212, 175, 55, 0.13);
+  color: #7a5b08;
+}
+
+.unassigned-result-area {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.unassigned-state-box {
+  min-height: 220px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.unassigned-state-box > * {
+  width: 100%;
+}
+
+.unassigned-result-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+}
+
+.unassigned-result-card {
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.unassigned-result-card:hover {
+  border-color: rgba(212, 175, 55, 0.6);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+  transform: translateY(-1px);
+}
+
+.unassigned-preview {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 70px minmax(0, 1fr);
+  gap: 10px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.unassigned-thumb,
+.unassigned-thumb-placeholder {
+  width: 70px;
+  height: 70px;
+  border-radius: 7px;
+}
+
+.unassigned-thumb {
+  background: #f1f5f9;
+  overflow: hidden;
+}
+
+.unassigned-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #94a3b8;
+  background: #f1f5f9;
+}
+
+.unassigned-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+}
+
+.unassigned-name {
+  color: var(--loc-ink);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.35;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.unassigned-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  color: var(--loc-muted);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.unassigned-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding-left: 80px;
+}
+
+.unassigned-tags {
+  min-width: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.unassigned-pager-row {
+  display: flex;
+  justify-content: center;
+  padding-top: 2px;
+}
+
+:global(.location-node-dialog),
+:global(.location-node-dialog .el-dialog) {
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 24px;
+  background: #fff;
+  box-shadow:
+    0 28px 70px rgba(15, 23, 42, 0.18),
+    0 10px 24px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.88);
+}
+
+:global(.location-node-dialog .el-dialog__header) {
+  margin-right: 0;
+  padding: 20px 24px 10px;
+  border-bottom: 0;
+  background: transparent;
+}
+
+:global(.location-node-dialog .el-dialog__headerbtn) {
+  top: 20px;
+  right: 20px;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.78);
+  transition: background-color 0.16s ease, transform 0.16s ease;
+}
+
+:global(.location-node-dialog .el-dialog__headerbtn:hover) {
+  background: rgba(212, 175, 55, 0.13);
+  transform: rotate(90deg);
+}
+
+:global(.location-node-dialog .el-dialog__headerbtn .el-dialog__close) {
+  color: #6b7280;
+  font-size: 16px;
+}
+
+:global(.location-node-dialog .el-dialog__body) {
+  max-height: none;
+  overflow: visible;
+  padding: 14px 24px 0;
+}
+
+:global(.location-node-dialog .el-dialog__footer) {
+  padding: 10px 24px 18px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.location-dialog-header {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 540px;
+}
+
+.location-dialog-kicker {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.13);
+  color: #8a650b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.location-dialog-title {
+  margin: 0;
+  color: var(--loc-ink);
+  font-size: 25px;
+  font-weight: 800;
+  line-height: 1.16;
+}
+
+.location-dialog-subtitle {
+  margin: 0;
+  color: var(--loc-muted);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.location-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.location-form-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #eef2f7;
+  border-radius: 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
+    radial-gradient(circle at top right, rgba(212, 175, 55, 0.08), transparent 32%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.92);
+}
+
+.location-form-section--identity {
+  border-color: rgba(212, 175, 55, 0.18);
+  background:
+    linear-gradient(90deg, rgba(212, 175, 55, 0.08), rgba(255, 255, 255, 0) 38%),
+    rgba(255, 255, 255, 0.9);
+}
+
+.location-form-section--structure {
+  background:
+    linear-gradient(180deg, rgba(248, 250, 252, 0.92), rgba(255, 255, 255, 0.9)),
+    radial-gradient(circle at top right, rgba(36, 48, 66, 0.04), transparent 30%);
+}
+
+.location-form-section--notes {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.location-section-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: #475569;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.location-section-title::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--loc-gold);
+  box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.12);
+}
+
+.location-dialog-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.location-field--wide {
+  grid-column: 1 / -1;
+}
+
+.location-dialog-form :deep(.el-form-item) {
+  margin-bottom: 0;
+}
+
+.location-dialog-form :deep(.el-form-item__label) {
+  margin-bottom: 5px;
+  color: #566174;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.location-dialog-form :deep(.el-input),
+.location-dialog-form :deep(.el-select),
+.location-dialog-form :deep(.el-tree-select),
+.location-dialog-form :deep(.el-input-number) {
+  width: 100%;
+}
+
+.location-dialog-form :deep(.el-input__wrapper),
+.location-dialog-form :deep(.el-textarea__inner),
+.location-dialog-form :deep(.el-select__wrapper),
+.location-dialog-form :deep(.el-tree-select .el-input__wrapper),
+.location-dialog-form :deep(.el-input-number .el-input__wrapper) {
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 5px 16px rgba(15, 23, 42, 0.035);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.location-dialog-form :deep(.el-input__wrapper),
+.location-dialog-form :deep(.el-select__wrapper) {
+  padding: 3px 12px;
+}
+
+.location-dialog-form :deep(.el-input__wrapper:hover),
+.location-dialog-form :deep(.el-textarea__inner:hover),
+.location-dialog-form :deep(.el-select__wrapper:hover) {
+  border-color: rgba(212, 175, 55, 0.36);
+}
+
+.location-dialog-form :deep(.el-input__wrapper.is-focus),
+.location-dialog-form :deep(.el-textarea__inner:focus),
+.location-dialog-form :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(212, 175, 55, 0.68);
+  background: #fff;
+  box-shadow:
+    0 0 0 3px rgba(212, 175, 55, 0.14),
+    0 8px 20px rgba(15, 23, 42, 0.06);
+}
+
+.location-dialog-form :deep(.el-textarea__inner) {
+  min-height: 84px !important;
+  padding: 10px 12px;
+}
+
+.location-dialog-form :deep(.el-input__count),
+.location-dialog-form :deep(.el-input__count-inner),
+.location-dialog-form :deep(.el-textarea__count) {
+  color: #94a3b8;
+  background: transparent;
+}
+
+.location-dialog-form :deep(.el-input__inner::placeholder),
+.location-dialog-form :deep(.el-textarea__inner::placeholder) {
+  color: #aeb7c5;
+}
+
+.location-number-input :deep(.el-input__wrapper) {
+  padding-right: 12px;
+}
+
+.location-number-input :deep(.el-input__inner) {
+  text-align: left;
+}
+
+.favorite-location-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 12px;
+  background:
+    linear-gradient(90deg, rgba(212, 175, 55, 0.06), rgba(248, 250, 252, 0.92)),
+    #fff;
+}
+
+.favorite-location-copy {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.favorite-location-title {
+  color: var(--loc-ink);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.favorite-location-desc {
+  color: var(--loc-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.favorite-switch-control {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.favorite-location-switch {
+  flex-shrink: 0;
+}
+
+.favorite-location-switch :deep(.el-switch__core) {
+  min-width: 46px;
+  height: 26px;
+  border-color: rgba(148, 163, 184, 0.45);
+  background-color: #e2e8f0;
+}
+
+.favorite-location-switch :deep(.el-switch__action) {
+  width: 20px;
+  height: 20px;
+}
+
+.favorite-location-switch.is-checked :deep(.el-switch__core) {
+  border-color: var(--loc-gold);
+  background-color: var(--loc-gold);
+}
+
+.location-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.location-dialog-cancel {
+  border-radius: 999px;
+  border-color: rgba(148, 163, 184, 0.28);
+  color: #475569;
+  background: transparent;
+}
+
+.location-dialog-submit {
+  min-width: 108px;
+  border-color: #caa12e;
+  border-radius: 999px;
+  background: transparent;
+  color: #1f2937;
+  font-weight: 800;
+  box-shadow: none;
+}
+
+.location-dialog-submit:hover,
+.location-dialog-submit:focus {
+  border-color: #bd9223;
+  background: rgba(212, 175, 55, 0.08);
+  color: #111827;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 960px) {
+  .location-workbench {
     padding: 10px;
-    height: calc(100dvh - 50px);
   }
 
-  .main-layout {
-    height: 100%;
-    margin: 0 !important;
+  .location-shell {
+    grid-template-columns: 1fr;
   }
 
-  .tree-col {
-    flex: 0 0 100%;
-    max-width: 100%;
-    height: 100%;
-    padding: 0 !important;
+  .location-sidebar {
+    max-height: 44vh;
   }
 
-  .detail-col,
-  .hidden-xs-only {
-    display: none !important;
+  .location-plate {
+    flex-direction: column;
   }
 
-  .node-arrow.hidden-sm-and-up {
-    display: inline-flex !important;
+  .plate-actions {
+    justify-content: flex-start;
   }
 
-  .mobile-action-bar.hidden-sm-and-up {
-    display: flex !important;
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  :deep(.el-tree-node__content) {
-    height: 56px;
-    margin-bottom: 4px;
-    background: #fff;
-    border-bottom: 0.5px solid #f0f0f0;
+  .toolbar-left,
+  .toolbar-right {
+    width: 100%;
   }
 
-  .node-label {
-    font-weight: 500;
-    color: var(--text-dark);
+  .goods-search,
+  .batch-target {
+    max-width: none;
+    width: 100%;
   }
 
-  .pull-indicator {
-    background: linear-gradient(to bottom, #f5f7fa, transparent);
+  .unassigned-filter-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .summary-grid {
+    grid-template-columns: 1fr;
   }
 
-  :deep(.guzi-grid) {
-    grid-template-columns: repeat(3, 1fr) !important;
-    gap: 8px !important;
+  .guzi-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
   }
 
-  :deep(.el-drawer.btt) {
-    border-radius: 20px 20px 0 0 !important;
-    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.1);
+  :global(.unassigned-goods-dialog) {
+    width: calc(100vw - 20px) !important;
+  }
+
+  :global(.unassigned-goods-dialog .el-dialog__body) {
+    padding: 0 14px 14px;
+  }
+
+  :global(.location-node-dialog .el-dialog) {
+    border-radius: 0;
+  }
+
+  :global(.location-node-dialog .el-dialog__header) {
+    padding: 20px 18px 16px;
+  }
+
+  :global(.location-node-dialog .el-dialog__body) {
+    max-height: none;
+    padding: 16px 14px 0;
+  }
+
+  :global(.location-node-dialog .el-dialog__footer) {
+    padding: 16px 14px 18px;
+  }
+
+  .location-dialog-title {
+    font-size: 23px;
+  }
+
+  .location-dialog-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .location-form-section {
+    padding: 13px;
+  }
+
+  .favorite-location-row,
+  .location-dialog-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .favorite-location-row :deep(.el-switch) {
+    align-self: flex-start;
+  }
+
+  .location-dialog-footer .el-button {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .unassigned-shell {
+    min-height: calc(100vh - 180px);
+  }
+
+  .unassigned-toolbar,
+  .unassigned-status-strip,
+  .unassigned-card-footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .unassigned-filter-grid,
+  .unassigned-result-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .unassigned-card-footer {
+    padding-left: 0;
+  }
+
+  .unassigned-card-footer .el-button {
+    width: 100%;
   }
 }
 </style>

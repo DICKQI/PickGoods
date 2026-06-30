@@ -209,6 +209,7 @@ class GoodsFilter(FilterSet):
     category = NumberFilter(method="filter_category_tree")
     # 树形位置筛选：?location=5 （筛选该位置及其所有子节点下的谷子）
     location = NumberFilter(method="filter_location_tree")
+    location__isnull = BooleanFilter(field_name="location", lookup_expr="isnull")
     theme = NumberFilter(field_name="theme", lookup_expr="exact")
     status = CharFilter(field_name="status", lookup_expr="exact")
     status__in = BaseInFilter(field_name="status", lookup_expr="in")
@@ -230,6 +231,7 @@ class GoodsFilter(FilterSet):
             "ip",
             "category",
             "location",
+            "location__isnull",
             "theme",
             "status",
             "status__in",

@@ -1,5 +1,12 @@
 import request from '@/utils/request'
-import type { StorageNode, GoodsListItem, PaginatedResponse } from './types'
+import type {
+  StorageNode,
+  GoodsListItem,
+  PaginatedResponse,
+  LocationNodeSummary,
+  LocationMoveGoodsInput,
+  LocationMoveGoodsResponse,
+} from './types'
 
 // 获取位置树（扁平列表）
 export function getLocationTree() {
@@ -31,6 +38,11 @@ export function patchLocationNode(id: number, data: Partial<StorageNode>) {
   return request.patch<StorageNode>(`/api/location/nodes/${id}/`, data)
 }
 
+// 移动位置节点并调整排序
+export function moveLocationNode(id: number, data: { parent?: number | null; order?: number }) {
+  return request.post<StorageNode>(`/api/location/nodes/${id}/move/`, data)
+}
+
 // 删除位置节点
 export function deleteLocationNode(id: number) {
   return request.delete(`/api/location/nodes/${id}/`)
@@ -40,7 +52,8 @@ export function deleteLocationNode(id: number) {
 export function getLocationNodeGoods(
   id: number,
   includeChildren: boolean = false,
-  page?: number
+  page?: number,
+  pageSize?: number,
 ) {
   return request.get<PaginatedResponse<GoodsListItem>>(
     `/api/location/nodes/${id}/goods/`,
@@ -48,8 +61,28 @@ export function getLocationNodeGoods(
       params: {
         include_children: includeChildren,
         page,
+        page_size: pageSize,
       },
     }
   )
 }
 
+// 获取位置摘要
+export function getLocationNodeSummary(id: number) {
+  return request.get<LocationNodeSummary>(`/api/location/nodes/${id}/summary/`)
+}
+
+// 批量移动谷子到指定位置
+export function moveLocationGoods(data: LocationMoveGoodsInput) {
+  return request.post<LocationMoveGoodsResponse>('/api/location/move-goods/', data)
+}
+
+// 获取未定位谷子
+export function getLocationUnassignedGoods(page?: number, pageSize?: number) {
+  return request.get<PaginatedResponse<GoodsListItem>>('/api/location/unassigned-goods/', {
+    params: {
+      page,
+      page_size: pageSize,
+    },
+  })
+}

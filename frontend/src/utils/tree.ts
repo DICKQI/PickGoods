@@ -4,6 +4,7 @@ import type { StorageNode } from '@/api/types'
 export interface TreeNode {
   id: number
   label: string
+  count?: number
   children?: TreeNode[]
   data?: StorageNode
 }
@@ -19,7 +20,8 @@ export function buildTree(nodes: StorageNode[]): TreeNode[] {
   nodes.forEach((node) => {
     const treeNode: TreeNode = {
       id: node.id,
-      label: node.name,
+      label: node.code ? `${node.code} · ${node.name}` : node.name,
+      count: node.descendant_goods_count ?? node.goods_count ?? 0,
       data: node,
       children: [],
     }
@@ -80,4 +82,3 @@ export function getPathById(nodes: StorageNode[], id: number): string {
 
   return path.join(' > ')
 }
-

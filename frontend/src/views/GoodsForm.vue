@@ -115,7 +115,38 @@
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="位置" prop="location">
-                <el-tree-select v-model="formData.location" :data="locationStore.treeData" placeholder="选择位置" clearable style="width: 100%" :props="{ label: 'label', value: 'id', children: 'children' }" check-strictly />
+                <el-tree-select
+                  v-model="formData.location"
+                  :data="locationStore.treeData"
+                  placeholder="选择位置"
+                  clearable
+                  filterable
+                  style="width: 100%"
+                  :props="{ label: 'label', value: 'id', children: 'children' }"
+                  :filter-node-method="filterLocationNode"
+                  check-strictly
+                />
+                <div v-if="recentLocationNodes.length || favoriteLocationNodes.length" class="location-shortcuts">
+                  <button
+                    v-for="node in recentLocationNodes"
+                    :key="`recent-location-${node.id}`"
+                    class="location-shortcut"
+                    type="button"
+                    @click="selectLocationShortcut(node.id)"
+                  >
+                    最近 {{ node.code || node.name }}
+                  </button>
+                  <button
+                    v-for="node in favoriteLocationNodes"
+                    :key="`favorite-location-${node.id}`"
+                    class="location-shortcut location-shortcut--favorite"
+                    type="button"
+                    @click="selectLocationShortcut(node.id)"
+                  >
+                    常用 {{ node.code || node.name }}
+                  </button>
+                </div>
+                <div v-else class="location-helper">不确定具体位置时，可以先留空，之后在位置作业台整理。</div>
               </el-form-item>
             </el-col>
           </el-row>
@@ -449,6 +480,7 @@ import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicate
 import { useImageClassifier } from '@/views/goods-form/composables/useImageClassifier'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getCurrentBaseURL } from '@/utils/request'
+import type { TreeNode } from '@/utils/tree'
 const router = useRouter()
 const route = useRoute()
 const locationStore = useLocationStore()
@@ -497,6 +529,34 @@ const formData = ref({
   notes: '',
   main_photo: '',
 })
+
+const recentLocationNodes = computed(() => (locationStore.recentNodes ?? []).slice(0, 4))
+const favoriteLocationNodes = computed(() =>
+  (locationStore.favoriteNodes ?? [])
+    .filter((node) => !recentLocationNodes.value.some((recent) => recent.id === node.id))
+    .slice(0, 4),
+)
+
+const filterLocationNode = (keyword: string, data?: TreeNode) => {
+  if (!data) return false
+  const query = keyword.trim().toLowerCase()
+  if (!query) return true
+  const node = data.data
+  return [data.label, node?.name, node?.path_name, node?.code]
+    .filter(Boolean)
+    .some((value) => String(value).toLowerCase().includes(query))
+}
+
+const selectLocationShortcut = (id: number) => {
+  formData.value.location = id
+  locationStore.markRecentLocation(id)
+}
+
+const rememberSubmittedLocation = (locationId?: number | null) => {
+  if (locationId) {
+    locationStore.markRecentLocation(locationId)
+  }
+}
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入谷子名称', trigger: 'blur' }],
@@ -844,6 +904,7 @@ const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft'
   } else {
     ElMessage.success('创建成功')
   }
+  rememberSubmittedLocation(result.location ?? formData.value.location ?? null)
   router.push({ name: 'CloudShowcase' })
 }
 
@@ -1219,6 +1280,7 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
       await handleAdditionalPhotosUpload(id)
       await runNewThemePostSaveFlow(id, mode, submitData.theme_id ?? null)
       ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
+      rememberSubmittedLocation(submitData.location ?? null)
       router.push({ name: 'CloudShowcase' })
     } else {
       const createPayload: GoodsInput = mode === 'publish' ? { ...submitData, merge_strategy: 'auto' } : submitData
@@ -1484,6 +1546,45 @@ onUnmounted(() => {
 .goods-form :deep(.el-form-item__label) { color: #606266; font-weight: 500; font-size: 13px; }
 .goods-form :deep(.el-form-item__label .el-form-item__required-star) { color: #f56c6c; font-size: 12px; margin-left: 2px; }
 .goods-form :deep(.el-form-item.is-required .el-form-item__label) { position: relative; }
+.location-shortcuts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+.location-shortcut {
+  max-width: 100%;
+  min-height: 28px;
+  padding: 5px 9px;
+  border: 1px solid #e4e7ef;
+  border-radius: 7px;
+  color: #3f4654;
+  background: linear-gradient(180deg, #ffffff 0%, #f7f8fb 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.75);
+  font-size: 12px;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: border-color 0.16s ease, color 0.16s ease, background 0.16s ease, transform 0.16s ease;
+}
+.location-shortcut:hover,
+.location-shortcut:focus-visible {
+  color: var(--primary-gold-dark);
+  border-color: rgba(212,175,55,0.44);
+  background: #fffaf0;
+  outline: none;
+  transform: translateY(-1px);
+}
+.location-shortcut--favorite {
+  color: #735c10;
+  border-color: rgba(212,175,55,0.34);
+  background: linear-gradient(180deg, #fffdf6 0%, #fff5d7 100%);
+}
+.location-helper {
+  margin-top: 6px;
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.45;
+}
 .goods-form--desktop-workbench .form-section--images {
   overflow: hidden;
 }

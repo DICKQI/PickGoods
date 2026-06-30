@@ -73,6 +73,18 @@ describe('buildTree', () => {
     const tree = buildTree([node])
     expect(tree[0]!.data).toBe(node)
   })
+
+  it('树节点标签包含短编号和数量提示', () => {
+    const node = {
+      ...makeNode(1, 'A柜', null),
+      code: 'A-01',
+      descendant_goods_count: 3,
+    } as StorageNode
+    const tree = buildTree([node])
+
+    expect(tree[0]!.label).toBe('A-01 · A柜')
+    expect(tree[0]!.count).toBe(3)
+  })
 })
 
 describe('getPathById', () => {

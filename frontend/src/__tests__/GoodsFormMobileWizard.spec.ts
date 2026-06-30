@@ -104,7 +104,10 @@ vi.mock('@/api/goods', () => ({
 vi.mock('@/stores/location', () => ({
   useLocationStore: () => ({
     treeData: [],
+    recentNodes: [],
+    favoriteNodes: [],
     fetchNodes: vi.fn(async () => undefined),
+    markRecentLocation: vi.fn(),
   }),
 }))
 

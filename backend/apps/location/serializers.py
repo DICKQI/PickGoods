@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from .models import StorageNode
+from .services import make_path_name, refresh_descendant_paths
 from core.permissions import is_admin
 
 
@@ -19,7 +20,21 @@ class StorageNodeSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = StorageNode
-        fields = ("id", "name", "parent", "path_name", "order", "image", "description")
+        fields = (
+            "id",
+            "name",
+            "code",
+            "parent",
+            "path_name",
+            "order",
+            "image",
+            "description",
+            "capacity",
+            "node_type",
+            "is_favorite",
+            "updated_at",
+        )
+        read_only_fields = ("updated_at",)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,11 +56,10 @@ class StorageNodeSerializer(serializers.ModelSerializer):
         if not path_name:
             if parent:
                 # 有父节点：父节点路径 + "/" + 当前节点名称
-                parent_path = parent.path_name or parent.name
-                path_name = f"{parent_path}/{name}"
+                path_name = make_path_name(name, parent)
             else:
                 # 无父节点（根节点）：直接使用节点名称
-                path_name = name
+                path_name = make_path_name(name, None)
 
         validated_data["path_name"] = path_name
         return super().create(validated_data)
@@ -66,13 +80,14 @@ class StorageNodeSerializer(serializers.ModelSerializer):
             if parent_changed or name_changed:
                 # 重新生成 path_name
                 if parent:
-                    parent_path = parent.path_name or parent.name
-                    path_name = f"{parent_path}/{name}"
+                    path_name = make_path_name(name, parent)
                 else:
-                    path_name = name
+                    path_name = make_path_name(name, None)
                 validated_data["path_name"] = path_name
 
-        return super().update(instance, validated_data)
+        instance = super().update(instance, validated_data)
+        refresh_descendant_paths(instance)
+        return instance
 
 
 class StorageNodeTreeSerializer(serializers.ModelSerializer):
@@ -80,9 +95,23 @@ class StorageNodeTreeSerializer(serializers.ModelSerializer):
     位置树一次性下发用序列化器。
     前端可根据 parent/id 在内存中自行组装为树结构。
     """
+    goods_count = serializers.IntegerField(read_only=True, default=0)
+    descendant_goods_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = StorageNode
-        fields = ("id", "name", "parent", "path_name", "order")
+        fields = (
+            "id",
+            "name",
+            "code",
+            "parent",
+            "path_name",
+            "order",
+            "capacity",
+            "node_type",
+            "is_favorite",
+            "goods_count",
+            "descendant_goods_count",
+        )
 
 

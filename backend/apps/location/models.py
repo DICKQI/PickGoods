@@ -8,6 +8,23 @@ class StorageNode(models.Model):
     """
 
     name = models.CharField(max_length=50, verbose_name="节点名称")
+    NODE_TYPE_CHOICES = (
+        ("room", "房间"),
+        ("cabinet", "柜子"),
+        ("shelf", "层板"),
+        ("drawer", "抽屉"),
+        ("box", "收纳盒"),
+        ("custom", "自定义"),
+    )
+
+    code = models.CharField(
+        max_length=50,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="位置编号",
+        help_text="短编号，例如 A-03-02，便于实物标签和快速查找",
+    )
     user = models.ForeignKey(
         "users.User",
         on_delete=models.CASCADE,
@@ -40,11 +57,29 @@ class StorageNode(models.Model):
         blank=True,
         verbose_name="备注",
     )
+    capacity = models.PositiveIntegerField(
+        null=True,
+        blank=True,
+        verbose_name="容量",
+        help_text="可选容量上限，用于展示占用率",
+    )
+    node_type = models.CharField(
+        max_length=20,
+        choices=NODE_TYPE_CHOICES,
+        default="custom",
+        verbose_name="节点类型",
+    )
+    is_favorite = models.BooleanField(
+        default=False,
+        db_index=True,
+        verbose_name="常用位置",
+    )
     order = models.IntegerField(
         default=0,
         verbose_name="排序值",
         help_text="控制同级节点的展示顺序，值越小越靠前",
     )
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
     class Meta:
         verbose_name = "收纳节点"

@@ -12,6 +12,7 @@ from django.utils import timezone
 
 from apps.users.models import User, Role
 from ..models import Goods, IP, Character, Category, Theme, ThemeImage
+from apps.location.models import StorageNode
 from ..similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
 from ..utils import compress_image
 
@@ -397,6 +398,23 @@ class GoodsCRUDTestCase(TestCase):
         data = response.json()
         items = data.get("results", data)
         self.assertGreaterEqual(len(items), 1)
+
+    def test_list_goods_filter_location_isnull(self):
+        """可筛选未定位谷子，供位置作业台复用"""
+        node = StorageNode.objects.create(name="柜子", user=self.user, path_name="柜子")
+        unassigned = Goods.objects.create(user=self.user, name="待整理", ip=self.ip, category=self.category)
+        assigned = Goods.objects.create(
+            user=self.user, name="已定位", ip=self.ip, category=self.category, location=node
+        )
+
+        response = self.client.get('/api/goods/', {"location__isnull": "true"})
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        items = data.get("results", data)
+        ids = [item["id"] for item in items]
+        self.assertIn(str(unassigned.id), ids)
+        self.assertNotIn(str(assigned.id), ids)
 
     def test_retrieve_goods(self):
         """获取商品详情"""

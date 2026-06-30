@@ -5,15 +5,18 @@ import type { StorageNode } from '@/api/types'
 
 vi.mock('@/api/location', () => ({
   getLocationTree: vi.fn(),
+  getLocationNodeSummary: vi.fn(),
+  getLocationUnassignedGoods: vi.fn(),
+  moveLocationGoods: vi.fn(),
 }))
 
 import { getLocationTree } from '@/api/location'
 
 const makeNodes = (): StorageNode[] => [
-  { id: 1, name: '房间', parent: null, path_name: '房间', order: 0, image: null, description: null } as StorageNode,
-  { id: 2, name: '柜子', parent: 1, path_name: '房间/柜子', order: 0, image: null, description: null } as StorageNode,
-  { id: 3, name: '层1', parent: 2, path_name: '房间/柜子/层1', order: 0, image: null, description: null } as StorageNode,
-  { id: 4, name: '层2', parent: 2, path_name: '房间/柜子/层2', order: 1, image: null, description: null } as StorageNode,
+  { id: 1, name: '房间', parent: null, path_name: '房间', order: 0, image: null, description: null, goods_count: 0, descendant_goods_count: 2 } as StorageNode,
+  { id: 2, name: '柜子', parent: 1, path_name: '房间/柜子', order: 0, image: null, description: null, goods_count: 0, descendant_goods_count: 2 } as StorageNode,
+  { id: 3, name: '层1', parent: 2, path_name: '房间/柜子/层1', order: 0, image: null, description: null, goods_count: 1, descendant_goods_count: 1 } as StorageNode,
+  { id: 4, name: '层2', parent: 2, path_name: '房间/柜子/层2', order: 1, image: null, description: null, goods_count: 1, descendant_goods_count: 1 } as StorageNode,
 ]
 
 describe('useLocationStore', () => {
@@ -117,5 +120,36 @@ describe('useLocationStore', () => {
 
     const ids = store.getChildrenIds(3)
     expect(ids).toEqual([3])
+  })
+
+  it('getNodeByPathName 可按斜杠路径定位节点', async () => {
+    vi.mocked(getLocationTree).mockResolvedValue(makeNodes())
+
+    const store = useLocationStore()
+    await store.fetchNodes()
+
+    expect(store.getNodeByPathName('房间/柜子/层1')?.id).toBe(3)
+  })
+
+  it('markRecentLocation 将最近位置排在前面并限制数量', async () => {
+    vi.mocked(getLocationTree).mockResolvedValue(makeNodes())
+
+    const store = useLocationStore()
+    await store.fetchNodes()
+    store.markRecentLocation(3)
+    store.markRecentLocation(4)
+    store.markRecentLocation(3)
+
+    expect(store.recentNodes.map((node) => node.id)).toEqual([3, 4])
+  })
+
+  it('treeData 保留计数字段用于树节点徽标', async () => {
+    vi.mocked(getLocationTree).mockResolvedValue(makeNodes())
+
+    const store = useLocationStore()
+    await store.fetchNodes()
+
+    expect(store.treeData[0]!.data?.descendant_goods_count).toBe(2)
+    expect(store.treeData[0]!.children![0]!.children![0]!.data?.goods_count).toBe(1)
   })
 })

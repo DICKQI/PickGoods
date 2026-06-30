@@ -21,11 +21,47 @@ export interface UserInfo {
 export interface StorageNode {
   id: number
   name: string
+  code?: string | null
   parent: number | null
   path_name: string
   image?: string | null
   description?: string | null
+  capacity?: number | null
+  node_type?: 'room' | 'cabinet' | 'shelf' | 'drawer' | 'box' | 'custom'
+  is_favorite?: boolean
+  updated_at?: string
+  goods_count?: number
+  descendant_goods_count?: number
   order: number
+}
+
+export interface LocationStatusDistribution {
+  draft?: number
+  in_cabinet?: number
+  outdoor?: number
+  sold?: number
+  [key: string]: number | undefined
+}
+
+export interface LocationNodeSummary {
+  node_id: number
+  direct_goods_count: number
+  descendant_goods_count: number
+  child_node_count: number
+  capacity: number | null
+  capacity_usage_ratio: number | null
+  status_distribution: LocationStatusDistribution
+  recent_goods: GoodsListItem[]
+}
+
+export interface LocationMoveGoodsInput {
+  goods_ids: string[]
+  target_location: number | null
+}
+
+export interface LocationMoveGoodsResponse {
+  moved_count: number
+  target_location: number | null
 }
 
 // IP关键词
@@ -209,9 +245,11 @@ export interface GoodsSearchParams {
    * - true：只看官谷
    * - false：只看非官谷
    * - undefined：不过滤
-   */
+  */
   is_official?: boolean
   location?: number
+  /** 是否只查询未绑定位置的谷子 */
+  location__isnull?: boolean
   search?: string
   page?: number
   page_size?: number

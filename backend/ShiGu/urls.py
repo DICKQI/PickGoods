@@ -39,9 +39,13 @@ from apps.goods.views import (
 )
 from apps.ocr.views import recognize as ocr_recognize
 from apps.location.views import (
+    LocationMoveGoodsView,
+    LocationUnassignedGoodsView,
     StorageNodeDetailView,
     StorageNodeGoodsView,
     StorageNodeListCreateView,
+    StorageNodeMoveView,
+    StorageNodeSummaryView,
     StorageNodeTreeView,
 )
 from apps.users import views as user_views
@@ -86,7 +90,11 @@ urlpatterns = [
     path("api/location/nodes/", StorageNodeListCreateView.as_view(), name="location-nodes"),
     path("api/location/nodes/<int:pk>/", StorageNodeDetailView.as_view(), name="location-node-detail"),
     path("api/location/nodes/<int:pk>/goods/", StorageNodeGoodsView.as_view(), name="location-node-goods"),
+    path("api/location/nodes/<int:pk>/summary/", StorageNodeSummaryView.as_view(), name="location-node-summary"),
+    path("api/location/nodes/<int:pk>/move/", StorageNodeMoveView.as_view(), name="location-node-move"),
     path("api/location/tree/", StorageNodeTreeView.as_view(), name="location-tree"),
+    path("api/location/move-goods/", LocationMoveGoodsView.as_view(), name="location-move-goods"),
+    path("api/location/unassigned-goods/", LocationUnassignedGoodsView.as_view(), name="location-unassigned-goods"),
     # OCR 识别接口
     path("api/ocr/recognize/", ocr_recognize, name="ocr-recognize"),
     # 导出 Schema 文件 (YAML格式)
