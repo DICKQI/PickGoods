@@ -1,6 +1,7 @@
 import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getIPList, getCharacterList, getCategoryList, getThemeList, createTheme } from '@/api/metadata'
+import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
 import type { IP, Character, Category, Theme } from '@/api/types'
 
 interface FormDataShape {
@@ -18,11 +19,27 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
   const allThemes = ref<Theme[]>([])
   const themeOptions = ref<Theme[]>([])
   const createdThemeIds = ref<Set<number>>(new Set())
+  const ipSearchKeyword = ref('')
+  const characterSearchKeyword = ref('')
+  const themeSearchKeyword = ref('')
 
   const filteredCharacters = computed(() => {
     if (!formData.value.ip) return []
-    return characters.value.filter((char) => char.ip.id === formData.value.ip)
+    return characters.value
+      .filter((char) => char.ip.id === formData.value.ip)
+      .filter((char) => matchesTextOrPinyin(characterSearchKeyword.value, char.name))
   })
+
+  const filteredIpOptions = computed(() => (
+    ipOptions.value.filter((ip) => matchesTextOrPinyin(
+      ipSearchKeyword.value,
+      [ip.name, ...(ip.keywords?.map((keyword) => keyword.value) ?? [])],
+    ))
+  ))
+
+  const filteredThemeOptions = computed(() => (
+    themeOptions.value.filter((theme) => matchesTextOrPinyin(themeSearchKeyword.value, theme.name))
+  ))
 
   const buildCategoryTree = (list: Category[]) => {
     const map = new Map<number, Category & { children: Category[] }>()
@@ -45,9 +62,35 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
 
   const categoryTreeOptions = computed(() => buildCategoryTree(categoryOptions.value))
   const selectedCategory = computed(() => categoryOptions.value.find((c) => c.id === formData.value.category))
+  const categoryMap = computed(() => {
+    const map = new Map<number, Category>()
+    categoryOptions.value.forEach((category) => {
+      map.set(category.id, category)
+    })
+    return map
+  })
 
   const handleIpChange = () => {
     formData.value.characters = []
+    characterSearchKeyword.value = ''
+  }
+
+  const handleIpFilter = (keyword: string) => {
+    ipSearchKeyword.value = keyword
+  }
+
+  const handleCharacterFilter = (keyword: string) => {
+    characterSearchKeyword.value = keyword
+  }
+
+  const handleThemeFilter = (keyword: string) => {
+    themeSearchKeyword.value = keyword
+  }
+
+  const filterCategoryNode = (keyword: string, data?: { id: number; name?: string }) => {
+    if (!data) return false
+    const category = categoryMap.value.get(data.id)
+    return matchesTextOrPinyin(keyword, [data.name ?? category?.name ?? '', category?.path_name ?? ''])
   }
 
   // ── Theme management ──
@@ -163,9 +206,11 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
 
   return {
     ipOptions,
+    filteredIpOptions,
     characters,
     categoryOptions,
     themeOptions,
+    filteredThemeOptions,
     allThemes,
     filteredCharacters,
     categoryTreeOptions,
@@ -174,6 +219,10 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
     createdThemeIds,
     wasThemeCreatedInCurrentFlow,
     handleIpChange,
+    handleIpFilter,
+    handleCharacterFilter,
+    handleThemeFilter,
+    filterCategoryNode,
     handleThemeChange,
     handleThemeCreate,
     ensureThemeCreated,

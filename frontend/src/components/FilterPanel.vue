@@ -73,11 +73,13 @@
             v-model="localFilters.ip"
             placeholder="选择IP"
             clearable
+            filterable
+            :filter-method="handleIPFilter"
             @change="handleFilterChange"
             style="width: 100%"
           >
             <el-option
-              v-for="ip in ipOptions"
+              v-for="ip in filteredIpOptions"
               :key="ip.id"
               :label="ip.name"
               :value="ip.id"
@@ -93,6 +95,7 @@
             placeholder="选择角色"
             clearable
             filterable
+            :filter-method="handleCharacterFilter"
             :disabled="!localFilters.ip"
             @change="handleFilterChange"
             style="width: 100%"
@@ -114,6 +117,8 @@
                 :data="categoryTreeData"
                 placeholder="选择品类"
                 clearable
+                filterable
+                :filter-node-method="filterCategoryNode"
                 @change="handleFilterChange"
                 style="width: 100%"
                 :props="{ label: 'label', value: 'id' }"
@@ -129,11 +134,12 @@
                 placeholder="选择主题"
                 clearable
                 filterable
+                :filter-method="handleThemeFilter"
                 @change="handleFilterChange"
                 style="width: 100%"
               >
                 <el-option
-                  v-for="theme in themeOptions"
+                  v-for="theme in filteredThemeOptions"
                   :key="theme.id"
                   :label="theme.name"
                   :value="theme.id"
@@ -216,7 +222,8 @@ import { useGuziStore } from '@/stores/guzi'
 import { useLocationStore } from '@/stores/location'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMetadataStore } from '@/stores/metadata'
-import type { GoodsSearchParams, GoodsStatus } from '@/api/types'
+import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
+import type { Category, GoodsSearchParams, GoodsStatus } from '@/api/types'
 
 const metadataStore = useMetadataStore()
 
@@ -268,8 +275,29 @@ const localFilters = ref<GoodsSearchParams>({
 
 // 本地状态多选
 const selectedStatuses = ref<GoodsStatus[]>([])
+const ipSearchKeyword = ref('')
+const characterSearchKeyword = ref('')
+const themeSearchKeyword = ref('')
 
 const locationTreeData = computed(() => locationStore.treeData)
+const categoryMap = computed(() => {
+  const map = new Map<number, Category>()
+  categoryList.value.forEach((category) => {
+    map.set(category.id, category)
+  })
+  return map
+})
+
+const filteredIpOptions = computed(() => (
+  ipOptions.value.filter((ip) => matchesTextOrPinyin(
+    ipSearchKeyword.value,
+    [ip.name, ...(ip.keywords?.map((keyword) => keyword.value) ?? [])],
+  ))
+))
+
+const filteredThemeOptions = computed(() => (
+  themeOptions.value.filter((theme) => matchesTextOrPinyin(themeSearchKeyword.value, theme.name))
+))
 
 // 将品类列表转换为树形结构（用于 el-tree-select）
 const categoryTreeData = computed(() => {
@@ -328,8 +356,27 @@ const categoryTreeData = computed(() => {
 
 const filteredCharacters = computed(() => {
   if (!localFilters.value.ip) return []
-  return metadataStore.charactersByIP[localFilters.value.ip] || []
+  return (metadataStore.charactersByIP[localFilters.value.ip] || [])
+    .filter((character) => matchesTextOrPinyin(characterSearchKeyword.value, character.name))
 })
+
+const handleIPFilter = (keyword: string) => {
+  ipSearchKeyword.value = keyword
+}
+
+const handleCharacterFilter = (keyword: string) => {
+  characterSearchKeyword.value = keyword
+}
+
+const handleThemeFilter = (keyword: string) => {
+  themeSearchKeyword.value = keyword
+}
+
+const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
+  if (!data) return false
+  const category = categoryMap.value.get(data.id)
+  return matchesTextOrPinyin(keyword, [data.label, category?.path_name ?? ''])
+}
 
 const applyStatusToFilters = (filters: GoodsSearchParams) => {
   // 先清空状态相关字段
@@ -348,6 +395,7 @@ const handleFilterChange = () => {
   // 如果IP改变，清空角色选择并预加载该IP的角色列表
   if (localFilters.value.ip !== guziStore.filters.ip) {
     localFilters.value.character = undefined
+    characterSearchKeyword.value = ''
     if (localFilters.value.ip) {
       metadataStore.fetchIPCharacters(localFilters.value.ip)
     }
@@ -374,6 +422,9 @@ const handleStatusChange = () => {
 }
 
 const handleReset = () => {
+  ipSearchKeyword.value = ''
+  characterSearchKeyword.value = ''
+  themeSearchKeyword.value = ''
   localFilters.value = {
     ip: undefined,
     character: undefined,
@@ -1006,4 +1057,3 @@ onUnmounted(() => {})
   }
 }
 </style>
-

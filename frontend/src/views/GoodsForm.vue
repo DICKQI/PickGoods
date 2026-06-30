@@ -58,21 +58,21 @@
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="IP作品" prop="ip" class="is-required">
-                <el-select v-model="formData.ip" placeholder="选择IP" filterable @change="handleIpChange" style="width: 100%">
-                  <el-option v-for="ip in ipOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
+                <el-select v-model="formData.ip" placeholder="选择IP" filterable :filter-method="handleIpFilter" @change="handleIpChange" style="width: 100%">
+                  <el-option v-for="ip in filteredIpOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
                 </el-select>
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="角色" prop="characters" class="is-required">
-                <el-select v-model="formData.characters" placeholder="选择角色（可多选）" filterable multiple :disabled="!formData.ip" style="width: 100%">
+                <el-select v-model="formData.characters" placeholder="选择角色（可多选）" filterable :filter-method="handleCharacterFilter" multiple :disabled="!formData.ip" style="width: 100%">
                   <el-option v-for="char in filteredCharacters" :key="char.id" :label="char.name" :value="char.id" />
                 </el-select>
               </el-form-item>
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="品类" prop="category" class="is-required">
-                <el-tree-select v-model="formData.category" :data="categoryTreeOptions" :props="{ label: 'name', value: 'id', children: 'children' }" placeholder="选择品类" style="width: 100%" clearable filterable check-strictly />
+                <el-tree-select v-model="formData.category" :data="categoryTreeOptions" :props="{ label: 'name', value: 'id', children: 'children' }" placeholder="选择品类" style="width: 100%" clearable filterable :filter-node-method="filterCategoryNode" check-strictly />
                 <div v-if="selectedCategory" class="category-chip">
                   <span class="color-dot" v-if="selectedCategory.color_tag" :style="{ backgroundColor: selectedCategory.color_tag || '#a3a3a3' }"></span>
                   <span class="chip-text">{{ selectedCategory.path_name || selectedCategory.name }}</span>
@@ -98,8 +98,8 @@
             </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="主题">
-                <el-select v-model="formData.theme" placeholder="选择或创建主题" filterable allow-create default-first-option :reserve-keyword="true" @change="handleThemeSelectionChange" @create="handleThemeCreate" style="width: 100%" clearable>
-                  <el-option v-for="theme in themeOptions" :key="theme.id" :label="theme.name" :value="theme.id" />
+                <el-select v-model="formData.theme" placeholder="选择或创建主题" filterable :filter-method="handleThemeFilter" allow-create :reserve-keyword="true" @change="handleThemeSelectionChange" @create="handleThemeCreate" style="width: 100%" clearable>
+                  <el-option v-for="theme in filteredThemeOptions" :key="theme.id" :label="theme.name" :value="theme.id" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -515,9 +515,10 @@ const goodsId = computed(() => {
 
 const metadata = useGoodsFormMetadata(formData)
 const {
-  ipOptions, characters, categoryOptions, themeOptions, filteredCharacters,
+  ipOptions, filteredIpOptions, characters, categoryOptions, themeOptions, filteredThemeOptions, filteredCharacters,
   categoryTreeOptions, selectedCategory,
-  pendingThemeName, handleIpChange, handleThemeChange: applyThemeSelection, handleThemeCreate, ensureThemeCreated, loadMetadata,
+  pendingThemeName, handleIpChange, handleIpFilter, handleCharacterFilter, handleThemeFilter, filterCategoryNode,
+  handleThemeChange: applyThemeSelection, handleThemeCreate, ensureThemeCreated, loadMetadata,
   wasThemeCreatedInCurrentFlow,
 } = metadata
 
