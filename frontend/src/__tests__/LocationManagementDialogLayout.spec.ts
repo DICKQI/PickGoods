@@ -140,15 +140,26 @@ const ElTreeSelectStub = defineComponent({
 })
 
 const ElSwitchStub = defineComponent({
-  props: ['modelValue'],
+  props: {
+    modelValue: Boolean,
+    activeText: String,
+    inactiveText: String,
+    inlinePrompt: {
+      type: Boolean,
+      default: false,
+    },
+  },
   emits: ['update:modelValue'],
   template: `
-    <input
-      class="el-switch-stub"
-      type="checkbox"
-      :checked="Boolean(modelValue)"
-      @change="$emit('update:modelValue', $event.target.checked)"
-    />
+    <label class="el-switch-stub" :data-inline-prompt="String(inlinePrompt)">
+      <input
+        class="el-switch-native"
+        type="checkbox"
+        :checked="Boolean(modelValue)"
+        @change="$emit('update:modelValue', $event.target.checked)"
+      />
+      <span class="el-switch-text">{{ modelValue ? activeText : inactiveText }}</span>
+    </label>
   `,
 })
 
@@ -234,6 +245,13 @@ describe('LocationManagement dialog layout', () => {
     vi.clearAllMocks()
   })
 
+  it('does not expose the unassigned goods action before a location is selected', async () => {
+    const wrapper = await mountView()
+
+    expect(wrapper.get('.empty-workbench').text()).not.toContain('查看待整理谷子')
+    expect(wrapper.find('.empty-workbench .el-button-stub').exists()).toBe(false)
+  })
+
   it('renders number inputs without stepper controls and removes the extra favorite status pill', async () => {
     const wrapper = await mountView()
 
@@ -245,7 +263,12 @@ describe('LocationManagement dialog layout', () => {
     expect(numberFields).toHaveLength(2)
     expect(numberFields.every((field) => field.attributes('data-controls') === 'false')).toBe(true)
     expect(dialog.find('.favorite-switch-state').exists()).toBe(false)
-    expect(dialog.get('.favorite-switch-control .el-switch-stub').exists()).toBe(true)
+    expect(dialog.find('.favorite-location-row').exists()).toBe(false)
+    expect(dialog.get('.favorite-location-field').exists()).toBe(true)
+    const switchStub = dialog.get('.favorite-switch-control .el-switch-stub')
+    expect(switchStub.exists()).toBe(true)
+    expect(switchStub.attributes('data-inline-prompt')).toBe('true')
+    expect(switchStub.text()).toContain('关')
   })
 
   it('submits numeric capacity and order values after compact dialog edits', async () => {
@@ -258,9 +281,9 @@ describe('LocationManagement dialog layout', () => {
     const textInputs = dialog.findAll('.el-input-stub')
     await textInputs[0].setValue('玄关抽屉')
     const numberFields = dialog.findAll('.location-number-input .el-input-number-inner')
-    await numberFields[0].setValue('24')
-    await numberFields[1].setValue('8')
-    await dialog.get('.favorite-switch-control .el-switch-stub').setValue(true)
+    await numberFields[0].setValue('8')
+    await numberFields[1].setValue('24')
+    await dialog.get('.favorite-switch-control .el-switch-native').setValue(true)
 
     const footerButtons = dialog.findAll('.location-dialog-footer .el-button-stub')
     await footerButtons[1].trigger('click')

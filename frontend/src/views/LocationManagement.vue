@@ -123,7 +123,15 @@
               />
             </div>
             <div class="toolbar-right">
-              <el-button :icon="Box" @click="openUnassignedGoodsDialog">待整理 {{ unassignedPagination.count }}</el-button>
+              <el-button
+                type="primary"
+                class="add-goods-entry"
+                :icon="Box"
+                @click="openUnassignedGoodsDialog"
+              >
+                添加谷子
+                <span class="add-goods-count">待整理 {{ unassignedPagination.count }}</span>
+              </el-button>
               <el-button :icon="Refresh" @click="refreshSelectedNode">刷新</el-button>
             </div>
           </section>
@@ -217,9 +225,7 @@
         </template>
 
         <section v-else class="empty-workbench">
-          <el-empty description="选择一个位置开始整理">
-            <el-button type="primary" :icon="Box" @click="openUnassignedGoodsDialog">查看待整理谷子</el-button>
-          </el-empty>
+          <el-empty description="选择一个位置开始整理" />
         </section>
       </main>
     </section>
@@ -458,15 +464,14 @@
                 :filter-node-method="filterParentNode"
               />
             </el-form-item>
-            <el-form-item label="位置类型" class="location-field">
-              <el-select v-model="formData.node_type">
-                <el-option label="房间" value="room" />
-                <el-option label="柜子" value="cabinet" />
-                <el-option label="层板" value="shelf" />
-                <el-option label="抽屉" value="drawer" />
-                <el-option label="收纳盒" value="box" />
-                <el-option label="自定义" value="custom" />
-              </el-select>
+            <el-form-item label="显示顺序" class="location-field">
+              <el-input-number
+                v-model="formData.order"
+                class="location-number-input"
+                :min="0"
+                :max="9999"
+                :controls="false"
+              />
             </el-form-item>
             <el-form-item label="容量" class="location-field">
               <el-input-number
@@ -477,29 +482,31 @@
                 :controls="false"
               />
             </el-form-item>
-            <el-form-item label="显示顺序" class="location-field">
-              <el-input-number
-                v-model="formData.order"
-                class="location-number-input"
-                :min="0"
-                :max="9999"
-                :controls="false"
-              />
+            <el-form-item label="位置类型" class="location-field">
+              <el-select v-model="formData.node_type">
+                <el-option label="房间" value="room" />
+                <el-option label="柜子" value="cabinet" />
+                <el-option label="层板" value="shelf" />
+                <el-option label="抽屉" value="drawer" />
+                <el-option label="收纳盒" value="box" />
+                <el-option label="自定义" value="custom" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="常用位置" class="location-field favorite-location-field">
+              <div class="favorite-switch-control">
+                <el-switch
+                  v-model="formData.is_favorite"
+                  class="favorite-location-switch"
+                  inline-prompt
+                  active-text="开"
+                  inactive-text="关"
+                />
+              </div>
             </el-form-item>
           </div>
         </section>
 
         <section class="location-form-section location-form-section--notes">
-          <div class="favorite-location-row">
-            <div class="favorite-location-copy">
-              <span class="favorite-location-title">常用位置</span>
-              <span class="favorite-location-desc">开启后会出现在位置选择和作业台快捷入口里。</span>
-            </div>
-            <div class="favorite-switch-control">
-              <el-switch v-model="formData.is_favorite" class="favorite-location-switch" />
-            </div>
-          </div>
-
           <el-form-item label="备注说明" class="location-field location-field--wide">
             <el-input
               v-model="formData.description"
@@ -1430,6 +1437,38 @@ h2 {
   max-width: 320px;
 }
 
+.add-goods-entry {
+  min-width: 132px;
+  border: 1px solid rgba(212, 175, 55, 0.46);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 248, 230, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%),
+    #fff8e6;
+  color: #7a5b08;
+  font-weight: 800;
+  box-shadow: 0 8px 18px rgba(212, 175, 55, 0.12);
+}
+
+.add-goods-entry:hover,
+.add-goods-entry:focus {
+  border-color: rgba(212, 175, 55, 0.72);
+  background:
+    linear-gradient(135deg, rgba(255, 244, 211, 1) 0%, rgba(255, 250, 238, 1) 100%),
+    #fff4d3;
+  color: #6b4a05;
+  transform: translateY(-1px);
+}
+
+.add-goods-count {
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.16);
+  color: #8a650b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
 .batch-bar {
   margin: 12px 0;
   padding: 10px 12px;
@@ -1909,6 +1948,11 @@ h2 {
   width: 100%;
 }
 
+.location-number-input {
+  width: 100%;
+  display: block;
+}
+
 .location-dialog-form :deep(.el-input__wrapper),
 .location-dialog-form :deep(.el-textarea__inner),
 .location-dialog-form :deep(.el-select__wrapper),
@@ -1962,6 +2006,7 @@ h2 {
 }
 
 .location-number-input :deep(.el-input__wrapper) {
+  width: 100%;
   padding-right: 12px;
 }
 
@@ -1969,36 +2014,10 @@ h2 {
   text-align: left;
 }
 
-.favorite-location-row {
+.favorite-location-field :deep(.el-form-item__content) {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(212, 175, 55, 0.12);
-  border-radius: 12px;
-  background:
-    linear-gradient(90deg, rgba(212, 175, 55, 0.06), rgba(248, 250, 252, 0.92)),
-    #fff;
-}
-
-.favorite-location-copy {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.favorite-location-title {
-  color: var(--loc-ink);
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.favorite-location-desc {
-  color: var(--loc-muted);
-  font-size: 12px;
-  line-height: 1.45;
+  min-height: 34px;
 }
 
 .favorite-switch-control {
@@ -2008,24 +2027,51 @@ h2 {
 }
 
 .favorite-location-switch {
+  --el-switch-on-color: #ead39a;
+  --el-switch-off-color: #dbe4ef;
   flex-shrink: 0;
 }
 
 .favorite-location-switch :deep(.el-switch__core) {
   min-width: 46px;
   height: 26px;
-  border-color: rgba(148, 163, 184, 0.45);
-  background-color: #e2e8f0;
+  border-color: rgba(148, 163, 184, 0.58);
+  background-color: #dbe4ef;
+  box-shadow: inset 0 1px 2px rgba(15, 23, 42, 0.08);
 }
 
 .favorite-location-switch :deep(.el-switch__action) {
   width: 20px;
   height: 20px;
+  left: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
 }
 
 .favorite-location-switch.is-checked :deep(.el-switch__core) {
-  border-color: var(--loc-gold);
-  background-color: var(--loc-gold);
+  border-color: #d8b873;
+  background:
+    linear-gradient(135deg, #f7eac3 0%, #ead39a 100%),
+    #ead39a;
+}
+
+.favorite-location-switch.is-checked :deep(.el-switch__core .el-switch__action) {
+  left: calc(100% - 23px);
+}
+
+.favorite-location-switch :deep(.el-switch__inner),
+.favorite-location-switch :deep(.el-switch__inner-wrapper),
+.favorite-location-switch :deep(.el-switch__inner-wrapper span) {
+  color: #334155;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.favorite-location-switch.is-checked :deep(.el-switch__inner),
+.favorite-location-switch.is-checked :deep(.el-switch__inner-wrapper),
+.favorite-location-switch.is-checked :deep(.el-switch__inner-wrapper span) {
+  color: #4a3410;
 }
 
 .location-dialog-footer {
@@ -2152,13 +2198,12 @@ h2 {
     padding: 13px;
   }
 
-  .favorite-location-row,
   .location-dialog-footer {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .favorite-location-row :deep(.el-switch) {
+  .favorite-location-field :deep(.el-switch) {
     align-self: flex-start;
   }
 
