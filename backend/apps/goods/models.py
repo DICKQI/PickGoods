@@ -481,6 +481,11 @@ class Goods(models.Model):
         verbose_name_plural = "谷子"
         # 默认排序：先按自定义顺序值从小到大，其次按创建时间倒序（保证新建未手动排序的谷子有稳定顺序）
         ordering = ["order", "-created_at"]
+        indexes = [
+            models.Index(fields=["location"]),
+            models.Index(fields=["user", "location"]),
+            models.Index(fields=["created_at"]),
+        ]
 
     def __str__(self):
         return self.name
