@@ -264,9 +264,8 @@ describe('LocationManagement dialog layout', () => {
     expect(numberFields.every((field) => field.attributes('data-controls') === 'false')).toBe(true)
     expect(dialog.find('.favorite-switch-state').exists()).toBe(false)
     expect(dialog.find('.favorite-location-row').exists()).toBe(false)
-    expect(dialog.get('.favorite-location-field').exists()).toBe(true)
+    dialog.get('.favorite-location-field')
     const switchStub = dialog.get('.favorite-switch-control .el-switch-stub')
-    expect(switchStub.exists()).toBe(true)
     expect(switchStub.attributes('data-inline-prompt')).toBe('true')
     expect(switchStub.text()).toContain('关')
   })
@@ -279,14 +278,14 @@ describe('LocationManagement dialog layout', () => {
 
     const dialog = wrapper.get('[data-test="location-node-dialog"]')
     const textInputs = dialog.findAll('.el-input-stub')
-    await textInputs[0].setValue('玄关抽屉')
+    await textInputs[0]!.setValue('玄关抽屉')
     const numberFields = dialog.findAll('.location-number-input .el-input-number-inner')
-    await numberFields[0].setValue('8')
-    await numberFields[1].setValue('24')
+    await numberFields[0]!.setValue('8')
+    await numberFields[1]!.setValue('24')
     await dialog.get('.favorite-switch-control .el-switch-native').setValue(true)
 
     const footerButtons = dialog.findAll('.location-dialog-footer .el-button-stub')
-    await footerButtons[1].trigger('click')
+    await footerButtons[1]!.trigger('click')
     await flushPromises()
 
     expect(createLocationNode).toHaveBeenCalledWith(
