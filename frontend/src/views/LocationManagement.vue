@@ -7,7 +7,17 @@
             <p class="eyebrow">收纳地图</p>
             <h1>位置作业台</h1>
           </div>
-          <el-button type="primary" size="small" :icon="Plus" @click="handleAddNode">新增</el-button>
+          <el-button
+            data-test="location-create-button"
+            type="primary"
+            class="brand-add-btn brand-add-btn--compact location-create-btn"
+            @click="handleAddNode"
+          >
+            <span class="brand-add-btn__content location-create-btn__content">
+              <el-icon class="location-create-btn__icon"><Plus /></el-icon>
+              <span class="location-create-btn__label">新增位置</span>
+            </span>
+          </el-button>
         </div>
 
         <el-input
@@ -1234,6 +1244,53 @@ h2 {
   font-size: 26px;
 }
 
+.location-create-btn {
+  --brand-add-padding-y: 7px;
+  --brand-add-padding-x: 12px;
+  --brand-add-gap: 0;
+  --brand-add-min-height: 32px;
+  --brand-add-font-size: 13px;
+  --brand-add-bg:
+    linear-gradient(135deg, rgba(255, 248, 230, 0.98) 0%, rgba(255, 255, 255, 0.94) 100%),
+    #fff8e6;
+  --brand-add-shadow: 0 8px 18px rgba(212, 175, 55, 0.12);
+  --brand-add-shadow-hover: 0 10px 22px rgba(212, 175, 55, 0.18);
+  --brand-add-focus-ring: 0 0 0 3px rgba(212, 175, 55, 0.16);
+  border: 1px solid rgba(212, 175, 55, 0.46) !important;
+  color: #7a5b08 !important;
+  flex-shrink: 0;
+}
+
+.location-create-btn:hover,
+.location-create-btn:focus-visible {
+  --brand-add-bg:
+    linear-gradient(135deg, rgba(255, 244, 211, 1) 0%, rgba(255, 250, 238, 1) 100%),
+    #fff4d3;
+  border-color: rgba(212, 175, 55, 0.72) !important;
+  color: #6b4a05 !important;
+}
+
+.location-create-btn__content {
+  gap: 0;
+}
+
+.location-create-btn__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-right: 7px;
+  transform: translateY(-0.5px);
+}
+
+.location-create-btn__label {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+  white-space: nowrap;
+}
+
 .tree-search,
 .goods-search {
   width: 100%;
@@ -2121,6 +2178,19 @@ h2 {
 
   .location-sidebar {
     max-height: 44vh;
+  }
+
+  .location-create-btn {
+    --brand-add-padding-y: 6px;
+    --brand-add-padding-x: 11px;
+    --brand-add-font-size: 12px;
+    --brand-add-min-height: 30px;
+  }
+
+  .location-create-btn__icon {
+    width: 14px;
+    height: 14px;
+    margin-right: 6px;
   }
 
   .location-plate {

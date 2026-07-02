@@ -72,6 +72,16 @@ describe('LocationManagement workbench source contract', () => {
     expect(extractCssBlock('.add-goods-count')).toContain('background: rgba(212, 175, 55, 0.16);')
   })
 
+  it('renders the location create entry as a branded compact button', () => {
+    expect(source).toContain('data-test="location-create-button"')
+    expect(source).toContain('class="brand-add-btn brand-add-btn--compact location-create-btn"')
+    expect(source).toContain('class="brand-add-btn__content location-create-btn__content"')
+    expect(source).toContain('class="location-create-btn__icon"')
+    expect(source).toContain('class="location-create-btn__label"')
+    expect(source).toContain('<span class="location-create-btn__label">新增位置</span>')
+    expect(source).not.toContain('<el-button type="primary" size="small" :icon="Plus" @click="handleAddNode">新增</el-button>')
+  })
+
   it('adds search, IP, role, category, official and status filters to the unassigned dialog', () => {
     expect(source).toContain("unassignedFilters")
     expect(source).toContain("selectedUnassignedStatuses")
