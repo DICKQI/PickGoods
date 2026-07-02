@@ -23,6 +23,7 @@ describe('useLocationStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    localStorage.clear()
   })
 
   it('初始状态', () => {
@@ -141,6 +142,49 @@ describe('useLocationStore', () => {
     store.markRecentLocation(3)
 
     expect(store.recentNodes.map((node) => node.id)).toEqual([3, 4])
+  })
+
+  it('favoriteShortcutNodes 只展示前 8 个常用位置', async () => {
+    const nodes = Array.from({ length: 8 }, (_, index) => ({
+      id: index + 1,
+      name: `常用 ${index + 1}`,
+      parent: null,
+      path_name: `常用 ${index + 1}`,
+      order: index,
+      image: null,
+      description: null,
+      goods_count: 0,
+      descendant_goods_count: 0,
+      is_favorite: true,
+    })) as StorageNode[]
+    vi.mocked(getLocationTree).mockResolvedValue(nodes)
+
+    const store = useLocationStore()
+    await store.fetchNodes()
+
+    expect(store.favoriteShortcutNodes.map((node) => node.id)).toEqual([1, 2, 3, 4, 5, 6, 7, 8])
+  })
+
+  it('recentShortcutNodes 排除常用位置并只展示前 5 个', async () => {
+    const nodes = Array.from({ length: 8 }, (_, index) => ({
+      id: index + 1,
+      name: `位置 ${index + 1}`,
+      parent: null,
+      path_name: `位置 ${index + 1}`,
+      order: index,
+      image: null,
+      description: null,
+      goods_count: 0,
+      descendant_goods_count: 0,
+      is_favorite: [2, 4].includes(index + 1),
+    })) as StorageNode[]
+    vi.mocked(getLocationTree).mockResolvedValue(nodes)
+
+    const store = useLocationStore()
+    await store.fetchNodes()
+    ;[1, 2, 3, 4, 5, 6, 7].forEach((id) => store.markRecentLocation(id))
+
+    expect(store.recentShortcutNodes.map((node) => node.id)).toEqual([7, 6, 5, 3, 1])
   })
 
   it('treeData 保留计数字段用于树节点徽标', async () => {

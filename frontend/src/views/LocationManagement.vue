@@ -28,32 +28,45 @@
           :prefix-icon="Search"
         />
 
-        <div v-if="locationStore.recentNodes.length || locationStore.favoriteNodes.length" class="shortcut-blocks">
-          <div v-if="locationStore.recentNodes.length" class="shortcut-block">
-            <span class="shortcut-title">最近使用</span>
-            <button
-              v-for="node in locationStore.recentNodes"
-              :key="`recent-${node.id}`"
-              class="location-chip"
-              type="button"
-              @click="selectNodeById(node.id)"
-            >
-              {{ node.code || node.name }}
-            </button>
+        <section
+          v-if="locationStore.favoriteShortcutNodes.length || locationStore.recentShortcutNodes.length"
+          class="quick-access-card"
+          aria-label="快捷访问位置"
+        >
+          <div class="quick-access-head">
+            <div>
+              <span class="quick-access-kicker">快捷访问</span>
+            </div>
           </div>
-          <div v-if="locationStore.favoriteNodes.length" class="shortcut-block">
-            <span class="shortcut-title">常用位置</span>
+
+          <div v-if="locationStore.favoriteShortcutNodes.length" class="quick-access-section quick-access-section--favorite">
+            <span class="quick-access-section-title">常用</span>
             <button
-              v-for="node in locationStore.favoriteNodes"
+              v-for="node in locationStore.favoriteShortcutNodes"
               :key="`favorite-${node.id}`"
-              class="location-chip location-chip--favorite"
+              class="quick-location-card"
               type="button"
               @click="selectNodeById(node.id)"
             >
-              {{ node.code || node.name }}
+              <span class="quick-location-main">{{ node.name }}</span>
+              <span class="quick-location-meta">{{ node.code || node.path_name }}</span>
             </button>
           </div>
-        </div>
+
+          <div v-if="locationStore.recentShortcutNodes.length" class="quick-access-section quick-access-section--recent">
+            <span class="quick-access-section-title">最近</span>
+            <button
+              v-for="node in locationStore.recentShortcutNodes"
+              :key="`recent-${node.id}`"
+              class="quick-location-chip"
+              type="button"
+              @click="selectNodeById(node.id)"
+            >
+              <span>{{ node.name }}</span>
+              <small v-if="node.code">{{ node.code }}</small>
+            </button>
+          </div>
+        </section>
 
         <div class="tree-panel">
           <el-skeleton v-if="locationStore.loading" :rows="6" animated />
@@ -112,7 +125,7 @@
 
             <div class="plate-actions">
               <el-button :icon="Edit" @click="handleEditNode(selectedNode)">编辑</el-button>
-              <el-button :icon="Sort" @click="handleMoveNode(selectedNode)">移动节点</el-button>
+              <el-button :icon="Sort" @click="handleMoveNode(selectedNode)">移动</el-button>
               <el-button :icon="Delete" type="danger" plain @click="handleDeleteNode(selectedNode)">删除</el-button>
             </div>
           </section>
@@ -1343,40 +1356,138 @@ h2 {
   width: 148px;
 }
 
-.shortcut-blocks {
+.quick-access-card {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+  padding: 11px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 12px;
+  background:
+    linear-gradient(135deg, rgba(255, 248, 230, 0.72), rgba(255, 255, 255, 0.92) 44%),
+    #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.86);
+}
+
+.quick-access-head {
+  display: flex;
+  justify-content: space-between;
   gap: 8px;
 }
 
-.shortcut-block {
+.quick-access-kicker {
+  display: block;
+  color: #7a5b08;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.quick-access-head p {
+  margin: 3px 0 0;
+  color: var(--loc-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.quick-access-section {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 7px;
   align-items: center;
 }
 
-.shortcut-title {
-  width: 64px;
-  font-size: 12px;
-  color: var(--loc-muted);
-  font-weight: 600;
+.quick-access-section--favorite {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
 }
 
-.location-chip {
-  border: 1px solid #e2e8f0;
-  background: #fff;
-  border-radius: 999px;
-  padding: 4px 9px;
+.quick-access-section--recent {
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.quick-access-section--recent .quick-access-section-title {
+  flex: 0 0 auto;
+}
+
+.quick-access-section-title {
+  flex: 0 0 100%;
+  grid-column: 1 / -1;
+  color: var(--loc-muted);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.quick-location-card,
+.quick-location-chip {
+  min-width: 0;
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  background: rgba(255, 255, 255, 0.9);
   color: #334155;
   cursor: pointer;
+  text-align: left;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, transform 0.16s ease;
+}
+
+.quick-location-card:hover,
+.quick-location-card:focus-visible,
+.quick-location-chip:hover,
+.quick-location-chip:focus-visible {
+  border-color: rgba(212, 175, 55, 0.58);
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.07);
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.quick-location-card {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 7px;
+  border-color: rgba(212, 175, 55, 0.34);
+  border-radius: 11px;
+  background:
+    linear-gradient(135deg, rgba(255, 248, 230, 0.94), rgba(255, 255, 255, 0.9)),
+    #fff8e6;
+}
+
+.quick-location-main,
+.quick-location-meta,
+.quick-location-chip span,
+.quick-location-chip small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-location-main {
+  color: #243042;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.quick-location-meta {
+  color: #8a650b;
+  font-size: 10px;
+  line-height: 1.25;
+}
+
+.quick-location-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  max-width: 118px;
+  padding: 5px 9px;
+  border-radius: 999px;
   font-size: 12px;
 }
 
-.location-chip--favorite {
-  border-color: rgba(212, 175, 55, 0.45);
-  color: #8a650b;
-  background: rgba(212, 175, 55, 0.08);
+.quick-location-chip small {
+  color: #94a3b8;
+  font-size: 10px;
 }
 
 .tree-panel {
@@ -1549,22 +1660,21 @@ h2 {
   align-self: center;
   flex-wrap: wrap;
   justify-content: flex-end;
-  padding: 5px;
-  border: 1px solid rgba(226, 232, 240, 0.82);
-  border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow:
-    0 8px 22px rgba(15, 23, 42, 0.04),
-    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+  gap: 4px;
+  padding: 4px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(248, 250, 252, 0.64);
+  box-shadow: none;
 }
 
 .plate-actions :deep(.el-button) {
-  min-height: 36px;
+  min-height: 34px;
   margin-left: 0;
-  padding: 8px 14px;
-  border-radius: 13px;
-  border-color: rgba(226, 232, 240, 0.96);
-  background: rgba(255, 255, 255, 0.92);
+  padding: 7px 10px;
+  border-radius: 999px;
+  border-color: transparent;
+  background: transparent;
   color: #475569;
   font-weight: 700;
   box-shadow: none;
@@ -1572,22 +1682,22 @@ h2 {
 
 .plate-actions :deep(.el-button:hover),
 .plate-actions :deep(.el-button:focus) {
-  border-color: rgba(212, 175, 55, 0.48);
-  background: #fffaf0;
+  border-color: rgba(212, 175, 55, 0.26);
+  background: rgba(255, 250, 240, 0.88);
   color: #7a5b08;
 }
 
 .plate-actions :deep(.el-button--danger) {
-  border-color: rgba(248, 113, 113, 0.42);
-  background: rgba(255, 241, 242, 0.86);
-  color: #ef4444;
+  border-color: transparent;
+  background: transparent;
+  color: #dc2626;
 }
 
 .plate-actions :deep(.el-button--danger:hover),
 .plate-actions :deep(.el-button--danger:focus) {
-  border-color: rgba(239, 68, 68, 0.58);
-  background: #fff1f2;
-  color: #dc2626;
+  border-color: rgba(239, 68, 68, 0.22);
+  background: rgba(255, 241, 242, 0.82);
+  color: #b91c1c;
 }
 
 .workbench-toolbar {

@@ -11,6 +11,8 @@ const CACHE_TIMESTAMP_KEY = 'location_tree_ts'
 const RECENT_LOCATION_KEY = 'location_recent_nodes'
 const CACHE_TTL = 15 * 60 * 1000 // 15 minutes
 const RECENT_LIMIT = 8
+const FAVORITE_SHORTCUT_LIMIT = 8
+const RECENT_SHORTCUT_LIMIT = 5
 
 const getCacheOwner = () => {
   const token = localStorage.getItem(AUTH_TOKEN_KEY)
@@ -48,6 +50,13 @@ export const useLocationStore = defineStore('location', () => {
       .map((id) => nodes.value.find((node) => node.id === id))
       .filter((node): node is StorageNode => Boolean(node)),
   )
+  const favoriteShortcutNodes = computed(() => favoriteNodes.value.slice(0, FAVORITE_SHORTCUT_LIMIT))
+  const recentShortcutNodes = computed(() => {
+    const favoriteIds = new Set(favoriteNodes.value.map((node) => node.id))
+    return recentNodes.value
+      .filter((node) => !favoriteIds.has(node.id))
+      .slice(0, RECENT_SHORTCUT_LIMIT)
+  })
 
   function loadRecentLocations() {
     try {
@@ -151,6 +160,8 @@ export const useLocationStore = defineStore('location', () => {
     treeData,
     favoriteNodes,
     recentNodes,
+    favoriteShortcutNodes,
+    recentShortcutNodes,
     fetchNodes,
     getPathById,
     getNodeById,

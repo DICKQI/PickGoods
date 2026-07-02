@@ -325,10 +325,12 @@ describe('LocationManagement unassigned goods dialog', () => {
     vi.clearAllMocks()
   })
 
-  it('opens from the empty state and queries unassigned goods through the generic goods list API', async () => {
+  it('opens from the selected-location toolbar and queries unassigned goods through the generic goods list API', async () => {
     const wrapper = await mountView()
 
-    await wrapper.get('.empty-workbench .el-button-stub').trigger('click')
+    await wrapper.get('.tree-node-button').trigger('click')
+    await flushPromises()
+    await wrapper.get('.toolbar-right .add-goods-entry').trigger('click')
     await flushPromises()
 
     expect(wrapper.find('[data-test="unassigned-goods-dialog"]').exists()).toBe(true)
@@ -337,9 +339,9 @@ describe('LocationManagement unassigned goods dialog', () => {
       page: 1,
       page_size: 18,
     })
-    expect(wrapper.get('[data-test="unassigned-move-goods-1"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="unassigned-move-goods-1"]').attributes('disabled')).toBeUndefined()
 
-    await wrapper.get('.pager-next').trigger('click')
+    await wrapper.get('[data-test="unassigned-goods-dialog"] .pager-next').trigger('click')
     await flushPromises()
 
     expect(getGoodsList).toHaveBeenLastCalledWith({

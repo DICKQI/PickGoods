@@ -92,6 +92,21 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).not.toContain('<el-button type="primary" size="small" :icon="Plus" @click="handleAddNode">新增</el-button>')
   })
 
+  it('combines recent and favorite locations into one prioritized quick access card', () => {
+    expect(source).toContain('class="quick-access-card"')
+    expect(source).toContain('快捷访问')
+    expect(source).toContain('locationStore.favoriteShortcutNodes')
+    expect(source).toContain('locationStore.recentShortcutNodes')
+    expect(source).toContain('quick-access-section--favorite')
+    expect(source).toContain('quick-access-section--recent')
+    expect(extractCssBlock('.quick-access-section--favorite')).toContain('repeat(4, minmax(0, 1fr))')
+    expect(extractCssBlock('.quick-access-section--recent')).toContain('overflow: hidden;')
+    expect(extractCssBlock('.quick-access-section--recent .quick-access-section-title')).toContain('flex: 0 0 auto;')
+    expect(source).toContain('max-width: 118px;')
+    expect(source).not.toContain('class="shortcut-blocks"')
+    expect(source).not.toContain('class="location-chip location-chip--favorite"')
+  })
+
   it('adds search, IP, role, category, official and status filters to the unassigned dialog', () => {
     expect(source).toContain("unassignedFilters")
     expect(source).toContain("selectedUnassignedStatuses")
@@ -142,7 +157,7 @@ describe('LocationManagement workbench source contract', () => {
     expect(recentGoodsBlock).toContain('box-shadow: 0 7px 18px rgba(15, 23, 42, 0.05);')
   })
 
-  it('keeps selected-location action buttons compact, rounded and vertically centered', () => {
+  it('keeps selected-location actions as a lightweight inline toolbar', () => {
     const headerBlock = extractCssBlock('.location-compact-header')
     const actionsStart = source.indexOf('.plate-actions {')
     const actionsBlock = source.slice(actionsStart, source.indexOf('}', actionsStart))
@@ -151,14 +166,16 @@ describe('LocationManagement workbench source contract', () => {
 
     expect(headerBlock).toContain('align-items: center;')
     expect(actionsBlock).toContain('align-self: center;')
-    expect(actionsBlock).toContain('padding: 5px;')
-    expect(actionsBlock).toContain('border-radius: 16px;')
-    expect(actionsBlock).toContain('background: rgba(255, 255, 255, 0.72);')
-    expect(buttonBlock).toContain('border-radius: 13px;')
-    expect(buttonBlock).toContain('min-height: 36px;')
-    expect(buttonBlock).toContain('padding: 8px 14px;')
-    expect(dangerButtonBlock).toContain('border-color: rgba(248, 113, 113, 0.42);')
-    expect(dangerButtonBlock).toContain('background: rgba(255, 241, 242, 0.86);')
+    expect(actionsBlock).toContain('gap: 4px;')
+    expect(actionsBlock).toContain('padding: 4px;')
+    expect(actionsBlock).toContain('border-radius: 999px;')
+    expect(actionsBlock).toContain('background: rgba(248, 250, 252, 0.64);')
+    expect(actionsBlock).toContain('box-shadow: none;')
+    expect(buttonBlock).toContain('border-radius: 999px;')
+    expect(buttonBlock).toContain('min-height: 34px;')
+    expect(buttonBlock).toContain('padding: 7px 10px;')
+    expect(dangerButtonBlock).toContain('border-color: transparent;')
+    expect(dangerButtonBlock).toContain('background: transparent;')
   })
 
   it('uses one compact selected-location header instead of separate summary cards', () => {
@@ -172,7 +189,7 @@ describe('LocationManagement workbench source contract', () => {
     expect(compactHeaderBlock).toContain('{{ metric.label }}')
     expect(compactHeaderBlock).toContain('{{ metric.value }}')
     expect(compactHeaderBlock).toContain('编辑')
-    expect(compactHeaderBlock).toContain('移动节点')
+    expect(compactHeaderBlock).toContain('移动')
     expect(compactHeaderBlock).toContain('删除')
     expect(source).toContain("label: '当前位置'")
     expect(source).toContain("label: '含子位置'")
