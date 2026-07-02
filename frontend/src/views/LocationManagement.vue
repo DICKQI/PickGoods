@@ -84,40 +84,36 @@
 
       <main class="location-detail">
         <template v-if="selectedNode">
-          <section class="location-plate">
-            <div class="plate-copy">
-              <div class="breadcrumb-line">{{ selectedNode.path_name }}</div>
-              <div class="plate-title-row">
-                <h2>{{ selectedNode.name }}</h2>
-                <el-tag v-if="selectedNode.code" effect="plain">{{ selectedNode.code }}</el-tag>
-                <el-tag v-if="selectedNode.is_favorite" type="warning" effect="plain">常用</el-tag>
+          <section class="location-compact-header">
+            <div class="compact-main">
+              <div class="plate-copy">
+                <div class="breadcrumb-line">{{ selectedNode.path_name }}</div>
+                <div class="plate-title-row">
+                  <h2>{{ selectedNode.name }}</h2>
+                  <el-tag v-if="selectedNode.code" effect="plain">{{ selectedNode.code }}</el-tag>
+                  <el-tag v-if="selectedNode.is_favorite" type="warning" effect="plain">常用</el-tag>
+                </div>
+                <p v-if="selectedNode.description" class="plate-description">{{ selectedNode.description }}</p>
+                <p v-else class="plate-description muted">还没有备注，可以记录这个位置放什么、怎么找。</p>
               </div>
-              <p v-if="selectedNode.description" class="plate-description">{{ selectedNode.description }}</p>
-              <p v-else class="plate-description muted">还没有备注，可以记录这个位置放什么、怎么找。</p>
+
+              <div class="compact-metrics" aria-label="位置统计">
+                <div
+                  v-for="metric in summaryMetrics"
+                  :key="metric.label"
+                  class="compact-metric"
+                  :class="metric.tone ? `compact-metric--${metric.tone}` : undefined"
+                >
+                  <span>{{ metric.label }}</span>
+                  <strong>{{ metric.value }}</strong>
+                </div>
+              </div>
             </div>
+
             <div class="plate-actions">
               <el-button :icon="Edit" @click="handleEditNode(selectedNode)">编辑</el-button>
               <el-button :icon="Sort" @click="handleMoveNode(selectedNode)">移动节点</el-button>
               <el-button :icon="Delete" type="danger" plain @click="handleDeleteNode(selectedNode)">删除</el-button>
-            </div>
-          </section>
-
-          <section class="summary-grid">
-            <div class="summary-tile">
-              <span>当前位置</span>
-              <strong>{{ summary?.direct_goods_count ?? selectedNode.goods_count ?? 0 }}</strong>
-            </div>
-            <div class="summary-tile">
-              <span>含子位置</span>
-              <strong>{{ summary?.descendant_goods_count ?? selectedNode.descendant_goods_count ?? 0 }}</strong>
-            </div>
-            <div class="summary-tile">
-              <span>子位置</span>
-              <strong>{{ summary?.child_node_count ?? childCount }}</strong>
-            </div>
-            <div class="summary-tile">
-              <span>容量</span>
-              <strong>{{ capacityText }}</strong>
             </div>
           </section>
 
@@ -584,6 +580,12 @@ interface LocationFormData {
   is_favorite: boolean
 }
 
+interface SummaryMetric {
+  label: string
+  value: string | number
+  tone?: 'primary' | 'capacity' | 'muted'
+}
+
 const route = useRoute()
 const locationStore = useLocationStore()
 const metadataStore = useMetadataStore()
@@ -673,6 +675,26 @@ const capacityText = computed(() => {
   if (!summary.value?.capacity) return '未设置'
   return `${summary.value.descendant_goods_count}/${summary.value.capacity}`
 })
+const summaryMetrics = computed<SummaryMetric[]>(() => [
+  {
+    label: '当前位置',
+    value: summary.value?.direct_goods_count ?? selectedNode.value?.goods_count ?? 0,
+  },
+  {
+    label: '含子位置',
+    value: summary.value?.descendant_goods_count ?? selectedNode.value?.descendant_goods_count ?? 0,
+    tone: 'primary',
+  },
+  {
+    label: '子位置',
+    value: summary.value?.child_node_count ?? childCount.value,
+  },
+  {
+    label: '容量',
+    value: capacityText.value,
+    tone: summary.value?.capacity ? 'capacity' : 'muted',
+  },
+])
 
 const parentNodeOptions = computed(() => {
   const treeData = locationStore.treeData
@@ -1023,6 +1045,19 @@ function resetUnassignedFilterState() {
   selectedUnassignedStatuses.value = []
 }
 
+async function preloadUnassignedGoodsCount() {
+  try {
+    const response = await getGoodsList({
+      page: 1,
+      page_size: 1,
+      location__isnull: true,
+    })
+    unassignedPagination.value.count = response.count ?? unassignedGoods.value.length
+  } catch {
+    unassignedPagination.value.count = 0
+  }
+}
+
 async function fetchUnassignedMetadata() {
   await Promise.all([
     metadataStore.fetchIPs(),
@@ -1165,6 +1200,7 @@ watch(
 
 onMounted(async () => {
   await locationStore.fetchNodes()
+  await preloadUnassignedGoodsCount()
   await applyHighlightFromRoute()
 })
 </script>
@@ -1417,16 +1453,25 @@ h2 {
   overflow: auto;
 }
 
-.location-plate {
-  display: flex;
-  justify-content: space-between;
-  gap: 18px;
-  padding: 18px;
+.location-compact-header {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
   border: 1px solid rgba(212, 175, 55, 0.35);
   border-radius: 8px;
   background:
-    linear-gradient(90deg, rgba(212, 175, 55, 0.11), rgba(255, 255, 255, 0) 44%),
+    linear-gradient(90deg, rgba(212, 175, 55, 0.1), rgba(255, 255, 255, 0) 34%),
     #fff;
+}
+
+.compact-main {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(360px, 0.95fr);
+  gap: 14px;
+  align-items: center;
 }
 
 .plate-copy {
@@ -1434,55 +1479,152 @@ h2 {
 }
 
 .breadcrumb-line {
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   color: var(--loc-muted);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 .plate-description {
-  margin: 8px 0 0;
+  margin: 5px 0 0;
   color: #475569;
-  line-height: 1.6;
+  line-height: 1.4;
+  font-size: 13px;
 }
 
 .muted {
   color: #94a3b8;
 }
 
-.plate-actions {
-  align-self: flex-start;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.summary-grid {
+.compact-metrics {
+  min-width: 0;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-  margin: 14px 0;
-}
-
-.summary-tile {
-  padding: 14px;
-  border-radius: 8px;
-  background: var(--loc-soft);
+  grid-template-columns: repeat(4, minmax(76px, 1fr));
+  gap: 0;
   border: 1px solid #eef2f7;
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.72);
+  overflow: hidden;
 }
 
-.summary-tile span {
+.compact-metric {
+  min-width: 0;
+  padding: 9px 12px;
+  border-left: 1px solid #edf2f7;
+}
+
+.compact-metric:first-child {
+  border-left: 0;
+}
+
+.compact-metric span {
   display: block;
   color: var(--loc-muted);
-  font-size: 12px;
-  margin-bottom: 4px;
+  font-size: 11px;
+  line-height: 1.2;
+  margin-bottom: 3px;
+  white-space: nowrap;
 }
 
-.summary-tile strong {
-  font-size: 24px;
+.compact-metric strong {
+  display: block;
+  color: #0f172a;
+  font-size: 18px;
+  line-height: 1.15;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.compact-metric--primary strong,
+.compact-metric--capacity strong {
+  color: #7a5b08;
+}
+
+.compact-metric--muted strong {
+  color: #64748b;
+  font-size: 17px;
+}
+
+.plate-actions {
+  align-self: center;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  padding: 5px;
+  border: 1px solid rgba(226, 232, 240, 0.82);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow:
+    0 8px 22px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.plate-actions :deep(.el-button) {
+  min-height: 36px;
+  margin-left: 0;
+  padding: 8px 14px;
+  border-radius: 13px;
+  border-color: rgba(226, 232, 240, 0.96);
+  background: rgba(255, 255, 255, 0.92);
+  color: #475569;
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.plate-actions :deep(.el-button:hover),
+.plate-actions :deep(.el-button:focus) {
+  border-color: rgba(212, 175, 55, 0.48);
+  background: #fffaf0;
+  color: #7a5b08;
+}
+
+.plate-actions :deep(.el-button--danger) {
+  border-color: rgba(248, 113, 113, 0.42);
+  background: rgba(255, 241, 242, 0.86);
+  color: #ef4444;
+}
+
+.plate-actions :deep(.el-button--danger:hover),
+.plate-actions :deep(.el-button--danger:focus) {
+  border-color: rgba(239, 68, 68, 0.58);
+  background: #fff1f2;
+  color: #dc2626;
 }
 
 .workbench-toolbar {
-  margin: 12px 0;
+  margin: 10px 0 8px;
   flex-wrap: wrap;
+}
+
+.workbench-toolbar :deep(.el-segmented) {
+  padding: 3px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.62);
+  box-shadow:
+    inset 0 0 0 1px rgba(226, 232, 240, 0.82),
+    0 10px 26px rgba(15, 23, 42, 0.05);
+}
+
+.workbench-toolbar :deep(.el-segmented__item) {
+  border-radius: 11px;
+}
+
+.workbench-toolbar :deep(.el-segmented__item-selected) {
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, 0.58);
+  background:
+    linear-gradient(135deg, rgba(255, 245, 207, 0.92) 0%, rgba(212, 175, 55, 0.7) 100%),
+    rgba(234, 211, 154, 0.72);
+  backdrop-filter: blur(10px) saturate(140%);
+  box-shadow:
+    0 8px 18px rgba(212, 175, 55, 0.24),
+    inset 0 1px 0 rgba(255, 255, 255, 0.74),
+    inset 0 -1px 0 rgba(122, 91, 8, 0.12);
+}
+
+.workbench-toolbar :deep(.el-segmented__item-selected .el-segmented__item-label) {
+  color: #7a5b08;
+  font-weight: 800;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.48);
 }
 
 .toolbar-left {
@@ -1492,6 +1634,33 @@ h2 {
 
 .goods-search {
   max-width: 320px;
+}
+
+.goods-search :deep(.el-input__wrapper),
+.mini-filter :deep(.el-select__wrapper) {
+  border: 1px solid rgba(226, 232, 240, 0.95);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 7px 18px rgba(15, 23, 42, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.94);
+  transition: border-color 0.16s ease, box-shadow 0.16s ease, background-color 0.16s ease;
+}
+
+.goods-search :deep(.el-input__wrapper:hover),
+.mini-filter :deep(.el-select__wrapper:hover) {
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow:
+    0 9px 20px rgba(15, 23, 42, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+}
+
+.goods-search :deep(.el-input__wrapper.is-focus),
+.mini-filter :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(212, 175, 55, 0.62);
+  box-shadow:
+    0 0 0 3px rgba(212, 175, 55, 0.12),
+    0 9px 20px rgba(15, 23, 42, 0.06);
 }
 
 .add-goods-entry {
@@ -1562,10 +1731,11 @@ h2 {
   flex: 0 0 auto;
   border: 1px solid #e2e8f0;
   background: #fff;
-  border-radius: 7px;
+  border-radius: 12px;
   padding: 6px 10px;
   cursor: pointer;
   color: #334155;
+  box-shadow: 0 7px 18px rgba(15, 23, 42, 0.05);
 }
 
 .guzi-grid {
@@ -2193,15 +2363,19 @@ h2 {
     margin-right: 6px;
   }
 
-  .location-plate {
-    flex-direction: column;
+  .location-compact-header {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-main {
+    grid-template-columns: 1fr;
   }
 
   .plate-actions {
     justify-content: flex-start;
   }
 
-  .summary-grid {
+  .compact-metrics {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -2222,8 +2396,20 @@ h2 {
 }
 
 @media (max-width: 640px) {
-  .summary-grid {
-    grid-template-columns: 1fr;
+  .location-compact-header {
+    padding: 12px;
+  }
+
+  .compact-metrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .compact-metric:nth-child(odd) {
+    border-left: 0;
+  }
+
+  .compact-metric:nth-child(n + 3) {
+    border-top: 1px solid #edf2f7;
   }
 
   .guzi-grid {

@@ -51,6 +51,16 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).toContain('@current-change="fetchUnassignedGoods"')
   })
 
+  it('preloads the unassigned goods count before the add-goods dialog opens', () => {
+    const mountedBlock = source.slice(source.indexOf('onMounted(async () => {'), source.indexOf('</script>'))
+
+    expect(source).toContain('async function preloadUnassignedGoodsCount()')
+    expect(source).toContain('page_size: 1')
+    expect(source).toContain('unassignedPagination.value.count = response.count ?? unassignedGoods.value.length')
+    expect(mountedBlock).toContain('preloadUnassignedGoodsCount()')
+    expect(mountedBlock.indexOf('locationStore.fetchNodes()')).toBeLessThan(mountedBlock.indexOf('preloadUnassignedGoodsCount()'))
+  })
+
   it('keeps the empty state passive and promotes adding goods after selecting a location', () => {
     const emptyStart = source.indexOf('<section v-else class="empty-workbench">')
     const emptyEnd = source.indexOf('</section>', emptyStart)
@@ -108,6 +118,70 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).toContain("goodsIpFilter")
     expect(source).toContain("goodsCategoryFilter")
     expect(source).toContain("goodsStatusOptions")
+  })
+
+  it('softens the location workbench filter controls with rounder styling', () => {
+    const toolbarBlock = extractCssBlock('.workbench-toolbar :deep(.el-segmented)')
+    const segmentedSelectedBlock = extractCssBlock('.workbench-toolbar :deep(.el-segmented__item-selected)')
+    const searchBlock = extractCssBlock('.goods-search :deep(.el-input__wrapper)')
+    const filterBlock = extractCssBlock('.mini-filter :deep(.el-select__wrapper)')
+    const recentGoodsBlock = extractCssBlock('.recent-goods')
+
+    expect(toolbarBlock).toContain('border-radius: 14px;')
+    expect(toolbarBlock).toContain('background: rgba(255, 255, 255, 0.62);')
+    expect(source).toContain('.workbench-toolbar :deep(.el-segmented__item)')
+    expect(segmentedSelectedBlock).toContain('linear-gradient(135deg, rgba(255, 245, 207, 0.92) 0%, rgba(212, 175, 55, 0.7) 100%)')
+    expect(segmentedSelectedBlock).toContain('backdrop-filter: blur(10px) saturate(140%);')
+    expect(segmentedSelectedBlock).toContain('box-shadow:')
+    expect(source).toContain('.workbench-toolbar :deep(.el-segmented__item-selected .el-segmented__item-label)')
+    expect(searchBlock).toContain('border-radius: 13px;')
+    expect(searchBlock).toContain('box-shadow:')
+    expect(filterBlock).toContain('border-radius: 13px;')
+    expect(filterBlock).toContain('background: rgba(255, 255, 255, 0.94);')
+    expect(recentGoodsBlock).toContain('border-radius: 12px;')
+    expect(recentGoodsBlock).toContain('box-shadow: 0 7px 18px rgba(15, 23, 42, 0.05);')
+  })
+
+  it('keeps selected-location action buttons compact, rounded and vertically centered', () => {
+    const headerBlock = extractCssBlock('.location-compact-header')
+    const actionsStart = source.indexOf('.plate-actions {')
+    const actionsBlock = source.slice(actionsStart, source.indexOf('}', actionsStart))
+    const buttonBlock = extractCssBlock('.plate-actions :deep(.el-button)')
+    const dangerButtonBlock = extractCssBlock('.plate-actions :deep(.el-button--danger)')
+
+    expect(headerBlock).toContain('align-items: center;')
+    expect(actionsBlock).toContain('align-self: center;')
+    expect(actionsBlock).toContain('padding: 5px;')
+    expect(actionsBlock).toContain('border-radius: 16px;')
+    expect(actionsBlock).toContain('background: rgba(255, 255, 255, 0.72);')
+    expect(buttonBlock).toContain('border-radius: 13px;')
+    expect(buttonBlock).toContain('min-height: 36px;')
+    expect(buttonBlock).toContain('padding: 8px 14px;')
+    expect(dangerButtonBlock).toContain('border-color: rgba(248, 113, 113, 0.42);')
+    expect(dangerButtonBlock).toContain('background: rgba(255, 241, 242, 0.86);')
+  })
+
+  it('uses one compact selected-location header instead of separate summary cards', () => {
+    const compactHeaderIndex = source.indexOf('class="location-compact-header"')
+    const toolbarIndex = source.indexOf('class="workbench-toolbar"')
+    const compactHeaderBlock = source.slice(compactHeaderIndex, toolbarIndex)
+
+    expect(compactHeaderIndex).toBeGreaterThan(-1)
+    expect(compactHeaderBlock).toContain('class="compact-metrics"')
+    expect(compactHeaderBlock).toContain('v-for="metric in summaryMetrics"')
+    expect(compactHeaderBlock).toContain('{{ metric.label }}')
+    expect(compactHeaderBlock).toContain('{{ metric.value }}')
+    expect(compactHeaderBlock).toContain('编辑')
+    expect(compactHeaderBlock).toContain('移动节点')
+    expect(compactHeaderBlock).toContain('删除')
+    expect(source).toContain("label: '当前位置'")
+    expect(source).toContain("label: '含子位置'")
+    expect(source).toContain("label: '子位置'")
+    expect(source).toContain("label: '容量'")
+    expect(source).not.toContain('class="summary-grid"')
+    expect(source).not.toContain('class="summary-tile"')
+    expect(source).toContain('@media (max-width: 960px)')
+    expect(source).toContain('.location-compact-header')
   })
 
   it('opens the reusable goods detail drawer from location goods cards', () => {
