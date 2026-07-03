@@ -203,56 +203,124 @@
     </div>
 
     <!-- 弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="dialogTitle" width="400px" class="custom-dialog" align-center>
-      <el-form :model="formData" :rules="formRules" ref="formRef" label-position="top">
-        <el-form-item label="品类名称" prop="name">
-          <el-input v-model="formData.name" placeholder="请输入品类名称，如：马口铁徽章" maxlength="50" show-word-limit />
-        </el-form-item>
-
-        <el-form-item label="父级品类" prop="parent">
-          <el-tree-select
-            v-model="formData.parent"
-            :data="parentTreeOptions"
-            :props="{ label: 'name', value: 'id', children: 'children', disabled: 'disabled' }"
-            placeholder="可选择任意层级作为父节点，不选则为顶级"
-            check-strictly
-            clearable
-            filterable
-            :disabled="isParentLocked"
-            style="width: 100%"
-          />
-        </el-form-item>
-
-        <el-form-item label="颜色标签" prop="color_tag">
-          <div class="color-picker-row">
-            <el-color-picker v-model="formData.color_tag" show-alpha />
-            <el-input v-model="formData.color_tag" placeholder="#AABBCC，可不填" clearable />
-            <div
-              class="color-preview"
-              :style="{ backgroundColor: formData.color_tag || '#f5f7fa' }"
-            ></div>
+    <el-dialog
+      v-model="dialogVisible"
+      :title="isMobile ? undefined : categoryEditorTitle"
+      width="400px"
+      :class="['custom-dialog', 'category-editor-dialog', { 'is-category-editor-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
+    >
+      <div class="category-editor-shell">
+        <div v-if="isMobile" class="category-editor-hero">
+          <div class="category-editor-hero-icon" aria-hidden="true">
+            <el-icon><CollectionTag /></el-icon>
           </div>
-          <div class="color-presets">
-            <span class="preset-label">常用：</span>
-            <el-tag
-              v-for="preset in colorPresets"
-              :key="preset"
-              :style="{ backgroundColor: preset, color: '#fff', cursor: 'pointer' }"
-              effect="dark"
-              @click="formData.color_tag = preset"
-            >
-              {{ preset }}
-            </el-tag>
+          <div class="category-editor-hero-copy">
+            <h3>{{ categoryEditorTitle }}</h3>
+            <p>管理谷子的收纳分类与层级</p>
           </div>
-        </el-form-item>
+          <button
+            class="category-editor-close"
+            type="button"
+            :disabled="submitting"
+            aria-label="关闭品类编辑面板"
+            @click="dialogVisible = false"
+          >
+            ×
+          </button>
+        </div>
 
-        <el-form-item label="排序（同级越小越靠前）" prop="order">
-          <el-input-number v-model="formData.order" :min="0" :max="9999" :step="1" style="width: 100%" />
-        </el-form-item>
-      </el-form>
+        <div class="category-editor-body">
+          <el-form :model="formData" :rules="formRules" ref="formRef" label-position="top">
+            <section class="category-editor-section">
+              <div class="category-editor-section-head">
+                <span class="section-kicker">基础信息</span>
+                <p>给这个收纳分类一个清晰好找的名字</p>
+              </div>
+              <el-form-item label="品类名称" prop="name">
+                <el-input
+                  v-model="formData.name"
+                  placeholder="例如：马口铁徽章、亚克力挂件、拍立得"
+                  maxlength="50"
+                  show-word-limit
+                />
+              </el-form-item>
+            </section>
+
+            <section class="category-editor-section">
+              <div class="category-editor-section-head">
+                <span class="section-kicker">层级关系</span>
+                <p>{{ parentSummaryText }}</p>
+              </div>
+              <div v-if="isParentLocked" class="parent-lock-note">
+                将创建在「{{ lockedParentName || '当前品类' }}」下
+              </div>
+              <el-form-item label="父级品类" prop="parent">
+                <el-tree-select
+                  v-model="formData.parent"
+                  :data="parentTreeOptions"
+                  :props="{ label: 'name', value: 'id', children: 'children', disabled: 'disabled' }"
+                  placeholder="可选择任意层级作为父节点，不选则为顶级"
+                  check-strictly
+                  clearable
+                  filterable
+                  :disabled="isParentLocked"
+                  style="width: 100%"
+                />
+              </el-form-item>
+            </section>
+
+            <section class="category-editor-section">
+              <div class="category-editor-section-head">
+                <span class="section-kicker">显示与排序</span>
+                <p>颜色用于快速识别，同级排序数值越小越靠前</p>
+              </div>
+              <el-form-item label="颜色标签" prop="color_tag">
+                <div class="color-picker-row">
+                  <div
+                    class="color-preview"
+                    :style="{ backgroundColor: formData.color_tag || '#f5f7fa' }"
+                  ></div>
+                  <el-input v-model="formData.color_tag" placeholder="#AABBCC，可不填" clearable />
+                  <el-color-picker v-model="formData.color_tag" show-alpha />
+                </div>
+                <div class="color-presets">
+                  <span class="preset-label">常用：</span>
+                  <button
+                    v-for="preset in colorPresets"
+                    :key="preset"
+                    class="color-swatch"
+                    type="button"
+                    :class="{ active: formData.color_tag === preset }"
+                    :style="{ backgroundColor: preset }"
+                    :aria-label="`选择颜色 ${preset}`"
+                    @click="formData.color_tag = preset"
+                  ></button>
+                </div>
+              </el-form-item>
+
+              <el-form-item label="同级排序" prop="order" class="category-order-field">
+                <el-input-number v-model="formData.order" :min="0" :max="9999" :step="1" style="width: 100%" />
+              </el-form-item>
+            </section>
+          </el-form>
+        </div>
+      </div>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" class="submit-btn" @click="handleSubmit" :loading="submitting">确定</el-button>
+        <div class="category-editor-footer">
+          <el-button
+            class="category-editor-cancel"
+            :text="isMobile"
+            :disabled="submitting"
+            @click="dialogVisible = false"
+          >
+            取消
+          </el-button>
+          <el-button type="primary" class="submit-btn category-editor-submit" @click="handleSubmit" :loading="submitting">
+            保存品类
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -345,7 +413,26 @@ const formRules: FormRules = {
   order: [{ type: 'number', message: '排序需为数字', trigger: 'change' }],
 }
 
-const dialogTitle = computed(() => isEdit.value ? '🏷️ 修改品类' : '✨ 新增品类')
+const categoryEditorTitle = computed(() => {
+  if (isEdit.value) return '修改品类'
+  if (isParentLocked.value) return '新增子类'
+  return '新增品类'
+})
+
+const dialogTitle = computed(() => categoryEditorTitle.value)
+
+const selectedParentName = computed(() => {
+  if (formData.value.parent === null) return ''
+  return allCategories.value.find((item) => item.id === formData.value.parent)?.name || ''
+})
+
+const lockedParentName = computed(() => selectedParentName.value)
+
+const parentSummaryText = computed(() => {
+  if (isParentLocked.value) return `将创建在「${lockedParentName.value || '当前品类'}」下`
+  if (selectedParentName.value) return `父级为「${selectedParentName.value}」`
+  return '设为顶级'
+})
 
 const buildCategoryTree = (list: Category[]): CategoryNode[] => {
   const map = new Map<number, CategoryNode>()
@@ -1010,6 +1097,37 @@ onUnmounted(() => {
   display: block;
 }
 
+.category-editor-shell {
+  display: flex;
+  flex-direction: column;
+}
+
+.category-editor-hero {
+  display: none;
+}
+
+.category-editor-body {
+  display: block;
+}
+
+.category-editor-section {
+  margin-bottom: 18px;
+}
+
+.category-editor-section:last-child {
+  margin-bottom: 0;
+}
+
+.category-editor-section-head {
+  display: none;
+}
+
+.category-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .color-picker-row {
   display: flex;
   align-items: center;
@@ -1034,6 +1152,28 @@ onUnmounted(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.color-swatch {
+  width: 28px;
+  height: 28px;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(17, 24, 39, 0.08),
+    0 4px 10px rgba(17, 24, 39, 0.1);
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.color-swatch:hover,
+.color-swatch.active {
+  transform: translateY(-1px) scale(1.05);
+  box-shadow:
+    0 0 0 2px rgba(212, 175, 55, 0.48),
+    0 8px 18px rgba(17, 24, 39, 0.16);
 }
 
 .preset-label {
@@ -1063,6 +1203,304 @@ onUnmounted(() => {
     background: transparent !important;
     padding: 0;
     min-height: auto;
+  }
+
+  :global(.el-overlay-dialog:has(.is-category-editor-mobile)) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+
+  :global(.el-dialog.is-category-editor-mobile) {
+    width: 100vw !important;
+    max-width: 100vw;
+    max-height: 88vh;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(255, 252, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 36%),
+      #fff;
+    box-shadow: 0 -16px 42px rgba(17, 24, 39, 0.18);
+    animation: category-editor-sheet-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transform-origin: center bottom;
+  }
+
+  @keyframes category-editor-sheet-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  :global(.dialog-fade-leave-active .el-dialog.is-category-editor-mobile) {
+    animation: category-editor-sheet-leave 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  @keyframes category-editor-sheet-leave {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+
+  :global(.el-dialog.is-category-editor-mobile .el-dialog__header) {
+    display: none;
+  }
+
+  :global(.el-dialog.is-category-editor-mobile .el-dialog__body) {
+    padding: 0;
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  :global(.el-dialog.is-category-editor-mobile .el-dialog__footer) {
+    padding: 0;
+  }
+
+  .category-editor-shell {
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  .category-editor-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 18px 16px;
+    background:
+      linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(142, 125, 255, 0.16) 100%),
+      #fffaf0;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+  }
+
+  .category-editor-hero::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(144, 147, 153, 0.28);
+    transform: translateX(-50%);
+  }
+
+  .category-editor-hero-icon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    border-radius: 15px;
+    color: #8e7dff;
+    background: rgba(255, 255, 255, 0.82);
+    box-shadow:
+      inset 0 0 0 1px rgba(212, 175, 55, 0.22),
+      0 10px 24px -18px rgba(17, 24, 39, 0.32);
+  }
+
+  .category-editor-hero-icon .el-icon {
+    font-size: 22px;
+  }
+
+  .category-editor-hero-copy {
+    flex: 1;
+    min-width: 0;
+    padding-top: 6px;
+  }
+
+  .category-editor-hero-copy h3 {
+    margin: 0;
+    color: #303133;
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .category-editor-hero-copy p {
+    margin: 4px 0 0;
+    color: #909399;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .category-editor-close {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    border: 1px solid rgba(144, 147, 153, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.86);
+    color: #606266;
+    font-size: 22px;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .category-editor-close:disabled {
+    cursor: not-allowed;
+    opacity: 0.45;
+  }
+
+  .category-editor-body {
+    max-height: calc(88vh - 166px);
+    overflow-y: auto;
+    padding: 14px 14px 18px;
+    overscroll-behavior: contain;
+  }
+
+  .category-editor-section {
+    margin: 0 0 12px;
+    padding: 14px;
+    border: 1px solid rgba(212, 175, 55, 0.12);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 26px -24px rgba(17, 24, 39, 0.45);
+  }
+
+  .category-editor-section-head {
+    display: block;
+    margin-bottom: 12px;
+  }
+
+  .section-kicker {
+    display: block;
+    color: #303133;
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1.35;
+  }
+
+  .category-editor-section-head p {
+    margin: 4px 0 0;
+    color: #909399;
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .parent-lock-note {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    padding: 9px 11px;
+    border: 1px solid rgba(142, 125, 255, 0.16);
+    border-radius: 12px;
+    background: rgba(142, 125, 255, 0.08);
+    color: #6b5fe8;
+    font-size: 12px;
+    font-weight: 700;
+  }
+
+  .category-editor-section :deep(.el-form-item) {
+    margin-bottom: 14px;
+  }
+
+  .category-editor-section :deep(.el-form-item:last-child) {
+    margin-bottom: 0;
+  }
+
+  .category-editor-section :deep(.el-form-item__label) {
+    margin-bottom: 6px;
+    color: #606266;
+    font-size: 12px;
+    font-weight: 700;
+    line-height: 1.35;
+  }
+
+  .category-editor-section :deep(.el-input__wrapper),
+  .category-editor-section :deep(.el-select__wrapper),
+  .category-editor-section :deep(.el-input-number .el-input__wrapper) {
+    min-height: 42px;
+    border-radius: 13px;
+    box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.12) inset;
+  }
+
+  .category-editor-section :deep(.el-input__wrapper.is-focus),
+  .category-editor-section :deep(.el-select__wrapper.is-focused) {
+    box-shadow:
+      0 0 0 1px rgba(212, 175, 55, 0.56) inset,
+      0 0 0 4px rgba(212, 175, 55, 0.12);
+  }
+
+  .color-picker-row {
+    display: grid;
+    grid-template-columns: 38px minmax(0, 1fr) 42px;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+  }
+
+  .color-preview {
+    width: 38px;
+    height: 38px;
+    border-radius: 13px;
+    border: 1px solid rgba(212, 175, 55, 0.18);
+    box-shadow:
+      inset 0 1px 2px rgba(0, 0, 0, 0.06),
+      0 6px 14px rgba(17, 24, 39, 0.08);
+  }
+
+  .color-presets {
+    margin-top: 10px;
+    gap: 10px;
+  }
+
+  .preset-label {
+    width: 100%;
+    font-weight: 700;
+  }
+
+  .color-swatch {
+    width: 32px;
+    height: 32px;
+  }
+
+  .category-order-field {
+    padding-top: 4px;
+  }
+
+  .category-editor-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: minmax(82px, 0.45fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(144, 147, 153, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
+  }
+
+  .category-editor-footer .el-button {
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+    border-radius: 13px;
+    font-weight: 800;
+  }
+
+  .category-editor-submit {
+    box-shadow: 0 10px 24px -16px rgba(142, 125, 255, 0.72);
   }
 }
 
@@ -1122,6 +1560,13 @@ onUnmounted(() => {
 
   .mobile-list-container .mobile-card.sortable-ghost {
     opacity: 0.6;
+  }
+}
+
+@media (max-width: 768px) and (prefers-reduced-motion: reduce) {
+  :global(.el-dialog.is-category-editor-mobile),
+  :global(.dialog-fade-leave-active .el-dialog.is-category-editor-mobile) {
+    animation: none;
   }
 }
 </style>

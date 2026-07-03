@@ -9,6 +9,19 @@ const viewSource = readFileSync(join(process.cwd(), 'src/views/ThemeManagement.v
 // 1. 源码结构断言：确保模板和 observer 配置正确
 // ============================================================
 describe('ThemeManagement infinite scroll – source structure', () => {
+  it('defines the redesigned mobile theme editor sheet structure', () => {
+    expect(viewSource).toContain('theme-editor-dialog')
+    expect(viewSource).toContain('is-theme-editor-mobile')
+    expect(viewSource).toContain('class="theme-editor-hero"')
+    expect(viewSource).toContain('class="theme-editor-body"')
+    expect(viewSource).toContain('class="theme-editor-section"')
+    expect(viewSource).toContain('保存后可继续添加参考图')
+    expect(viewSource).toContain('保存主题')
+    expect(viewSource).toContain('theme-editor-sheet-enter')
+    expect(viewSource).toContain('theme-editor-sheet-leave')
+    expect(viewSource).toContain('translate3d(0, 100%, 0)')
+  })
+
   it('renders a sentinel element with v-if="hasMoreMobileData"', () => {
     expect(viewSource).toContain('ref="sentinelRef"')
     expect(viewSource).toContain('v-if="hasMoreMobileData"')

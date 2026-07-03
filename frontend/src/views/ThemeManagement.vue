@@ -228,56 +228,110 @@
     <!-- 弹窗 -->
     <el-dialog
       v-model="dialogVisible"
-      :title="dialogTitle"
+      :title="isMobile ? undefined : dialogTitle"
       :width="isEdit && editingId ? '560px' : '400px'"
-      class="custom-dialog"
-      align-center
+      :class="['custom-dialog', 'theme-editor-dialog', { 'is-theme-editor-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
     >
-      <el-form :model="formData" :rules="formRules" ref="formRef" label-position="top">
-        <el-form-item label="主题名称" prop="name">
-          <el-input
-            v-model="formData.name"
-            placeholder="请输入主题名称，如：夏日主题"
-            maxlength="100"
-            show-word-limit
-          />
-        </el-form-item>
+      <div class="theme-editor-shell">
+        <div v-if="isMobile" class="theme-editor-hero">
+          <div class="theme-editor-hero-icon" aria-hidden="true">
+            <el-icon><Star /></el-icon>
+          </div>
+          <div class="theme-editor-hero-copy">
+            <h3>{{ dialogTitle }}</h3>
+            <p>整理谷子的主题分类与参考图</p>
+          </div>
+          <button
+            class="theme-editor-close"
+            type="button"
+            aria-label="关闭主题编辑面板"
+            :disabled="submitting"
+            @click="dialogVisible = false"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
 
-        <el-form-item label="主题描述" prop="description">
-          <el-input
-            v-model="formData.description"
-            type="textarea"
-            :rows="4"
-            placeholder="请输入主题描述（可选）"
-            maxlength="500"
-            show-word-limit
-          />
-        </el-form-item>
+        <div class="theme-editor-body">
+          <el-form
+            :model="formData"
+            :rules="formRules"
+            ref="formRef"
+            label-position="top"
+            class="theme-editor-form"
+          >
+            <section class="theme-editor-section">
+              <div class="theme-editor-section-header">
+                <div>
+                  <h4>基础信息</h4>
+                  <p>用清晰的名称和备注，让主题更好找。</p>
+                </div>
+              </div>
 
-        <!-- 主题附加图片（仅编辑模式显示） -->
-        <el-form-item v-if="isEdit && editingId" label="主题附加图片">
-          <div v-loading="loadingThemeDetail" class="theme-additional-photos-section">
-            <!-- 已有图片 -->
-              <div v-if="existingThemeImages.length > 0" class="existing-theme-photos">
+              <el-form-item label="主题名称" prop="name">
+                <el-input
+                  v-model="formData.name"
+                  placeholder="例如：夏日祭、海灯节、生日谷"
+                  maxlength="100"
+                  show-word-limit
+                />
+              </el-form-item>
+
+              <el-form-item label="主题描述" prop="description">
+                <el-input
+                  v-model="formData.description"
+                  type="textarea"
+                  :rows="5"
+                  placeholder="记录店铺、工艺、画师或这个主题的补充信息"
+                  maxlength="500"
+                  show-word-limit
+                />
+              </el-form-item>
+            </section>
+
+            <section class="theme-editor-section theme-editor-section-photos">
+              <div class="theme-editor-section-header">
+                <div>
+                  <h4>参考图片</h4>
+                  <p>可添加拍立得、官图、工艺细节等图片。</p>
+                </div>
+              </div>
+
+              <div v-if="isEdit && editingId" v-loading="loadingThemeDetail" class="theme-additional-photos-section">
                 <div
-                  v-for="(photo, index) in existingThemeImages"
-                  :key="photo.id"
-                  class="theme-photo-item"
+                  v-if="existingThemeImages.length > 0 || newThemePhotoFiles.length > 0"
+                  class="theme-photo-grid"
                 >
-                  <el-image
-                    :src="photo.image"
-                    fit="cover"
-                    class="theme-photo-preview"
-                    :preview-src-list="existingThemeImages.map((p) => p.image)"
-                    :initial-index="index"
+                  <div
+                    v-for="(photo, index) in existingThemeImages"
+                    :key="photo.id"
+                    class="theme-photo-item"
                   >
-                    <template #error>
-                      <div class="theme-image-error">
-                        <el-icon><Picture /></el-icon>
-                      </div>
-                    </template>
-                  </el-image>
-                  <div class="theme-photo-actions">
+                    <div class="theme-photo-preview-wrap">
+                      <el-image
+                        :src="photo.image"
+                        fit="cover"
+                        class="theme-photo-preview"
+                        :preview-src-list="existingThemeImages.map((p) => p.image)"
+                        :initial-index="index"
+                      >
+                        <template #error>
+                          <div class="theme-image-error">
+                            <el-icon><Picture /></el-icon>
+                          </div>
+                        </template>
+                      </el-image>
+                      <el-button
+                        type="danger"
+                        size="small"
+                        :icon="Delete"
+                        circle
+                        class="theme-photo-remove"
+                        @click="handleRemoveExistingThemePhoto(photo.id)"
+                      />
+                    </div>
                     <el-input
                       v-model="photo.label"
                       placeholder="图片标签（可选）"
@@ -285,76 +339,85 @@
                       class="theme-photo-label-input"
                       @blur="handleThemePhotoLabelChange(photo)"
                     />
-                    <el-button
-                      type="danger"
-                      size="small"
-                      :icon="Delete"
-                      circle
-                      @click="handleRemoveExistingThemePhoto(photo.id)"
-                    />
                   </div>
-                </div>
-              </div>
 
-              <!-- 待上传的新图片 -->
-              <div v-if="newThemePhotoFiles.length > 0" class="new-theme-photos">
-                <div
-                  v-for="(file, index) in newThemePhotoFiles"
-                  :key="index"
-                  class="theme-photo-item"
-                >
-                  <el-image
-                    :src="file.preview"
-                    fit="cover"
-                    class="theme-photo-preview"
+                  <div
+                    v-for="(file, index) in newThemePhotoFiles"
+                    :key="`new-${index}`"
+                    class="theme-photo-item is-new"
                   >
-                    <template #error>
-                      <div class="theme-image-error">
-                        <el-icon><Picture /></el-icon>
-                      </div>
-                    </template>
-                  </el-image>
-                  <div class="theme-photo-actions">
+                    <div class="theme-photo-preview-wrap">
+                      <el-image
+                        :src="file.preview"
+                        fit="cover"
+                        class="theme-photo-preview"
+                      >
+                        <template #error>
+                          <div class="theme-image-error">
+                            <el-icon><Picture /></el-icon>
+                          </div>
+                        </template>
+                      </el-image>
+                      <el-button
+                        type="danger"
+                        size="small"
+                        :icon="Delete"
+                        circle
+                        class="theme-photo-remove"
+                        @click="handleRemoveNewThemePhoto(index)"
+                      />
+                    </div>
                     <el-input
                       v-model="file.label"
                       placeholder="图片标签（可选）"
                       size="small"
                       class="theme-photo-label-input"
                     />
-                    <el-button
-                      type="danger"
-                      size="small"
-                      :icon="Delete"
-                      circle
-                      @click="handleRemoveNewThemePhoto(index)"
-                    />
                   </div>
                 </div>
+
+                <el-upload
+                  v-model:file-list="themeImageUploadList"
+                  list-type="picture-card"
+                  :auto-upload="false"
+                  :on-change="handleThemePhotoChange"
+                  :on-remove="handleThemePhotoUploadRemove"
+                  :http-request="dummyThemeUpload"
+                  :show-file-list="false"
+                  accept="image/*"
+                  multiple
+                  class="theme-photo-upload"
+                >
+                  <template #trigger>
+                    <div class="theme-photo-add-card">
+                      <el-icon><Plus /></el-icon>
+                      <span>添加图片</span>
+                    </div>
+                  </template>
+                </el-upload>
               </div>
 
-              <!-- 上传按钮 -->
-              <el-upload
-                v-model:file-list="themeImageUploadList"
-                list-type="picture-card"
-                :auto-upload="false"
-                :on-change="handleThemePhotoChange"
-                :on-remove="handleThemePhotoUploadRemove"
-                :http-request="dummyThemeUpload"
-                :show-file-list="false"
-                accept="image/*"
-                multiple
-                class="theme-photo-upload"
-              >
-                <template #trigger>
-                  <el-icon><Plus /></el-icon>
-                </template>
-              </el-upload>
-          </div>
-        </el-form-item>
-      </el-form>
+              <div v-else class="theme-editor-image-note">
+                保存后可继续添加参考图
+              </div>
+            </section>
+          </el-form>
+        </div>
+      </div>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" class="submit-btn" @click="handleSubmit" :loading="submitting">确定</el-button>
+        <div class="theme-editor-footer">
+          <el-button
+            class="theme-editor-cancel"
+            :text="isMobile"
+            :disabled="submitting"
+            @click="dialogVisible = false"
+          >
+            取消
+          </el-button>
+          <el-button type="primary" class="submit-btn" @click="handleSubmit" :loading="submitting">
+            {{ isMobile ? '保存主题' : '确定' }}
+          </el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -1378,10 +1441,41 @@ onUnmounted(() => {
 }
 
 /* 主题附加图片区块 */
+.theme-editor-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.theme-editor-body {
+  min-height: 0;
+}
+
+.theme-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.theme-editor-section {
+  width: 100%;
+}
+
+.theme-editor-section-header {
+  display: none;
+}
+
+.theme-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .theme-additional-photos-section {
   width: 100%;
 }
 
+.theme-photo-grid,
 .existing-theme-photos,
 .new-theme-photos {
   display: grid;
@@ -1396,12 +1490,24 @@ onUnmounted(() => {
   gap: 8px;
 }
 
+.theme-photo-preview-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 4px;
+}
+
 .theme-photo-preview {
   width: 100%;
   height: 120px;
   border-radius: 4px;
   border: 1px solid var(--el-border-color);
   overflow: hidden;
+}
+
+.theme-photo-remove {
+  position: absolute;
+  top: 6px;
+  right: 6px;
 }
 
 .theme-image-error {
@@ -1426,6 +1532,20 @@ onUnmounted(() => {
   min-width: 0;
 }
 
+.theme-photo-add-card {
+  width: 100%;
+  height: 100%;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--accent-purple-dark);
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .theme-photo-upload :deep(.el-upload--picture-card) {
   width: 120px;
   height: 120px;
@@ -1438,6 +1558,361 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  :global(.el-overlay-dialog:has(.is-theme-editor-mobile)) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+
+  :global(.el-dialog.is-theme-editor-mobile) {
+    width: 100vw !important;
+    max-width: 100vw;
+    max-height: 88vh;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(255, 252, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 36%),
+      var(--bg-white);
+    box-shadow: 0 -16px 42px rgba(17, 24, 39, 0.18);
+    animation: theme-editor-sheet-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transform-origin: center bottom;
+  }
+
+  @keyframes theme-editor-sheet-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  :global(.dialog-fade-leave-active .el-dialog.is-theme-editor-mobile) {
+    animation: theme-editor-sheet-leave 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  @keyframes theme-editor-sheet-leave {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    :global(.el-dialog.is-theme-editor-mobile),
+    :global(.dialog-fade-leave-active .el-dialog.is-theme-editor-mobile) {
+      animation: none;
+    }
+  }
+
+  :global(.el-dialog.is-theme-editor-mobile .el-dialog__header) {
+    display: none;
+  }
+
+  :global(.el-dialog.is-theme-editor-mobile .el-dialog__body) {
+    padding: 0;
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  :global(.el-dialog.is-theme-editor-mobile .el-dialog__footer) {
+    padding: 0;
+  }
+
+  .theme-editor-shell {
+    max-height: calc(88vh - 84px);
+  }
+
+  .theme-editor-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 18px 16px;
+    background:
+      radial-gradient(circle at 18% 18%, rgba(212, 175, 55, 0.2), transparent 34%),
+      linear-gradient(135deg, rgba(212, 175, 55, 0.14), rgba(162, 155, 254, 0.13));
+    border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+  }
+
+  .theme-editor-hero::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(184, 148, 31, 0.24);
+    transform: translateX(-50%);
+  }
+
+  .theme-editor-hero-icon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.72);
+    color: var(--primary-gold-dark);
+    font-size: 22px;
+    box-shadow:
+      inset 0 0 0 1px rgba(212, 175, 55, 0.18),
+      0 10px 24px -18px rgba(17, 24, 39, 0.32);
+  }
+
+  .theme-editor-hero-copy {
+    flex: 1;
+    min-width: 0;
+    padding-top: 6px;
+  }
+
+  .theme-editor-hero-copy h3 {
+    margin: 0;
+    color: var(--text-dark);
+    font-size: 18px;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .theme-editor-hero-copy p {
+    margin: 4px 0 0;
+    color: var(--text-light);
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .theme-editor-close {
+    width: 36px;
+    height: 36px;
+    flex: 0 0 36px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--text-light);
+    font-size: 18px;
+    box-shadow: inset 0 0 0 1px rgba(212, 175, 55, 0.16);
+    transition: transform var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+  }
+
+  .theme-editor-close:active {
+    transform: scale(0.94);
+    color: var(--accent-purple-dark);
+    background: rgba(255, 255, 255, 0.96);
+  }
+
+  .theme-editor-close:disabled {
+    opacity: 0.5;
+  }
+
+  .theme-editor-body {
+    padding: 14px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .theme-editor-form {
+    gap: 14px;
+    padding-bottom: 4px;
+  }
+
+  .theme-editor-section {
+    padding: 14px;
+    border: 1px solid rgba(212, 175, 55, 0.14);
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 12px 30px -24px rgba(17, 24, 39, 0.36);
+  }
+
+  .theme-editor-section-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .theme-editor-section-header h4 {
+    margin: 0;
+    color: var(--text-dark);
+    font-size: 15px;
+    font-weight: 800;
+    line-height: 1.25;
+  }
+
+  .theme-editor-section-header p {
+    margin: 4px 0 0;
+    color: var(--text-light);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  .theme-editor-section :deep(.el-form-item) {
+    margin-bottom: 14px;
+  }
+
+  .theme-editor-section :deep(.el-form-item:last-child) {
+    margin-bottom: 0;
+  }
+
+  .theme-editor-section :deep(.el-form-item__label) {
+    margin-bottom: 6px;
+    color: var(--text-dark);
+    font-size: 13px;
+    font-weight: 700;
+    line-height: 1.4;
+  }
+
+  .theme-editor-section :deep(.el-input__wrapper),
+  .theme-editor-section :deep(.el-textarea__inner) {
+    border: 1px solid rgba(212, 175, 55, 0.16);
+    border-radius: 13px;
+    background: #fbfaff;
+    box-shadow: none;
+    transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background var(--transition-fast);
+  }
+
+  .theme-editor-section :deep(.el-input__wrapper) {
+    min-height: 42px;
+  }
+
+  .theme-editor-section :deep(.el-textarea__inner) {
+    min-height: 134px !important;
+    padding: 12px;
+    line-height: 1.55;
+    resize: none;
+  }
+
+  .theme-editor-section :deep(.el-input__wrapper:hover),
+  .theme-editor-section :deep(.el-textarea__inner:hover) {
+    border-color: rgba(162, 155, 254, 0.38);
+  }
+
+  .theme-editor-section :deep(.el-input__wrapper.is-focus),
+  .theme-editor-section :deep(.el-textarea__inner:focus) {
+    border-color: var(--primary-gold);
+    background: #fff;
+    box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.12);
+  }
+
+  .theme-photo-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .theme-photo-item {
+    padding: 8px;
+    border: 1px solid rgba(212, 175, 55, 0.14);
+    border-radius: 14px;
+    background: rgba(245, 245, 247, 0.72);
+  }
+
+  .theme-photo-preview-wrap,
+  .theme-photo-preview {
+    height: 118px;
+    border-radius: 12px;
+  }
+
+  .theme-photo-preview {
+    border-color: rgba(212, 175, 55, 0.16);
+  }
+
+  .theme-photo-remove {
+    top: 7px;
+    right: 7px;
+    width: 28px;
+    height: 28px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18);
+  }
+
+  .theme-photo-label-input :deep(.el-input__wrapper) {
+    min-height: 34px;
+    border-radius: 10px;
+    background: #fff;
+  }
+
+  .theme-photo-upload {
+    width: 100%;
+  }
+
+  .theme-photo-upload :deep(.el-upload--picture-card) {
+    width: 100%;
+    height: 92px;
+    border: 1px dashed rgba(162, 155, 254, 0.44);
+    border-radius: 14px;
+    background:
+      linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(162, 155, 254, 0.1)),
+      #fff;
+  }
+
+  .theme-photo-upload :deep(.el-upload--picture-card:hover) {
+    border-color: var(--accent-purple);
+  }
+
+  .theme-photo-add-card {
+    min-height: 90px;
+    color: var(--accent-purple-dark);
+  }
+
+  .theme-photo-add-card .el-icon {
+    font-size: 22px;
+  }
+
+  .theme-editor-image-note {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 72px;
+    padding: 14px;
+    border: 1px dashed rgba(212, 175, 55, 0.32);
+    border-radius: 14px;
+    background: linear-gradient(135deg, rgba(212, 175, 55, 0.08), rgba(162, 155, 254, 0.08));
+    color: var(--primary-gold-dark);
+    font-size: 13px;
+    font-weight: 700;
+    text-align: center;
+  }
+
+  .theme-editor-footer {
+    position: sticky;
+    bottom: 0;
+    z-index: 2;
+    display: grid;
+    grid-template-columns: minmax(82px, 0.45fr) minmax(0, 1fr);
+    gap: 10px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    border-top: 1px solid rgba(212, 175, 55, 0.16);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
+  }
+
+  .theme-editor-footer .el-button {
+    width: 100%;
+    min-height: 42px;
+    margin: 0;
+    border-radius: 13px;
+    font-weight: 800;
+  }
+
+  .theme-editor-cancel {
+    color: var(--text-light);
+  }
+
   .existing-theme-photos,
   .new-theme-photos {
     grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));

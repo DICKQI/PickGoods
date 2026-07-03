@@ -28,4 +28,16 @@ describe('CategoryManagement mobile layout', () => {
     expect(nodeSource).toContain('件谷子')
     expect(nodeSource).toContain('node.goods_count')
   })
+
+  it('defines the mobile category editor as a bottom sheet with structured sections', () => {
+    expect(viewSource).toContain('category-editor-dialog')
+    expect(viewSource).toContain('is-category-editor-mobile')
+    expect(viewSource).toContain('category-editor-hero')
+    expect(viewSource).toContain('category-editor-section')
+    expect(viewSource).toContain('category-editor-sheet-enter')
+    expect(viewSource).toContain('category-editor-sheet-leave')
+    expect(viewSource).toContain('保存品类')
+    expect(viewSource).toContain('设为顶级')
+    expect(viewSource).toContain('将创建在')
+  })
 })
