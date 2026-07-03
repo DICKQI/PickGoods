@@ -3,6 +3,7 @@ import { mount, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import GoodsDrawer from '@/components/GoodsDrawer.vue'
+import { getGoodsList } from '@/api/goods'
 
 // --------------- Mocks ---------------
 
@@ -22,7 +23,7 @@ const { mockDetail } = vi.hoisted(() => ({
     ip: { id: 1, name: '测试IP' },
     characters: [{ id: 1, name: '测试角色', gender: 'female' }],
     category: { id: 1, name: '徽章' },
-    theme: null,
+    theme: null as null | { id: number, name: string },
     user: { id: 1, username: 'testuser' },
   },
 }))
@@ -103,7 +104,7 @@ const mountDrawer = async () => {
         'el-icon': { template: '<i><slot /></i>' },
         'el-tag': { template: '<span><slot /></span>' },
         'el-collapse': { template: '<div><slot /></div>' },
-        'el-collapse-item': { template: '<div><slot /></div>' },
+        'el-collapse-item': { template: '<div><slot name="title" /><slot /></div>' },
         Close: { template: '<span />' },
         Picture: { template: '<span />' },
         Collection: { template: '<span />' },
@@ -316,5 +317,47 @@ describe('GoodsDrawer mobile gesture', () => {
 
       expect(wrapper.emitted('update:modelValue')![0]).toEqual([false])
     })
+  })
+})
+
+describe('GoodsDrawer same theme section', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    document.body.innerHTML = ''
+    Object.assign(mockDetail, {
+      theme: { id: 1, name: '测试主题' },
+    })
+    vi.mocked(getGoodsList).mockResolvedValue({
+      results: [
+        {
+          id: 'test-id',
+          name: '当前谷子',
+          status: 'in_cabinet',
+          main_photo: null,
+          quantity: 1,
+          is_official: true,
+        },
+        {
+          id: 'same-theme-id',
+          name: '超长超长超长超长超长超长超长超长超长谷子名称',
+          status: 'in_cabinet',
+          main_photo: null,
+          quantity: 1,
+          is_official: true,
+        },
+      ],
+    } as any)
+  })
+
+  it('renders the same-theme count as a separate pill and exposes full item names', async () => {
+    const wrapper = await mountDrawer()
+    await wrapper.vm.$nextTick()
+    await new Promise(resolve => window.setTimeout(resolve, 0))
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.get('.same-theme-title-text').text()).toBe('相同主题的谷子')
+    expect(wrapper.get('.same-theme-count').text()).toBe('1')
+    expect(wrapper.get('.same-theme-item-name').attributes('title')).toBe('超长超长超长超长超长超长超长超长超长谷子名称')
+    expect(wrapper.get('.same-theme-item-name-text').text()).toBe('超长超长超长超长超长超长超长超长超长谷子名称')
   })
 })

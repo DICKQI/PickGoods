@@ -164,7 +164,8 @@
                 <template #title>
                   <div class="same-theme-title">
                     <el-icon class="theme-icon"><Collection /></el-icon>
-                    <span>相同主题的谷子 ({{ sameThemeGoods.length }})</span>
+                    <span class="same-theme-title-text">相同主题的谷子</span>
+                    <span class="same-theme-count">{{ sameThemeGoods.length }}</span>
                   </div>
                 </template>
                 <div v-if="sameThemeLoading" class="same-theme-loading">
@@ -188,7 +189,9 @@
                     <div v-else class="same-theme-image-placeholder">
                       <el-icon><Picture /></el-icon>
                     </div>
-                    <div class="same-theme-item-name">{{ goods.name }}</div>
+                    <div class="same-theme-item-name" :title="goods.name">
+                      <span class="same-theme-item-name-text">{{ goods.name }}</span>
+                    </div>
                   </div>
                 </div>
               </el-collapse-item>
@@ -760,14 +763,36 @@ watch([isMobile, viewportHeight], () => {
   margin-top: 24px;
   padding: 0 8px;
 }
+
 .is-mobile .same-theme-section {
   padding: 0;
 }
 
 .same-theme-collapse {
-  border: 1px solid #ebeef5;
-  border-radius: 8px;
-  overflow: hidden;
+  border: 0;
+  background: transparent;
+}
+
+.same-theme-collapse :deep(.el-collapse) {
+  border: 0;
+}
+
+.same-theme-collapse :deep(.el-collapse-item__header) {
+  min-height: 32px;
+  height: auto;
+  padding: 0;
+  border-bottom: 0;
+  background: transparent;
+  line-height: 1.4;
+}
+
+.same-theme-collapse :deep(.el-collapse-item__wrap) {
+  border-bottom: 0;
+  background: transparent;
+}
+
+.same-theme-collapse :deep(.el-collapse-item__content) {
+  padding-bottom: 0;
 }
 
 .same-theme-title {
@@ -779,45 +804,67 @@ watch([isMobile, viewportHeight], () => {
   color: #303133;
 }
 
+.same-theme-title-text {
+  min-width: 0;
+}
+
+.same-theme-count {
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: #f4efe7;
+  color: #9a6a1f;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  text-align: center;
+}
+
 .theme-icon {
   color: var(--primary-gold, #e6a23c);
   font-size: 16px;
 }
 
 .same-theme-loading {
-  padding: 16px;
+  padding: 10px 0 0;
 }
 
 .same-theme-empty {
-  padding: 20px;
+  padding: 12px 0 0;
 }
 
 .same-theme-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 12px;
-  padding: 16px;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 14px;
+  padding: 10px 0 0;
 }
 
 .same-theme-item {
+  min-width: 0;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  border-radius: 10px;
+  background: transparent;
+  transition: transform 0.2s ease;
 }
 
 .same-theme-item:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.same-theme-item:hover .same-theme-image,
+.same-theme-item:hover .same-theme-image-placeholder {
+  box-shadow: 0 6px 16px rgba(40, 35, 28, 0.12);
+  filter: brightness(1.02);
 }
 
 .same-theme-image {
   width: 100%;
   aspect-ratio: 1;
-  border-radius: 8px 8px 0 0;
+  border-radius: 10px;
   overflow: hidden;
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .same-theme-image-placeholder {
@@ -829,30 +876,91 @@ watch([isMobile, viewportHeight], () => {
   background-color: #f5f7fa;
   color: #c0c4cc;
   font-size: 24px;
+  border-radius: 10px;
+  transition: box-shadow 0.2s ease, filter 0.2s ease;
 }
 
 .same-theme-item-name {
-  padding: 8px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 6px 2px 0;
   font-size: 12px;
   color: #606266;
   text-align: center;
   line-height: 1.4;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  position: relative;
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.same-theme-item-name-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
+  will-change: transform;
+}
+
+.same-theme-item:hover .same-theme-item-name-text {
+  display: inline-block;
+  max-width: none;
+  min-width: max-content;
+  overflow: visible;
+  text-overflow: clip;
+  animation: same-theme-name-marquee 5s linear infinite;
+}
+
+@keyframes same-theme-name-marquee {
+  0%,
+  14% {
+    transform: translateX(0);
+  }
+
+  86%,
+  100% {
+    transform: translateX(calc(-100% + 100px));
+  }
 }
 
 .is-mobile .same-theme-grid {
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  display: flex;
   gap: 10px;
-  padding: 12px;
+  padding: 10px 0 2px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.is-mobile .same-theme-grid::-webkit-scrollbar {
+  display: none;
+}
+
+.is-mobile .same-theme-item {
+  flex: 0 0 82px;
 }
 
 .is-mobile .same-theme-item-name {
   font-size: 11px;
-  padding: 6px;
+  padding: 5px 1px 0;
+}
+
+.is-mobile .same-theme-item:hover .same-theme-item-name-text {
+  animation: same-theme-name-marquee-mobile 5s linear infinite;
+}
+
+@keyframes same-theme-name-marquee-mobile {
+  0%,
+  14% {
+    transform: translateX(0);
+  }
+
+  86%,
+  100% {
+    transform: translateX(calc(-100% + 80px));
+  }
 }
 
 /* ---------------- Element UI 样式重置与动画控制 ---------------- */
