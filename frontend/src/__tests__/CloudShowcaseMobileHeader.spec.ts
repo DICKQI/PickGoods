@@ -111,6 +111,7 @@ const mountCloudShowcase = async ({
         SearchBar: { template: '<div data-test="search-bar" />' },
         FilterPanel: { template: '<div data-test="filter-panel" />' },
         GoodsCard: { template: '<article class="goods-card-stub" @touchstart.stop />' },
+        MobileGoodsCard: { template: '<article class="mobile-goods-card-stub" @touchstart.stop />' },
         GoodsDrawer: { template: '<aside />' },
         GoodsMultiDisplayDialog: { template: '<aside />' },
         StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
@@ -270,5 +271,25 @@ describe('CloudShowcase mobile compact header', () => {
 
     expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(true)
     expect(wrapper.find('.barn-section').exists()).toBe(false)
+  })
+
+  it('uses the dense mobile card only in the mobile granary branch', () => {
+    expect(cloudShowcaseSource).toContain("import MobileGoodsCard from '@/components/MobileGoodsCard.vue'")
+    expect(cloudShowcaseSource).toContain('<MobileGoodsCard')
+    expect(cloudShowcaseSource).toContain('v-if="isMobile"')
+    expect(cloudShowcaseSource).toContain('<GoodsCard')
+    expect(cloudShowcaseSource).toContain('v-else')
+  })
+
+  it('keeps card event bindings aligned between mobile and desktop branches', () => {
+    const mobileCardIndex = cloudShowcaseSource.indexOf('<MobileGoodsCard')
+    const desktopCardIndex = cloudShowcaseSource.indexOf('<GoodsCard')
+    const mobileCardBlock = cloudShowcaseSource.slice(mobileCardIndex, cloudShowcaseSource.indexOf('/>', mobileCardIndex))
+    const desktopCardBlock = cloudShowcaseSource.slice(desktopCardIndex, cloudShowcaseSource.indexOf('/>', desktopCardIndex))
+
+    for (const binding of ['@click="handleCardClick"', '@select="handleCardSelect"', '@location-click="handleLocationClick"', '@context-menu="handleCardContextMenu"']) {
+      expect(mobileCardBlock).toContain(binding)
+      expect(desktopCardBlock).toContain(binding)
+    }
   })
 })

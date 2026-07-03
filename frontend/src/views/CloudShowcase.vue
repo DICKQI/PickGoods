@@ -119,17 +119,32 @@
 
           <!-- 商品列表状态 -->
           <div v-else class="goods-grid" key="grid">
-            <GoodsCard
-              v-for="goods in guziStore.guziList"
-              :key="goods.id"
-              :goods="goods"
-              :selectable="guziStore.selectionMode"
-              :selected="guziStore.isGoodsSelected(goods.id)"
-              @click="handleCardClick"
-              @select="handleCardSelect"
-              @location-click="handleLocationClick"
-              @context-menu="handleCardContextMenu"
-            />
+            <template v-if="isMobile">
+              <MobileGoodsCard
+                v-for="goods in guziStore.guziList"
+                :key="goods.id"
+                :goods="goods"
+                :selectable="guziStore.selectionMode"
+                :selected="guziStore.isGoodsSelected(goods.id)"
+                @click="handleCardClick"
+                @select="handleCardSelect"
+                @location-click="handleLocationClick"
+                @context-menu="handleCardContextMenu"
+              />
+            </template>
+            <template v-else>
+              <GoodsCard
+                v-for="goods in guziStore.guziList"
+                :key="goods.id"
+                :goods="goods"
+                :selectable="guziStore.selectionMode"
+                :selected="guziStore.isGoodsSelected(goods.id)"
+                @click="handleCardClick"
+                @select="handleCardSelect"
+                @location-click="handleLocationClick"
+                @context-menu="handleCardContextMenu"
+              />
+            </template>
           </div>
         </Transition>
       </div>
@@ -262,6 +277,7 @@ import { useShowcaseStore } from '@/stores/showcase'
 import SearchBar from '@/components/SearchBar.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import GoodsCard from '@/components/GoodsCard.vue'
+import MobileGoodsCard from '@/components/MobileGoodsCard.vue'
 import GoodsDrawer from '@/components/GoodsDrawer.vue'
 import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
@@ -1228,8 +1244,8 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   .goods-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
   }
 
   .selection-status-bar {
@@ -1269,16 +1285,16 @@ watch(mobileFilterVisible, (visible) => {
 .loading-more--mobile {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: 8px 10px;
   padding: 8px 0 20px;
 }
 
 .mobile-loading-card {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 10px;
-  border-radius: 18px;
+  gap: 6px;
+  padding: 6px 7px 8px;
+  border-radius: 14px;
   background: #ffffff;
   border: 1px solid rgba(15, 23, 42, 0.05);
 }
@@ -1293,11 +1309,11 @@ watch(mobileFilterVisible, (visible) => {
 }
 
 .mobile-loading-image {
-  aspect-ratio: 1;
+  aspect-ratio: 1.12 / 1;
 }
 
 .mobile-loading-line {
-  height: 12px;
+  height: 10px;
 }
 
 .mobile-loading-line.short {
@@ -1530,8 +1546,8 @@ watch(mobileFilterVisible, (visible) => {
   }
 
   .goods-grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
   }
 
   .selection-status-bar {
