@@ -199,6 +199,7 @@ const mountView = async () => {
       stubs: {
         'el-button': ElButtonStub,
         'el-dialog': ElDialogStub,
+        'el-drawer': { props: ['modelValue'], template: '<aside v-if="modelValue" class="el-drawer-stub"><slot /></aside>' },
         'el-empty': { template: '<div class="el-empty-stub"><slot /></div>' },
         'el-form': { template: '<form><slot /></form>' },
         'el-form-item': {

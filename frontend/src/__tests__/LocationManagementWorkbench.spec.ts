@@ -29,12 +29,14 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).toContain("handleBatchMoveToUnassigned")
   })
 
-  it('renders unassigned goods as a centered dense dialog instead of a drawer', () => {
+  it('keeps unassigned goods in a desktop dialog while mobile-only panels use drawers', () => {
     expect(source).toContain('data-test="unassigned-goods-dialog"')
     expect(source).toContain('class="unassigned-goods-dialog"')
-    expect(source).toContain('width="min(1080px, calc(100vw - 32px))"')
+    expect(source).toContain(":width=\"isMobile ? '100%' : 'min(1080px, calc(100vw - 32px))'\"")
+    expect(source).toContain(':fullscreen="isMobile"')
     expect(source).toContain('align-center')
-    expect(source).not.toContain('<el-drawer')
+    expect(source).toContain('data-test="mobile-location-picker"')
+    expect(source).toContain('data-test="mobile-filter-panel"')
     expect(source).not.toContain('drawer-goods-list')
   })
 
