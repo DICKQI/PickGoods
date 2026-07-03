@@ -443,9 +443,10 @@ describe('LocationManagement mobile workbench', () => {
     const items = wrapper.findAll('[data-test="location-mobile-goods-item"]')
     expect(items).toHaveLength(2)
     expect(wrapper.findAll('.goods-card-stub')).toHaveLength(0)
-    expect(items[0].text()).toContain('Goods goods-1')
-    expect(items[0].text()).toContain('草稿')
-    expect(items[0].text()).toContain('Project Sekai')
+    const firstItem = wrapper.get('[data-test="location-mobile-goods-item"]')
+    expect(firstItem.text()).toContain('Goods goods-1')
+    expect(firstItem.text()).toContain('草稿')
+    expect(firstItem.text()).toContain('Project Sekai')
   })
 
   it('opens goods detail from compact mobile goods items', async () => {

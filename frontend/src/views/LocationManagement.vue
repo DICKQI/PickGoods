@@ -1571,8 +1571,9 @@ onMounted(async () => {
   await locationStore.fetchNodes()
   await preloadUnassignedGoodsCount()
   await applyHighlightFromRoute()
-  if (isMobile.value && !selectedNode.value && locationStore.treeData.length > 0) {
-    await handleMobileNodeClick(locationStore.treeData[0])
+  const firstTreeNode = locationStore.treeData[0]
+  if (isMobile.value && !selectedNode.value && firstTreeNode) {
+    await handleMobileNodeClick(firstTreeNode)
   }
 })
 </script>
