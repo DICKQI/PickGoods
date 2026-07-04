@@ -7,14 +7,18 @@ import { copyThemeImagesFromGoods, getThemeTemplate, patchTheme, saveThemeTempla
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { updateBaseURL } from '@/utils/request'
 import type { ThemeTemplatePayload } from '@/api/types'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 const pushMock = vi.fn()
+const backMock = vi.fn()
 let routeParams: Record<string, string | undefined> = {}
+const goodsFormSource = readFileSync(resolve(process.cwd(), 'src/views/GoodsForm.vue'), 'utf8')
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({
     push: pushMock,
-    back: vi.fn(),
+    back: backMock,
   }),
   useRoute: () => ({
     params: routeParams,
@@ -233,8 +237,21 @@ const mountGoodsForm = async ({
         ElDropdown: passthroughStub('ElDropdown'),
         ElDropdownMenu: passthroughStub('ElDropdownMenu'),
         ElDropdownItem: passthroughStub('ElDropdownItem'),
+        ElDialog: defineComponent({
+          name: 'ElDialog',
+          props: ['modelValue', 'title'],
+          emits: ['update:modelValue'],
+          setup(props, { slots, attrs }) {
+            return () => props.modelValue
+              ? h('div', { ...attrs, class: ['el-dialog-stub', attrs.class] }, [
+                props.title ? h('h2', props.title as string) : null,
+                slots.default?.(),
+                slots.footer?.(),
+              ])
+              : null
+          },
+        }),
         ElDrawer: passthroughStub('ElDrawer'),
-        ElDialog: passthroughStub('ElDialog'),
         ElImage: passthroughStub('ElImage'),
         ElImageViewer: passthroughStub('ElImageViewer'),
         ElIcon: passthroughStub('ElIcon', 'i'),
@@ -302,6 +319,124 @@ describe('GoodsForm mobile create wizard', () => {
     })))
     globalThis.URL.createObjectURL = vi.fn(() => 'blob:theme-image')
     globalThis.URL.revokeObjectURL = vi.fn()
+  })
+
+  it('defines a responsive custom leave confirmation dialog with mobile sheet animation', () => {
+    expect(goodsFormSource).toContain('goods-leave-dialog')
+    expect(goodsFormSource).toContain('is-goods-leave-mobile')
+    expect(goodsFormSource).toContain('goods-leave-sheet-enter')
+    expect(goodsFormSource).toContain('goods-leave-sheet-leave')
+    expect(goodsFormSource).toContain('离开编辑？')
+    expect(goodsFormSource).toContain('未保存的谷子信息不会保留')
+  })
+
+  it('defines a responsive custom reset confirmation dialog with mobile sheet animation', () => {
+    expect(goodsFormSource).toContain('goods-reset-dialog')
+    expect(goodsFormSource).toContain('is-goods-reset-mobile')
+    expect(goodsFormSource).toContain('goods-reset-sheet-enter')
+    expect(goodsFormSource).toContain('goods-reset-sheet-leave')
+    expect(goodsFormSource).toContain('重置表单？')
+    expect(goodsFormSource).toContain('当前填写内容将恢复为进入页面时的状态')
+  })
+
+  it('opens the custom leave dialog before navigating away on mobile', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+
+    vm.handleMobileMoreCommand('cancel')
+    await nextTick()
+
+    expect(vi.mocked(ElMessageBox.confirm)).not.toHaveBeenCalled()
+    expect(backMock).not.toHaveBeenCalled()
+    expect(wrapper.find('.goods-leave-dialog').exists()).toBe(true)
+    expect(wrapper.text()).toContain('离开编辑？')
+    expect(wrapper.text()).toContain('当前填写的谷子信息还没有保存')
+  })
+
+  it('keeps the user on the goods form when choosing to stay', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+
+    vm.handleCancel()
+    await nextTick()
+    await wrapper.find('.goods-leave-stay').trigger('click')
+    await nextTick()
+
+    expect(backMock).not.toHaveBeenCalled()
+    expect(wrapper.find('.goods-leave-dialog').exists()).toBe(false)
+  })
+
+  it('navigates back only after confirming the custom leave dialog', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+
+    vm.handleCancel()
+    await nextTick()
+    await wrapper.find('.goods-leave-confirm').trigger('click')
+
+    expect(backMock).toHaveBeenCalledTimes(1)
+  })
+
+  it('opens the custom reset dialog before resetting the form on mobile', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+
+    vm.handleMobileMoreCommand('reset')
+    await nextTick()
+
+    expect(vi.mocked(ElMessageBox.confirm)).not.toHaveBeenCalled()
+    expect(wrapper.find('.goods-reset-dialog').exists()).toBe(true)
+    expect(wrapper.text()).toContain('重置表单？')
+  })
+
+  it('keeps the current form content when cancelling the reset dialog', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+    const resetFields = vi.spyOn(vm.formRef, 'resetFields')
+
+    vm.handleReset()
+    await nextTick()
+    await wrapper.find('.goods-reset-cancel').trigger('click')
+    await nextTick()
+
+    expect(resetFields).not.toHaveBeenCalled()
+    expect(wrapper.find('.goods-reset-dialog').exists()).toBe(false)
+  })
+
+  it('resets the form only after confirming the custom reset dialog', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    const vm = wrapper.vm as any
+    const resetFields = vi.spyOn(vm.formRef, 'resetFields')
+
+    vm.handleReset()
+    await nextTick()
+    await wrapper.find('.goods-reset-confirm').trigger('click')
+
+    expect(resetFields).toHaveBeenCalledTimes(1)
   })
 
   it('renders mobile creation as a step wizard starting with basic information only', async () => {

@@ -358,6 +358,64 @@
       </div>
     </el-drawer>
 
+    <el-dialog
+      v-model="leaveConfirmVisible"
+      :title="isMobile ? undefined : '离开编辑？'"
+      width="min(90vw, 360px)"
+      :class="['goods-leave-dialog', { 'is-goods-leave-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
+      :close-on-click-modal="false"
+    >
+      <div class="goods-leave-content">
+        <div class="goods-leave-icon" aria-hidden="true">
+          <el-icon><Close /></el-icon>
+        </div>
+        <div class="goods-leave-copy">
+          <h3>离开编辑？</h3>
+          <p class="goods-leave-subtitle">当前填写的谷子信息还没有保存</p>
+        </div>
+        <div class="goods-leave-warning">
+          未保存的谷子信息不会保留。离开后，未保存的名称、分类、图片、备注等内容将不会保留。
+        </div>
+      </div>
+      <template #footer>
+        <div class="goods-leave-actions">
+          <el-button class="goods-leave-stay" type="primary" @click="stayOnGoodsForm">留在页面</el-button>
+          <el-button class="goods-leave-confirm" plain @click="confirmLeaveGoodsForm">离开页面</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
+    <el-dialog
+      v-model="resetConfirmVisible"
+      :title="isMobile ? undefined : '重置表单？'"
+      width="min(90vw, 360px)"
+      :class="['goods-reset-dialog', { 'is-goods-reset-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
+      :close-on-click-modal="false"
+    >
+      <div class="goods-reset-content">
+        <div class="goods-reset-icon" aria-hidden="true">
+          <el-icon><Refresh /></el-icon>
+        </div>
+        <div class="goods-reset-copy">
+          <h3>重置表单？</h3>
+          <p class="goods-reset-subtitle">当前填写内容将恢复为进入页面时的状态</p>
+        </div>
+        <div class="goods-reset-warning">
+          重置后，未保存的修改会丢失；新增谷子会回到第一步，已填写的名称、分类、图片、备注等内容会被清空或恢复。
+        </div>
+      </div>
+      <template #footer>
+        <div class="goods-reset-actions">
+          <el-button class="goods-reset-cancel" type="primary" @click="cancelResetGoodsForm">继续编辑</el-button>
+          <el-button class="goods-reset-confirm" plain @click="confirmResetGoodsForm">重置表单</el-button>
+        </div>
+      </template>
+    </el-dialog>
+
     <!-- 图片裁切组件 -->
     <ImageCropper
       v-if="cropDialogVisible && cropImageFile"
@@ -488,6 +546,8 @@ const { isMobile } = useResponsiveDevice()
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const leaveConfirmVisible = ref(false)
+const resetConfirmVisible = ref(false)
 const isEditMode = computed(() => Boolean(route.params.id))
 const formTitle = computed(() => (route.params.id ? '编辑谷子' : '新增谷子'))
 
@@ -1305,20 +1365,32 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
   }
 }
 
-const handleReset = async () => {
-  try {
-    await ElMessageBox.confirm('确定要重置表单吗？当前填写内容将恢复为进入页面时的状态（未保存的修改会丢失）。', '重置表单', { type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消' })
-    formRef.value?.resetFields()
-    dismissSuggestions()
-    if (useCreateWizard.value) currentWizardStepIndex.value = 0
-  } catch { /* user cancelled */ }
+const handleReset = () => {
+  resetConfirmVisible.value = true
 }
 
-const handleCancel = async () => {
-  try {
-    await ElMessageBox.confirm('确定要离开吗？未保存的修改将丢失。', '离开页面', { type: 'warning', confirmButtonText: '离开', cancelButtonText: '留在页面' })
-    router.back()
-  } catch { /* user cancelled */ }
+const cancelResetGoodsForm = () => {
+  resetConfirmVisible.value = false
+}
+
+const confirmResetGoodsForm = () => {
+  resetConfirmVisible.value = false
+  formRef.value?.resetFields()
+  dismissSuggestions()
+  if (useCreateWizard.value) currentWizardStepIndex.value = 0
+}
+
+const handleCancel = () => {
+  leaveConfirmVisible.value = true
+}
+
+const stayOnGoodsForm = () => {
+  leaveConfirmVisible.value = false
+}
+
+const confirmLeaveGoodsForm = () => {
+  leaveConfirmVisible.value = false
+  router.back()
 }
 
 const handleMobileMoreCommand = (command: string) => {
@@ -1689,6 +1761,138 @@ onUnmounted(() => {
 .sheet-cancel { margin-top: 8px; background: #fff; padding: 16px; text-align: center; font-size: 16px; color: #333; cursor: pointer; }
 .sheet-cancel:active { background: #f5f5f5; }
 
+.goods-leave-dialog :deep(.el-dialog__header),
+.goods-reset-dialog :deep(.el-dialog__header) {
+  padding: 14px 16px 0;
+  margin: 0;
+}
+
+.goods-leave-dialog :deep(.el-dialog__title),
+.goods-reset-dialog :deep(.el-dialog__title) {
+  color: #303133;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.goods-leave-dialog :deep(.el-dialog__body),
+.goods-reset-dialog :deep(.el-dialog__body) {
+  padding: 14px 16px 6px;
+}
+
+.goods-leave-dialog :deep(.el-dialog__footer),
+.goods-reset-dialog :deep(.el-dialog__footer) {
+  padding: 6px 16px 16px;
+}
+
+.goods-leave-content,
+.goods-reset-content {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.goods-leave-icon,
+.goods-reset-icon {
+  width: 42px;
+  height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 14px;
+  color: #8e7dff;
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.18), rgba(142, 125, 255, 0.16)),
+    #fffaf0;
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 175, 55, 0.2),
+    0 8px 18px rgba(17, 24, 39, 0.08);
+}
+
+.goods-reset-icon {
+  color: #d18500;
+  background:
+    linear-gradient(135deg, rgba(255, 186, 73, 0.18), rgba(142, 125, 255, 0.12)),
+    #fff8eb;
+}
+
+.goods-leave-icon .el-icon,
+.goods-reset-icon .el-icon {
+  font-size: 20px;
+}
+
+.goods-leave-copy,
+.goods-reset-copy {
+  min-width: 0;
+}
+
+.goods-leave-copy h3,
+.goods-reset-copy h3 {
+  margin: 0;
+  color: #303133;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.goods-leave-subtitle,
+.goods-reset-subtitle {
+  margin: 4px 0 0;
+  color: #606266;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.goods-leave-warning,
+.goods-reset-warning {
+  grid-column: 1 / -1;
+  margin-top: 2px;
+  padding: 9px 11px;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 11px;
+  background: rgba(255, 250, 240, 0.86);
+  color: #7a5a16;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.goods-reset-warning {
+  border-color: rgba(230, 162, 60, 0.22);
+  background: rgba(255, 248, 235, 0.86);
+  color: #8a5b0a;
+}
+
+.goods-leave-actions,
+.goods-reset-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.goods-leave-actions .el-button,
+.goods-reset-actions .el-button {
+  min-width: 86px;
+  min-height: 34px;
+  margin: 0;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.goods-leave-stay,
+.goods-reset-cancel {
+  background: linear-gradient(135deg, #a396ff 0%, var(--primary-gold) 100%);
+  border: none;
+  box-shadow: 0 10px 22px -16px rgba(142, 125, 255, 0.72);
+}
+
+.goods-leave-confirm,
+.goods-reset-confirm {
+  color: #c45656;
+  border-color: rgba(196, 86, 86, 0.24);
+  background: rgba(254, 240, 240, 0.68);
+}
+
 .duplicate-dialog :deep(.el-dialog__body) { padding-top: 12px; }
 .duplicate-dialog-title { font-weight: 700; font-size: 1.125rem; color: var(--el-text-color-primary); }
 .duplicate-dialog-desc { margin: 0 0 16px; font-size: 14px; color: #909399; line-height: 1.5; }
@@ -1745,6 +1949,173 @@ onUnmounted(() => {
 
   .photo-preview {
     height: 100px;
+  }
+
+  :global(.el-overlay-dialog:has(.is-goods-leave-mobile)),
+  :global(.el-overlay-dialog:has(.is-goods-reset-mobile)) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+  }
+
+  :global(.el-dialog.is-goods-leave-mobile),
+  :global(.el-dialog.is-goods-reset-mobile) {
+    width: 100vw !important;
+    max-width: 100vw;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(255, 252, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 42%),
+      #fff;
+    box-shadow: 0 -16px 42px rgba(17, 24, 39, 0.18);
+    animation: goods-leave-sheet-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transform-origin: center bottom;
+  }
+
+  :global(.el-dialog.is-goods-reset-mobile) {
+    animation-name: goods-reset-sheet-enter;
+  }
+
+  @keyframes goods-leave-sheet-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  @keyframes goods-reset-sheet-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  :global(.dialog-fade-leave-active .el-dialog.is-goods-leave-mobile),
+  :global(.dialog-fade-leave-active .el-dialog.is-goods-reset-mobile) {
+    animation: goods-leave-sheet-leave 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  :global(.dialog-fade-leave-active .el-dialog.is-goods-reset-mobile) {
+    animation-name: goods-reset-sheet-leave;
+  }
+
+  @keyframes goods-leave-sheet-leave {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+
+  @keyframes goods-reset-sheet-leave {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+
+  :global(.el-dialog.is-goods-leave-mobile .el-dialog__header),
+  :global(.el-dialog.is-goods-reset-mobile .el-dialog__header) {
+    display: none;
+  }
+
+  :global(.el-dialog.is-goods-leave-mobile .el-dialog__body),
+  :global(.el-dialog.is-goods-reset-mobile .el-dialog__body) {
+    padding: 20px 18px 10px;
+  }
+
+  :global(.el-dialog.is-goods-leave-mobile .el-dialog__footer),
+  :global(.el-dialog.is-goods-reset-mobile .el-dialog__footer) {
+    padding: 0;
+  }
+
+  .goods-leave-content,
+  .goods-reset-content {
+    grid-template-columns: 48px minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .goods-leave-icon,
+  .goods-reset-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 16px;
+  }
+
+  .goods-leave-copy h3,
+  .goods-reset-copy h3 {
+    font-size: 19px;
+  }
+
+  .goods-leave-subtitle,
+  .goods-reset-subtitle {
+    font-size: 13px;
+  }
+
+  .goods-leave-warning,
+  .goods-reset-warning {
+    margin-top: 2px;
+    padding: 11px 12px;
+    font-size: 12px;
+  }
+
+  .goods-leave-actions,
+  .goods-reset-actions {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+    padding: 10px 18px calc(14px + env(safe-area-inset-bottom, 0px));
+    border-top: 1px solid rgba(144, 147, 153, 0.12);
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(14px);
+  }
+
+  .goods-leave-actions .el-button,
+  .goods-reset-actions .el-button {
+    width: 100%;
+    min-height: 44px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
+  .goods-leave-stay,
+  .goods-reset-cancel {
+    order: 1;
+  }
+
+  .goods-leave-confirm,
+  .goods-reset-confirm {
+    order: 2;
+  }
+}
+
+@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) and (prefers-reduced-motion: reduce) {
+  :global(.el-dialog.is-goods-leave-mobile),
+  :global(.el-dialog.is-goods-reset-mobile),
+  :global(.dialog-fade-leave-active .el-dialog.is-goods-leave-mobile),
+  :global(.dialog-fade-leave-active .el-dialog.is-goods-reset-mobile) {
+    animation: none;
   }
 }
 
