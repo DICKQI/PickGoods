@@ -2,6 +2,7 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from .views import (
+    AdminGoodsCraftViewSet,
     AdminRoleViewSet,
     AdminUserViewSet,
     BGMSyncJobViewSet,
@@ -12,6 +13,7 @@ from .views import (
 router = DefaultRouter()
 router.register("users", AdminUserViewSet, basename="admin-users")
 router.register("roles", AdminRoleViewSet, basename="admin-roles")
+router.register("goods-crafts", AdminGoodsCraftViewSet, basename="admin-goods-crafts")
 router.register("bgm-sync/jobs", BGMSyncJobViewSet, basename="admin-bgm-sync-jobs")
 
 urlpatterns = [

@@ -123,6 +123,15 @@ export interface Category {
 }
 
 // 主题附加图片（与 GuziImage 结构一致）
+export interface GoodsCraft {
+  id: number
+  name: string
+  order: number
+  is_active: boolean
+  created_at?: string
+  updated_at?: string
+}
+
 export interface ThemeImage {
   id: number
   image: string

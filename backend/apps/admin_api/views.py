@@ -15,11 +15,12 @@ from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 from rest_framework.views import APIView
 
-from apps.goods.models import BGMSyncJob, BGMSyncJobItem, BGMSyncSettings, IP
+from apps.goods.models import BGMSyncJob, BGMSyncJobItem, BGMSyncSettings, GoodsCraft, IP
 from apps.users.models import Role, User
 from core.permissions import IsAdmin
 
 from .serializers import (
+    AdminGoodsCraftSerializer,
     AdminRoleSerializer,
     AdminUserCreateSerializer,
     AdminUserSerializer,
@@ -122,6 +123,19 @@ class AdminRoleViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     serializer_class = AdminRoleSerializer
     queryset = Role.objects.order_by("id")
+
+
+@extend_schema(
+    tags=["Admin"],
+    summary="管理员：谷子工艺字典管理",
+    description="维护前台谷子表单备注中“工艺”行的快捷填入选项。",
+)
+class AdminGoodsCraftViewSet(viewsets.ModelViewSet):
+    permission_classes = [IsAuthenticated, IsAdmin]
+    serializer_class = AdminGoodsCraftSerializer
+    pagination_class = AdminPagination
+    queryset = GoodsCraft.objects.order_by("order", "id")
+    search_fields = ["name"]
 
 
 # ==================== BGM 自动同步管理 ====================

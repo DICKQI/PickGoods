@@ -28,6 +28,7 @@ from apps.goods.views import (
     bgm_get_characters_by_subject_id,
     CategoryViewSet,
     CharacterViewSet,
+    GoodsCraftViewSet,
     GoodsViewSet,
     IPViewSet,
     JournalBookViewSet,
@@ -55,6 +56,7 @@ router.register("goods", GoodsViewSet, basename="goods")
 router.register("ips", IPViewSet, basename="ips")
 router.register("characters", CharacterViewSet, basename="characters")
 router.register("categories", CategoryViewSet, basename="categories")
+router.register("goods-crafts", GoodsCraftViewSet, basename="goods-crafts")
 router.register("themes", ThemeViewSet, basename="themes")
 router.register("showcases", ShowcaseViewSet, basename="showcases")
 router.register("journals", JournalBookViewSet, basename="journals")

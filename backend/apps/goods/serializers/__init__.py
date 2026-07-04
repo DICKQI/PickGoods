@@ -18,6 +18,7 @@ from .category import (
     CategorySimpleSerializer,
     CategoryTreeSerializer,
 )
+from .craft import GoodsCraftSerializer
 from .theme import (
     ThemeDetailSerializer,
     ThemeImageSerializer,
@@ -85,6 +86,8 @@ __all__ = [
     "CategoryOrderItemSerializer",
     "CategoryBatchUpdateOrderSerializer",
     "CategoryDetailSerializer",
+    # GoodsCraft
+    "GoodsCraftSerializer",
     # Theme
     "ThemeSimpleSerializer",
     "ThemeDetailSerializer",

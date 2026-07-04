@@ -359,6 +359,43 @@ class ThemeTemplate(models.Model):
         return f"{self.theme.name} template"
 
 
+class GoodsCraft(models.Model):
+    """
+    Goods craft dictionary for quick-filling the craft line in notes.
+
+    This model is intentionally not related to Goods. Frontend users select a
+    craft only to write plain text into Goods.notes.
+    """
+
+    name = models.CharField(
+        max_length=100,
+        unique=True,
+        db_index=True,
+        verbose_name="谷子工艺名称",
+    )
+    order = models.IntegerField(
+        default=0,
+        db_index=True,
+        verbose_name="排序值",
+        help_text="值越小越靠前",
+    )
+    is_active = models.BooleanField(
+        default=True,
+        db_index=True,
+        verbose_name="是否启用",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+    updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+
+    class Meta:
+        verbose_name = "谷子工艺"
+        verbose_name_plural = "谷子工艺"
+        ordering = ["order", "id"]
+
+    def __str__(self):
+        return self.name
+
+
 class Goods(models.Model):
     """
     谷子核心表，关联 IP / 角色 / 品类 / 主题 以及 物理位置 StorageNode。

@@ -94,6 +94,7 @@ from apps.goods.models import (  # noqa: E402
     BGMSyncJob,
     BGMSyncJobItem,
     BGMSyncSettings,
+    GoodsCraft,
 )
 
 
@@ -157,6 +158,26 @@ class BGMSyncSettingsSerializer(serializers.ModelSerializer):
         if changed_fields:
             instance.save(update_fields=changed_fields + ["updated_at"])
         return instance
+
+
+class AdminGoodsCraftSerializer(serializers.ModelSerializer):
+    """Admin CRUD serializer for goods craft dictionary entries."""
+
+    class Meta:
+        model = GoodsCraft
+        fields = ("id", "name", "order", "is_active", "created_at", "updated_at")
+        read_only_fields = ("id", "created_at", "updated_at")
+
+    def validate_name(self, value: str) -> str:
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("工艺名称不能为空")
+        queryset = GoodsCraft.objects.filter(name=name)
+        if self.instance is not None:
+            queryset = queryset.exclude(pk=self.instance.pk)
+        if queryset.exists():
+            raise serializers.ValidationError("工艺名称已存在")
+        return name
 
 
 class BGMSyncJobListSerializer(serializers.ModelSerializer):

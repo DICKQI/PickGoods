@@ -2,8 +2,8 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import GoodsForm from '@/views/GoodsForm.vue'
-import { classifyGoodsImage, createGoods, updateGoods } from '@/api/goods'
-import { copyThemeImagesFromGoods, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
+import { classifyGoodsImage, createGoods, getGoodsDetail, updateGoods } from '@/api/goods'
+import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { updateBaseURL } from '@/utils/request'
 import type { ThemeTemplatePayload } from '@/api/types'
@@ -58,6 +58,10 @@ vi.mock('@/api/metadata', () => ({
     { id: 200, name: '镭射票', parent: null, path_name: '镭射票', order: 1 },
   ]),
   getThemeList: vi.fn(async () => [{ id: 6, name: '群星邀约', description: null }]),
+  getGoodsCraftList: vi.fn(async () => [
+    { id: 1, name: '烫金', order: 10, is_active: true },
+    { id: 2, name: '镭射', order: 20, is_active: true },
+  ]),
   createTheme: vi.fn(async ({ name }: { name: string }) => ({ id: 7, name })),
   patchTheme: vi.fn(async (id: number, data: any) => ({ id, name: 'patched-theme', ...data })),
   getThemeTemplate: vi.fn(async () => ({ template: null, images: [] })),
@@ -182,6 +186,35 @@ const passthroughStub = (name: string, tag = 'div') => defineComponent({
   },
 })
 
+const ElSelectStub = defineComponent({
+  name: 'ElSelect',
+  props: ['modelValue', 'placeholder', 'loading'],
+  emits: ['update:modelValue', 'change'],
+  setup(props, { emit, slots }) {
+    return () => h('select', {
+      'data-placeholder': props.placeholder,
+      value: props.modelValue ?? '',
+      onChange: (event: Event) => {
+        const rawValue = (event.target as HTMLSelectElement).value
+        const value = rawValue === '' ? null : Number(rawValue)
+        emit('update:modelValue', value)
+        emit('change', value)
+      },
+    }, [
+      h('option', { value: '' }, ''),
+      slots.default?.(),
+    ])
+  },
+})
+
+const ElOptionStub = defineComponent({
+  name: 'ElOption',
+  props: ['label', 'value'],
+  setup(props) {
+    return () => h('option', { value: props.value }, props.label)
+  },
+})
+
 const mountGoodsForm = async ({
   width,
   height,
@@ -224,8 +257,8 @@ const mountGoodsForm = async ({
             })
           },
         }),
-        ElSelect: passthroughStub('ElSelect'),
-        ElOption: passthroughStub('ElOption'),
+        ElSelect: ElSelectStub,
+        ElOption: ElOptionStub,
         ElTreeSelect: passthroughStub('ElTreeSelect'),
         ElRadioGroup: passthroughStub('ElRadioGroup'),
         ElRadioButton: passthroughStub('ElRadioButton', 'button'),
@@ -337,6 +370,57 @@ describe('GoodsForm mobile create wizard', () => {
     expect(goodsFormSource).toContain('goods-reset-sheet-leave')
     expect(goodsFormSource).toContain('重置表单？')
     expect(goodsFormSource).toContain('当前填写内容将恢复为进入页面时的状态')
+  })
+
+  it('loads craft options and applies the selected craft to notes', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    await vi.waitFor(() => expect(getGoodsCraftList).toHaveBeenCalled())
+    const vm = wrapper.vm as any
+    vm.formData.notes = '店铺：A店\n工艺：旧工艺\n画师：太太'
+    await nextTick()
+
+    await vi.waitFor(() => {
+      expect(vm.goodsCraftOptions).toHaveLength(2)
+    })
+    vm.handleGoodsCraftChange(2)
+    await nextTick()
+
+    expect(vm.formData.notes).toBe('店铺：A店\n工艺：镭射\n画师：太太')
+  })
+
+  it('renders the form when craft list loading fails', async () => {
+    vi.mocked(getGoodsCraftList).mockRejectedValueOnce(new Error('load failed'))
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    await vi.waitFor(() => expect(getGoodsCraftList).toHaveBeenCalled())
+
+    expect(wrapper.find('.goods-form').exists()).toBe(true)
+    expect(vi.mocked(ElMessage.warning)).toHaveBeenCalledWith('工艺列表加载失败')
+    consoleError.mockRestore()
+  })
+
+  it('loads edit details without waiting for the craft list', async () => {
+    vi.mocked(getGoodsCraftList).mockReturnValueOnce(new Promise(() => {}) as any)
+
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'existing-id' },
+    })
+    await flushAsyncWork()
+
+    expect(getGoodsDetail).toHaveBeenCalledWith('existing-id')
+    expect((wrapper.vm as any).formData.name).toBe('已有谷子')
   })
 
   it('opens the custom leave dialog before navigating away on mobile', async () => {

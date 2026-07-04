@@ -146,7 +146,7 @@
                     常用 {{ node.code || node.name }}
                   </button>
                 </div>
-                <div v-else class="location-helper">不确定具体位置时，可以先留空，之后在位置作业台整理。</div>
+                <div v-else class="location-helper">不确定具体位置时，可以先留空，之后在位置作业台整理~</div>
               </el-form-item>
             </el-col>
           </el-row>
@@ -200,6 +200,24 @@
           </div>
           <el-row :gutter="20">
             <el-col :xs="24">
+              <el-form-item label="谷子工艺">
+                <el-select
+                  v-model="selectedGoodsCraftId"
+                  :loading="goodsCraftLoading"
+                  placeholder="在这里选择工艺可以快速填入哦~"
+                  clearable
+                  filterable
+                  style="width: 100%"
+                  @change="handleGoodsCraftChange"
+                >
+                  <el-option
+                    v-for="craft in goodsCraftOptions"
+                    :key="craft.id"
+                    :label="craft.name"
+                    :value="craft.id"
+                  />
+                </el-select>
+              </el-form-item>
               <el-form-item label="备注">
                 <el-input v-model="formData.notes" type="textarea" :rows="4" placeholder="请输入备注信息" />
               </el-form-item>
@@ -525,8 +543,8 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
 import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
-import { copyThemeImagesFromGoods, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
-import type { GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
+import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
+import type { GoodsCraft, GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
@@ -536,6 +554,7 @@ import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFor
 import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
 import { useImageClassifier } from '@/views/goods-form/composables/useImageClassifier'
+import { applyCraftToNotes } from '@/views/goods-form/craftNotes'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getCurrentBaseURL } from '@/utils/request'
 import type { TreeNode } from '@/utils/tree'
@@ -589,6 +608,29 @@ const formData = ref({
   notes: '',
   main_photo: '',
 })
+
+const goodsCraftOptions = ref<GoodsCraft[]>([])
+const selectedGoodsCraftId = ref<number | null>(null)
+const goodsCraftLoading = ref(false)
+
+const loadGoodsCrafts = async () => {
+  goodsCraftLoading.value = true
+  try {
+    goodsCraftOptions.value = await getGoodsCraftList()
+  } catch (error) {
+    console.error('工艺列表加载失败:', error)
+    ElMessage.warning('工艺列表加载失败')
+  } finally {
+    goodsCraftLoading.value = false
+  }
+}
+
+const handleGoodsCraftChange = (craftId: number | null) => {
+  selectedGoodsCraftId.value = craftId
+  const craft = goodsCraftOptions.value.find((item) => item.id === craftId)
+  if (!craft) return
+  formData.value.notes = applyCraftToNotes(formData.value.notes, craft.name)
+}
 
 const recentLocationNodes = computed(() => (locationStore.recentNodes ?? []).slice(0, 4))
 const favoriteLocationNodes = computed(() =>
@@ -1408,9 +1450,10 @@ onMounted(async () => {
   window.addEventListener('scroll', handleWindowScrollForDock, { passive: true })
 
   try { await loadMetadata() } catch { ElMessage.error('加载基础数据失败') }
+  void loadGoodsCrafts()
   await locationStore.fetchNodes()
 
-  if (!route.params.id) {
+  if (!route.params.id && !formData.value.notes) {
     formData.value.notes = DEFAULT_NOTES_TEMPLATE
   }
 

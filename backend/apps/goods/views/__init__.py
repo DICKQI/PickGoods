@@ -6,6 +6,7 @@ from .goods import GoodsFilter, GoodsPagination, GoodsViewSet
 from .ip import IPViewSet
 from .character import CharacterViewSet
 from .category import CategoryViewSet
+from .craft import GoodsCraftViewSet
 from .theme import ThemeViewSet
 from .showcase import ShowcaseViewSet
 from .journal import JournalBookViewSet, JournalPageVersionViewSet, JournalPageViewSet, PublicJournalPageViewSet
@@ -23,6 +24,7 @@ __all__ = [
     "IPViewSet",
     "CharacterViewSet",
     "CategoryViewSet",
+    "GoodsCraftViewSet",
     "ThemeViewSet",
     "ShowcaseViewSet",
     "JournalBookViewSet",

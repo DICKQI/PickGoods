@@ -180,6 +180,16 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: 'goods-crafts',
+        name: 'AdminGoodsCrafts',
+        component: () => import('@/views/admin/GoodsCraftManagement.vue'),
+        meta: {
+          title: '谷子工艺',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
         path: 'bgm-sync',
         name: 'AdminBGMSync',
         component: () => import('@/views/admin/BGMSyncManagement.vue'),

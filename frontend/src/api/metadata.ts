@@ -1,5 +1,14 @@
 import request from '@/utils/request'
-import type { IP, Character, Category } from './types'
+import type {
+  Category,
+  Character,
+  GoodsCraft,
+  IP,
+  Theme,
+  ThemeTemplate,
+  ThemeTemplateInput,
+  ThemeTemplatePayload,
+} from './types'
 
 // ==================== IP作品 CRUD ====================
 
@@ -145,9 +154,12 @@ export function batchUpdateCategoryOrder(items: { id: number; order: number }[])
   })
 }
 
-// ==================== 主题 CRUD ====================
+// ==================== 谷子工艺 ====================
+export function getGoodsCraftList(params?: { search?: string }) {
+  return request.get<GoodsCraft[]>('/api/goods-crafts/', { params })
+}
 
-import type { Theme, ThemeTemplate, ThemeTemplateInput, ThemeTemplatePayload } from './types'
+// ==================== 主题 CRUD ====================
 
 // 获取所有主题列表
 export function getThemeList(params?: { name?: string; search?: string }) {

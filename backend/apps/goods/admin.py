@@ -4,6 +4,7 @@ from .models import (
     Category,
     Character,
     Goods,
+    GoodsCraft,
     GuziImage,
     IP,
     IPKeyword,
@@ -64,6 +65,15 @@ class ThemeTemplateAdmin(admin.ModelAdmin):
     autocomplete_fields = ("theme", "user", "ip", "characters")
     readonly_fields = ("created_at", "updated_at")
     filter_horizontal = ("characters",)
+
+
+@admin.register(GoodsCraft)
+class GoodsCraftAdmin(admin.ModelAdmin):
+    list_display = ("id", "name", "order", "is_active", "created_at", "updated_at")
+    list_filter = ("is_active", "created_at")
+    search_fields = ("name",)
+    ordering = ("order", "id")
+    readonly_fields = ("created_at", "updated_at")
 
 
 class GuziImageInline(admin.TabularInline):

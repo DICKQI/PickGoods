@@ -3,6 +3,7 @@ import type {
   PaginatedResponse,
   AdminUser,
   AdminRole,
+  GoodsCraft,
   BGMSyncSettings,
   BGMSyncJob,
   BGMSyncJobItem,
@@ -10,7 +11,7 @@ import type {
 
 // 数据模型类型统一来自 ./types，此处再导出，以便组件从 '@/api/admin' 统一导入，
 // 避免在 admin.ts 与 types.ts 两处重复定义同一接口。
-export type { AdminUser, AdminRole, BGMSyncSettings, BGMSyncJob, BGMSyncJobItem } from './types'
+export type { AdminUser, AdminRole, GoodsCraft, BGMSyncSettings, BGMSyncJob, BGMSyncJobItem } from './types'
 
 // ==================== 用户 / 角色管理 ====================
 
@@ -51,6 +52,40 @@ export function updateAdminUser(id: number, data: UpdateAdminUserData) {
 
 export function getAdminRoles() {
   return request.get<AdminRole[]>('/api/admin/roles/')
+}
+
+export interface AdminGoodsCraftListParams {
+  page?: number
+  page_size?: number
+  search?: string
+}
+
+export interface CreateAdminGoodsCraftData {
+  name: string
+  order?: number
+  is_active?: boolean
+}
+
+export interface UpdateAdminGoodsCraftData {
+  name?: string
+  order?: number
+  is_active?: boolean
+}
+
+export function getAdminGoodsCrafts(params?: AdminGoodsCraftListParams) {
+  return request.get<PaginatedResponse<GoodsCraft>>('/api/admin/goods-crafts/', { params })
+}
+
+export function createAdminGoodsCraft(data: CreateAdminGoodsCraftData) {
+  return request.post<GoodsCraft>('/api/admin/goods-crafts/', data)
+}
+
+export function updateAdminGoodsCraft(id: number, data: UpdateAdminGoodsCraftData) {
+  return request.patch<GoodsCraft>(`/api/admin/goods-crafts/${id}/`, data)
+}
+
+export function deleteAdminGoodsCraft(id: number) {
+  return request.delete(`/api/admin/goods-crafts/${id}/`)
 }
 
 // ==================== BGM 自动同步 ====================

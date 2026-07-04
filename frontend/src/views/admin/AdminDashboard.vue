@@ -104,6 +104,7 @@ const adminMenu: { index: string; title: string; icon: Component }[] = [
   { index: '/admin/ip', title: 'IP与角色', icon: Collection },
   { index: '/admin/categories', title: '品类管理', icon: Box },
   { index: '/admin/themes', title: '主题', icon: Star },
+  { index: '/admin/goods-crafts', title: '谷子工艺', icon: Box },
   { index: '/admin/bgm-sync', title: 'BGM 自动同步', icon: Refresh },
 ]
 
