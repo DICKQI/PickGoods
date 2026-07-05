@@ -5,6 +5,23 @@ import { describe, expect, it } from 'vitest'
 const sourcePath = join(process.cwd(), 'src/views/IPCharacterManagement.vue')
 const source = readFileSync(sourcePath, 'utf-8')
 
+const cssRuleBlock = (content: string, selector: string) => {
+  const start = content.indexOf(selector)
+  if (start === -1) return ''
+  const open = content.indexOf('{', start)
+  if (open === -1) return ''
+
+  let depth = 0
+  for (let i = open; i < content.length; i += 1) {
+    if (content[i] === '{') depth += 1
+    if (content[i] === '}') {
+      depth -= 1
+      if (depth === 0) return content.slice(open + 1, i)
+    }
+  }
+  return ''
+}
+
 describe('IPCharacterManagement mobile layout', () => {
   it('does not render or reserve space for the side pinyin index', () => {
     expect(source).not.toContain('az-index-bar')
@@ -104,8 +121,8 @@ describe('IPCharacterManagement mobile layout', () => {
   })
 
   it('uses themed roomy PC shells for IP, character, and Bangumi entry forms', () => {
-    expect(source).toContain("class=\"custom-dialog ip-editor-dialog\"")
-    expect(source).toContain("class=\"custom-dialog character-editor-dialog\"")
+    expect(source).toContain(":class=\"['custom-dialog', 'ip-editor-dialog', { 'is-ip-editor-mobile': isMobile }]\"")
+    expect(source).toContain(":class=\"['custom-dialog', 'character-editor-dialog', { 'is-character-editor-mobile': isMobile }]\"")
     expect(source).toContain('class="ip-editor-desktop-header"')
     expect(source).toContain('class="character-editor-desktop-header"')
     expect(source).toContain('class="bgm-dialog-header-icon"')
@@ -164,5 +181,46 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('class="import-summary bgm-summary-card"')
     expect(source).toContain('class="character-list-container bgm-sync-list"')
     expect(source).toContain('class="bgm-character-item bgm-sync-item"')
+  })
+
+  it('uses full-width mobile bottom sheets for IP, character, and Bangumi import forms', () => {
+    expect(source).toContain("{ 'is-ip-editor-mobile': isMobile }")
+    expect(source).toContain("{ 'is-character-editor-mobile': isMobile }")
+    expect(source).toContain("{ 'is-bgm-import-mobile': isMobile }")
+
+    const ipRule = cssRuleBlock(source, ':global(.el-dialog.is-ip-editor-mobile)')
+    const characterRule = cssRuleBlock(source, ':global(.el-dialog.is-character-editor-mobile)')
+    const bgmRule = cssRuleBlock(source, ':global(.el-dialog.is-bgm-import-mobile)')
+
+    for (const rule of [ipRule, characterRule, bgmRule]) {
+      expect(rule).toContain('width: 100vw')
+      expect(rule).toContain('max-height: 88vh')
+      expect(rule).toContain('padding: 0;')
+      expect(rule).toContain('margin: 0 !important;')
+      expect(rule).toContain('border-radius: 24px 24px 0 0;')
+    }
+  })
+
+  it('adds mobile hero headers while preserving PC headers for the three entry forms', () => {
+    expect(source).toContain('class="ip-editor-mobile-hero"')
+    expect(source).toContain('class="ip-editor-mobile-hero-icon"')
+    expect(source).toContain('class="character-editor-mobile-hero"')
+    expect(source).toContain('class="character-editor-mobile-hero-icon"')
+    expect(source).toContain('class="bgm-import-mobile-hero"')
+    expect(source).toContain('class="bgm-import-mobile-hero-icon"')
+    expect(source).toContain('class="ip-editor-desktop-header"')
+    expect(source).toContain('class="character-editor-desktop-header"')
+    expect(source).toContain('class="bgm-dialog-header"')
+  })
+
+  it('animates the redesigned mobile form sheets vertically without affecting desktop dialogs', () => {
+    expect(source).toContain(':global(.dialog-fade-enter-active .el-dialog.is-ip-editor-mobile)')
+    expect(source).toContain(':global(.dialog-fade-enter-active .el-dialog.is-character-editor-mobile)')
+    expect(source).toContain(':global(.dialog-fade-enter-active .el-dialog.is-bgm-import-mobile)')
+    expect(source).toContain(':global(.dialog-fade-leave-active .el-dialog.is-ip-editor-mobile)')
+    expect(source).toContain(':global(.dialog-fade-leave-active .el-dialog.is-character-editor-mobile)')
+    expect(source).toContain(':global(.dialog-fade-leave-active .el-dialog.is-bgm-import-mobile)')
+    expect(source).toContain('translateY(100%)')
+    expect(source).toContain('translateY(0)')
   })
 })

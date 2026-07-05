@@ -464,12 +464,13 @@
     <!-- IP编辑弹窗 (保持不变) -->
     <el-dialog
       v-model="ipDialogVisible"
-      :width="dialogWidth"
-      class="custom-dialog ip-editor-dialog"
-      align-center
+      :width="isMobile ? '100vw' : dialogWidth"
+      :class="['custom-dialog', 'ip-editor-dialog', { 'is-ip-editor-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
     >
       <div class="ip-editor-shell">
-        <div class="ip-editor-desktop-header">
+        <div v-if="!isMobile" class="ip-editor-desktop-header">
           <div class="ip-editor-desktop-icon" aria-hidden="true">
             <el-icon><Collection /></el-icon>
           </div>
@@ -480,6 +481,25 @@
           </div>
           <button
             class="ip-editor-desktop-close"
+            type="button"
+            aria-label="关闭作品编辑弹窗"
+            :disabled="submitting"
+            @click="ipDialogVisible = false"
+          >
+            ×
+          </button>
+        </div>
+        <div v-if="isMobile" class="ip-editor-mobile-hero">
+          <div class="ip-editor-mobile-hero-icon" aria-hidden="true">
+            <el-icon><Collection /></el-icon>
+          </div>
+          <div class="ip-editor-mobile-hero-copy">
+            <span>IP Archive</span>
+            <h3>{{ ipDialogTitle }}</h3>
+            <p>维护作品名称、类型和检索别名，角色归档会更清晰。</p>
+          </div>
+          <button
+            class="ip-editor-mobile-close"
             type="button"
             aria-label="关闭作品编辑弹窗"
             :disabled="submitting"
@@ -565,13 +585,14 @@
     <!-- BGM导入弹窗 (保持不变) -->
     <el-dialog
       v-model="bgmDialogVisible"
-      :width="bgmDialogWidth"
-      class="custom-dialog bgm-dialog"
-      align-center
+      :width="isMobile ? '100vw' : bgmDialogWidth"
+      :class="['custom-dialog', 'bgm-dialog', { 'is-bgm-import-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
       :close-on-click-modal="false"
     >
       <template #header>
-        <div class="bgm-dialog-header">
+        <div v-if="!isMobile" class="bgm-dialog-header">
           <div class="bgm-dialog-header-icon" aria-hidden="true">
             <el-icon><Search /></el-icon>
           </div>
@@ -585,6 +606,25 @@
         </div>
       </template>
       <div class="bgm-import-container">
+        <div v-if="isMobile" class="bgm-import-mobile-hero">
+          <div class="bgm-import-mobile-hero-icon" aria-hidden="true">
+            <el-icon><Search /></el-icon>
+          </div>
+          <div class="bgm-import-mobile-hero-copy">
+            <span>{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
+            <h3>{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+            <p>搜索作品、勾选角色，再批量建立角色档案。</p>
+          </div>
+          <button
+            class="bgm-import-mobile-close"
+            type="button"
+            aria-label="关闭 Bangumi 导入弹窗"
+            :disabled="bgmSearching || bgmImporting"
+            @click="bgmDialogVisible = false"
+          >
+            ×
+          </button>
+        </div>
         <!-- 搜索阶段 -->
         <div v-if="bgmStep === 'search'" class="bgm-step-search">
           <div class="bgm-flow-panel">
@@ -1115,12 +1155,13 @@
     <!-- 角色编辑弹窗 (保持不变) -->
     <el-dialog
       v-model="characterDialogVisible"
-      :width="dialogWidth"
-      class="custom-dialog character-editor-dialog"
-      align-center
+      :width="isMobile ? '100vw' : dialogWidth"
+      :class="['custom-dialog', 'character-editor-dialog', { 'is-character-editor-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
     >
       <div class="character-editor-shell">
-        <div class="character-editor-desktop-header">
+        <div v-if="!isMobile" class="character-editor-desktop-header">
           <div class="character-editor-desktop-icon" aria-hidden="true">
             <el-icon><UserFilled /></el-icon>
           </div>
@@ -1131,6 +1172,25 @@
           </div>
           <button
             class="character-editor-desktop-close"
+            type="button"
+            aria-label="关闭角色编辑弹窗"
+            :disabled="submitting"
+            @click="characterDialogVisible = false"
+          >
+            ×
+          </button>
+        </div>
+        <div v-if="isMobile" class="character-editor-mobile-hero">
+          <div class="character-editor-mobile-hero-icon" aria-hidden="true">
+            <el-icon><UserFilled /></el-icon>
+          </div>
+          <div class="character-editor-mobile-hero-copy">
+            <span>Character Profile</span>
+            <h3>{{ isEditCharacter ? characterDialogTitle : '迎接新角色' }}</h3>
+            <p>补全头像、名称和所属作品，让角色卡片更好找。</p>
+          </div>
+          <button
+            class="character-editor-mobile-close"
             type="button"
             aria-label="关闭角色编辑弹窗"
             :disabled="submitting"
@@ -4875,6 +4935,414 @@ const handleBGMSyncClose = () => {
 }
 
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+  :global(.el-overlay-dialog:has(.is-ip-editor-mobile)),
+  :global(.el-overlay-dialog:has(.is-character-editor-mobile)),
+  :global(.el-overlay-dialog:has(.is-bgm-import-mobile)) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    overflow: hidden;
+  }
+
+  :global(.el-dialog.is-ip-editor-mobile),
+  :global(.el-dialog.is-character-editor-mobile),
+  :global(.el-dialog.is-bgm-import-mobile) {
+    width: 100vw !important;
+    max-width: 100vw;
+    max-height: 88vh;
+    padding: 0;
+    margin: 0 !important;
+    overflow: hidden;
+    border: none;
+    border-radius: 24px 24px 0 0;
+    background:
+      radial-gradient(circle at 94% 0%, rgba(212, 175, 55, 0.24), transparent 34%),
+      radial-gradient(circle at 0% 0%, rgba(162, 155, 254, 0.18), transparent 36%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 248, 255, 0.96));
+    box-shadow:
+      0 -26px 68px rgba(41, 34, 24, 0.22),
+      0 -8px 24px rgba(41, 34, 24, 0.1);
+  }
+
+  :global(.dialog-fade-enter-active .el-dialog.is-ip-editor-mobile),
+  :global(.dialog-fade-enter-active .el-dialog.is-character-editor-mobile),
+  :global(.dialog-fade-enter-active .el-dialog.is-bgm-import-mobile) {
+    animation: mobile-form-sheet-up 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  :global(.dialog-fade-leave-active .el-dialog.is-ip-editor-mobile),
+  :global(.dialog-fade-leave-active .el-dialog.is-character-editor-mobile),
+  :global(.dialog-fade-leave-active .el-dialog.is-bgm-import-mobile) {
+    animation: mobile-form-sheet-down 0.22s cubic-bezier(0.4, 0, 1, 1);
+  }
+
+  @keyframes mobile-form-sheet-up {
+    from {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes mobile-form-sheet-down {
+    from {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translateY(100%);
+    }
+  }
+
+  :global(.el-dialog.is-ip-editor-mobile .el-dialog__header),
+  :global(.el-dialog.is-character-editor-mobile .el-dialog__header),
+  :global(.el-dialog.is-bgm-import-mobile .el-dialog__header) {
+    display: none;
+  }
+
+  :global(.el-dialog.is-ip-editor-mobile .el-dialog__body),
+  :global(.el-dialog.is-character-editor-mobile .el-dialog__body),
+  :global(.el-dialog.is-bgm-import-mobile .el-dialog__body) {
+    max-height: calc(88vh - 92px);
+    padding: 0;
+    overflow: hidden;
+  }
+
+  :global(.el-dialog.is-ip-editor-mobile .el-dialog__footer),
+  :global(.el-dialog.is-character-editor-mobile .el-dialog__footer),
+  :global(.el-dialog.is-bgm-import-mobile .el-dialog__footer) {
+    padding: 12px 16px calc(14px + env(safe-area-inset-bottom, 0px));
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: inset 0 18px 28px -30px rgba(41, 34, 24, 0.38);
+  }
+
+  .ip-editor-shell,
+  .character-editor-shell,
+  .bgm-import-container {
+    max-height: calc(88vh - 76px);
+    min-height: 0;
+  }
+
+  .ip-editor-mobile-hero,
+  .character-editor-mobile-hero,
+  .bgm-import-mobile-hero {
+    position: relative;
+    display: flex;
+    gap: 12px;
+    min-height: 116px;
+    padding: 18px 50px 18px 18px;
+    overflow: hidden;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+    background:
+      radial-gradient(circle at 88% 0%, rgba(212, 175, 55, 0.26), transparent 34%),
+      linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(162, 155, 254, 0.16)),
+      rgba(255, 255, 255, 0.9);
+  }
+
+  .ip-editor-mobile-hero::after,
+  .character-editor-mobile-hero::after,
+  .bgm-import-mobile-hero::after {
+    content: '';
+    position: absolute;
+    right: -44px;
+    bottom: -64px;
+    width: 152px;
+    height: 152px;
+    border-radius: 50%;
+    background: rgba(212, 175, 55, 0.12);
+    pointer-events: none;
+  }
+
+  .ip-editor-mobile-hero-icon,
+  .character-editor-mobile-hero-icon,
+  .bgm-import-mobile-hero-icon {
+    width: 46px;
+    height: 46px;
+    flex: 0 0 46px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.82);
+    color: #8e7dff;
+    font-size: 23px;
+    box-shadow:
+      inset 0 0 0 1px rgba(212, 175, 55, 0.22),
+      0 14px 24px -18px rgba(17, 24, 39, 0.38);
+  }
+
+  .character-editor-mobile-hero-icon {
+    color: var(--primary-gold-dark);
+  }
+
+  .ip-editor-mobile-hero-copy,
+  .character-editor-mobile-hero-copy,
+  .bgm-import-mobile-hero-copy {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+  }
+
+  .ip-editor-mobile-hero-copy span,
+  .character-editor-mobile-hero-copy span,
+  .bgm-import-mobile-hero-copy span {
+    display: inline-flex;
+    width: fit-content;
+    margin-bottom: 6px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.7);
+    color: #7c6fda;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .character-editor-mobile-hero-copy span {
+    color: #8a6c14;
+  }
+
+  .ip-editor-mobile-hero-copy h3,
+  .character-editor-mobile-hero-copy h3,
+  .bgm-import-mobile-hero-copy h3 {
+    margin: 0;
+    color: #2f2a20;
+    font-size: 21px;
+    font-weight: 850;
+    line-height: 1.18;
+  }
+
+  .ip-editor-mobile-hero-copy p,
+  .character-editor-mobile-hero-copy p,
+  .bgm-import-mobile-hero-copy p {
+    margin: 6px 0 0;
+    color: #6f6a7f;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .ip-editor-mobile-close,
+  .character-editor-mobile-close,
+  .bgm-import-mobile-close {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    z-index: 2;
+    width: 32px;
+    height: 32px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(144, 147, 153, 0.18);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.76);
+    color: #7d7892;
+    font-size: 20px;
+    line-height: 1;
+  }
+
+  .ip-editor-body,
+  .character-editor-body {
+    max-height: calc(88vh - 208px);
+    padding: 14px 14px 2px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .bgm-import-container {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .bgm-import-container > .bgm-step-search,
+  .bgm-import-container > .bgm-step-searching,
+  .bgm-import-container > .bgm-step-subjects,
+  .bgm-import-container > .bgm-step-results,
+  .bgm-import-container > .bgm-step-importing,
+  .bgm-import-container > .bgm-step-imported {
+    min-height: 0;
+    padding: 14px;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .ip-editor-field-grid,
+  .form-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 14px;
+  }
+
+  .ip-editor-section,
+  .character-editor-section,
+  .character-editor-avatar-card,
+  .bgm-flow-panel,
+  .bgm-results-shell,
+  .bgm-summary-card {
+    border-radius: 18px;
+    padding: 16px;
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.9),
+      0 12px 28px -26px rgba(17, 24, 39, 0.46);
+  }
+
+  .ip-editor-form,
+  .character-editor-form {
+    gap: 14px;
+  }
+
+  .ip-editor-section-header h4,
+  .character-editor-section-header h4,
+  .results-header h3 {
+    font-size: 15px;
+  }
+
+  .ip-editor-section-header p,
+  .character-editor-section-header p,
+  .results-subtitle {
+    font-size: 12px;
+    line-height: 1.55;
+  }
+
+  .keyword-manager-box {
+    padding: 12px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.7);
+  }
+
+  .tags-wrapper {
+    gap: 7px;
+  }
+
+  .avatar-col {
+    width: 100%;
+    min-width: 0;
+    align-items: stretch;
+  }
+
+  .avatar-uploader,
+  .url-preview {
+    width: 100%;
+    height: 156px;
+    border-radius: 18px;
+  }
+
+  .mode-radio-group {
+    display: flex;
+  }
+
+  .mode-radio-group :deep(.el-radio-button) {
+    flex: 1;
+  }
+
+  .bgm-search-form {
+    gap: 14px;
+  }
+
+  .bgm-search-form :deep(.el-form-item) {
+    display: block;
+  }
+
+  .bgm-search-form :deep(.el-form-item__label) {
+    justify-content: flex-start;
+    min-height: auto;
+    margin-bottom: 8px;
+    padding-right: 0;
+    white-space: normal;
+  }
+
+  .bgm-search-actions {
+    padding-left: 0;
+  }
+
+  .bgm-search-actions .bgm-dialog-submit {
+    width: 100%;
+  }
+
+  .bgm-subjects-list {
+    grid-template-columns: 1fr;
+    max-height: min(46dvh, 420px);
+    gap: 12px;
+    padding: 2px 2px 8px;
+  }
+
+  .bgm-subject-item {
+    height: 104px;
+    border-radius: 16px;
+  }
+
+  .bgm-subject-cover {
+    width: 76px;
+  }
+
+  .results-actions-top {
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .results-actions-top :deep(.el-button) {
+    flex: 1;
+    min-height: 36px;
+    margin: 0;
+  }
+
+  .selected-count {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .character-list-container {
+    max-height: min(42dvh, 360px);
+    padding-right: 2px;
+  }
+
+  .bgm-character-item {
+    gap: 10px;
+    padding: 12px;
+    border-radius: 16px;
+  }
+
+  .bgm-step-searching,
+  .bgm-step-importing,
+  .bgm-step-imported {
+    min-height: 260px;
+  }
+
+  .searching-icon,
+  .importing-icon,
+  .success-icon {
+    font-size: 48px;
+  }
+
+  .ip-editor-footer,
+  .character-editor-footer,
+  .bgm-dialog-footer {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .ip-editor-footer .el-button,
+  .character-editor-footer .el-button,
+  .bgm-dialog-footer .el-button {
+    flex: 1;
+    min-width: 0;
+    min-height: 44px;
+    margin: 0;
+    border-radius: 999px;
+    font-size: 14px;
+    font-weight: 800;
+  }
+
   .ip-character-management-container {
     padding: 16px;
   }
@@ -4990,33 +5458,6 @@ const handleBGMSyncClose = () => {
 
   .character-name-compact {
     font-size: 13px;
-  }
-
-  .form-layout {
-    flex-direction: column;
-    align-items: center;
-  }
-
-  .bgm-dialog :deep(.el-dialog) {
-    width: 95% !important;
-  }
-
-  .bgm-subjects-list {
-    grid-template-columns: 1fr;
-    max-height: 60dvh;
-  }
-
-  .results-actions-top {
-    flex-wrap: wrap;
-  }
-
-  .selected-count {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .character-list-container {
-    max-height: 300px;
   }
 
   .refresh-fab {
