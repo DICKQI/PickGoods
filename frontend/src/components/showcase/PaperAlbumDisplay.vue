@@ -20,6 +20,8 @@
         'is-turning-next': turnDirection === 'next',
         'is-turning-prev': turnDirection === 'prev',
       }"
+      @touchstart="onTouchStart"
+      @touchend="onTouchEnd"
     >
       <button
         class="paper-page-button paper-page-button--prev"
@@ -241,7 +243,6 @@ const emit = defineEmits<{
 }>()
 
 type TurnDirection = 'next' | 'prev'
-const pageTurnDurationMs = 520
 const albumRef = ref<HTMLElement | null>(null)
 const currentSpread = ref(0)
 const displayedSpread = ref(0)
@@ -250,6 +251,9 @@ const turnToSpread = ref<number | null>(null)
 const turnDirection = ref<TurnDirection | null>(null)
 const isPageTurning = ref(false)
 const isMobile = ref(false)
+const touchStartX = ref(0)
+const touchStartY = ref(0)
+const touchStartAt = ref(0)
 let mediaQuery: MediaQueryList | null = null
 let mediaCleanup: (() => void) | null = null
 let pageTurnTimer: number | null = null
@@ -269,7 +273,8 @@ onBeforeUnmount(() => {
   if (pageTurnTimer !== null) window.clearTimeout(pageTurnTimer)
 })
 
-const slotsPerPage = computed(() => 4)
+const pageTurnDurationMs = computed(() => (isMobile.value ? 420 : 620))
+const slotsPerPage = computed(() => 6)
 const pagesPerSpread = computed(() => (isMobile.value ? 1 : 2))
 const itemsPerSpread = computed(() => slotsPerPage.value * pagesPerSpread.value)
 const totalSpreads = computed(() => Math.max(1, Math.ceil(props.items.length / itemsPerSpread.value)))
@@ -297,7 +302,7 @@ const startPageTurn = (targetSpread: number, direction: TurnDirection) => {
   isPageTurning.value = true
 
   if (pageTurnTimer !== null) window.clearTimeout(pageTurnTimer)
-  pageTurnTimer = window.setTimeout(finishPageTurn, pageTurnDurationMs)
+  pageTurnTimer = window.setTimeout(finishPageTurn, pageTurnDurationMs.value)
 }
 
 const goPrev = () => {
@@ -317,6 +322,40 @@ const maybeFlipAtEdge = (x: number, y: number) => {
     startPageTurn(currentSpread.value - 1, 'prev')
   } else if (x > rect.right - edge && currentSpread.value < totalSpreads.value - 1) {
     startPageTurn(currentSpread.value + 1, 'next')
+  }
+}
+
+const onTouchStart = (event: TouchEvent) => {
+  if (!isMobile.value || dragging.value || isPageTurning.value) return
+  const touch = event.touches[0]
+  if (!touch) return
+  touchStartX.value = touch.clientX
+  touchStartY.value = touch.clientY
+  touchStartAt.value = Date.now()
+}
+
+const canSwipeTurn = (deltaX: number, deltaY: number) => {
+  if (!isMobile.value || dragging.value || isPageTurning.value) return false
+  if (Math.abs(deltaX) <= 48) return false
+  if (Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return false
+  return Date.now() - touchStartAt.value < 900
+}
+
+const onTouchEnd = (event: TouchEvent) => {
+  if (!touchStartAt.value) return
+  const touch = event.changedTouches[0]
+  if (!touch) return
+  const deltaX = touch.clientX - touchStartX.value
+  const deltaY = touch.clientY - touchStartY.value
+
+  const shouldTurn = canSwipeTurn(deltaX, deltaY)
+  touchStartAt.value = 0
+
+  if (!shouldTurn) return
+  if (deltaX < 0) {
+    goNext()
+  } else {
+    goPrev()
   }
 }
 
@@ -340,7 +379,7 @@ const {
   errorMessage: '纸制品排序更新失败，已恢复',
   ghostSize: () => {
     const mobile = typeof window !== 'undefined' && window.matchMedia('(max-width: 768px)').matches
-    return mobile ? { width: 128, height: 128, radius: '14px' } : { width: 168, height: 168, radius: '16px' }
+    return mobile ? { width: 128, height: 128, radius: '14px' } : { width: 176, height: 176, radius: '18px' }
   },
   onHoverEdge: maybeFlipAtEdge,
 })
@@ -476,18 +515,33 @@ const onPaperClick = (item: ShowcaseGoods) => {
 
 .paper-album {
   display: grid;
-  grid-template-columns: 40px minmax(0, 1fr) 40px;
+  grid-template-columns: 48px minmax(0, 1fr) 48px;
   align-items: center;
-  gap: 14px;
+  gap: 18px;
 }
 .paper-page-button {
-  width: 40px;
-  height: 56px;
+  width: 48px;
+  height: 72px;
   border: 1px solid rgba(142, 125, 255, 0.18);
   border-radius: 999px;
   color: rgba(64, 58, 112, 0.72);
   background: rgba(255, 255, 255, 0.78);
+  box-shadow:
+    0 16px 30px -24px rgba(31, 38, 62, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.78);
   cursor: pointer;
+  transition:
+    transform 0.22s ease,
+    box-shadow 0.22s ease,
+    background 0.22s ease,
+    opacity 0.22s ease;
+}
+.paper-page-button:not(:disabled):hover {
+  transform: translateY(-3px);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow:
+    0 20px 36px -22px rgba(31, 38, 62, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9);
 }
 .paper-page-button:disabled {
   cursor: default;
@@ -495,26 +549,33 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 
 .paper-book {
-  --paper-book-padding: 20px;
-  --paper-turn-duration: 520ms;
+  --paper-book-padding: clamp(24px, 2.1vw, 34px);
+  --paper-card-size: clamp(158px, 9.6vw, 190px);
+  --paper-pocket-min-height: clamp(172px, 10.8vw, 206px);
+  --paper-page-min-height: clamp(620px, 41vw, 700px);
+  --paper-turn-duration: 620ms;
   min-width: 0;
   position: relative;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0;
-  max-width: min(1120px, 100%);
+  width: 100%;
+  max-width: min(1520px, 100%);
   margin: 0 auto;
-  border-radius: 20px;
+  border-radius: 26px;
   padding: var(--paper-book-padding);
   overflow: hidden;
-  perspective: 1800px;
+  perspective: 2200px;
   background:
-    repeating-linear-gradient(90deg, rgba(142, 125, 255, 0.045) 0 1px, transparent 1px 18px),
-    linear-gradient(135deg, #fbfcff 0%, #eef4ff 48%, #e3eaf8 100%);
+    radial-gradient(circle at 14% 10%, rgba(255, 255, 255, 0.86), transparent 24%),
+    radial-gradient(circle at 84% 16%, rgba(142, 125, 255, 0.12), transparent 30%),
+    repeating-linear-gradient(90deg, rgba(142, 125, 255, 0.045) 0 1px, transparent 1px 22px),
+    linear-gradient(135deg, #fbfcff 0%, #eef4ff 46%, #dce6f6 100%);
   border: 1px solid rgba(142, 125, 255, 0.22);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.86),
-    0 22px 54px -34px rgba(40, 48, 74, 0.42);
+    inset 0 -22px 44px -40px rgba(31, 38, 62, 0.38),
+    0 32px 72px -42px rgba(40, 48, 74, 0.48);
 }
 .paper-book::before {
   content: '';
@@ -524,7 +585,12 @@ const onPaperClick = (item: ShowcaseGoods) => {
   left: calc(50% - 1px);
   width: 2px;
   border-radius: 999px;
-  background: linear-gradient(180deg, rgba(142, 125, 255, 0.18), rgba(212, 175, 55, 0.12), rgba(142, 125, 255, 0.2));
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.58), rgba(142, 125, 255, 0.2), rgba(212, 175, 55, 0.16), rgba(142, 125, 255, 0.24)),
+    rgba(64, 58, 112, 0.08);
+  box-shadow:
+    -10px 0 22px -18px rgba(31, 38, 62, 0.8),
+    10px 0 22px -18px rgba(31, 38, 62, 0.8);
   pointer-events: none;
   z-index: 3;
 }
@@ -546,7 +612,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
   will-change: transform;
   animation-duration: var(--paper-turn-duration);
   animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.22, 0.72, 0.22, 1);
+  animation-timing-function: cubic-bezier(0.16, 0.72, 0.18, 1);
 }
 .is-turning-next .paper-turn-sheet {
   right: 0;
@@ -564,7 +630,9 @@ const onPaperClick = (item: ShowcaseGoods) => {
   inset: 0;
   z-index: 4;
   border-radius: inherit;
-  background: linear-gradient(90deg, rgba(34, 29, 62, 0.2), transparent 22%, rgba(255, 255, 255, 0.36) 72%, transparent);
+  background:
+    linear-gradient(90deg, rgba(34, 29, 62, 0.24), transparent 20%, rgba(255, 255, 255, 0.48) 68%, transparent),
+    linear-gradient(120deg, transparent 18%, rgba(255, 255, 255, 0.28) 48%, transparent 72%);
   opacity: 0;
   animation: paper-turn-sheen var(--paper-turn-duration) ease both;
   pointer-events: none;
@@ -575,8 +643,8 @@ const onPaperClick = (item: ShowcaseGoods) => {
   z-index: 3;
   border-radius: inherit;
   background:
-    linear-gradient(90deg, rgba(31, 38, 62, 0.22), transparent 18%, transparent 76%, rgba(31, 38, 62, 0.14)),
-    radial-gradient(ellipse at center, rgba(31, 38, 62, 0.18), transparent 68%);
+    linear-gradient(90deg, rgba(31, 38, 62, 0.28), transparent 18%, transparent 74%, rgba(31, 38, 62, 0.18)),
+    radial-gradient(ellipse at center, rgba(31, 38, 62, 0.24), transparent 68%);
   opacity: 0.34;
   transform: translateZ(1px);
   animation: paper-turn-shadow var(--paper-turn-duration) ease both;
@@ -599,20 +667,21 @@ const onPaperClick = (item: ShowcaseGoods) => {
 .paper-turn-page {
   position: relative;
   width: 100%;
-  padding: 22px 20px 22px 40px;
-  border-radius: 5px 16px 16px 5px;
+  padding: clamp(22px, 1.6vw, 28px) clamp(22px, 1.6vw, 28px) clamp(22px, 1.6vw, 28px) clamp(44px, 3vw, 52px);
+  border-radius: 6px 22px 22px 6px;
   background:
-    repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 18px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(246, 249, 255, 0.88));
+    radial-gradient(circle at 24% 14%, rgba(255, 255, 255, 0.72), transparent 22%),
+    repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 22px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(246, 249, 255, 0.88));
   box-shadow:
     inset 0 0 0 1px rgba(255, 255, 255, 0.64),
     0 24px 44px -26px rgba(31, 38, 62, 0.52);
 }
 .is-turning-prev .paper-turn-page {
-  border-radius: 16px 5px 5px 16px;
+  border-radius: 22px 6px 6px 22px;
 }
 .paper-turn-card {
-  width: min(168px, 100%);
+  width: min(var(--paper-card-size), 100%);
 }
 .paper-turn-card .paper-card {
   width: 100%;
@@ -620,46 +689,51 @@ const onPaperClick = (item: ShowcaseGoods) => {
 .paper-page {
   position: relative;
   z-index: 1;
-  min-height: 440px;
-  padding: 22px 20px 22px 40px;
-  border-radius: 16px 5px 5px 16px;
+  min-height: var(--paper-page-min-height);
+  padding: clamp(22px, 1.6vw, 28px) clamp(22px, 1.6vw, 28px) clamp(22px, 1.6vw, 28px) clamp(44px, 3vw, 52px);
+  border-radius: 22px 6px 6px 22px;
   background:
-    repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 18px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.86), rgba(246, 249, 255, 0.74));
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.58);
+    radial-gradient(circle at 24% 14%, rgba(255, 255, 255, 0.62), transparent 24%),
+    repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 22px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(246, 249, 255, 0.76));
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.58),
+    inset 0 -28px 42px -44px rgba(31, 38, 62, 0.42);
 }
 .paper-page--right {
-  border-radius: 5px 16px 16px 5px;
+  border-radius: 6px 22px 22px 6px;
 }
 .paper-page-ring {
   position: absolute;
-  top: 22px;
-  bottom: 22px;
-  left: 14px;
-  width: 9px;
+  top: clamp(28px, 2.2vw, 38px);
+  bottom: clamp(28px, 2.2vw, 38px);
+  left: clamp(18px, 1.5vw, 24px);
+  width: 11px;
   border-radius: 999px;
   background:
-    radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 32%, transparent 34%) 0 0 / 9px 56px,
+    radial-gradient(circle, rgba(255, 255, 255, 0.92) 0 32%, transparent 34%) 0 0 / 11px 68px,
     linear-gradient(180deg, rgba(142, 125, 255, 0.28), rgba(212, 175, 55, 0.2));
 }
 .paper-pocket-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px;
+  grid-template-rows: repeat(3, minmax(0, 1fr));
+  gap: clamp(16px, 1.25vw, 22px);
 }
 .paper-pocket {
-  min-height: 188px;
+  min-height: var(--paper-pocket-min-height);
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: 18px;
   border: 1px solid rgba(142, 125, 255, 0.16);
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0.28)),
     rgba(231, 238, 250, 0.46);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.75),
-    inset 0 -10px 18px -16px rgba(59, 71, 102, 0.3);
+    inset 0 -14px 24px -18px rgba(59, 71, 102, 0.32),
+    0 14px 24px -22px rgba(31, 38, 62, 0.28);
 }
 .paper-pocket.is-empty {
   background:
@@ -668,14 +742,16 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 .paper-item {
   position: relative;
-  width: min(168px, 100%);
-  transition: transform 0.22s ease;
+  width: min(var(--paper-card-size), 100%);
+  transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.26s ease;
+  will-change: transform, filter;
   touch-action: none;
   user-select: none;
   -webkit-user-drag: none;
 }
 .paper-item:hover {
-  transform: translateY(-4px);
+  transform: translateY(-10px) scale(1.035) rotateX(1deg);
+  filter: drop-shadow(0 18px 18px rgba(31, 38, 62, 0.18));
   z-index: 3;
 }
 .paper-item.is-dragging {
@@ -687,14 +763,14 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 .paper-card {
   aspect-ratio: 1 / 1;
-  border-radius: 14px;
+  border-radius: 20px;
   overflow: hidden;
   background: #fff;
   border: 1px solid rgba(255, 255, 255, 0.86);
   box-shadow:
     0 0 0 3px rgba(255, 255, 255, 0.62),
-    0 0 0 5px var(--paper-accent, rgba(142, 125, 255, 0.5)),
-    0 10px 18px -12px rgba(44, 51, 73, 0.42);
+    0 0 0 6px var(--paper-accent, rgba(142, 125, 255, 0.5)),
+    0 16px 26px -16px rgba(44, 51, 73, 0.46);
 }
 .paper-img,
 :deep(.paper-img .el-image__inner) {
@@ -714,28 +790,28 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 .paper-qty {
   position: absolute;
-  top: -8px;
-  right: -8px;
-  min-width: 22px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
+  top: -10px;
+  right: -10px;
+  min-width: 28px;
+  height: 22px;
+  padding: 0 7px;
+  border-radius: 11px;
   background: linear-gradient(180deg, #ff8a5b, #f0603a);
   color: #fff;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 700;
-  line-height: 18px;
+  line-height: 22px;
   text-align: center;
   z-index: 4;
 }
 .paper-official-dot {
   position: absolute;
-  bottom: -4px;
-  right: -4px;
-  width: 9px;
-  height: 9px;
+  bottom: -6px;
+  right: -6px;
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
-  border: 1.5px solid #fff;
+  border: 2px solid #fff;
   z-index: 4;
 }
 .paper-official-dot.is-official {
@@ -752,9 +828,9 @@ const onPaperClick = (item: ShowcaseGoods) => {
   background: #fff;
   box-shadow:
     0 0 0 3px rgba(255, 255, 255, 0.72),
-    0 0 0 5px var(--paper-accent, rgba(142, 125, 255, 0.5)),
-    0 14px 26px -10px rgba(31, 34, 48, 0.42);
-  transform: scale(1.04);
+    0 0 0 6px var(--paper-accent, rgba(142, 125, 255, 0.5)),
+    0 22px 36px -14px rgba(31, 34, 48, 0.46);
+  transform: scale(1.06) rotate(0.6deg);
 }
 .paper-ghost-img {
   width: 100%;
@@ -765,19 +841,25 @@ const onPaperClick = (item: ShowcaseGoods) => {
 
 @keyframes paper-turn-next {
   0% {
-    transform: rotateY(0deg);
+    transform: rotateY(0deg) scaleX(1);
+  }
+  50% {
+    transform: rotateY(-96deg) scaleX(0.985);
   }
   100% {
-    transform: rotateY(-180deg);
+    transform: rotateY(-180deg) scaleX(1);
   }
 }
 
 @keyframes paper-turn-prev {
   0% {
-    transform: rotateY(0deg);
+    transform: rotateY(0deg) scaleX(1);
+  }
+  50% {
+    transform: rotateY(96deg) scaleX(0.985);
   }
   100% {
-    transform: rotateY(180deg);
+    transform: rotateY(180deg) scaleX(1);
   }
 }
 
@@ -805,59 +887,215 @@ const onPaperClick = (item: ShowcaseGoods) => {
   .paper-header {
     align-items: flex-start;
     flex-direction: column;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+  .paper-header-meta {
+    width: 100%;
+    justify-content: flex-start;
   }
   .paper-album {
-    grid-template-columns: 32px minmax(0, 1fr) 32px;
-    gap: 8px;
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-areas:
+      "book book"
+      "prev next";
+    align-items: center;
+    gap: 10px 12px;
+    touch-action: pan-y;
   }
   .paper-page-button {
-    width: 32px;
-    height: 46px;
+    position: static;
+    justify-self: center;
+    z-index: 2;
+    width: 38px;
+    height: 38px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.9);
+    box-shadow:
+      0 14px 24px -18px rgba(31, 38, 62, 0.46),
+      inset 0 1px 0 rgba(255, 255, 255, 0.86);
+  }
+  .paper-page-button:not(:disabled):hover {
+    transform: translateY(-1px);
+  }
+  .paper-page-button:not(:disabled):active {
+    transform: scale(0.94);
+    background: rgba(255, 255, 255, 0.98);
+  }
+  .paper-page-button--prev {
+    grid-area: prev;
+    justify-self: end;
+  }
+  .paper-page-button--next {
+    grid-area: next;
+    justify-self: start;
   }
   .paper-book {
-    --paper-book-padding: 12px;
+    --paper-book-padding: var(--paper-mobile-padding);
+    --paper-mobile-card-size: min(40vw, 150px);
+    --paper-mobile-gap: clamp(8px, 2.8vw, 12px);
+    --paper-mobile-padding: clamp(10px, 3.2vw, 14px);
+    --paper-turn-duration: 420ms;
     grid-template-columns: 1fr;
-    padding: 10px;
-    border-radius: 14px;
+    grid-area: book;
+    width: 100%;
+    padding: var(--paper-mobile-padding);
+    border-radius: 16px;
     background:
+      radial-gradient(circle at 18% 8%, rgba(255, 255, 255, 0.82), transparent 24%),
       repeating-linear-gradient(90deg, rgba(142, 125, 255, 0.04) 0 1px, transparent 1px 16px),
       linear-gradient(135deg, #fbfcff 0%, #eef4ff 52%, #e3eaf8 100%);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.78),
+      0 18px 42px -32px rgba(40, 48, 74, 0.46);
   }
   .paper-book::before {
     display: none;
   }
+  .paper-turn-layer {
+    inset: var(--paper-mobile-padding);
+    perspective: 900px;
+  }
   .paper-turn-sheet {
     width: 100%;
+    animation-duration: var(--paper-turn-duration);
+  }
+  .paper-turn-sheet::after {
+    animation-duration: var(--paper-turn-duration);
+    background:
+      linear-gradient(100deg, rgba(31, 38, 62, 0.16), transparent 24%, rgba(255, 255, 255, 0.42) 62%, transparent),
+      linear-gradient(130deg, transparent 20%, rgba(255, 255, 255, 0.22) 48%, transparent 76%);
   }
   .is-turning-next .paper-turn-sheet,
   .is-turning-prev .paper-turn-sheet {
     left: 0;
     right: auto;
     transform-origin: left center;
+    animation-name: paper-mobile-turn-next;
   }
   .is-turning-prev .paper-turn-sheet {
     transform-origin: right center;
+    animation-name: paper-mobile-turn-prev;
+  }
+  .paper-turn-shadow {
+    opacity: 0.22;
+    background:
+      linear-gradient(90deg, rgba(31, 38, 62, 0.18), transparent 30%, rgba(31, 38, 62, 0.1)),
+      radial-gradient(ellipse at center, rgba(31, 38, 62, 0.16), transparent 72%);
   }
   .paper-turn-page {
-    padding: 16px 14px 16px 30px;
+    padding: var(--paper-mobile-padding) var(--paper-mobile-padding) var(--paper-mobile-padding) calc(var(--paper-mobile-padding) + 14px);
     border-radius: 12px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.62),
+      0 16px 28px -22px rgba(31, 38, 62, 0.42);
   }
   .paper-turn-card {
-    width: min(128px, 100%);
+    width: min(100%, var(--paper-mobile-card-size));
   }
   .paper-page {
-    min-height: 380px;
-    padding: 16px 14px 16px 30px;
+    min-height: 0;
+    padding: var(--paper-mobile-padding) var(--paper-mobile-padding) var(--paper-mobile-padding) calc(var(--paper-mobile-padding) + 14px);
     border-radius: 12px;
+    box-shadow:
+      inset 0 0 0 1px rgba(255, 255, 255, 0.58),
+      inset 0 -16px 26px -28px rgba(31, 38, 62, 0.32);
+  }
+  .paper-page-ring {
+    top: 18px;
+    bottom: 18px;
+    left: 9px;
+    width: 7px;
+    background:
+      radial-gradient(circle, rgba(255, 255, 255, 0.9) 0 30%, transparent 33%) 0 0 / 7px 42px,
+      linear-gradient(180deg, rgba(142, 125, 255, 0.2), rgba(212, 175, 55, 0.14));
   }
   .paper-pocket-grid {
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(3, auto);
+    gap: var(--paper-mobile-gap);
   }
   .paper-pocket {
-    min-height: 156px;
+    min-height: 0;
+    aspect-ratio: 1 / 1;
+    padding: 5px;
+    border-radius: 14px;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.66), rgba(255, 255, 255, 0.22)),
+      rgba(231, 238, 250, 0.38);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.68),
+      inset 0 -10px 18px -18px rgba(59, 71, 102, 0.24);
   }
   .paper-item {
-    width: min(128px, 100%);
+    width: min(100%, var(--paper-mobile-card-size));
+    touch-action: pan-y;
+    transition:
+      transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1),
+      filter 0.18s ease;
+  }
+  .paper-item:hover {
+    transform: none;
+    filter: none;
+  }
+  .paper-item:active {
+    transform: scale(0.965);
+    filter: drop-shadow(0 10px 12px rgba(31, 38, 62, 0.14));
+  }
+  .paper-card {
+    border-radius: 15px;
+    box-shadow:
+      0 0 0 2px rgba(255, 255, 255, 0.66),
+      0 0 0 4px var(--paper-accent, rgba(142, 125, 255, 0.42)),
+      0 10px 18px -14px rgba(44, 51, 73, 0.36);
+  }
+  .paper-qty {
+    top: -7px;
+    right: -7px;
+    min-width: 24px;
+    height: 20px;
+    padding: 0 6px;
+    border-radius: 10px;
+    font-size: 11px;
+    line-height: 20px;
+  }
+  .paper-official-dot {
+    right: -4px;
+    bottom: -4px;
+    width: 10px;
+    height: 10px;
+  }
+}
+
+@keyframes paper-mobile-turn-next {
+  0% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0deg);
+  }
+  52% {
+    opacity: 0.96;
+    transform: translateX(-14%) rotateY(-18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(-24%) rotateY(-8deg);
+  }
+}
+
+@keyframes paper-mobile-turn-prev {
+  0% {
+    opacity: 1;
+    transform: translateX(0) rotateY(0deg);
+  }
+  52% {
+    opacity: 0.96;
+    transform: translateX(14%) rotateY(18deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(24%) rotateY(8deg);
   }
 }
 
@@ -869,6 +1107,8 @@ const onPaperClick = (item: ShowcaseGoods) => {
 
   .paper-item {
     transition-duration: 1ms;
+    filter: none;
   }
+
 }
 </style>
