@@ -229,12 +229,32 @@
     <el-dialog
       v-model="dialogVisible"
       :title="isMobile ? undefined : dialogTitle"
-      :width="isEdit && editingId ? '560px' : '400px'"
+      :width="themeEditorDialogWidth"
       :class="['custom-dialog', 'theme-editor-dialog', { 'is-theme-editor-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
     >
       <div class="theme-editor-shell">
+        <div v-if="!isMobile" class="theme-editor-desktop-header">
+          <div class="theme-editor-desktop-icon" aria-hidden="true">
+            <el-icon><Star /></el-icon>
+          </div>
+          <div class="theme-editor-desktop-copy">
+            <span class="theme-editor-desktop-kicker">Theme Library</span>
+            <h3 class="theme-editor-desktop-title">{{ dialogTitle }}</h3>
+            <p>沉淀主题名称、描述和参考图，让后续筛选、搭配与归档更直观。</p>
+          </div>
+          <button
+            class="theme-editor-desktop-close"
+            type="button"
+            aria-label="关闭主题编辑弹窗"
+            :disabled="submitting"
+            @click="dialogVisible = false"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
+
         <div v-if="isMobile" class="theme-editor-hero">
           <div class="theme-editor-hero-icon" aria-hidden="true">
             <el-icon><Star /></el-icon>
@@ -262,7 +282,7 @@
             label-position="top"
             class="theme-editor-form"
           >
-            <section class="theme-editor-section">
+            <section class="theme-editor-section theme-editor-section--identity">
               <div class="theme-editor-section-header">
                 <div>
                   <h4>基础信息</h4>
@@ -291,7 +311,7 @@
               </el-form-item>
             </section>
 
-            <section class="theme-editor-section theme-editor-section-photos">
+            <section class="theme-editor-section theme-editor-section-photos theme-editor-section--photos">
               <div class="theme-editor-section-header">
                 <div>
                   <h4>参考图片</h4>
@@ -398,7 +418,10 @@
               </div>
 
               <div v-else class="theme-editor-image-note">
-                保存后可继续添加参考图
+                <span class="theme-editor-image-note-icon" aria-hidden="true">
+                  <el-icon><Picture /></el-icon>
+                </span>
+                <span>保存后可继续添加参考图</span>
               </div>
             </section>
           </el-form>
@@ -539,6 +562,10 @@ const formRules: FormRules = {
 }
 
 const dialogTitle = computed(() => isEdit.value ? '✨ 修改主题' : '✨ 新增主题')
+const themeEditorDialogWidth = computed(() => {
+  if (isMobile.value) return '100vw'
+  return isEdit.value && editingId.value ? '820px' : '720px'
+})
 
 const hasActiveFilters = computed(() => {
   return searchText.value.trim() !== '' || sortBy.value !== '' || (dateRange.value !== null && dateRange.value.length === 2)
@@ -1447,8 +1474,156 @@ onUnmounted(() => {
   min-height: 0;
 }
 
+:global(.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog),
+:global(.el-dialog.theme-editor-dialog:not(.is-theme-editor-mobile)) {
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 72px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(212, 175, 55, 0.2), transparent 30%),
+    radial-gradient(circle at 0% 0%, rgba(162, 155, 254, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 248, 255, 0.96));
+  box-shadow:
+    0 30px 80px rgba(41, 34, 24, 0.2),
+    0 12px 28px rgba(41, 34, 24, 0.1);
+}
+
+:global(.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog__header),
+:global(.el-dialog.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog__header) {
+  display: none;
+}
+
+:global(.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog__body),
+:global(.el-dialog.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog__body) {
+  padding: 0;
+  max-height: calc(100vh - 156px);
+  overflow: hidden;
+}
+
+:global(.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog__footer),
+:global(.el-dialog.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog__footer) {
+  padding: 16px 28px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 16px 28px -30px rgba(41, 34, 24, 0.32);
+}
+
+.theme-editor-desktop-header {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 28px 30px 22px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(212, 175, 55, 0.24), transparent 30%),
+    linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(162, 155, 254, 0.15)),
+    rgba(255, 255, 255, 0.94);
+}
+
+.theme-editor-desktop-header::after {
+  content: '';
+  position: absolute;
+  right: -46px;
+  bottom: -70px;
+  width: 176px;
+  height: 176px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.12);
+  pointer-events: none;
+}
+
+.theme-editor-desktop-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  color: var(--primary-gold-dark);
+  font-size: 26px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 175, 55, 0.24),
+    0 16px 28px -20px rgba(17, 24, 39, 0.38);
+}
+
+.theme-editor-desktop-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.theme-editor-desktop-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #8a6c14;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.theme-editor-desktop-title {
+  margin: 0;
+  color: #2f2a20;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.16;
+}
+
+.theme-editor-desktop-copy p {
+  max-width: 540px;
+  margin: 8px 0 0;
+  color: #6f6a7f;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.theme-editor-desktop-close {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(144, 147, 153, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #7d7892;
+  font-size: 16px;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.18s ease, color 0.18s ease;
+}
+
+.theme-editor-desktop-close:hover {
+  color: #8a6c14;
+  background: rgba(255, 255, 255, 0.94);
+  transform: rotate(90deg);
+}
+
+.theme-editor-desktop-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
 .theme-editor-body {
   min-height: 0;
+  max-height: calc(100vh - 252px);
+  overflow-y: auto;
+  padding: 22px 28px 4px;
+  overscroll-behavior: contain;
 }
 
 .theme-editor-form {
@@ -1459,16 +1634,101 @@ onUnmounted(() => {
 
 .theme-editor-section {
   width: 100%;
+  padding: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
+    radial-gradient(circle at top right, rgba(162, 155, 254, 0.1), transparent 34%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 14px 34px -30px rgba(17, 24, 39, 0.52);
 }
 
 .theme-editor-section-header {
-  display: none;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.theme-editor-section-header h4 {
+  margin: 0;
+  color: var(--text-dark);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.theme-editor-section-header p {
+  margin: 5px 0 0;
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.theme-editor-section :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.theme-editor-section :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.theme-editor-section :deep(.el-form-item__label) {
+  margin-bottom: 8px;
+  color: #5f5874;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.theme-editor-section :deep(.el-input__wrapper),
+.theme-editor-section :deep(.el-textarea__inner) {
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px rgba(162, 155, 254, 0.06);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.theme-editor-section :deep(.el-input__wrapper) {
+  min-height: 44px;
+}
+
+.theme-editor-section :deep(.el-textarea__inner) {
+  min-height: 136px !important;
+  padding: 12px 14px;
+  line-height: 1.6;
+}
+
+.theme-editor-section :deep(.el-input__wrapper:hover),
+.theme-editor-section :deep(.el-textarea__inner:hover) {
+  border-color: rgba(162, 155, 254, 0.24);
+}
+
+.theme-editor-section :deep(.el-input__wrapper.is-focus),
+.theme-editor-section :deep(.el-textarea__inner:focus) {
+  border-color: rgba(162, 155, 254, 0.48);
+  box-shadow:
+    0 0 0 3px rgba(196, 181, 253, 0.2),
+    0 12px 28px rgba(162, 155, 254, 0.1);
+  background: rgba(255, 255, 255, 0.96);
 }
 
 .theme-editor-footer {
   display: flex;
   justify-content: flex-end;
   gap: 12px;
+}
+
+.theme-editor-cancel,
+.theme-editor-footer .submit-btn {
+  min-width: 96px;
+  min-height: 40px;
+  border-radius: 12px;
+  font-weight: 800;
 }
 
 .theme-additional-photos-section {
@@ -1479,7 +1739,7 @@ onUnmounted(() => {
 .existing-theme-photos,
 .new-theme-photos {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -1488,19 +1748,23 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.68);
 }
 
 .theme-photo-preview-wrap {
   position: relative;
   overflow: hidden;
-  border-radius: 4px;
+  border-radius: 14px;
 }
 
 .theme-photo-preview {
   width: 100%;
-  height: 120px;
-  border-radius: 4px;
-  border: 1px solid var(--el-border-color);
+  height: 132px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.14);
   overflow: hidden;
 }
 
@@ -1535,7 +1799,7 @@ onUnmounted(() => {
 .theme-photo-add-card {
   width: 100%;
   height: 100%;
-  min-height: 120px;
+  min-height: 132px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1547,14 +1811,44 @@ onUnmounted(() => {
 }
 
 .theme-photo-upload :deep(.el-upload--picture-card) {
-  width: 120px;
-  height: 120px;
-  border-radius: 4px;
-  border: 1px dashed var(--el-border-color);
+  width: 140px;
+  height: 132px;
+  border-radius: 16px;
+  border: 1px dashed rgba(212, 175, 55, 0.3);
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .theme-photo-upload :deep(.el-upload--picture-card:hover) {
   border-color: #8e7dff;
+}
+
+.theme-editor-image-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 74px;
+  padding: 16px;
+  border: 1px dashed rgba(162, 155, 254, 0.28);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(162, 155, 254, 0.1), rgba(212, 175, 55, 0.08)),
+    rgba(255, 255, 255, 0.74);
+  color: #6f6a7f;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.theme-editor-image-note-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 13px;
+  color: #8e7dff;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 0 0 1px rgba(162, 155, 254, 0.16);
 }
 
 @media (max-width: 768px) {
@@ -1569,6 +1863,7 @@ onUnmounted(() => {
     width: 100vw !important;
     max-width: 100vw;
     max-height: 88vh;
+    padding: 0;
     margin: 0 !important;
     border-radius: 20px 20px 0 0;
     overflow: hidden;

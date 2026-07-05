@@ -464,60 +464,98 @@
     <!-- IP编辑弹窗 (保持不变) -->
     <el-dialog
       v-model="ipDialogVisible"
-      :title="ipDialogTitle"
       :width="dialogWidth"
-      class="custom-dialog"
+      class="custom-dialog ip-editor-dialog"
       align-center
     >
-      <el-form :model="ipFormData" :rules="ipFormRules" ref="ipFormRef" label-position="top">
-        <el-form-item label="作品官方全称" prop="name">
-          <el-input v-model="ipFormData.name" placeholder="例如：崩坏：星穹铁道" />
-        </el-form-item>
-        <el-form-item label="作品类型">
-          <el-select
-            v-model="ipFormData.subject_type"
-            placeholder="选择作品类型（可选）"
-            clearable
-            style="width: 100%"
-          >
-            <el-option label="书籍" :value="1" />
-            <el-option label="动画" :value="2" />
-            <el-option label="音乐" :value="3" />
-            <el-option label="游戏" :value="4" />
-            <el-option label="三次元/特摄" :value="6" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关联关键词 (别名/缩写)">
-          <div class="keyword-manager-box">
-            <div class="input-inline">
-              <el-input
-                v-model="newKeyword"
-                placeholder="输入别名后点添加"
-                @keyup.enter="handleAddKeyword"
-              >
-                <template #append>
-                  <el-button @click="handleAddKeyword">添加</el-button>
-                </template>
-              </el-input>
-            </div>
-            <div class="tags-wrapper">
-              <el-tag
-                v-for="(keyword, index) in ipFormData.keywords"
-                :key="index"
-                closable
-                round
-                @close="handleRemoveKeyword(index)"
-              >
-                {{ keyword }}
-              </el-tag>
-            </div>
+      <div class="ip-editor-shell">
+        <div class="ip-editor-desktop-header">
+          <div class="ip-editor-desktop-icon" aria-hidden="true">
+            <el-icon><Collection /></el-icon>
           </div>
-        </el-form-item>
-      </el-form>
+          <div class="ip-editor-desktop-copy">
+            <span class="ip-editor-desktop-kicker">IP Archive</span>
+            <h3 class="ip-editor-desktop-title">{{ ipDialogTitle }}</h3>
+            <p>维护作品全称、类型和检索别名，让角色归档与搜索更准确。</p>
+          </div>
+          <button
+            class="ip-editor-desktop-close"
+            type="button"
+            aria-label="关闭作品编辑弹窗"
+            :disabled="submitting"
+            @click="ipDialogVisible = false"
+          >
+            ×
+          </button>
+        </div>
+
+        <div class="ip-editor-body">
+          <el-form :model="ipFormData" :rules="ipFormRules" ref="ipFormRef" label-position="top" class="ip-editor-form">
+            <section class="ip-editor-section ip-editor-section--identity">
+              <div class="ip-editor-section-header">
+                <h4>基础信息</h4>
+                <p>记录作品官方名称和类型，后续新增角色时会作为归属来源。</p>
+              </div>
+              <div class="ip-editor-field-grid">
+                <el-form-item label="作品官方全称" prop="name">
+                  <el-input v-model="ipFormData.name" placeholder="例如：崩坏：星穹铁道" />
+                </el-form-item>
+                <el-form-item label="作品类型">
+                  <el-select
+                    v-model="ipFormData.subject_type"
+                    placeholder="选择作品类型（可选）"
+                    clearable
+                    style="width: 100%"
+                  >
+                    <el-option label="书籍" :value="1" />
+                    <el-option label="动画" :value="2" />
+                    <el-option label="音乐" :value="3" />
+                    <el-option label="游戏" :value="4" />
+                    <el-option label="三次元/特摄" :value="6" />
+                  </el-select>
+                </el-form-item>
+              </div>
+            </section>
+
+            <section class="ip-editor-section ip-editor-section--keywords">
+              <div class="ip-editor-section-header">
+                <h4>检索关键词</h4>
+                <p>添加别名、简称或缩写，便于搜索和快速匹配。</p>
+              </div>
+              <el-form-item label="关联关键词 (别名/缩写)">
+                <div class="keyword-manager-box">
+                  <div class="input-inline">
+                    <el-input
+                      v-model="newKeyword"
+                      placeholder="输入别名后点添加"
+                      @keyup.enter="handleAddKeyword"
+                    >
+                      <template #append>
+                        <el-button @click="handleAddKeyword">添加</el-button>
+                      </template>
+                    </el-input>
+                  </div>
+                  <div class="tags-wrapper">
+                    <el-tag
+                      v-for="(keyword, index) in ipFormData.keywords"
+                      :key="index"
+                      closable
+                      round
+                      @close="handleRemoveKeyword(index)"
+                    >
+                      {{ keyword }}
+                    </el-tag>
+                  </div>
+                </div>
+              </el-form-item>
+            </section>
+          </el-form>
+        </div>
+      </div>
       <template #footer>
-        <div class="dialog-footer">
-          <el-button @click="ipDialogVisible = false">取消</el-button>
-          <el-button type="primary" class="submit-btn" @click="handleSubmitIP" :loading="submitting">
+        <div class="ip-editor-footer">
+          <el-button class="ip-editor-cancel" @click="ipDialogVisible = false">取消</el-button>
+          <el-button type="primary" class="submit-btn ip-editor-submit" @click="handleSubmitIP" :loading="submitting">
             保存更改
           </el-button>
         </div>
@@ -534,11 +572,16 @@
     >
       <template #header>
         <div class="bgm-dialog-header">
-          <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
-          <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
-          <p class="bgm-dialog-subtitle">
-            从 Bangumi 获取角色资料并整理成可批量导入的候选列表，帮助你更快完成作品角色建档。
-          </p>
+          <div class="bgm-dialog-header-icon" aria-hidden="true">
+            <el-icon><Search /></el-icon>
+          </div>
+          <div class="bgm-dialog-header-copy">
+            <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
+            <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+            <p class="bgm-dialog-subtitle">
+              从 Bangumi 获取角色资料并整理成可批量导入的候选列表，帮助你更快完成作品角色建档。
+            </p>
+          </div>
         </div>
       </template>
       <div class="bgm-import-container">
@@ -800,11 +843,16 @@
     >
       <template #header>
         <div class="bgm-dialog-header">
-          <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
-          <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
-          <p class="bgm-dialog-subtitle">
-            对比本地角色与 Bangumi 最新条目，预览差异后再应用更新，保持角色资料与关联信息一致。
-          </p>
+          <div class="bgm-dialog-header-icon" aria-hidden="true">
+            <el-icon><Refresh /></el-icon>
+          </div>
+          <div class="bgm-dialog-header-copy">
+            <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
+            <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+            <p class="bgm-dialog-subtitle">
+              对比本地角色与 Bangumi 最新条目，预览差异后再应用更新，保持角色资料与关联信息一致。
+            </p>
+          </div>
         </div>
       </template>
       <div class="bgm-import-container">
@@ -1067,88 +1115,122 @@
     <!-- 角色编辑弹窗 (保持不变) -->
     <el-dialog
       v-model="characterDialogVisible"
-      :title="characterDialogTitle"
       :width="dialogWidth"
-      class="custom-dialog"
+      class="custom-dialog character-editor-dialog"
       align-center
     >
-      <el-form
-        :model="characterFormData"
-        :rules="characterFormRules"
-        ref="characterFormRef"
-        label-position="top"
-      >
-        <div class="form-layout">
-          <div class="avatar-col">
-            <div class="avatar-mode-switch">
-              <el-radio-group v-model="avatarInputMode" size="small" class="mode-radio-group">
-                <el-radio-button value="upload">上传文件</el-radio-button>
-                <el-radio-button value="url">输入URL</el-radio-button>
-              </el-radio-group>
-            </div>
-            <!-- 文件上传模式 -->
-            <el-upload
-              v-if="avatarInputMode === 'upload'"
-              class="avatar-uploader"
-              :auto-upload="false"
-              :show-file-list="false"
-              @change="handleAvatarFileChange"
-            >
-              <img v-if="avatarPreview" :src="avatarPreview" class="preview-img" />
-              <el-icon v-else class="uploader-icon"><Plus /></el-icon>
-              <div class="upload-label">点击上传</div>
-            </el-upload>
-            <!-- URL输入模式 -->
-            <div v-else class="avatar-url-input">
-              <el-input
-                v-model="avatarUrlInput"
-                placeholder="输入头像图片URL"
-                clearable
-                @input="handleAvatarUrlInput"
-              >
-                <template #prefix>
-                  <el-icon><Link /></el-icon>
-                </template>
-              </el-input>
-              <div v-if="avatarPreview" class="url-preview">
-                <img :src="avatarPreview" class="preview-img" alt="头像预览" />
-              </div>
-            </div>
+      <div class="character-editor-shell">
+        <div class="character-editor-desktop-header">
+          <div class="character-editor-desktop-icon" aria-hidden="true">
+            <el-icon><UserFilled /></el-icon>
           </div>
-          <div class="info-col">
-            <el-form-item label="角色名称" prop="name">
-              <el-input v-model="characterFormData.name" placeholder="输入角色名" />
-            </el-form-item>
-            <el-form-item label="所属作品" prop="ip_id">
-              <el-select
-                v-model="characterFormData.ip_id"
-                placeholder="选择所属IP"
-                filterable
-                style="width: 100%"
-              >
-                <el-option v-for="ip in ipList" :key="ip.id" :label="ip.name" :value="ip.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-if="false" label="性别" prop="gender">
-              <el-radio-group v-model="characterFormData.gender" class="custom-radio">
-                <el-radio-button value="female">女</el-radio-button>
-                <el-radio-button value="male">男</el-radio-button>
-                <el-radio-button value="other">其他</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
+          <div class="character-editor-desktop-copy">
+            <span class="character-editor-desktop-kicker">Character Profile</span>
+            <h3 class="character-editor-desktop-title">{{ characterDialogTitle }}</h3>
+            <p>补全角色头像、名称和所属作品，让角色卡片在列表里更清晰。</p>
           </div>
+          <button
+            class="character-editor-desktop-close"
+            type="button"
+            aria-label="关闭角色编辑弹窗"
+            :disabled="submitting"
+            @click="characterDialogVisible = false"
+          >
+            ×
+          </button>
         </div>
-      </el-form>
+
+        <div class="character-editor-body">
+          <el-form
+            :model="characterFormData"
+            :rules="characterFormRules"
+            ref="characterFormRef"
+            label-position="top"
+            class="character-editor-form"
+          >
+            <div class="form-layout">
+              <div class="avatar-col character-editor-avatar-card">
+                <div class="character-editor-section-header">
+                  <h4>角色头像</h4>
+                  <p>上传文件或粘贴图片 URL。</p>
+                </div>
+                <div class="avatar-mode-switch">
+                  <el-radio-group v-model="avatarInputMode" size="small" class="mode-radio-group">
+                    <el-radio-button value="upload">上传文件</el-radio-button>
+                    <el-radio-button value="url">输入URL</el-radio-button>
+                  </el-radio-group>
+                </div>
+                <!-- 文件上传模式 -->
+                <el-upload
+                  v-if="avatarInputMode === 'upload'"
+                  class="avatar-uploader"
+                  :auto-upload="false"
+                  :show-file-list="false"
+                  @change="handleAvatarFileChange"
+                >
+                  <img v-if="avatarPreview" :src="avatarPreview" class="preview-img" />
+                  <el-icon v-else class="uploader-icon"><Plus /></el-icon>
+                  <div class="upload-label">点击上传</div>
+                </el-upload>
+                <!-- URL输入模式 -->
+                <div v-else class="avatar-url-input">
+                  <el-input
+                    v-model="avatarUrlInput"
+                    placeholder="输入头像图片URL"
+                    clearable
+                    @input="handleAvatarUrlInput"
+                  >
+                    <template #prefix>
+                      <el-icon><Link /></el-icon>
+                    </template>
+                  </el-input>
+                  <div v-if="avatarPreview" class="url-preview">
+                    <img :src="avatarPreview" class="preview-img" alt="头像预览" />
+                  </div>
+                </div>
+              </div>
+              <section class="info-col character-editor-section character-editor-section--identity">
+                <div class="character-editor-section-header">
+                  <h4>基础信息</h4>
+                  <p>角色名称和所属作品会用于列表展示与筛选。</p>
+                </div>
+                <el-form-item label="角色名称" prop="name">
+                  <el-input v-model="characterFormData.name" placeholder="输入角色名" />
+                </el-form-item>
+                <el-form-item label="所属作品" prop="ip_id">
+                  <el-select
+                    v-model="characterFormData.ip_id"
+                    placeholder="选择所属IP"
+                    filterable
+                    style="width: 100%"
+                  >
+                    <el-option v-for="ip in ipList" :key="ip.id" :label="ip.name" :value="ip.id" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item v-if="false" label="性别" prop="gender">
+                  <el-radio-group v-model="characterFormData.gender" class="custom-radio">
+                    <el-radio-button value="female">女</el-radio-button>
+                    <el-radio-button value="male">男</el-radio-button>
+                    <el-radio-button value="other">其他</el-radio-button>
+                  </el-radio-group>
+                </el-form-item>
+              </section>
+            </div>
+          </el-form>
+        </div>
+      </div>
       <template #footer>
-        <el-button @click="characterDialogVisible = false">取消</el-button>
-        <el-button
-          type="primary"
-          class="submit-btn"
-          @click="handleSubmitCharacter"
-          :loading="submitting"
-        >
-          保存信息
-        </el-button>
+        <div class="character-editor-footer">
+          <el-button class="character-editor-cancel" @click="characterDialogVisible = false">取消</el-button>
+          <el-button
+            type="primary"
+            class="submit-btn character-editor-submit"
+            @click="handleSubmitCharacter"
+            :loading="submitting"
+          >
+            保存信息
+          </el-button>
+        </div>
       </template>
     </el-dialog>
   </div>
@@ -1408,7 +1490,7 @@ const dialogWidth = computed(() => {
   if (isMobile.value) {
     return '90%'
   }
-  return '600px'
+  return '720px'
 })
 
 // BGM导入弹窗需要更宽
@@ -1416,7 +1498,7 @@ const bgmDialogWidth = computed(() => {
   if (isMobile.value) {
     return '90%'
   }
-  return '800px'
+  return '860px'
 })
 
 // 状态管理
@@ -3669,13 +3751,334 @@ const handleBGMSyncClose = () => {
   gap: 8px;
 }
 
+:global(.ip-editor-dialog .el-dialog),
+:global(.el-dialog.ip-editor-dialog),
+:global(.character-editor-dialog .el-dialog),
+:global(.el-dialog.character-editor-dialog) {
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 72px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(212, 175, 55, 0.2), transparent 30%),
+    radial-gradient(circle at 0% 0%, rgba(162, 155, 254, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 248, 255, 0.96));
+  box-shadow:
+    0 30px 80px rgba(41, 34, 24, 0.2),
+    0 12px 28px rgba(41, 34, 24, 0.1);
+}
+
+:global(.ip-editor-dialog .el-dialog__header),
+:global(.el-dialog.ip-editor-dialog .el-dialog__header),
+:global(.character-editor-dialog .el-dialog__header),
+:global(.el-dialog.character-editor-dialog .el-dialog__header) {
+  display: none;
+}
+
+:global(.ip-editor-dialog .el-dialog__body),
+:global(.el-dialog.ip-editor-dialog .el-dialog__body),
+:global(.character-editor-dialog .el-dialog__body),
+:global(.el-dialog.character-editor-dialog .el-dialog__body) {
+  padding: 0;
+  max-height: calc(100vh - 156px);
+  overflow: hidden;
+}
+
+:global(.ip-editor-dialog .el-dialog__footer),
+:global(.el-dialog.ip-editor-dialog .el-dialog__footer),
+:global(.character-editor-dialog .el-dialog__footer),
+:global(.el-dialog.character-editor-dialog .el-dialog__footer) {
+  padding: 16px 28px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 16px 28px -30px rgba(41, 34, 24, 0.32);
+}
+
+.ip-editor-shell,
+.character-editor-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.ip-editor-desktop-header,
+.character-editor-desktop-header {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 28px 30px 22px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+  background:
+    radial-gradient(circle at 90% 0%, rgba(212, 175, 55, 0.24), transparent 30%),
+    linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(162, 155, 254, 0.15)),
+    rgba(255, 255, 255, 0.94);
+}
+
+.ip-editor-desktop-header::after,
+.character-editor-desktop-header::after {
+  content: '';
+  position: absolute;
+  right: -48px;
+  bottom: -70px;
+  width: 176px;
+  height: 176px;
+  border-radius: 50%;
+  background: rgba(212, 175, 55, 0.12);
+  pointer-events: none;
+}
+
+.ip-editor-desktop-icon,
+.character-editor-desktop-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  font-size: 26px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 175, 55, 0.24),
+    0 16px 28px -20px rgba(17, 24, 39, 0.38);
+}
+
+.ip-editor-desktop-icon {
+  color: #8e7dff;
+}
+
+.character-editor-desktop-icon {
+  color: var(--primary-gold-dark);
+}
+
+.ip-editor-desktop-copy,
+.character-editor-desktop-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+  padding-right: 48px;
+}
+
+.ip-editor-desktop-kicker,
+.character-editor-desktop-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ip-editor-desktop-kicker {
+  color: #7c6fda;
+}
+
+.character-editor-desktop-kicker {
+  color: #8a6c14;
+}
+
+.ip-editor-desktop-title,
+.character-editor-desktop-title {
+  margin: 0;
+  color: #2f2a20;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.16;
+}
+
+.ip-editor-desktop-copy p,
+.character-editor-desktop-copy p {
+  max-width: 540px;
+  margin: 8px 0 0;
+  color: #6f6a7f;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.ip-editor-desktop-close,
+.character-editor-desktop-close {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(144, 147, 153, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #7d7892;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color var(--transition-fast), transform var(--transition-fast), color var(--transition-fast);
+}
+
+.ip-editor-desktop-close:hover,
+.character-editor-desktop-close:hover {
+  background: rgba(255, 255, 255, 0.94);
+  transform: rotate(90deg);
+}
+
+.ip-editor-desktop-close:hover {
+  color: #6b5fe8;
+}
+
+.character-editor-desktop-close:hover {
+  color: #8a6c14;
+}
+
+.ip-editor-desktop-close:disabled,
+.character-editor-desktop-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
+.ip-editor-body,
+.character-editor-body {
+  min-height: 0;
+  max-height: calc(100vh - 252px);
+  overflow-y: auto;
+  padding: 22px 28px 4px;
+  overscroll-behavior: contain;
+}
+
+.ip-editor-form,
+.character-editor-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.ip-editor-section,
+.character-editor-section,
+.character-editor-avatar-card {
+  padding: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
+    radial-gradient(circle at top right, rgba(162, 155, 254, 0.1), transparent 34%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 14px 34px -30px rgba(17, 24, 39, 0.52);
+}
+
+.ip-editor-section-header,
+.character-editor-section-header {
+  margin-bottom: 16px;
+}
+
+.ip-editor-section-header h4,
+.character-editor-section-header h4 {
+  margin: 0;
+  color: var(--text-dark);
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.ip-editor-section-header p,
+.character-editor-section-header p {
+  margin: 5px 0 0;
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.ip-editor-field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(190px, 0.65fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.ip-editor-section :deep(.el-form-item),
+.character-editor-section :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.ip-editor-section :deep(.el-form-item:last-child),
+.character-editor-section :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.ip-editor-section :deep(.el-form-item__label),
+.character-editor-section :deep(.el-form-item__label) {
+  margin-bottom: 8px;
+  color: #5f5874;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.ip-editor-section :deep(.el-input__wrapper),
+.ip-editor-section :deep(.el-select__wrapper),
+.character-editor-section :deep(.el-input__wrapper),
+.character-editor-section :deep(.el-select__wrapper),
+.avatar-url-input :deep(.el-input__wrapper) {
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px rgba(162, 155, 254, 0.06);
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), background-color var(--transition-fast);
+}
+
+.ip-editor-section :deep(.el-input__wrapper:hover),
+.ip-editor-section :deep(.el-select__wrapper:hover),
+.character-editor-section :deep(.el-input__wrapper:hover),
+.character-editor-section :deep(.el-select__wrapper:hover),
+.avatar-url-input :deep(.el-input__wrapper:hover) {
+  border-color: rgba(162, 155, 254, 0.24);
+}
+
+.ip-editor-section :deep(.el-input__wrapper.is-focus),
+.ip-editor-section :deep(.el-select__wrapper.is-focused),
+.character-editor-section :deep(.el-input__wrapper.is-focus),
+.character-editor-section :deep(.el-select__wrapper.is-focused),
+.avatar-url-input :deep(.el-input__wrapper.is-focus) {
+  border-color: rgba(162, 155, 254, 0.48);
+  box-shadow:
+    0 0 0 3px rgba(196, 181, 253, 0.2),
+    0 12px 28px rgba(162, 155, 254, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.ip-editor-footer,
+.character-editor-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.ip-editor-cancel,
+.ip-editor-submit,
+.character-editor-cancel,
+.character-editor-submit {
+  min-width: 96px;
+  min-height: 40px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
 .custom-dialog :deep(.el-dialog__header) {
   margin-right: 0;
   padding-bottom: 20px;
   border-bottom: 1px solid #f2f6fc;
 }
 
-.custom-dialog :deep(.el-dialog__body) {
+.custom-dialog:not(.ip-editor-dialog):not(.character-editor-dialog) :deep(.el-dialog__body) {
   padding-top: 20px;
 }
 
@@ -3689,6 +4092,7 @@ const handleBGMSyncClose = () => {
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 190px;
 }
 
 .info-col {
@@ -3696,10 +4100,10 @@ const handleBGMSyncClose = () => {
 }
 
 .avatar-uploader {
-  width: 120px;
-  height: 120px;
-  border: 1px dashed #dcdfe6;
-  border-radius: 12px;
+  width: 132px;
+  height: 132px;
+  border: 1px dashed rgba(162, 155, 254, 0.32);
+  border-radius: 18px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -3707,7 +4111,9 @@ const handleBGMSyncClose = () => {
   overflow: hidden;
   cursor: pointer;
   position: relative;
-  background: #f8f9fc;
+  background:
+    linear-gradient(135deg, rgba(162, 155, 254, 0.08), rgba(212, 175, 55, 0.06)),
+    #fff;
 }
 
 .preview-img {
@@ -3717,15 +4123,15 @@ const handleBGMSyncClose = () => {
 }
 
 .uploader-icon {
-  font-size: 28px;
-  color: #8c939d;
+  font-size: 30px;
+  color: #8e7dff;
 }
 
 .upload-label {
   position: absolute;
   bottom: 0;
   width: 100%;
-  background: rgba(0, 0, 0, 0.5);
+  background: rgba(47, 42, 32, 0.58);
   color: #fff;
   font-size: 11px;
   text-align: center;
@@ -3750,7 +4156,9 @@ const handleBGMSyncClose = () => {
 
 .mode-radio-group :deep(.el-radio-button__inner) {
   width: 100%;
-  border-radius: 8px !important;
+  border-color: rgba(212, 175, 55, 0.12);
+  border-radius: 12px !important;
+  font-weight: 700;
 }
 
 .mode-radio-group :deep(.el-radio-button:first-child .el-radio-button__inner) {
@@ -3772,12 +4180,12 @@ const handleBGMSyncClose = () => {
 }
 
 .url-preview {
-  width: 120px;
-  height: 120px;
-  border: 1px dashed #dcdfe6;
-  border-radius: 12px;
+  width: 132px;
+  height: 132px;
+  border: 1px dashed rgba(162, 155, 254, 0.32);
+  border-radius: 18px;
   overflow: hidden;
-  background: #f8f9fc;
+  background: #fff;
   display: flex;
   align-items: center;
   justify-content: center;

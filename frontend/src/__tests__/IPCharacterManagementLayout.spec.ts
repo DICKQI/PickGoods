@@ -103,6 +103,26 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain("{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}")
   })
 
+  it('uses themed roomy PC shells for IP, character, and Bangumi entry forms', () => {
+    expect(source).toContain("class=\"custom-dialog ip-editor-dialog\"")
+    expect(source).toContain("class=\"custom-dialog character-editor-dialog\"")
+    expect(source).toContain('class="ip-editor-desktop-header"')
+    expect(source).toContain('class="character-editor-desktop-header"')
+    expect(source).toContain('class="bgm-dialog-header-icon"')
+    expect(source).toContain('class="ip-editor-section ip-editor-section--identity"')
+    expect(source).toContain('class="ip-editor-section ip-editor-section--keywords"')
+    expect(source).toContain('character-editor-avatar-card')
+    expect(source).toContain('character-editor-section--identity')
+    expect(source).toContain('class="ip-editor-footer"')
+    expect(source).toContain('class="character-editor-footer"')
+    expect(source).toContain(':global(.ip-editor-dialog .el-dialog),')
+    expect(source).toContain(':global(.el-dialog.ip-editor-dialog),')
+    expect(source).toContain(':global(.character-editor-dialog .el-dialog),')
+    expect(source).toContain(':global(.el-dialog.character-editor-dialog)')
+    expect(source).toContain(':global(.ip-editor-dialog .el-dialog__body),')
+    expect(source).toContain('max-height: calc(100vh - 156px);')
+  })
+
   it('wraps Bangumi search stages in a branded flow panel and uses a shared footer action bar', () => {
     expect(source).toContain('class="bgm-flow-panel"')
     expect(source).toContain('class="bgm-search-form"')

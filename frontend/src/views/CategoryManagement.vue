@@ -206,12 +206,32 @@
     <el-dialog
       v-model="dialogVisible"
       :title="isMobile ? undefined : categoryEditorTitle"
-      width="400px"
+      :width="isMobile ? '100vw' : '680px'"
       :class="['custom-dialog', 'category-editor-dialog', { 'is-category-editor-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
     >
       <div class="category-editor-shell">
+        <div v-if="!isMobile" class="category-editor-desktop-header">
+          <div class="category-editor-desktop-icon" aria-hidden="true">
+            <el-icon><CollectionTag /></el-icon>
+          </div>
+          <div class="category-editor-desktop-copy">
+            <span class="category-editor-desktop-kicker">Category Setup</span>
+            <h3 class="category-editor-desktop-title">{{ categoryEditorTitle }}</h3>
+            <p>用清晰层级、颜色标签和排序规则，让谷子品类更适合在 PC 端快速维护。</p>
+          </div>
+          <button
+            class="category-editor-desktop-close"
+            type="button"
+            :disabled="submitting"
+            aria-label="关闭品类编辑弹窗"
+            @click="dialogVisible = false"
+          >
+            ×
+          </button>
+        </div>
+
         <div v-if="isMobile" class="category-editor-hero">
           <div class="category-editor-hero-icon" aria-hidden="true">
             <el-icon><CollectionTag /></el-icon>
@@ -233,7 +253,7 @@
 
         <div class="category-editor-body">
           <el-form :model="formData" :rules="formRules" ref="formRef" label-position="top">
-            <section class="category-editor-section">
+            <section class="category-editor-section category-editor-section--identity">
               <div class="category-editor-section-head">
                 <span class="section-kicker">基础信息</span>
                 <p>给这个收纳分类一个清晰好找的名字</p>
@@ -248,7 +268,7 @@
               </el-form-item>
             </section>
 
-            <section class="category-editor-section">
+            <section class="category-editor-section category-editor-section--hierarchy">
               <div class="category-editor-section-head">
                 <span class="section-kicker">层级关系</span>
                 <p>{{ parentSummaryText }}</p>
@@ -271,38 +291,40 @@
               </el-form-item>
             </section>
 
-            <section class="category-editor-section">
+            <section class="category-editor-section category-editor-section--display">
               <div class="category-editor-section-head">
                 <span class="section-kicker">显示与排序</span>
                 <p>颜色用于快速识别，同级排序数值越小越靠前</p>
               </div>
-              <el-form-item label="颜色标签" prop="color_tag">
-                <div class="color-picker-row">
-                  <div
-                    class="color-preview"
-                    :style="{ backgroundColor: formData.color_tag || '#f5f7fa' }"
-                  ></div>
-                  <el-input v-model="formData.color_tag" placeholder="#AABBCC，可不填" clearable />
-                  <el-color-picker v-model="formData.color_tag" show-alpha />
-                </div>
-                <div class="color-presets">
-                  <span class="preset-label">常用：</span>
-                  <button
-                    v-for="preset in colorPresets"
-                    :key="preset"
-                    class="color-swatch"
-                    type="button"
-                    :class="{ active: formData.color_tag === preset }"
-                    :style="{ backgroundColor: preset }"
-                    :aria-label="`选择颜色 ${preset}`"
-                    @click="formData.color_tag = preset"
-                  ></button>
-                </div>
-              </el-form-item>
+              <div class="category-editor-field-grid">
+                <el-form-item label="颜色标签" prop="color_tag">
+                  <div class="color-picker-row">
+                    <div
+                      class="color-preview"
+                      :style="{ backgroundColor: formData.color_tag || '#f5f7fa' }"
+                    ></div>
+                    <el-input v-model="formData.color_tag" placeholder="#AABBCC，可不填" clearable />
+                    <el-color-picker v-model="formData.color_tag" show-alpha />
+                  </div>
+                  <div class="color-presets">
+                    <span class="preset-label">常用：</span>
+                    <button
+                      v-for="preset in colorPresets"
+                      :key="preset"
+                      class="color-swatch"
+                      type="button"
+                      :class="{ active: formData.color_tag === preset }"
+                      :style="{ backgroundColor: preset }"
+                      :aria-label="`选择颜色 ${preset}`"
+                      @click="formData.color_tag = preset"
+                    ></button>
+                  </div>
+                </el-form-item>
 
-              <el-form-item label="同级排序" prop="order" class="category-order-field">
-                <el-input-number v-model="formData.order" :min="0" :max="9999" :step="1" style="width: 100%" />
-              </el-form-item>
+                <el-form-item label="同级排序" prop="order" class="category-order-field">
+                  <el-input-number v-model="formData.order" :min="0" :max="9999" :step="1" style="width: 100%" />
+                </el-form-item>
+              </div>
             </section>
           </el-form>
         </div>
@@ -418,8 +440,6 @@ const categoryEditorTitle = computed(() => {
   if (isParentLocked.value) return '新增子类'
   return '新增品类'
 })
-
-const dialogTitle = computed(() => categoryEditorTitle.value)
 
 const selectedParentName = computed(() => {
   if (formData.value.parent === null) return ''
@@ -1100,18 +1120,176 @@ onUnmounted(() => {
 .category-editor-shell {
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
 
 .category-editor-hero {
   display: none;
 }
 
+:global(.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog),
+:global(.el-dialog.category-editor-dialog:not(.is-category-editor-mobile)) {
+  max-width: calc(100vw - 48px);
+  max-height: calc(100vh - 72px);
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  border-radius: 26px;
+  background:
+    radial-gradient(circle at top right, rgba(142, 125, 255, 0.16), transparent 32%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 248, 255, 0.96));
+  box-shadow:
+    0 30px 80px rgba(41, 34, 24, 0.2),
+    0 12px 28px rgba(41, 34, 24, 0.1);
+}
+
+:global(.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog__header),
+:global(.el-dialog.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog__header) {
+  display: none;
+}
+
+:global(.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog__body),
+:global(.el-dialog.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog__body) {
+  padding: 0;
+  max-height: calc(100vh - 156px);
+  overflow: hidden;
+}
+
+:global(.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog__footer),
+:global(.el-dialog.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog__footer) {
+  padding: 16px 28px 24px;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: inset 0 16px 28px -30px rgba(41, 34, 24, 0.32);
+}
+
+.category-editor-desktop-header {
+  position: relative;
+  display: flex;
+  gap: 16px;
+  padding: 28px 30px 22px;
+  overflow: hidden;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+  background:
+    radial-gradient(circle at 92% 0%, rgba(212, 175, 55, 0.22), transparent 30%),
+    linear-gradient(135deg, rgba(212, 175, 55, 0.18), rgba(142, 125, 255, 0.14)),
+    rgba(255, 255, 255, 0.94);
+}
+
+.category-editor-desktop-header::after {
+  content: '';
+  position: absolute;
+  right: -52px;
+  bottom: -64px;
+  width: 168px;
+  height: 168px;
+  border-radius: 50%;
+  background: rgba(142, 125, 255, 0.1);
+  pointer-events: none;
+}
+
+.category-editor-desktop-icon {
+  width: 54px;
+  height: 54px;
+  flex: 0 0 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+  color: #8e7dff;
+  font-size: 26px;
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 175, 55, 0.22),
+    0 16px 28px -20px rgba(17, 24, 39, 0.38);
+}
+
+.category-editor-desktop-copy {
+  position: relative;
+  z-index: 1;
+  min-width: 0;
+}
+
+.category-editor-desktop-kicker {
+  display: inline-flex;
+  width: fit-content;
+  margin-bottom: 8px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.68);
+  color: #7c6fda;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.category-editor-desktop-title {
+  margin: 0;
+  color: #2f2a20;
+  font-size: 26px;
+  font-weight: 800;
+  line-height: 1.16;
+}
+
+.category-editor-desktop-copy p {
+  max-width: 500px;
+  margin: 8px 0 0;
+  color: #6f6a7f;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.category-editor-desktop-close {
+  position: absolute;
+  top: 22px;
+  right: 22px;
+  z-index: 2;
+  width: 34px;
+  height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(144, 147, 153, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.76);
+  color: #7d7892;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background-color 0.18s ease, transform 0.18s ease, color 0.18s ease;
+}
+
+.category-editor-desktop-close:hover {
+  color: #6b5fe8;
+  background: rgba(255, 255, 255, 0.94);
+  transform: rotate(90deg);
+}
+
+.category-editor-desktop-close:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+  transform: none;
+}
+
 .category-editor-body {
-  display: block;
+  min-height: 0;
+  max-height: calc(100vh - 252px);
+  overflow-y: auto;
+  padding: 22px 28px 4px;
+  overscroll-behavior: contain;
 }
 
 .category-editor-section {
-  margin-bottom: 18px;
+  margin-bottom: 16px;
+  padding: 18px;
+  border: 1px solid rgba(212, 175, 55, 0.12);
+  border-radius: 20px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
+    radial-gradient(circle at top right, rgba(142, 125, 255, 0.1), transparent 34%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 14px 34px -30px rgba(17, 24, 39, 0.52);
 }
 
 .category-editor-section:last-child {
@@ -1119,7 +1297,85 @@ onUnmounted(() => {
 }
 
 .category-editor-section-head {
-  display: none;
+  display: block;
+  margin-bottom: 14px;
+}
+
+.section-kicker {
+  display: block;
+  color: #303133;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.category-editor-section-head p {
+  margin: 5px 0 0;
+  color: #7a748c;
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.category-editor-section :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.category-editor-section :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.category-editor-section :deep(.el-form-item__label) {
+  margin-bottom: 8px;
+  color: #5f5874;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.category-editor-section :deep(.el-input__wrapper),
+.category-editor-section :deep(.el-select__wrapper),
+.category-editor-section :deep(.el-input-number .el-input__wrapper) {
+  min-height: 44px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 8px 24px rgba(142, 125, 255, 0.06);
+  transition: border-color 0.18s ease, box-shadow 0.18s ease, background-color 0.18s ease;
+}
+
+.category-editor-section :deep(.el-input__wrapper:hover),
+.category-editor-section :deep(.el-select__wrapper:hover) {
+  border-color: rgba(142, 125, 255, 0.24);
+}
+
+.category-editor-section :deep(.el-input__wrapper.is-focus),
+.category-editor-section :deep(.el-select__wrapper.is-focused) {
+  border-color: rgba(142, 125, 255, 0.48);
+  box-shadow:
+    0 0 0 3px rgba(196, 181, 253, 0.2),
+    0 12px 28px rgba(142, 125, 255, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.parent-lock-note {
+  display: flex;
+  align-items: center;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(142, 125, 255, 0.18);
+  border-radius: 14px;
+  background: rgba(142, 125, 255, 0.08);
+  color: #6b5fe8;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.category-editor-field-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(180px, 0.55fr);
+  gap: 18px;
+  align-items: start;
 }
 
 .category-editor-footer {
@@ -1128,10 +1384,20 @@ onUnmounted(() => {
   gap: 12px;
 }
 
+.category-editor-cancel,
+.category-editor-submit {
+  min-width: 96px;
+  min-height: 40px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
 .color-picker-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr) 42px;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
+  width: 100%;
 }
 
 .color-picker-row .el-input {
@@ -1139,10 +1405,10 @@ onUnmounted(() => {
 }
 
 .color-preview {
-  width: 36px;
-  height: 32px;
-  border-radius: 6px;
-  border: 1px solid #ebeef5;
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  border: 1px solid rgba(212, 175, 55, 0.14);
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
 }
 
@@ -1216,6 +1482,7 @@ onUnmounted(() => {
     width: 100vw !important;
     max-width: 100vw;
     max-height: 88vh;
+    padding: 0;
     margin: 0 !important;
     border-radius: 20px 20px 0 0;
     overflow: hidden;

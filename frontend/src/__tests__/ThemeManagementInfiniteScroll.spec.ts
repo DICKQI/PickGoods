@@ -5,6 +5,18 @@ import { nextTick, ref } from 'vue'
 
 const viewSource = readFileSync(join(process.cwd(), 'src/views/ThemeManagement.vue'), 'utf-8')
 
+function cssRuleBlock(source: string, selector: string) {
+  const start = source.indexOf(selector)
+  expect(start).toBeGreaterThan(-1)
+
+  const open = source.indexOf('{', start)
+  const close = source.indexOf('}', open)
+  expect(open).toBeGreaterThan(start)
+  expect(close).toBeGreaterThan(open)
+
+  return source.slice(open + 1, close)
+}
+
 // ============================================================
 // 1. 源码结构断言：确保模板和 observer 配置正确
 // ============================================================
@@ -14,12 +26,29 @@ describe('ThemeManagement infinite scroll – source structure', () => {
     expect(viewSource).toContain('is-theme-editor-mobile')
     expect(viewSource).toContain('class="theme-editor-hero"')
     expect(viewSource).toContain('class="theme-editor-body"')
-    expect(viewSource).toContain('class="theme-editor-section"')
+    expect(viewSource).toContain('theme-editor-section--identity')
+    expect(viewSource).toContain('theme-editor-section--photos')
     expect(viewSource).toContain('保存后可继续添加参考图')
     expect(viewSource).toContain('保存主题')
     expect(viewSource).toContain('theme-editor-sheet-enter')
     expect(viewSource).toContain('theme-editor-sheet-leave')
     expect(viewSource).toContain('translate3d(0, 100%, 0)')
+    expect(cssRuleBlock(viewSource, ':global(.el-dialog.is-theme-editor-mobile)')).toContain('padding: 0;')
+  })
+
+  it('defines the PC theme editor as a themed roomy form dialog', () => {
+    expect(viewSource).toContain(":width=\"themeEditorDialogWidth\"")
+    expect(viewSource).toContain('class="theme-editor-desktop-header"')
+    expect(viewSource).toContain('class="theme-editor-desktop-icon"')
+    expect(viewSource).toContain('class="theme-editor-desktop-title"')
+    expect(viewSource).toContain('theme-editor-section--identity')
+    expect(viewSource).toContain('theme-editor-section--photos')
+    expect(viewSource).toContain('class="theme-editor-image-note-icon"')
+    expect(viewSource).toContain('const themeEditorDialogWidth = computed')
+    expect(viewSource).toContain("'820px'")
+    expect(viewSource).toContain("'720px'")
+    expect(viewSource).toContain(':global(.theme-editor-dialog:not(.is-theme-editor-mobile) .el-dialog)')
+    expect(viewSource).toContain('max-width: calc(100vw - 48px);')
   })
 
   it('renders a sentinel element with v-if="hasMoreMobileData"', () => {
