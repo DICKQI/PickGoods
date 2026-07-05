@@ -5,6 +5,18 @@ import { describe, expect, it } from 'vitest'
 const showcaseManagerSource = readFileSync(resolve(process.cwd(), 'src/components/ShowcaseManager.vue'), 'utf8')
 
 describe('ShowcaseManager dialog cover layout', () => {
+  function cssRuleBlock(source: string, selector: string) {
+    const start = source.indexOf(selector)
+    expect(start).toBeGreaterThan(-1)
+
+    const open = source.indexOf('{', start)
+    const close = source.indexOf('}', open)
+    expect(open).toBeGreaterThan(start)
+    expect(close).toBeGreaterThan(open)
+
+    return source.slice(open + 1, close)
+  }
+
   it('places the cover tip below the upload preview inside a dedicated vertical wrapper', () => {
     expect(showcaseManagerSource).toContain('class="showcase-cover-field"')
     expect(showcaseManagerSource).toContain('class="cover-tip"')
@@ -26,6 +38,7 @@ describe('ShowcaseManager dialog cover layout', () => {
     expect(showcaseManagerSource).toContain('class="showcase-dialog-kicker"')
     expect(showcaseManagerSource).toContain('class="showcase-dialog-title"')
     expect(showcaseManagerSource).toContain('class="showcase-dialog-subtitle"')
+    expect(showcaseManagerSource).toContain('class="showcase-editor-shell"')
     expect(showcaseManagerSource).toContain('class="showcase-dialog-form"')
     expect(showcaseManagerSource).toContain('class="showcase-form-section showcase-form-section--primary"')
     expect(showcaseManagerSource).toContain('class="showcase-form-section showcase-form-section--secondary"')
@@ -65,5 +78,28 @@ describe('ShowcaseManager dialog cover layout', () => {
     expect(headerStyleStart).toBeGreaterThan(-1)
     expect(headerStyle).toContain('background: rgba(255, 255, 255, 0.96);')
     expect(headerStyle).not.toContain('radial-gradient')
+  })
+
+  it('renders the mobile showcase editor as the shared bottom-sheet pattern', () => {
+    expect(showcaseManagerSource).toContain(":class=\"['custom-dialog', 'showcase-dialog', { 'is-showcase-editor-mobile': isMobile }]\"")
+    expect(showcaseManagerSource).toContain(":width=\"isMobile ? '100vw' : 'min(92vw, 560px)'\"")
+    expect(showcaseManagerSource).toContain(':align-center="!isMobile"')
+    expect(showcaseManagerSource).toContain(':show-close="!isMobile"')
+    expect(showcaseManagerSource).toContain(':lock-scroll="!isMobile"')
+    expect(showcaseManagerSource).toContain('v-if="isMobile" class="showcase-editor-hero"')
+    expect(showcaseManagerSource).toContain('class="showcase-editor-hero-icon"')
+    expect(showcaseManagerSource).toContain('class="showcase-editor-close"')
+  })
+
+  it('prevents the mobile showcase sheet from jittering during animation', () => {
+    const overlayRule = cssRuleBlock(showcaseManagerSource, ':global(.el-overlay-dialog:has(.is-showcase-editor-mobile))')
+    const sheetRule = cssRuleBlock(showcaseManagerSource, ':global(.el-dialog.is-showcase-editor-mobile)')
+
+    expect(overlayRule).toContain('overflow: hidden;')
+    expect(sheetRule).toContain('min-width: 100vw;')
+    expect(sheetRule).toContain('flex: 0 0 100vw;')
+    expect(showcaseManagerSource).toContain(':global(.dialog-fade-enter-active .el-overlay-dialog:has(.is-showcase-editor-mobile))')
+    expect(showcaseManagerSource).toContain('animation: showcase-editor-overlay-fade-in 0.28s')
+    expect(showcaseManagerSource).toContain('@keyframes showcase-editor-overlay-fade-in')
   })
 })

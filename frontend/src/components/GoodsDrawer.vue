@@ -5,6 +5,7 @@
     :size="drawerSize"
     :with-header="!isMobile"
     :show-close="!isMobile"
+    :lock-scroll="!isMobile"
     :class="[
       'guzi-detail-drawer', 
       { 'is-mobile': isMobile },

@@ -223,4 +223,11 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('translateY(100%)')
     expect(source).toContain('translateY(0)')
   })
+
+  it('disables body scroll locking for mobile form sheets to prevent background resize jitter', () => {
+    expect(source).toContain('<el-dialog\n      v-model="ipDialogVisible"')
+    expect(source).toContain('<el-dialog\n      v-model="bgmDialogVisible"')
+    expect(source).toContain('<el-dialog\n      v-model="characterDialogVisible"')
+    expect(source).toContain(':lock-scroll="!isMobile"')
+  })
 })

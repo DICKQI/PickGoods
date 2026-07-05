@@ -365,7 +365,7 @@
     </div>
 
     <!-- 移动端主图选择抽屉 -->
-    <el-drawer v-model="photoSourceDrawerVisible" direction="btt" :with-header="false" size="auto" class="photo-source-drawer">
+    <el-drawer v-model="photoSourceDrawerVisible" direction="btt" :with-header="false" size="auto" class="photo-source-drawer" :lock-scroll="!isMobile">
       <div class="action-sheet-content">
         <div class="sheet-header">选择主图</div>
         <div class="sheet-menu">
@@ -383,6 +383,7 @@
       :class="['goods-leave-dialog', { 'is-goods-leave-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
+      :lock-scroll="!isMobile"
       :close-on-click-modal="false"
     >
       <div class="goods-leave-content">
@@ -412,6 +413,7 @@
       :class="['goods-reset-dialog', { 'is-goods-reset-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
+      :lock-scroll="!isMobile"
       :close-on-click-modal="false"
     >
       <div class="goods-reset-content">
@@ -447,7 +449,7 @@
     />
 
     <!-- 新建去重弹窗 -->
-    <el-dialog v-model="duplicateDialogVisible" width="min(92vw, 644px)" class="duplicate-dialog" :close-on-click-modal="false" @close="setDuplicateSelectedId(null)">
+    <el-dialog v-model="duplicateDialogVisible" width="min(92vw, 644px)" class="duplicate-dialog" :lock-scroll="!isMobile" :close-on-click-modal="false" @close="setDuplicateSelectedId(null)">
       <template #header><span class="duplicate-dialog-title">检测到库存中已存在相同项目</span></template>
       <p class="duplicate-dialog-desc">以下谷子与当前填写信息可能重复，请选择合并到已有条目或仍然新建一条。</p>
       <div class="duplicate-candidates-list">
@@ -472,7 +474,7 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="themeImagePickerVisible" width="min(92vw, 720px)" class="theme-image-dialog" title="选择主题图片" :close-on-click-modal="false">
+    <el-dialog v-model="themeImagePickerVisible" width="min(92vw, 720px)" class="theme-image-dialog" title="选择主题图片" :lock-scroll="!isMobile" :close-on-click-modal="false">
       <div class="theme-image-grid">
         <label
           v-for="image in activeThemeImages"

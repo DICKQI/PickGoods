@@ -2,6 +2,8 @@ import { describe, expect, it, beforeEach, vi } from 'vitest'
 import { mount, VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import GoodsDrawer from '@/components/GoodsDrawer.vue'
 import { getGoodsList } from '@/api/goods'
 
@@ -316,6 +318,12 @@ describe('GoodsDrawer mobile gesture', () => {
       await wrapper.vm.$nextTick()
 
       expect(wrapper.emitted('update:modelValue')![0]).toEqual([false])
+    })
+
+    it('disables Element Plus body scroll locking on mobile to avoid background resize jitter', () => {
+      const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+
+      expect(source).toContain(':lock-scroll="!isMobile"')
     })
   })
 })

@@ -210,6 +210,7 @@
       :class="['custom-dialog', 'category-editor-dialog', { 'is-category-editor-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
+      :lock-scroll="!isMobile"
     >
       <div class="category-editor-shell">
         <div v-if="!isMobile" class="category-editor-desktop-header">
@@ -1476,11 +1477,23 @@ onUnmounted(() => {
     align-items: flex-end;
     justify-content: center;
     padding: 0;
+    overflow: hidden;
+  }
+
+  :global(.dialog-fade-enter-active .el-overlay-dialog:has(.is-category-editor-mobile)) {
+    animation: category-editor-overlay-fade-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+
+  :global(.dialog-fade-leave-active .el-overlay-dialog:has(.is-category-editor-mobile)) {
+    animation: category-editor-overlay-fade-out 0.22s cubic-bezier(0.4, 0, 1, 1) both;
   }
 
   :global(.el-dialog.is-category-editor-mobile) {
     width: 100vw !important;
+    min-width: 100vw;
     max-width: 100vw;
+    flex: 0 0 100vw;
+    box-sizing: border-box;
     max-height: 88vh;
     padding: 0;
     margin: 0 !important;
@@ -1492,6 +1505,26 @@ onUnmounted(() => {
     box-shadow: 0 -16px 42px rgba(17, 24, 39, 0.18);
     animation: category-editor-sheet-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
     transform-origin: center bottom;
+  }
+
+  @keyframes category-editor-overlay-fade-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes category-editor-overlay-fade-out {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0;
+    }
   }
 
   @keyframes category-editor-sheet-enter {

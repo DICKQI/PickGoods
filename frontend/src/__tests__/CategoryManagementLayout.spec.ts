@@ -66,4 +66,21 @@ describe('CategoryManagement mobile layout', () => {
     expect(viewSource).toContain(':global(.category-editor-dialog:not(.is-category-editor-mobile) .el-dialog)')
     expect(viewSource).toContain('max-width: calc(100vw - 48px);')
   })
+
+  it('disables body scroll locking for the mobile category sheet to prevent background resize jitter', () => {
+    expect(viewSource).toContain('<el-dialog\n      v-model="dialogVisible"')
+    expect(viewSource).toContain(':lock-scroll="!isMobile"')
+  })
+
+  it('keeps the mobile category sheet full-width throughout its enter animation', () => {
+    const sheetRule = cssRuleBlock(viewSource, ':global(.el-dialog.is-category-editor-mobile)')
+    const overlayRule = cssRuleBlock(viewSource, ':global(.el-overlay-dialog:has(.is-category-editor-mobile))')
+
+    expect(overlayRule).toContain('overflow: hidden;')
+    expect(sheetRule).toContain('min-width: 100vw;')
+    expect(sheetRule).toContain('flex: 0 0 100vw;')
+    expect(viewSource).toContain(':global(.dialog-fade-enter-active .el-overlay-dialog:has(.is-category-editor-mobile))')
+    expect(viewSource).toContain('animation: category-editor-overlay-fade-in 0.28s')
+    expect(viewSource).toContain('@keyframes category-editor-overlay-fade-in')
+  })
 })

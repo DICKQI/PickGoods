@@ -385,6 +385,7 @@
       :class="{ 'unassigned-goods-dialog--mobile': isMobile }"
       data-test="unassigned-goods-dialog"
       align-center
+      :lock-scroll="!isMobile"
       append-to-body
     >
       <div class="unassigned-shell">
@@ -572,6 +573,7 @@
       class="mobile-location-picker"
       data-test="mobile-location-picker"
       append-to-body
+      :lock-scroll="!isMobile"
     >
       <div class="mobile-picker-shell">
         <div class="mobile-picker-header">
@@ -645,6 +647,7 @@
       class="mobile-filter-panel"
       data-test="mobile-filter-panel"
       append-to-body
+      :lock-scroll="!isMobile"
     >
       <div class="mobile-filter-shell">
         <el-form label-position="top" @submit.prevent>
@@ -710,6 +713,7 @@
       class="location-node-dialog"
       data-test="location-node-dialog"
       align-center
+      :lock-scroll="!isMobile"
       @close="handleDialogClose"
       append-to-body
     >

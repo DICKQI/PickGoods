@@ -468,6 +468,7 @@
       :class="['custom-dialog', 'ip-editor-dialog', { 'is-ip-editor-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
+      :lock-scroll="!isMobile"
     >
       <div class="ip-editor-shell">
         <div v-if="!isMobile" class="ip-editor-desktop-header">
@@ -589,6 +590,7 @@
       :class="['custom-dialog', 'bgm-dialog', { 'is-bgm-import-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
+      :lock-scroll="!isMobile"
       :close-on-click-modal="false"
     >
       <template #header>
@@ -879,6 +881,7 @@
       :width="bgmDialogWidth"
       class="custom-dialog bgm-dialog"
       align-center
+      :lock-scroll="!isMobile"
       :close-on-click-modal="false"
     >
       <template #header>
@@ -1159,6 +1162,7 @@
       :class="['custom-dialog', 'character-editor-dialog', { 'is-character-editor-mobile': isMobile }]"
       :align-center="!isMobile"
       :show-close="!isMobile"
+      :lock-scroll="!isMobile"
     >
       <div class="character-editor-shell">
         <div v-if="!isMobile" class="character-editor-desktop-header">

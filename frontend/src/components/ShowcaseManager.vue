@@ -125,12 +125,14 @@
 
     <el-dialog
       v-model="showcaseDialogVisible"
-      width="min(92vw, 560px)"
-      class="custom-dialog showcase-dialog"
-      align-center
+      :width="isMobile ? '100vw' : 'min(92vw, 560px)'"
+      :class="['custom-dialog', 'showcase-dialog', { 'is-showcase-editor-mobile': isMobile }]"
+      :align-center="!isMobile"
+      :show-close="!isMobile"
+      :lock-scroll="!isMobile"
     >
       <template #header>
-        <div class="showcase-dialog-header">
+        <div v-if="!isMobile" class="showcase-dialog-header">
           <span class="showcase-dialog-kicker">{{ showcaseDialogMode === 'create' ? 'Curate Showcase' : 'Refine Showcase' }}</span>
           <h3 class="showcase-dialog-title">{{ showcaseDialogTitle }}</h3>
           <p class="showcase-dialog-subtitle">
@@ -138,47 +140,65 @@
           </p>
         </div>
       </template>
-      <el-form :model="showcaseForm" label-position="top" class="showcase-dialog-form">
-        <section class="showcase-form-section showcase-form-section--primary">
-          <el-form-item label="展柜名称">
-            <el-input v-model="showcaseForm.name" maxlength="200" show-word-limit placeholder="给你的痛柜起个名字" />
-          </el-form-item>
-          <el-form-item label="描述">
-            <el-input v-model="showcaseForm.description" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="写点什么..." />
-          </el-form-item>
-        </section>
-
-        <section class="showcase-form-section showcase-form-section--secondary">
-          <el-form-item label="封面图片（可选）">
-            <div class="showcase-cover-field">
-              <el-upload
-                v-model:file-list="showcaseCoverFileList"
-                list-type="picture-card"
-                :auto-upload="false"
-                :limit="1"
-                :on-change="handleCoverChange"
-                :on-remove="handleCoverRemove"
-                :http-request="dummyUpload"
-                accept="image/*"
-                :class="{ 'hide-upload-trigger': showcaseCoverFileList.length >= 1 }"
-              >
-                <el-icon><Plus /></el-icon>
-              </el-upload>
-              <div class="cover-tip">建议使用 1:1 或 4:3 比例图片</div>
-            </div>
-          </el-form-item>
-        </section>
-
-        <section class="showcase-form-section showcase-form-section--settings">
-          <div class="showcase-visibility-row">
-            <div class="showcase-visibility-copy">
-              <span class="showcase-visibility-title">是否公开</span>
-              <span class="showcase-visibility-desc">公开后，其他人可以在公共展柜中看到这个展柜。</span>
-            </div>
-            <el-switch v-model="showcaseForm.is_public" active-color="#A29BFE" />
+      <div class="showcase-editor-shell">
+        <div v-if="isMobile" class="showcase-editor-hero">
+          <div class="showcase-editor-hero-icon" aria-hidden="true">
+            <el-icon><Collection /></el-icon>
           </div>
-        </section>
-      </el-form>
+          <div class="showcase-editor-hero-copy">
+            <span class="showcase-dialog-kicker">{{ showcaseDialogMode === 'create' ? 'Curate Showcase' : 'Refine Showcase' }}</span>
+            <h3 class="showcase-dialog-title">{{ showcaseDialogTitle }}</h3>
+            <p class="showcase-dialog-subtitle">
+              {{ showcaseDialogMode === 'create' ? '用一个更完整的名字、描述和封面，为你的展柜定下第一眼印象。' : '微调名称、描述和封面，让这个展柜更贴近你现在的收藏氛围。' }}
+            </p>
+          </div>
+          <button class="showcase-editor-close" type="button" aria-label="关闭展柜编辑面板" @click="showcaseDialogVisible = false">
+            ×
+          </button>
+        </div>
+
+        <el-form :model="showcaseForm" label-position="top" class="showcase-dialog-form">
+          <section class="showcase-form-section showcase-form-section--primary">
+            <el-form-item label="展柜名称">
+              <el-input v-model="showcaseForm.name" maxlength="200" show-word-limit placeholder="给你的痛柜起个名字" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="showcaseForm.description" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="写点什么..." />
+            </el-form-item>
+          </section>
+
+          <section class="showcase-form-section showcase-form-section--secondary">
+            <el-form-item label="封面图片（可选）">
+              <div class="showcase-cover-field">
+                <el-upload
+                  v-model:file-list="showcaseCoverFileList"
+                  list-type="picture-card"
+                  :auto-upload="false"
+                  :limit="1"
+                  :on-change="handleCoverChange"
+                  :on-remove="handleCoverRemove"
+                  :http-request="dummyUpload"
+                  accept="image/*"
+                  :class="{ 'hide-upload-trigger': showcaseCoverFileList.length >= 1 }"
+                >
+                  <el-icon><Plus /></el-icon>
+                </el-upload>
+                <div class="cover-tip">建议使用 1:1 或 4:3 比例图片</div>
+              </div>
+            </el-form-item>
+          </section>
+
+          <section class="showcase-form-section showcase-form-section--settings">
+            <div class="showcase-visibility-row">
+              <div class="showcase-visibility-copy">
+                <span class="showcase-visibility-title">是否公开</span>
+                <span class="showcase-visibility-desc">公开后，其他人可以在公共展柜中看到这个展柜。</span>
+              </div>
+              <el-switch v-model="showcaseForm.is_public" active-color="#A29BFE" />
+            </div>
+          </section>
+        </el-form>
+      </div>
       <template #footer>
         <div class="showcase-dialog-footer">
           <el-button class="showcase-dialog-cancel" @click="showcaseDialogVisible = false">取消</el-button>
@@ -1162,6 +1182,16 @@ watch(
   max-width: 440px;
 }
 
+.showcase-editor-shell {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.showcase-editor-hero {
+  display: none;
+}
+
 .showcase-dialog-kicker {
   display: inline-flex;
   align-items: center;
@@ -1464,29 +1494,195 @@ watch(
     margin-right: 8px;
   }
 
-  :global(.showcase-dialog .el-dialog) {
-    width: min(96vw, 560px) !important;
-    border-radius: 22px;
+  :global(.el-overlay-dialog:has(.is-showcase-editor-mobile)) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    overflow: hidden;
   }
 
-  :global(.showcase-dialog .el-dialog__header) {
-    padding: 22px 20px 16px;
+  :global(.dialog-fade-enter-active .el-overlay-dialog:has(.is-showcase-editor-mobile)) {
+    animation: showcase-editor-overlay-fade-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 
-  :global(.showcase-dialog .el-dialog__body) {
-    padding: 18px 20px 0;
+  :global(.dialog-fade-leave-active .el-overlay-dialog:has(.is-showcase-editor-mobile)) {
+    animation: showcase-editor-overlay-fade-out 0.22s cubic-bezier(0.4, 0, 1, 1) both;
   }
 
-  :global(.showcase-dialog .el-dialog__footer) {
-    padding: 16px 20px 20px;
+  :global(.el-dialog.is-showcase-editor-mobile) {
+    width: 100vw !important;
+    min-width: 100vw;
+    max-width: 100vw;
+    flex: 0 0 100vw;
+    box-sizing: border-box;
+    max-height: 88vh;
+    padding: 0;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
+    background:
+      linear-gradient(180deg, rgba(255, 252, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 36%),
+      #fff;
+    box-shadow: 0 -16px 42px rgba(17, 24, 39, 0.18);
+    animation: showcase-editor-sheet-enter 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    transform-origin: center bottom;
+  }
+
+  @keyframes showcase-editor-overlay-fade-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes showcase-editor-overlay-fade-out {
+    from {
+      opacity: 1;
+    }
+
+    to {
+      opacity: 0;
+    }
+  }
+
+  @keyframes showcase-editor-sheet-enter {
+    from {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+
+    to {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+  }
+
+  :global(.dialog-fade-leave-active .el-dialog.is-showcase-editor-mobile) {
+    animation: showcase-editor-sheet-leave 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  @keyframes showcase-editor-sheet-leave {
+    from {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+
+    to {
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+    }
+  }
+
+  :global(.el-dialog.is-showcase-editor-mobile .el-dialog__header) {
+    display: none;
+  }
+
+  :global(.el-dialog.is-showcase-editor-mobile .el-dialog__body) {
+    padding: 0;
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  :global(.el-dialog.is-showcase-editor-mobile .el-dialog__footer) {
+    padding: 0;
+  }
+
+  .showcase-editor-shell {
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  .showcase-editor-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 18px 18px 16px;
+    background:
+      linear-gradient(135deg, rgba(212, 175, 55, 0.2) 0%, rgba(162, 155, 254, 0.16) 100%),
+      #fffaf0;
+    border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+  }
+
+  .showcase-editor-hero::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    width: 42px;
+    height: 4px;
+    border-radius: 999px;
+    background: rgba(144, 147, 153, 0.28);
+    transform: translateX(-50%);
+  }
+
+  .showcase-editor-hero-icon {
+    width: 44px;
+    height: 44px;
+    flex: 0 0 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    border-radius: 15px;
+    color: #fff;
+    background: linear-gradient(135deg, #d4af37 0%, #a29bfe 100%);
+    box-shadow: 0 12px 24px rgba(162, 155, 254, 0.22);
+  }
+
+  .showcase-editor-hero-icon .el-icon {
+    font-size: 22px;
+  }
+
+  .showcase-editor-hero-copy {
+    flex: 1;
+    min-width: 0;
+    padding-top: 6px;
+  }
+
+  .showcase-editor-close {
+    width: 34px;
+    height: 34px;
+    flex: 0 0 34px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    margin-top: 6px;
+    border: none;
+    border-radius: 999px;
+    color: #7d7892;
+    background: rgba(255, 255, 255, 0.72);
+    font-size: 22px;
+    line-height: 1;
+  }
+
+  :global(.el-dialog.is-showcase-editor-mobile .showcase-dialog-form) {
+    max-height: calc(88vh - 174px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px 14px 18px;
+    gap: 12px;
   }
 
   .showcase-dialog-title {
-    font-size: 24px;
+    font-size: 18px;
+    line-height: 1.25;
   }
 
   .showcase-dialog-subtitle {
-    font-size: 13px;
+    margin-top: 4px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  .showcase-editor-hero .showcase-dialog-kicker {
+    margin-bottom: 5px;
+    padding: 3px 8px;
+    font-size: 10px;
   }
 
   .showcase-form-section {
@@ -1505,7 +1701,12 @@ watch(
   }
 
   .showcase-dialog-footer {
-    flex-direction: column-reverse;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -12px 24px rgba(17, 24, 39, 0.08);
   }
 
   .showcase-dialog-footer :deep(.el-button) {
@@ -1596,29 +1797,66 @@ watch(
     margin-right: 8px;
   }
 
-  :global(.showcase-dialog .el-dialog) {
-    width: min(96vw, 560px) !important;
-    border-radius: 22px;
+  :global(.el-overlay-dialog:has(.is-showcase-editor-mobile)) {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding: 0;
+    overflow: hidden;
   }
 
-  :global(.showcase-dialog .el-dialog__header) {
-    padding: 22px 20px 16px;
+  :global(.el-dialog.is-showcase-editor-mobile) {
+    width: 100vw !important;
+    min-width: 100vw;
+    max-width: 100vw;
+    flex: 0 0 100vw;
+    box-sizing: border-box;
+    max-height: 88vh;
+    padding: 0;
+    margin: 0 !important;
+    border-radius: 20px 20px 0 0;
+    overflow: hidden;
   }
 
-  :global(.showcase-dialog .el-dialog__body) {
-    padding: 18px 20px 0;
+  :global(.el-dialog.is-showcase-editor-mobile .el-dialog__header) {
+    display: none;
   }
 
-  :global(.showcase-dialog .el-dialog__footer) {
-    padding: 16px 20px 20px;
+  :global(.el-dialog.is-showcase-editor-mobile .el-dialog__body) {
+    padding: 0;
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  :global(.el-dialog.is-showcase-editor-mobile .el-dialog__footer) {
+    padding: 0;
+  }
+
+  .showcase-editor-shell {
+    max-height: calc(88vh - 84px);
+    overflow: hidden;
+  }
+
+  .showcase-editor-hero {
+    display: flex;
   }
 
   .showcase-dialog-title {
-    font-size: 24px;
+    font-size: 18px;
+    line-height: 1.25;
   }
 
   .showcase-dialog-subtitle {
-    font-size: 13px;
+    font-size: 12px;
+    line-height: 1.4;
+  }
+
+  :global(.el-dialog.is-showcase-editor-mobile .showcase-dialog-form) {
+    max-height: calc(88vh - 174px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 14px 14px 18px;
+    gap: 12px;
   }
 
   .showcase-form-section {
@@ -1637,7 +1875,12 @@ watch(
   }
 
   .showcase-dialog-footer {
-    flex-direction: column-reverse;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
+    background: rgba(255, 255, 255, 0.96);
+    box-shadow: 0 -12px 24px rgba(17, 24, 39, 0.08);
   }
 
   .showcase-dialog-footer :deep(.el-button) {
