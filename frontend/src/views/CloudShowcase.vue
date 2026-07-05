@@ -1595,6 +1595,26 @@ watch(mobileFilterVisible, (visible) => {
     font-size: 15px;
   }
 
+  .barn-section,
+  .stats-section {
+    width: 100%;
+    min-width: 0;
+    box-sizing: border-box;
+    transform: none;
+  }
+
+  .tab-fade-enter-active,
+  .tab-fade-leave-active {
+    transition: opacity 0.18s ease;
+    transform: none;
+  }
+
+  .tab-fade-enter-from,
+  .tab-fade-leave-to {
+    opacity: 0;
+    transform: none;
+  }
+
   .barn-discovery {
     margin-bottom: 8px;
     padding: 6px;

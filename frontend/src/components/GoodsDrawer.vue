@@ -3,8 +3,8 @@
     v-model="visible"
     :direction="drawerDirection"
     :size="drawerSize"
-    :with-header="!isMobile"
-    :show-close="!isMobile"
+    :with-header="false"
+    :show-close="false"
     :lock-scroll="!isMobile"
     :class="[
       'guzi-detail-drawer', 
@@ -14,14 +14,20 @@
     @close="handleClose"
     @open="handleOpen"
   >
-    <!-- PC端原生Header -->
-    <template #header v-if="!isMobile">
-      <span class="drawer-title">谷子详情</span>
-    </template>
-
     <div v-if="loading" class="drawer-loading">
       <el-skeleton :rows="10" animated />
     </div>
+
+    <GoodsDetailDesktop
+      v-else-if="detail && !isMobile"
+      :detail="detail"
+      :all-images="allImages"
+      :status-text="statusText"
+      :status-tag-type="statusTagType"
+      :same-theme-goods="sameThemeGoods"
+      :same-theme-loading="sameThemeLoading"
+      @same-theme-click="handleSameThemeItemClick"
+    />
 
     <div v-else-if="detail" class="drawer-container">
       <!-- 
@@ -209,12 +215,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, nextTick } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Picture, Close, Collection } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getGoodsList } from '@/api/goods'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
+import GoodsDetailDesktop from '@/components/goods-detail/GoodsDetailDesktop.vue'
 import type { GoodsDetail, GoodsListItem } from '@/api/types'
 
 interface Props {
@@ -269,7 +276,7 @@ const drawerDirection = computed(() => isMobile.value ? 'btt' : 'rtl')
 
 // Drawer Size 核心逻辑
 const drawerSize = computed(() => {
-  if (!isMobile.value) return '600px'
+  if (!isMobile.value) return 'clamp(720px, 48vw, 880px)'
   // 如果正在拖拽，返回实时计算的像素值（数字）
   // 如果没拖拽，返回预设百分比（字符串）
   return currentDrawerHeight.value
@@ -477,7 +484,7 @@ function handleTouchMove(e: TouchEvent) {
   currentDrawerHeight.value = newHeight
 }
 
-function handleTouchEnd(e: TouchEvent) {
+function handleTouchEnd() {
   if (!isMobile.value) return
   isDragging.value = false // 恢复CSS过渡动画
   
@@ -540,7 +547,7 @@ function handleContentScroll(e: Event) {
   }
 }
 
-function handleContentTouchMove(_e: TouchEvent) {
+function handleContentTouchMove() {
   // 不调用 e.preventDefault()，让浏览器原生滚动正常工作
 }
 

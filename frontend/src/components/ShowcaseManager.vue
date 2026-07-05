@@ -1,5 +1,5 @@
 <template>
-  <div class="showcase-manager">
+  <div class="showcase-manager" :class="{ 'is-detail-mode': viewMode === 'detail' }">
     <!-- 背景装饰 -->
     <div class="bg-decoration"></div>
 
@@ -1427,15 +1427,33 @@ watch(
 }
 
 @media (max-width: 768px) {
-  .showcase-manager {
+  .showcase-manager:not(.is-detail-mode) {
     min-height: calc(100vh - 50px);
     height: calc(100vh - 50px);
+    overflow-y: hidden;
   }
+
+  .showcase-manager.is-detail-mode {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
   .layout {
     gap: 0;
     padding: 0;
     display: block;
     height: 100%;
+  }
+
+  .showcase-manager.is-detail-mode .layout {
+    height: auto;
+    overflow: visible;
+  }
+
+  .showcase-manager.is-detail-mode .showcase-detail-stage {
+    width: 100%;
+    padding: 8px 10px calc(24px + env(safe-area-inset-bottom));
   }
 
   .left-panel,
@@ -1730,9 +1748,16 @@ watch(
 }
 
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  .showcase-manager {
+  .showcase-manager:not(.is-detail-mode) {
     min-height: calc(100dvh - 50px);
     height: calc(100dvh - 50px);
+    overflow-y: hidden;
+  }
+
+  .showcase-manager.is-detail-mode {
+    height: auto;
+    min-height: auto;
+    overflow: visible;
   }
 
   .layout {
@@ -1740,6 +1765,16 @@ watch(
     padding: 0;
     display: block;
     height: 100%;
+  }
+
+  .showcase-manager.is-detail-mode .layout {
+    height: auto;
+    overflow: visible;
+  }
+
+  .showcase-manager.is-detail-mode .showcase-detail-stage {
+    width: 100%;
+    padding: 8px 10px calc(24px + env(safe-area-inset-bottom));
   }
 
   .left-panel,

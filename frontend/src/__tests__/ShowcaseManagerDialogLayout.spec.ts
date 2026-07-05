@@ -3,6 +3,7 @@ import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const showcaseManagerSource = readFileSync(resolve(process.cwd(), 'src/components/ShowcaseManager.vue'), 'utf8')
+const showcaseDetailSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/ShowcaseDetailView.vue'), 'utf8')
 
 describe('ShowcaseManager dialog cover layout', () => {
   function cssRuleBlock(source: string, selector: string) {
@@ -101,5 +102,44 @@ describe('ShowcaseManager dialog cover layout', () => {
     expect(showcaseManagerSource).toContain(':global(.dialog-fade-enter-active .el-overlay-dialog:has(.is-showcase-editor-mobile))')
     expect(showcaseManagerSource).toContain('animation: showcase-editor-overlay-fade-in 0.28s')
     expect(showcaseManagerSource).toContain('@keyframes showcase-editor-overlay-fade-in')
+  })
+
+  it('separates mobile list and detail scrolling so detail uses natural page scroll', () => {
+    expect(showcaseManagerSource).toContain('class="showcase-manager"')
+    expect(showcaseManagerSource).toContain(":class=\"{ 'is-detail-mode': viewMode === 'detail' }\"")
+
+    const mobileDetailRule = cssRuleBlock(showcaseManagerSource, '.showcase-manager.is-detail-mode')
+    const mobileDetailLayoutRule = cssRuleBlock(showcaseManagerSource, '.showcase-manager.is-detail-mode .layout')
+    const mobileDetailStageRule = cssRuleBlock(showcaseManagerSource, '.showcase-manager.is-detail-mode .showcase-detail-stage')
+
+    expect(mobileDetailRule).toContain('height: auto;')
+    expect(mobileDetailRule).toContain('min-height: auto;')
+    expect(mobileDetailRule).toContain('overflow: visible;')
+    expect(mobileDetailLayoutRule).toContain('height: auto;')
+    expect(mobileDetailLayoutRule).toContain('overflow: visible;')
+    expect(mobileDetailStageRule).toContain('padding: 8px 10px calc(24px + env(safe-area-inset-bottom));')
+  })
+
+  it('keeps mobile list mode constrained to a single internal list scroller', () => {
+    const mobileListRule = cssRuleBlock(showcaseManagerSource, '.showcase-manager:not(.is-detail-mode)')
+    const scrollContentRule = cssRuleBlock(showcaseManagerSource, '.scroll-content')
+
+    expect(mobileListRule).toContain('height: calc(100vh - 50px);')
+    expect(mobileListRule).toContain('overflow-y: hidden;')
+    expect(scrollContentRule).toContain('overflow-y: auto;')
+  })
+
+  it('does not add a second mobile scroll container inside showcase detail content', () => {
+    expect(showcaseDetailSource).toContain('.detail-root {')
+    expect(showcaseDetailSource).toContain('.detail-content {')
+
+    const mobileBlockStart = showcaseDetailSource.indexOf('@media (max-width: 768px)')
+    const mobileBlock = showcaseDetailSource.slice(mobileBlockStart)
+
+    expect(mobileBlock).toContain('.goods-grid {')
+    expect(mobileBlock).toContain('grid-template-columns: repeat(2, 1fr);')
+    expect(mobileBlock).not.toContain('.detail-root {\n    overflow-y: auto;')
+    expect(mobileBlock).not.toContain('.detail-content {\n    overflow-y: auto;')
+    expect(mobileBlock).not.toContain('max-height: calc(100')
   })
 })

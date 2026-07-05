@@ -143,6 +143,18 @@ const mountDesktopCloudShowcase = (options: { goodsResults?: GoodsListItem[] } =
   mountCloudShowcase({ ...options, viewport: 'desktop' })
 
 describe('CloudShowcase mobile compact header', () => {
+  function cssRuleBlock(source: string, selector: string) {
+    const start = source.indexOf(selector)
+    expect(start).toBeGreaterThan(-1)
+
+    const open = source.indexOf('{', start)
+    const close = source.indexOf('}', open)
+    expect(open).toBeGreaterThan(start)
+    expect(close).toBeGreaterThan(open)
+
+    return source.slice(open + 1, close)
+  }
+
   beforeEach(() => {
     vi.restoreAllMocks()
     routeQuery.value = {}
@@ -291,5 +303,28 @@ describe('CloudShowcase mobile compact header', () => {
       expect(mobileCardBlock).toContain(binding)
       expect(desktopCardBlock).toContain(binding)
     }
+  })
+
+  it('uses opacity-only mobile tab transitions to prevent zoom-like jitter', () => {
+    const mobileTransitionRule = cssRuleBlock(
+      cloudShowcaseSource,
+      '.tab-fade-enter-active,\n  .tab-fade-leave-active',
+    )
+    const mobileEnterRule = cssRuleBlock(
+      cloudShowcaseSource,
+      '.tab-fade-enter-from,\n  .tab-fade-leave-to',
+    )
+    const mobilePanelRule = cssRuleBlock(
+      cloudShowcaseSource,
+      '.barn-section,\n  .stats-section',
+    )
+
+    expect(mobileTransitionRule).toContain('transition: opacity 0.18s ease;')
+    expect(mobileTransitionRule).toContain('transform: none;')
+    expect(mobileEnterRule).toContain('opacity: 0;')
+    expect(mobileEnterRule).toContain('transform: none;')
+    expect(mobilePanelRule).toContain('width: 100%;')
+    expect(mobilePanelRule).toContain('min-width: 0;')
+    expect(mobilePanelRule).toContain('box-sizing: border-box;')
   })
 })
