@@ -328,11 +328,40 @@ describe('GoodsDrawer mobile gesture', () => {
   })
 })
 
+describe('GoodsDrawer mobile additional photos', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    document.body.innerHTML = ''
+    setMobileViewport()
+    Object.assign(mockDetail, {
+      additional_photos: [
+        { id: 1, image: '/media/mobile-without-label.png', label: '' },
+        { id: 2, image: '/media/mobile-with-label.png', label: 'With label' },
+      ],
+    })
+  })
+
+  it('reserves the photo label row for untitled additional photos', async () => {
+    const wrapper = await mountDrawer()
+    await wrapper.vm.$nextTick()
+
+    const photoItems = wrapper.findAll('.additional-image-item')
+    const untitledPhotoItem = wrapper.get('.additional-image-item:nth-child(1)')
+    const titledPhotoItem = wrapper.get('.additional-image-item:nth-child(2)')
+
+    expect(photoItems).toHaveLength(2)
+    expect(untitledPhotoItem.find('.photo-label').exists()).toBe(true)
+    expect(untitledPhotoItem.find('.photo-label').classes()).toContain('is-placeholder')
+    expect(titledPhotoItem.find('.photo-label').classes()).not.toContain('is-placeholder')
+  })
+})
+
 describe('GoodsDrawer same theme section', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
     document.body.innerHTML = ''
     Object.assign(mockDetail, {
+      additional_photos: [],
       theme: { id: 1, name: '测试主题' },
     })
     vi.mocked(getGoodsList).mockResolvedValue({

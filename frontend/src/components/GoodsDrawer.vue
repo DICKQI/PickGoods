@@ -85,8 +85,12 @@
                   </div>
                 </template>
               </el-image>
-              <div v-if="photo.label" class="photo-label">
-                {{ photo.label }}
+              <div
+                class="photo-label"
+                :class="{ 'is-placeholder': !photo.label }"
+                :aria-hidden="!photo.label ? 'true' : undefined"
+              >
+                {{ photo.label || '\u00a0' }}
               </div>
             </div>
           </div>
@@ -708,6 +712,9 @@ watch([isMobile, viewportHeight], () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.photo-label.is-placeholder {
+  visibility: hidden;
 }
 .is-mobile .photo-label {
   font-size: 13px;

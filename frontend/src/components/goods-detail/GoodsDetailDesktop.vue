@@ -135,7 +135,13 @@
                   </div>
                 </template>
               </el-image>
-              <span v-if="photo.label" class="desktop-thumbnail-label">{{ photo.label }}</span>
+              <span
+                class="desktop-thumbnail-label"
+                :class="{ 'is-placeholder': !photo.label }"
+                :aria-hidden="!photo.label ? 'true' : undefined"
+              >
+                {{ photo.label || '\u00a0' }}
+              </span>
             </button>
           </div>
         </section>
@@ -414,6 +420,9 @@ watch(
 }
 
 .desktop-thumbnail {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
   min-width: 0;
   padding: 0;
   border: 0;
@@ -449,6 +458,10 @@ watch(
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.desktop-thumbnail-label.is-placeholder {
+  visibility: hidden;
 }
 
 .desktop-chip-row,

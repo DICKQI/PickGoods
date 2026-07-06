@@ -204,6 +204,26 @@ describe('GoodsDrawer desktop detail panel', () => {
     expect(wrapper.text()).not.toContain('附图 1')
   })
 
+  it('reserves the thumbnail title row for untitled additional photos', async () => {
+    mockFetchGoodsDetail.mockResolvedValue({
+      ...desktopDetail,
+      additional_photos: [
+        { id: 1, image: '/media/detail-without-label.png', label: '' },
+        { id: 2, image: '/media/detail-with-label.png', label: 'With label' },
+      ],
+    })
+
+    const wrapper = await mountDrawer()
+    const thumbnails = wrapper.findAll('.desktop-thumbnail')
+    const untitledThumbnail = wrapper.get('.desktop-thumbnail:nth-child(1)')
+    const titledThumbnail = wrapper.get('.desktop-thumbnail:nth-child(2)')
+
+    expect(thumbnails).toHaveLength(2)
+    expect(untitledThumbnail.find('.desktop-thumbnail-label').exists()).toBe(true)
+    expect(untitledThumbnail.find('.desktop-thumbnail-label').classes()).toContain('is-placeholder')
+    expect(titledThumbnail.find('.desktop-thumbnail-label').classes()).not.toContain('is-placeholder')
+  })
+
   it('shows same-theme goods and switches detail when an item is clicked', async () => {
     const wrapper = await mountDrawer()
 
