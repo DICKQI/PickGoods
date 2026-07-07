@@ -204,10 +204,14 @@
             :props="{ label: 'label', children: 'children' }"
             :filter-node-method="filterTreeNode"
             :expand-on-click-node="false"
+            :default-expanded-keys="expandedNodeKeys"
+            :current-node-key="currentNodeKey"
             node-key="id"
             highlight-current
             class="custom-tree"
             @node-click="handleNodeClick"
+            @node-expand="handleTreeNodeExpand"
+            @node-collapse="handleTreeNodeCollapse"
           >
             <template #default="{ node, data }">
               <div class="tree-node" :class="{ 'is-empty': (data.count || 0) === 0 }">
@@ -620,10 +624,14 @@
             :props="{ label: 'label', children: 'children' }"
             :filter-node-method="filterTreeNode"
             :expand-on-click-node="false"
+            :default-expanded-keys="expandedNodeKeys"
+            :current-node-key="currentNodeKey"
             node-key="id"
             highlight-current
             class="custom-tree mobile-custom-tree"
             @node-click="handleMobileNodeClick"
+            @node-expand="handleTreeNodeExpand"
+            @node-collapse="handleTreeNodeCollapse"
           >
             <template #default="{ node, data }">
               <div class="tree-node mobile-tree-node" :data-test="`mobile-picker-node-${data.id}`" :class="{ 'is-empty': (data.count || 0) === 0 }">
@@ -882,6 +890,7 @@ const isMobile = computed(() => unref(responsiveIsMobile) === true)
 const treeRef = ref()
 const mobileTreeRef = ref()
 const selectedNode = ref<StorageNode | null>(null)
+const expandedNodeKeys = ref<number[]>([])
 const summary = ref<LocationNodeSummary | null>(null)
 const treeKeyword = ref('')
 const mobileLocationKeyword = ref('')
@@ -963,6 +972,7 @@ const statusLabelMap: Record<GoodsStatus, string> = {
 }
 
 const dialogTitle = computed(() => (isEdit.value ? '编辑位置' : '新增位置'))
+const currentNodeKey = computed(() => selectedNode.value?.id)
 const childCount = computed(() => selectedNode.value ? locationStore.nodes.filter((node) => node.parent === selectedNode.value!.id).length : 0)
 const capacityText = computed(() => {
   if (!summary.value?.capacity) return '未设置'
@@ -1106,6 +1116,24 @@ function resetGoodsFilters() {
   goodsCategoryFilter.value = ''
 }
 
+function rememberExpandedKey(id: number) {
+  if (!expandedNodeKeys.value.includes(id)) {
+    expandedNodeKeys.value = [...expandedNodeKeys.value, id]
+  }
+}
+
+function forgetExpandedKey(id: number) {
+  expandedNodeKeys.value = expandedNodeKeys.value.filter((key) => key !== id)
+}
+
+function handleTreeNodeExpand(data: TreeNode) {
+  rememberExpandedKey(data.id)
+}
+
+function handleTreeNodeCollapse(data: TreeNode) {
+  forgetExpandedKey(data.id)
+}
+
 function normalizeForm(node?: StorageNode | null): LocationFormData {
   return {
     name: node?.name ?? '',
@@ -1123,9 +1151,7 @@ async function selectNodeById(id: number) {
   const treeNode = locationStore.treeData.flatMap(flattenTree).find((node) => node.id === id)
   if (treeNode) {
     await handleNodeClick(treeNode)
-    await nextTick()
-    treeRef.value?.setCurrentKey(id)
-    await scrollCurrentTreeNodeIntoView()
+    await restoreTreeVisualState({ selectedId: id, scrollIntoView: true })
   }
 }
 
@@ -1173,6 +1199,41 @@ async function scrollCurrentTreeNodeIntoView() {
   currentNode?.scrollIntoView?.({ block: 'center', behavior: 'smooth' })
 }
 
+function expandAncestorsForNode(node: StorageNode) {
+  getExpandedKeys(node).forEach(rememberExpandedKey)
+}
+
+function pruneExpandedNodeKeys() {
+  const existingIds = new Set(locationStore.nodes.map((node) => node.id))
+  expandedNodeKeys.value = expandedNodeKeys.value.filter((key) => existingIds.has(key))
+}
+
+async function restoreTreeVisualState(options: { selectedId?: number; scrollIntoView?: boolean } = {}) {
+  const selectedId = options.selectedId ?? selectedNode.value?.id
+  pruneExpandedNodeKeys()
+
+  if (selectedId) {
+    const selected = locationStore.getNodeById(selectedId)
+    if (selected) {
+      expandAncestorsForNode(selected)
+    }
+  }
+
+  await nextTick()
+  const treeRefs = [treeRef.value, mobileTreeRef.value]
+  treeRefs.forEach((tree) => {
+    if (selectedId) tree?.setCurrentKey?.(selectedId)
+    expandedNodeKeys.value.forEach((key) => {
+      const treeNode = tree?.getNode?.(key)
+      if (treeNode) treeNode.expanded = true
+    })
+  })
+
+  if (options.scrollIntoView) {
+    await scrollCurrentTreeNodeIntoView()
+  }
+}
+
 async function applyHighlightFromRoute() {
   const highlight = route.query.highlight
   if (typeof highlight !== 'string' || !highlight.trim()) return
@@ -1180,13 +1241,6 @@ async function applyHighlightFromRoute() {
   const node = locationStore.getNodeByPathName(highlight)
   if (!node) return
   await selectNodeById(node.id)
-  const keys = getExpandedKeys(node)
-  await nextTick()
-  keys.forEach((key) => {
-    const treeNode = treeRef.value?.getNode?.(key)
-    if (treeNode) treeNode.expanded = true
-  })
-  await scrollCurrentTreeNodeIntoView()
 }
 
 function getExpandedKeys(node: StorageNode) {
@@ -1204,12 +1258,14 @@ async function handleNodeClick(data: TreeNode) {
   try {
     const nodeDetail = await getLocationNodeDetail(data.id)
     selectedNode.value = nodeDetail
+    expandAncestorsForNode(nodeDetail)
     locationStore.markRecentLocation(nodeDetail.id)
     selectedGoodsIds.value = []
     batchTargetLocation.value = undefined
     resetGoodsFilters()
     locationPagination.value.page = 1
     await Promise.all([loadNodeSummary(nodeDetail.id), loadNodeGoods(nodeDetail.id)])
+    await restoreTreeVisualState({ selectedId: nodeDetail.id })
   } catch (err: any) {
     ElMessage.error(err.message || '获取节点详情失败')
   }
@@ -1259,13 +1315,15 @@ function handlePageChange(page: number) {
   loadNodeGoods(selectedNode.value.id, page)
 }
 
-async function refreshSelectedNode() {
+async function refreshSelectedNode(options: { selectedId?: number } = {}) {
+  const selectedId = options?.selectedId ?? selectedNode.value?.id
   await locationStore.fetchNodes(true)
-  if (selectedNode.value) {
-    const id = selectedNode.value.id
-    selectedNode.value = await getLocationNodeDetail(id)
-    await Promise.all([loadNodeSummary(id), loadNodeGoods(id)])
+  if (selectedId) {
+    selectedNode.value = await getLocationNodeDetail(selectedId)
+    expandAncestorsForNode(selectedNode.value)
+    await Promise.all([loadNodeSummary(selectedId), loadNodeGoods(selectedId)])
   }
+  await restoreTreeVisualState({ selectedId, scrollIntoView: Boolean(selectedId) })
 }
 
 function handleAddNode() {
@@ -1304,7 +1362,9 @@ async function handleDeleteNode(node: StorageNode) {
     selectedNode.value = null
     summary.value = null
     locationGuziList.value = []
+    expandedNodeKeys.value = expandedNodeKeys.value.filter((key) => !childrenIds.includes(key))
     await locationStore.fetchNodes(true)
+    await restoreTreeVisualState()
   } catch {
     // 用户取消
   }
@@ -1326,16 +1386,19 @@ async function handleSubmit() {
     return
   }
   try {
+    let savedNodeId: number | undefined
     if (isEdit.value && editingNodeId.value) {
       await patchLocationNode(editingNodeId.value, payload)
       await moveLocationNode(editingNodeId.value, { parent: payload.parent ?? null, order: payload.order })
+      savedNodeId = editingNodeId.value
       ElMessage.success('位置已更新')
     } else {
-      await createLocationNode(payload)
+      const createdNode = await createLocationNode(payload)
+      savedNodeId = createdNode.id
       ElMessage.success('位置已创建')
     }
     dialogVisible.value = false
-    await refreshSelectedNode()
+    await refreshSelectedNode({ selectedId: savedNodeId })
   } catch (err: any) {
     ElMessage.error(err.message || '保存失败')
   }

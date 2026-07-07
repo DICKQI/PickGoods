@@ -248,18 +248,54 @@ const ElTreeSelectStub = defineComponent({
 })
 
 const ElTreeStub = defineComponent({
-  props: ['data', 'filterNodeMethod'],
-  emits: ['nodeClick'],
+  props: ['data', 'filterNodeMethod', 'defaultExpandedKeys', 'currentNodeKey'],
+  emits: ['nodeClick', 'nodeExpand', 'nodeCollapse'],
   data() {
-    return { keyword: '' }
+    return {
+      keyword: '',
+      currentKey: undefined as number | undefined,
+      expandedRecords: {} as Record<number, { expanded: boolean }>,
+      setCurrentKeyCalls: [] as number[],
+    }
+  },
+  watch: {
+    currentNodeKey: {
+      immediate: true,
+      handler(value: number | undefined) {
+        this.currentKey = value
+      },
+    },
+    defaultExpandedKeys: {
+      immediate: true,
+      handler(keys: number[] = []) {
+        keys.forEach((key) => {
+          this.ensureNodeRecord(key).expanded = true
+        })
+      },
+    },
   },
   methods: {
     filter(keyword: string) {
       this.keyword = keyword
     },
-    setCurrentKey() {},
-    getNode() {
-      return { expanded: false }
+    setCurrentKey(key: number) {
+      this.currentKey = key
+      this.setCurrentKeyCalls.push(key)
+    },
+    getNode(key: number) {
+      return this.ensureNodeRecord(key)
+    },
+    ensureNodeRecord(key: number) {
+      if (!this.expandedRecords[key]) this.expandedRecords[key] = { expanded: false }
+      return this.expandedRecords[key]
+    },
+    expandNode(item: TreeSelectNode) {
+      this.ensureNodeRecord(item.id).expanded = true
+      this.$emit('nodeExpand', item)
+    },
+    collapseNode(item: TreeSelectNode) {
+      this.ensureNodeRecord(item.id).expanded = false
+      this.$emit('nodeCollapse', item)
     },
     flatten(nodes: TreeSelectNode[]): TreeSelectNode[] {
       return nodes.flatMap((node) => [node, ...(node.children ? this.flatten(node.children) : [])])
@@ -280,10 +316,32 @@ const ElTreeStub = defineComponent({
         :key="item.id"
         class="tree-node-button"
         :data-test="'mobile-picker-node-' + item.id"
+        :data-current="currentKey === item.id ? 'true' : 'false'"
+        :data-expanded="expandedRecords[item.id]?.expanded ? 'true' : 'false'"
         type="button"
         @click="$emit('nodeClick', item)"
       >
         {{ item.label }}
+      </button>
+      <button
+        v-for="item in visibleNodes"
+        :key="'expand-' + item.id"
+        class="tree-expand-button"
+        :data-test="'tree-expand-' + item.id"
+        type="button"
+        @click="expandNode(item)"
+      >
+        expand
+      </button>
+      <button
+        v-for="item in visibleNodes"
+        :key="'collapse-' + item.id"
+        class="tree-collapse-button"
+        :data-test="'tree-collapse-' + item.id"
+        type="button"
+        @click="collapseNode(item)"
+      >
+        collapse
       </button>
     </div>
   `,
@@ -476,6 +534,53 @@ describe('LocationManagement mobile workbench', () => {
     expect(getLocationNodeDetail).toHaveBeenLastCalledWith(childLocationNode.id)
     expect(wrapper.find('[data-test="mobile-location-picker"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="mobile-selected-location"]').text()).toContain('第一层')
+  })
+
+  it('keeps the selected deep node expanded and highlighted after refresh', async () => {
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-test="mobile-location-picker-trigger"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="tree-expand-7"]').trigger('click')
+    await wrapper.get('[data-test="mobile-picker-node-8"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="location-mobile-goods-select"]').trigger('click')
+    await wrapper.get('[data-test="mobile-batch-target"]').setValue(String(childLocationNode.id))
+    await wrapper.get('[data-test="mobile-batch-move"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="mobile-location-picker-trigger"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="mobile-picker-node-7"]').attributes('data-expanded')).toBe('true')
+    expect(wrapper.get('[data-test="mobile-picker-node-8"]').attributes('data-current')).toBe('true')
+    expect(getLocationNodeDetail).toHaveBeenLastCalledWith(childLocationNode.id)
+  })
+
+  it('re-expands the selected path after a manual collapse and refresh', async () => {
+    const wrapper = await mountView()
+
+    await wrapper.get('[data-test="mobile-location-picker-trigger"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="tree-expand-7"]').trigger('click')
+    await wrapper.get('[data-test="mobile-picker-node-8"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="mobile-location-picker-trigger"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="tree-collapse-7"]').trigger('click')
+
+    await wrapper.get('[data-test="location-mobile-goods-select"]').trigger('click')
+    await wrapper.get('[data-test="mobile-batch-target"]').setValue(String(childLocationNode.id))
+    await wrapper.get('[data-test="mobile-batch-move"]').trigger('click')
+    await flushPromises()
+
+    await wrapper.get('[data-test="mobile-location-picker-trigger"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="mobile-picker-node-7"]').attributes('data-expanded')).toBe('true')
+    expect(wrapper.get('[data-test="mobile-picker-node-8"]').attributes('data-current')).toBe('true')
   })
 
   it('opens mobile node actions through an action sheet and marks delete as danger', async () => {

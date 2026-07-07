@@ -21,6 +21,28 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).toContain("scrollCurrentTreeNodeIntoView")
   })
 
+  it('keeps the tree expansion and current node state controlled across refreshes', () => {
+    expect(source).toContain(':default-expanded-keys="expandedNodeKeys"')
+    expect(source).toContain(':current-node-key="currentNodeKey"')
+    expect(source).toContain('@node-expand="handleTreeNodeExpand"')
+    expect(source).toContain('@node-collapse="handleTreeNodeCollapse"')
+    expect(source).toContain('const expandedNodeKeys = ref<number[]>([])')
+    expect(source).toContain('const currentNodeKey = computed(() => selectedNode.value?.id)')
+    expect(source).toContain('function handleTreeNodeExpand(data: TreeNode)')
+    expect(source).toContain('function handleTreeNodeCollapse(data: TreeNode)')
+    expect(source).toContain('function expandAncestorsForNode(node: StorageNode)')
+    expect(source).toContain('async function restoreTreeVisualState')
+
+    const refreshBlock = source.slice(source.indexOf('async function refreshSelectedNode('), source.indexOf('function handleAddNode()'))
+    expect(refreshBlock).toContain('const selectedId = options?.selectedId ?? selectedNode.value?.id')
+    expect(refreshBlock).toContain('await locationStore.fetchNodes(true)')
+    expect(refreshBlock).toContain('await restoreTreeVisualState')
+
+    const submitBlock = source.slice(source.indexOf('async function handleSubmit()'), source.indexOf('function handleDialogClose()'))
+    expect(submitBlock).toContain('let savedNodeId')
+    expect(submitBlock).toContain('await refreshSelectedNode({ selectedId: savedNodeId })')
+  })
+
   it('uses summary, paginated location goods and batch move APIs', () => {
     expect(source).toContain("getLocationNodeSummary")
     expect(source).toContain("moveLocationGoods")
