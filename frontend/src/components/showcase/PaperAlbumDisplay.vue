@@ -6,6 +6,17 @@
         <h2 class="paper-title">纸制品收纳册</h2>
       </div>
       <div class="paper-header-meta">
+        <button
+          v-if="isMobile"
+          class="paper-fullscreen-button"
+          data-test="paper-fullscreen-button"
+          type="button"
+          aria-label="Fullscreen paper album"
+          title="Fullscreen"
+          @click="emit('openFullscreen')"
+        >
+          <el-icon><FullScreen /></el-icon>
+        </button>
         <span class="paper-count">{{ items.length }} 张</span>
         <span class="paper-page-indicator" data-test="paper-album-page-indicator">{{ currentSpread + 1 }} / {{ totalSpreads }}</span>
       </div>
@@ -223,7 +234,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
-import { ArrowLeft, ArrowRight, Picture } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, FullScreen, Picture } from '@element-plus/icons-vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
 import { useShowcaseDisplayDragSort } from './useShowcaseDisplayDragSort'
 import type { GoodsListItem, ShowcaseGoods } from '@/api/types'
@@ -239,6 +250,7 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   openGoods: [goods: GoodsListItem]
+  openFullscreen: []
   goodsContextMenuFromDom: [goodsId: string, event: MouseEvent]
 }>()
 
@@ -502,7 +514,8 @@ const onPaperClick = (item: ShowcaseGoods) => {
   justify-content: flex-end;
 }
 .paper-count,
-.paper-page-indicator {
+.paper-page-indicator,
+.paper-fullscreen-button {
   flex: 0 0 auto;
   font-size: 12px;
   font-weight: 800;
@@ -511,6 +524,17 @@ const onPaperClick = (item: ShowcaseGoods) => {
   background: rgba(142, 125, 255, 0.1);
   border: 1px solid rgba(142, 125, 255, 0.18);
   color: rgba(64, 58, 112, 0.68);
+}
+.paper-fullscreen-button {
+  border-color: rgba(142, 125, 255, 0.24);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  width: 28px;
+  height: 28px;
+  padding: 0;
 }
 
 .paper-album {
