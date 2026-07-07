@@ -215,8 +215,8 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 <style scoped>
 .stats-filter-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
-  gap: 16px 20px;
+  grid-template-columns: minmax(168px, 1.1fr) repeat(4, minmax(150px, 1fr));
+  gap: 18px 20px;
   align-items: start;
 }
 
@@ -232,10 +232,12 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 }
 
 .stats-filter-item label {
-  font-size: 12px;
-  color: var(--text-light);
-  font-weight: 500;
+  font-size: 11px;
+  color: rgba(100, 116, 139, 0.92);
+  font-weight: 800;
+  letter-spacing: 0.04em;
   line-height: 1.4;
+  text-transform: uppercase;
   flex-shrink: 0;
 }
 
@@ -251,11 +253,18 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 }
 
 .topn-value {
-  width: 28px;
-  text-align: right;
+  min-width: 34px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 249, 234, 0.8);
+  text-align: center;
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  color: var(--text-dark);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 22px;
+  color: var(--primary-gold-dark);
   flex-shrink: 0;
 }
 
@@ -274,12 +283,37 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 
 .character-stats-button {
   flex-shrink: 0;
+  border-radius: 999px;
+  font-weight: 700;
 }
 
 .stats-filter-item :deep(.el-select),
 .stats-filter-item :deep(.el-tree-select),
 .stats-filter-item :deep(.el-date-editor) {
   width: 100%;
+}
+
+.stats-filter-item :deep(.el-select__wrapper),
+.stats-filter-item :deep(.el-tree-select__wrapper),
+.stats-filter-item :deep(.el-date-editor) {
+  min-height: 32px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
+  transition:
+    box-shadow var(--transition-fast, 0.2s ease),
+    background-color var(--transition-fast, 0.2s ease);
+}
+
+.stats-filter-item :deep(.el-select__wrapper:hover),
+.stats-filter-item :deep(.el-tree-select__wrapper:hover),
+.stats-filter-item :deep(.el-date-editor:hover) {
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.38) inset;
+}
+
+.status-group :deep(.el-checkbox-button__inner) {
+  border-radius: 999px !important;
+  border-left: 1px solid var(--el-border-color) !important;
+  font-weight: 700;
 }
 
 @media (max-width: 900px) {

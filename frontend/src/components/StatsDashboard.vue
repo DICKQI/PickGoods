@@ -282,7 +282,7 @@
             <el-card shadow="hover" class="chart-card">
               <div v-if="loading && !statsData" class="chart-skeleton" />
               <template v-else>
-                <div class="chart-title">作品类型结构</div>
+                <div class="chart-title">作品类型</div>
                 <div ref="subjectChartRef" class="chart-container chart-container--compact-bar" />
               </template>
             </el-card>
@@ -641,6 +641,7 @@ const updateCharts = () => {
 
   const { distributions } = statsData.value
   const mobileChartLayout = isMobile.value
+  const RANK_AXIS_LABEL_WIDTH = 150
 
   const theme = {
     text: getCssVar('--text-dark', '#303133'),
@@ -663,6 +664,56 @@ const updateCharts = () => {
     '#C4B5FD', // Light Purple
     '#FFD1FF', // Soft Pink
   ]
+  const subjectBarGradient = {
+    type: 'linear' as const,
+    x: 0,
+    y: 1,
+    x2: 0,
+    y2: 0,
+    colorStops: [
+      { offset: 0, color: theme.gold },
+      { offset: 1, color: theme.goldLight },
+    ],
+  }
+  const rankBarGradient = {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 1,
+    y2: 0,
+    colorStops: [
+      { offset: 0, color: theme.goldLight },
+      { offset: 1, color: theme.gold },
+    ],
+  }
+  const donutPalette = [
+    {
+      type: 'linear' as const,
+      x: 0,
+      y: 0,
+      x2: 1,
+      y2: 1,
+      colorStops: [
+        { offset: 0, color: theme.goldLight },
+        { offset: 0.55, color: '#F6D365' },
+        { offset: 1, color: theme.gold },
+      ],
+    },
+    {
+      type: 'linear' as const,
+      x: 0,
+      y: 0,
+      x2: 1,
+      y2: 1,
+      colorStops: [
+        { offset: 0, color: theme.purpleLight },
+        { offset: 1, color: theme.purple },
+      ],
+    },
+    '#FFB8B8',
+    '#F6C99E',
+    '#E9D7A5',
+  ]
 
   const baseTextStyle = { color: theme.text }
   const baseLegend = {
@@ -683,9 +734,8 @@ const updateCharts = () => {
     confine: false,
     renderMode: 'html',
   }
-  const compactPieLabel = mobileChartLayout
-    ? { show: false }
-    : { color: theme.textSub }
+  const donutLabel = { show: false }
+  const donutLabelLine = { show: false }
   const compactPieLegend = mobileChartLayout
     ? {
         ...baseLegend,
@@ -695,6 +745,19 @@ const updateCharts = () => {
         textStyle: { color: theme.textSub, fontSize: 10 },
       }
     : baseLegend
+  const createRankAxisLabel = (maxLength?: number) => ({
+    color: theme.textSub,
+    fontSize: mobileChartLayout ? 10 : 12,
+    width: mobileChartLayout ? undefined : RANK_AXIS_LABEL_WIDTH,
+    overflow: 'truncate' as const,
+    ellipsis: '…',
+    align: 'right' as const,
+    margin: 10,
+    formatter: maxLength
+      ? (value: string) =>
+          value.length > maxLength ? `${value.slice(0, maxLength)}…` : value
+      : undefined,
+  })
 
   // 状态分布饼图
   const statusChart = initChart(statusChartRef.value)
@@ -704,7 +767,7 @@ const updateCharts = () => {
       value: item.goods_count,
     }))
     statusChart.setOption({
-      color: palette,
+      color: donutPalette,
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'item' },
       legend: compactPieLegend,
@@ -715,8 +778,15 @@ const updateCharts = () => {
           center: mobileChartLayout ? ['50%', '44%'] : ['50%', '50%'],
           avoidLabelOverlap: false,
           data,
-          label: compactPieLabel,
-          itemStyle: { borderColor: 'rgba(255,255,255,0.7)', borderWidth: 1 },
+          label: donutLabel,
+          labelLine: donutLabelLine,
+          emphasis: { scale: true, scaleSize: 4 },
+          itemStyle: {
+            borderColor: 'rgba(255,255,255,0.86)',
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: 'rgba(212, 175, 55, 0.12)',
+          },
         },
       ],
     })
@@ -730,7 +800,7 @@ const updateCharts = () => {
       value: item.goods_count,
     }))
     officialChart.setOption({
-      color: palette,
+      color: donutPalette,
       textStyle: baseTextStyle,
       tooltip: { ...baseTooltip, trigger: 'item' },
       legend: compactPieLegend,
@@ -740,8 +810,15 @@ const updateCharts = () => {
           radius: mobileChartLayout ? ['48%', '72%'] : ['40%', '70%'],
           center: mobileChartLayout ? ['50%', '44%'] : ['50%', '50%'],
           data,
-          label: compactPieLabel,
-          itemStyle: { borderColor: 'rgba(255,255,255,0.7)', borderWidth: 1 },
+          label: donutLabel,
+          labelLine: donutLabelLine,
+          emphasis: { scale: true, scaleSize: 4 },
+          itemStyle: {
+            borderColor: 'rgba(255,255,255,0.86)',
+            borderWidth: 2,
+            shadowBlur: 10,
+            shadowColor: 'rgba(212, 175, 55, 0.12)',
+          },
         },
       ],
     })
@@ -809,7 +886,17 @@ const updateCharts = () => {
           type: 'bar',
           data: logCounts,
           barMaxWidth: mobileChartLayout ? 20 : 28,
-          itemStyle: { borderRadius: [8, 8, 0, 0] },
+          showBackground: true,
+          backgroundStyle: {
+            color: 'rgba(212, 175, 55, 0.08)',
+            borderRadius: [8, 8, 2, 2],
+          },
+          itemStyle: {
+            color: subjectBarGradient,
+            borderRadius: [10, 10, 3, 3],
+            shadowBlur: 10,
+            shadowColor: 'rgba(212, 175, 55, 0.16)',
+          },
         },
       ],
     })
@@ -826,7 +913,7 @@ const updateCharts = () => {
       tooltip: { ...baseTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
       grid: mobileChartLayout
         ? { left: '34%', right: '8%', top: 10, bottom: 8, containLabel: false }
-        : { left: 110, right: 18, top: 24, bottom: 24, containLabel: true },
+        : { left: 196, right: 18, top: 24, bottom: 24, containLabel: false },
       xAxis: {
         type: 'value',
         axisLine: { show: false },
@@ -841,21 +928,24 @@ const updateCharts = () => {
         data: items.map((i) => i.ip__name),
         axisLine: { lineStyle: { color: theme.grid } },
         axisTick: { show: false },
-        axisLabel: {
-          color: theme.textSub,
-          fontSize: mobileChartLayout ? 10 : undefined,
-          formatter: yAxisLabelMaxLen
-            ? (value: string) =>
-                value.length > yAxisLabelMaxLen ? value.slice(0, yAxisLabelMaxLen) + '…' : value
-            : undefined,
-        },
+        axisLabel: createRankAxisLabel(yAxisLabelMaxLen),
       },
       series: [
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
           barMaxWidth: mobileChartLayout ? 14 : 18,
-          itemStyle: { borderRadius: [0, 10, 10, 0] },
+          showBackground: true,
+          backgroundStyle: {
+            color: 'rgba(212, 175, 55, 0.08)',
+            borderRadius: [0, 999, 999, 0],
+          },
+          itemStyle: {
+            color: rankBarGradient,
+            borderRadius: [0, 999, 999, 0],
+            shadowBlur: 10,
+            shadowColor: 'rgba(212, 175, 55, 0.14)',
+          },
         },
       ],
     })
@@ -872,7 +962,7 @@ const updateCharts = () => {
       tooltip: { ...baseTooltip, trigger: 'axis', axisPointer: { type: 'shadow' } },
       grid: mobileChartLayout
         ? { left: '36%', right: '8%', top: 10, bottom: 8, containLabel: false }
-        : { left: 130, right: 18, top: 24, bottom: 24, containLabel: true },
+        : { left: 216, right: 18, top: 24, bottom: 24, containLabel: false },
       xAxis: {
         type: 'value',
         axisLine: { show: false },
@@ -887,21 +977,24 @@ const updateCharts = () => {
         data: items.map((i) => i.category__path_name || i.category__name),
         axisLine: { lineStyle: { color: theme.grid } },
         axisTick: { show: false },
-        axisLabel: {
-          color: theme.textSub,
-          fontSize: mobileChartLayout ? 10 : undefined,
-          formatter: yAxisLabelMaxLen
-            ? (value: string) =>
-                value.length > yAxisLabelMaxLen ? value.slice(0, yAxisLabelMaxLen) + '…' : value
-            : undefined,
-        },
+        axisLabel: createRankAxisLabel(yAxisLabelMaxLen),
       },
       series: [
         {
           type: 'bar',
           data: items.map((i) => i.goods_count),
           barMaxWidth: mobileChartLayout ? 14 : 18,
-          itemStyle: { borderRadius: [0, 10, 10, 0] },
+          showBackground: true,
+          backgroundStyle: {
+            color: 'rgba(212, 175, 55, 0.08)',
+            borderRadius: [0, 999, 999, 0],
+          },
+          itemStyle: {
+            color: rankBarGradient,
+            borderRadius: [0, 999, 999, 0],
+            shadowBlur: 10,
+            shadowColor: 'rgba(212, 175, 55, 0.14)',
+          },
         },
       ],
     })
@@ -1108,17 +1201,54 @@ watch(chartTab, () => {
 
 <style scoped>
 .stats-dashboard {
+  --stats-card-bg: rgba(255, 255, 255, 0.94);
+  --stats-card-border: rgba(212, 175, 55, 0.18);
+  --stats-card-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+  --stats-card-shadow-hover: 0 20px 44px rgba(15, 23, 42, 0.11);
+  --stats-card-highlight: rgba(255, 249, 234, 0.82);
+
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .stats-filter-card {
   border-radius: var(--card-radius);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
+  background:
+    linear-gradient(135deg, var(--stats-card-bg), rgba(255, 252, 244, 0.9)),
+    radial-gradient(circle at 8% 0%, rgba(246, 211, 101, 0.18), transparent 38%);
+  border: 1px solid var(--stats-card-border);
+  box-shadow: var(--stats-card-shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  position: relative;
+  overflow: hidden;
+  transition:
+    transform var(--transition-fast, 0.2s ease),
+    box-shadow var(--transition-fast, 0.2s ease),
+    border-color var(--transition-fast, 0.2s ease);
+}
+
+.stats-filter-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212, 175, 55, 0.3);
+  box-shadow: var(--stats-card-shadow-hover);
+}
+
+.stats-filter-card::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-gold), var(--primary-gold-light), var(--accent-purple));
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.stats-filter-card :deep(.el-card__header),
+.stats-filter-card :deep(.el-card__body) {
+  position: relative;
+  z-index: 1;
 }
 
 .stats-filter-card--collapsed :deep(.el-card__header) {
@@ -1129,14 +1259,31 @@ watch(chartTab, () => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  font-weight: 600;
-  color: var(--primary-gold);
+  min-height: 26px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary-gold-dark);
+  letter-spacing: 0.01em;
 }
 
 .stats-filter-actions {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+.stats-filter-actions :deep(.el-button) {
+  color: var(--primary-gold-dark);
+  transition:
+    background-color var(--transition-fast, 0.2s ease),
+    color var(--transition-fast, 0.2s ease),
+    transform var(--transition-fast, 0.2s ease);
+}
+
+.stats-filter-actions :deep(.el-button:hover) {
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--primary-gold);
+  transform: translateY(-1px);
 }
 
 .stats-filter-toggle-btn {
@@ -1186,21 +1333,38 @@ watch(chartTab, () => {
 .stats-content {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 18px;
 }
 
 .overview-row {
-  margin-bottom: 8px;
+  margin-bottom: 2px;
+}
+
+.overview-col {
+  min-width: 0;
 }
 
 .overview-card {
   border-radius: var(--card-radius);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
+  background:
+    linear-gradient(135deg, var(--stats-card-bg), rgba(255, 255, 255, 0.88)),
+    radial-gradient(circle at 100% 0%, rgba(212, 175, 55, 0.11), transparent 42%);
+  border: 1px solid var(--stats-card-border);
+  box-shadow: var(--stats-card-shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   position: relative;
   overflow: hidden;
+  transition:
+    transform var(--transition-fast, 0.2s ease),
+    box-shadow var(--transition-fast, 0.2s ease),
+    border-color var(--transition-fast, 0.2s ease);
+}
+
+.overview-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212, 175, 55, 0.32);
+  box-shadow: var(--stats-card-shadow-hover);
 }
 
 .overview-card::before {
@@ -1211,12 +1375,22 @@ watch(chartTab, () => {
   width: 132px;
   height: 132px;
   transform: rotate(-14deg);
-  opacity: 0.085;
+  opacity: 0.065;
   pointer-events: none;
   background-repeat: no-repeat;
   background-position: center;
   background-size: contain;
   filter: saturate(1.05);
+}
+
+.overview-card::after {
+  content: '';
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 100%;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-gold), rgba(246, 211, 101, 0.26));
+  pointer-events: none;
 }
 
 .overview-card--goods::before {
@@ -1227,21 +1401,36 @@ watch(chartTab, () => {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23A29BFE' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M28 30h64v64H28z'/%3E%3Cpath d='M38 44h44'/%3E%3Cpath d='M38 60h30'/%3E%3Cpath d='M38 76h36'/%3E%3Ccircle cx='84' cy='60' r='6'/%3E%3C/g%3E%3C/svg%3E");
 }
 
+.overview-card--quantity::after {
+  background: linear-gradient(90deg, var(--accent-purple), rgba(196, 181, 253, 0.26));
+}
+
 .overview-card--value::before {
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg fill='none' stroke='%23F6D365' stroke-width='6' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='60' cy='60' r='36'/%3E%3Ccircle cx='60' cy='60' r='26'/%3E%3Cpath d='M52 46h18'/%3E%3Cpath d='M52 74h18'/%3E%3Cpath d='M60 44v32'/%3E%3Cpath d='M54 54c2-3 10-3 12 0s-2 6-6 6-8 3-6 6 10 3 12 0'/%3E%3C/g%3E%3C/svg%3E");
+}
+
+.overview-card--value {
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.97), var(--stats-card-highlight)),
+    radial-gradient(circle at 100% 0%, rgba(246, 211, 101, 0.16), transparent 42%);
 }
 
 .overview-label {
   font-size: 13px;
   color: var(--text-light);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
 }
 
 .overview-value {
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 26px;
+  font-weight: 800;
   color: var(--text-dark);
   margin-bottom: 4px;
+  letter-spacing: 0;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
 }
 
 .overview-value--money {
@@ -1264,6 +1453,7 @@ watch(chartTab, () => {
 .overview-sub {
   font-size: 12px;
   color: var(--text-light);
+  font-weight: 600;
 }
 
 .overview-kpi-grid {
@@ -1360,20 +1550,46 @@ watch(chartTab, () => {
 
 .chart-card {
   border-radius: var(--card-radius);
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: var(--shadow-sm);
+  background:
+    linear-gradient(135deg, var(--stats-card-bg), rgba(255, 255, 255, 0.9)),
+    radial-gradient(circle at 100% 0%, rgba(246, 211, 101, 0.11), transparent 40%);
+  border: 1px solid var(--stats-card-border);
+  box-shadow: var(--stats-card-shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition:
+    transform var(--transition-fast, 0.2s ease),
+    box-shadow var(--transition-fast, 0.2s ease),
+    border-color var(--transition-fast, 0.2s ease);
+}
+
+.chart-card:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212, 175, 55, 0.3);
+  box-shadow: var(--stats-card-shadow-hover);
+}
+
+.chart-card :deep(.el-card__body) {
+  padding: 20px 20px 18px;
 }
 
 .chart-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
   font-size: 14px;
-  font-weight: 600;
-  margin-bottom: 8px;
-  background: linear-gradient(135deg, #F6D365 0%, #FF9A9E 50%, #A29BFE 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  font-weight: 800;
+  margin-bottom: 12px;
+  color: var(--primary-gold-dark);
+}
+
+.chart-title::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-gold), var(--primary-gold-light));
+  box-shadow: 0 0 0 4px rgba(212, 175, 55, 0.12);
 }
 
 .chart-container {
@@ -1418,7 +1634,7 @@ watch(chartTab, () => {
   width: 100%;
   height: 220px;
   border-radius: 14px;
-  background: linear-gradient(90deg, #f1f5f9 0%, #ffffff 50%, #f1f5f9 100%);
+  background: linear-gradient(90deg, rgba(248, 250, 252, 0.9) 0%, #ffffff 50%, rgba(255, 249, 234, 0.86) 100%);
   background-size: 220% 100%;
   animation: chartSkeleton 1.2s ease-in-out infinite;
 }
