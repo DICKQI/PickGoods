@@ -1,11 +1,12 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
-import { getIPList, getIPCharacters, getCategoryList, getThemeList } from '@/api/metadata'
+import { getIPList, getIPCharacters, getCharacterList, getCategoryList, getThemeList } from '@/api/metadata'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
 import type { IP, Character, Category, Theme } from '@/api/types'
 
 const CACHE_KEYS = {
   IPS: 'metadata_ips',
+  CHARACTERS: 'metadata_characters',
   CHARACTERS_BY_IP: 'metadata_characters_by_ip',
   CATEGORIES: 'metadata_categories',
   CATEGORIES_BY_SCOPE: 'metadata_categories_by_scope',
@@ -20,6 +21,7 @@ type CategoryListParams = Parameters<typeof getCategoryList>[0]
 
 export const useMetadataStore = defineStore('metadata', () => {
   const ips = ref<IP[]>([])
+  const characters = ref<Character[]>([])
   const charactersByIP = ref<Record<number, Character[]>>({}) // 使用 Map 结构存储
   const categories = ref<Category[]>([])
   const categoriesByScope = ref<Record<string, Category[]>>({})
@@ -34,6 +36,7 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   const hasCachedMetadata = () => Boolean(
     localStorage.getItem(CACHE_KEYS.IPS) ||
+    localStorage.getItem(CACHE_KEYS.CHARACTERS) ||
     localStorage.getItem(CACHE_KEYS.CHARACTERS_BY_IP) ||
     localStorage.getItem(CACHE_KEYS.CATEGORIES) ||
     localStorage.getItem(CACHE_KEYS.THEMES)
@@ -41,6 +44,7 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   const clearMemory = () => {
     ips.value = []
+    characters.value = []
     charactersByIP.value = {}
     categories.value = []
     themes.value = []
@@ -49,6 +53,7 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   const removeCachedMetadata = () => {
     localStorage.removeItem(CACHE_KEYS.IPS)
+    localStorage.removeItem(CACHE_KEYS.CHARACTERS)
     localStorage.removeItem(CACHE_KEYS.CHARACTERS_BY_IP)
     localStorage.removeItem(CACHE_KEYS.CATEGORIES)
     localStorage.removeItem(CACHE_KEYS.CATEGORIES_BY_SCOPE)
@@ -96,6 +101,9 @@ export const useMetadataStore = defineStore('metadata', () => {
       const cachedIps = localStorage.getItem(CACHE_KEYS.IPS)
       if (cachedIps) ips.value = JSON.parse(cachedIps)
 
+      const cachedAllCharacters = localStorage.getItem(CACHE_KEYS.CHARACTERS)
+      if (cachedAllCharacters) characters.value = JSON.parse(cachedAllCharacters)
+
       const cachedCharacters = localStorage.getItem(CACHE_KEYS.CHARACTERS_BY_IP)
       if (cachedCharacters) charactersByIP.value = JSON.parse(cachedCharacters)
 
@@ -123,6 +131,7 @@ export const useMetadataStore = defineStore('metadata', () => {
         }
       }
       if (ips.value.length > 0) ensureTs('ips')
+      if (characters.value.length > 0) ensureTs('characters:all')
       if (themes.value.length > 0) ensureTs('themes')
       if (categories.value.length > 0) ensureTs('categories:default')
       for (const ipId of Object.keys(charactersByIP.value)) {
@@ -157,6 +166,24 @@ export const useMetadataStore = defineStore('metadata', () => {
       return data
     } catch (error) {
       console.error('Failed to fetch IPs', error)
+      throw error
+    }
+  }
+
+  // 按需获取所有角色
+  const fetchCharacters = async (force = false) => {
+    ensureCacheOwner()
+    const cacheKey = 'characters:all'
+    if (!force && characters.value.length > 0 && isCacheFresh(cacheKey)) return characters.value
+
+    try {
+      const data = await getCharacterList()
+      characters.value = data
+      markFetched(cacheKey)
+      saveToCache(CACHE_KEYS.CHARACTERS, data)
+      return data
+    } catch (error) {
+      console.error('Failed to fetch Characters', error)
       throw error
     }
   }
@@ -252,12 +279,14 @@ export const useMetadataStore = defineStore('metadata', () => {
 
   return {
     ips,
+    characters,
     charactersByIP,
     categories,
     categoriesByScope,
     themes,
     loading,
     fetchIPs,
+    fetchCharacters,
     fetchIPCharacters,
     fetchCategories,
     fetchThemes,

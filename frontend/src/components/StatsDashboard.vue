@@ -328,11 +328,11 @@ import { ElMessage } from 'element-plus'
 import { RefreshLeft, ArrowDown, List, Close, Top } from '@element-plus/icons-vue'
 import * as echarts from 'echarts'
 import { getGoodsStats } from '@/api/goods'
-import { getCharacterList } from '@/api/metadata'
 import { useMetadataStore } from '@/stores/metadata'
 import { useLocationStore } from '@/stores/location'
 import StatsFilterControls from '@/components/StatsFilterControls.vue'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { searchCharacterStatsCandidates } from '@/utils/characterStatsSearch'
 import type {
   GoodsStatsOverview,
   GoodsStatsParams,
@@ -346,6 +346,7 @@ const loading = ref(false)
 const statsData = ref<GoodsStatsResponse | null>(null)
 const DEFAULT_STATS_TOP = 10
 const CHARACTER_STATS_RETURN_TO_STATS = '/showcase?tab=stats'
+const CHARACTER_STATS_SEARCH_DEBOUNCE_MS = 200
 
 // 筛选面板折叠状态（PC 默认展开，移动端默认收起，与谷仓页一致）
 const { isMobile } = useResponsiveDevice()
@@ -369,6 +370,8 @@ const mobileDraftCreatedDateRange = ref<[string, string] | null>(null)
 const characterStatsTargetId = ref<number | undefined>()
 const characterStatsOptions = ref<Character[]>([])
 const characterStatsLoading = ref(false)
+let characterStatsSearchTimer: number | undefined
+let characterStatsSearchRequestId = 0
 
 const setStatsFilterDefaults = (target: GoodsStatsParams) => {
   target.top = DEFAULT_STATS_TOP
@@ -432,23 +435,50 @@ const applyMobileStatsFilter = () => {
   fetchStats()
 }
 
-const searchCharacterStatsOptions = async (keyword: string) => {
+const runCharacterStatsSearch = async (keyword: string, requestId: number) => {
+  try {
+    const options = await searchCharacterStatsCandidates(keyword, {
+      scopedIpId: filters.ip,
+      searchCharacters: ({ ip }) => (
+        ip ? metadataStore.fetchIPCharacters(ip) : metadataStore.fetchCharacters()
+      ),
+    })
+    if (requestId === characterStatsSearchRequestId) {
+      characterStatsOptions.value = options
+    }
+  } catch (err: any) {
+    if (requestId === characterStatsSearchRequestId) {
+      console.error('搜索角色失败', err)
+      characterStatsOptions.value = []
+      ElMessage.error(err?.message || '搜索角色失败')
+    }
+  } finally {
+    if (requestId === characterStatsSearchRequestId) {
+      characterStatsLoading.value = false
+    }
+  }
+}
+
+const searchCharacterStatsOptions = (keyword: string) => {
   const trimmed = keyword.trim()
+  characterStatsSearchRequestId += 1
+  const requestId = characterStatsSearchRequestId
+
+  if (characterStatsSearchTimer) {
+    window.clearTimeout(characterStatsSearchTimer)
+    characterStatsSearchTimer = undefined
+  }
+
   if (!trimmed) {
     characterStatsOptions.value = []
+    characterStatsLoading.value = false
     return
   }
 
   characterStatsLoading.value = true
-  try {
-    characterStatsOptions.value = await getCharacterList({ search: trimmed, ip: filters.ip })
-  } catch (err: any) {
-    console.error('搜索角色失败', err)
-    characterStatsOptions.value = []
-    ElMessage.error(err?.message || '搜索角色失败')
-  } finally {
-    characterStatsLoading.value = false
-  }
+  characterStatsSearchTimer = window.setTimeout(() => {
+    void runCharacterStatsSearch(trimmed, requestId)
+  }, CHARACTER_STATS_SEARCH_DEBOUNCE_MS)
 }
 
 const goToCharacterStats = () => {
@@ -535,6 +565,7 @@ const locationStore = useLocationStore()
 interface CategoryTreeNode {
   id: number
   label: string
+  path_name?: string
   children?: CategoryTreeNode[]
 }
 
@@ -549,6 +580,7 @@ const categoryTreeData = computed<CategoryTreeNode[]>(() => {
     nodeMap.set(c.id, {
       id: c.id,
       label: c.name,
+      path_name: c.path_name,
       children: [],
     })
   })
@@ -982,6 +1014,10 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
   window.removeEventListener('cloud-showcase:stats-refresh', handleStatsRefresh as EventListener)
+  if (characterStatsSearchTimer) {
+    window.clearTimeout(characterStatsSearchTimer)
+    characterStatsSearchTimer = undefined
+  }
   disposeCharts()
   restoreBodyOverflowForStatsFilter()
   if (resizeTimer !== null) {

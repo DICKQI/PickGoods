@@ -50,11 +50,12 @@
         placeholder="全部IP"
         clearable
         filterable
+        :filter-method="handleIPFilter"
         size="small"
         @update:model-value="$emit('update:ip', $event)"
       >
         <el-option
-          v-for="opt in ipOptions"
+          v-for="opt in filteredIpOptions"
           :key="opt.id"
           :label="opt.name"
           :value="opt.id"
@@ -73,7 +74,7 @@
           remote
           reserve-keyword
           size="small"
-          :remote-method="searchCharacterStatsOptions"
+          :remote-method="handleCharacterStatsSearch"
           :loading="characterStatsLoading"
           @update:model-value="$emit('update:characterStatsTargetId', $event)"
         >
@@ -105,6 +106,8 @@
         :props="{ label: 'label', value: 'id', children: 'children' }"
         placeholder="全部品类"
         clearable
+        filterable
+        :filter-node-method="filterCategoryNode"
         size="small"
         check-strictly
         @update:model-value="$emit('update:category', $event)"
@@ -142,16 +145,20 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { Top } from '@element-plus/icons-vue'
+import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
 import type { Character, GoodsStatus, IP } from '@/api/types'
 
 interface CategoryTreeNode {
   id: number
   label: string
+  pathName?: string
+  path_name?: string
   children?: CategoryTreeNode[]
 }
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   top?: number
   isOfficial?: boolean
   selectedStatuses: GoodsStatus[]
@@ -181,6 +188,28 @@ defineEmits<{
   'update:characterStatsTargetId': [value: number | undefined]
   openCharacterStats: []
 }>()
+
+const ipSearchKeyword = ref('')
+
+const filteredIpOptions = computed(() => (
+  props.ipOptions.filter((ip) => matchesTextOrPinyin(
+    ipSearchKeyword.value,
+    [ip.name, ...(ip.keywords?.map((keyword) => keyword.value) ?? [])],
+  ))
+))
+
+const handleIPFilter = (keyword: string) => {
+  ipSearchKeyword.value = keyword
+}
+
+const handleCharacterStatsSearch = (keyword: string) => {
+  return props.searchCharacterStatsOptions(keyword)
+}
+
+const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
+  if (!data) return false
+  return matchesTextOrPinyin(keyword, [data.label, data.pathName ?? '', data.path_name ?? ''])
+}
 </script>
 
 <style scoped>
