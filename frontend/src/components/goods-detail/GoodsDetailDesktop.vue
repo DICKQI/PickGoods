@@ -182,8 +182,23 @@
           <div v-else class="desktop-same-theme-placeholder">
             <el-icon><Picture /></el-icon>
           </div>
-          <span class="desktop-same-theme-name" :title="goods.name">
-            <span class="desktop-same-theme-name-text">{{ goods.name }}</span>
+          <span
+            class="desktop-same-theme-name"
+            :class="{ 'is-scrollable': isSameThemeNameScrollable(goods.id) }"
+            :title="goods.name"
+          >
+            <span class="desktop-same-theme-name-clip">
+              <span
+                :ref="(el) => setSameThemeNameRef(goods.id, el)"
+                class="desktop-same-theme-name-text"
+              >
+                {{ goods.name }}
+              </span>
+              <span class="desktop-same-theme-name-track" aria-hidden="true">
+                <span class="desktop-same-theme-name-scroll-text">{{ goods.name }}</span>
+                <span class="desktop-same-theme-name-scroll-text">{{ goods.name }}</span>
+              </span>
+            </span>
           </span>
         </button>
       </div>
@@ -192,7 +207,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { ArrowLeft, ArrowRight, Picture } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import type { GoodsDetail, GoodsListItem } from '@/api/types'
@@ -212,6 +228,9 @@ defineEmits<{
 
 const thumbnailPageSize = 4
 const thumbnailPage = ref(0)
+const sameThemeNameRefs = new Map<string, HTMLElement>()
+const scrollableSameThemeNameIds = ref(new Set<string>())
+let sameThemeNameResizeObserver: ResizeObserver | null = null
 
 const locationText = computed(() => props.detail.location_path || '未收纳')
 const priceText = computed(() => (props.detail.price ? `¥ ${props.detail.price}` : '未记录'))
@@ -235,12 +254,81 @@ const showNextThumbnails = () => {
   thumbnailPage.value = Math.min(totalThumbnailPages.value - 1, thumbnailPage.value + 1)
 }
 
+const updateSameThemeNameScrollState = async () => {
+  await nextTick()
+  const nextScrollableIds = new Set<string>()
+
+  sameThemeNameRefs.forEach((el, goodsId) => {
+    if (el.scrollWidth > el.clientWidth + 1) {
+      nextScrollableIds.add(goodsId)
+    }
+  })
+
+  const currentScrollableIds = scrollableSameThemeNameIds.value
+  const hasChanged =
+    nextScrollableIds.size !== currentScrollableIds.size ||
+    [...nextScrollableIds].some(goodsId => !currentScrollableIds.has(goodsId))
+
+  if (hasChanged) {
+    scrollableSameThemeNameIds.value = nextScrollableIds
+  }
+}
+
+const setSameThemeNameRef = (goodsId: string, el: Element | ComponentPublicInstance | null) => {
+  const previousEl = sameThemeNameRefs.get(goodsId)
+  if (previousEl && previousEl !== el) {
+    sameThemeNameResizeObserver?.unobserve(previousEl)
+    sameThemeNameRefs.delete(goodsId)
+  }
+
+  if (!(el instanceof HTMLElement)) return
+
+  sameThemeNameRefs.set(goodsId, el)
+  sameThemeNameResizeObserver?.observe(el)
+}
+
+const isSameThemeNameScrollable = (goodsId: string) =>
+  scrollableSameThemeNameIds.value.has(goodsId)
+
 watch(
   () => props.detail.id,
   () => {
     thumbnailPage.value = 0
   },
 )
+
+watch(
+  () => props.sameThemeGoods.map(goods => `${goods.id}:${goods.name}`).join('|'),
+  () => {
+    const activeIds = new Set(props.sameThemeGoods.map(goods => goods.id))
+
+    sameThemeNameRefs.forEach((el, goodsId) => {
+      if (!activeIds.has(goodsId)) {
+        sameThemeNameResizeObserver?.unobserve(el)
+        sameThemeNameRefs.delete(goodsId)
+      }
+    })
+
+    void updateSameThemeNameScrollState()
+  },
+)
+
+onMounted(() => {
+  void updateSameThemeNameScrollState()
+
+  if (typeof ResizeObserver === 'undefined') return
+
+  sameThemeNameResizeObserver = new ResizeObserver(() => {
+    void updateSameThemeNameScrollState()
+  })
+
+  sameThemeNameRefs.forEach(el => sameThemeNameResizeObserver?.observe(el))
+})
+
+onBeforeUnmount(() => {
+  sameThemeNameResizeObserver?.disconnect()
+  sameThemeNameRefs.clear()
+})
 </script>
 
 <style scoped>
@@ -698,6 +786,13 @@ watch(
   white-space: nowrap;
 }
 
+.desktop-same-theme-name-clip {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .desktop-same-theme-name-text {
   display: block;
   min-width: 0;
@@ -708,24 +803,66 @@ watch(
   will-change: transform;
 }
 
-.desktop-same-theme-card:hover .desktop-same-theme-name-text {
-  display: inline-block;
+.desktop-same-theme-name-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 18px;
   max-width: none;
-  min-width: max-content;
-  overflow: visible;
-  text-overflow: clip;
-  animation: desktop-same-theme-name-marquee 5s linear infinite;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
-@keyframes desktop-same-theme-name-marquee {
+.desktop-same-theme-name-scroll-text {
+  flex: 0 0 auto;
+}
+
+.desktop-same-theme-name.is-scrollable .desktop-same-theme-name-text {
+  animation: desktopSameThemeNameEllipsis 5.4s ease-in-out infinite;
+}
+
+.desktop-same-theme-name.is-scrollable .desktop-same-theme-name-track {
+  animation: desktopSameThemeNameScroll 5.4s ease-in-out infinite;
+}
+
+@keyframes desktopSameThemeNameEllipsis {
   0%,
-  14% {
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes desktopSameThemeNameScroll {
+  0%,
+  18% {
+    opacity: 0;
     transform: translateX(0);
   }
 
-  86%,
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 9px));
+  }
+
+  94%,
   100% {
-    transform: translateX(calc(-100% + 92px));
+    opacity: 0;
+    transform: translateX(calc(-50% - 9px));
   }
 }
 

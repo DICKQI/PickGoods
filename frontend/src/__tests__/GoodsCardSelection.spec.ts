@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import GoodsCard from '@/components/GoodsCard.vue'
 import type { GoodsListItem } from '@/api/types'
 
@@ -31,6 +33,9 @@ const mountCard = (props: Partial<InstanceType<typeof GoodsCard>['$props']> = {}
     },
   })
 
+const goodsCardSource = () =>
+  readFileSync(resolve(process.cwd(), 'src/components/GoodsCard.vue'), 'utf8')
+
 describe('GoodsCard selection mode', () => {
   it('emits click in normal mode', async () => {
     const wrapper = mountCard()
@@ -55,5 +60,28 @@ describe('GoodsCard selection mode', () => {
 
     expect(wrapper.classes()).toContain('is-selectable')
     expect(wrapper.classes()).toContain('is-selected')
+  })
+
+  it('保留 PC 卡片交互入口并隐藏未定位占位', () => {
+    const source = goodsCardSource()
+
+    expect(source).toContain('contextMenu')
+    expect(source).toContain('locationClick')
+    expect(source).toContain('showMenu?: boolean')
+    expect(source).toContain("'is-selected'")
+    expect(source).toContain('location-breadcrumb')
+    expect(source).toContain('category-tag-text')
+    expect(source).toContain("class=\"card-footer\"")
+    expect(source).toContain("'has-location': goods.location_path")
+    expect(source).toContain('grid-template-columns: minmax(94px, 42%) minmax(0, 1fr);')
+    expect(source).toContain('max-width: min(126px, 100%);')
+    expect(source).toContain('box-sizing: border-box;')
+    expect(source).toContain('category-tag-track')
+    expect(source).toContain('is-scrollable')
+    expect(source).toContain('@keyframes categoryTagScroll')
+    expect(source).toContain('ResizeObserver')
+    expect(source).toContain('animation: categoryTagScroll 4.8s ease-in-out infinite;')
+    expect(source).not.toContain('location-box--empty')
+    expect(source).not.toContain('未定位')
   })
 })

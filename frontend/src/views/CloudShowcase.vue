@@ -1031,9 +1031,15 @@ watch(mobileFilterVisible, (visible) => {
 
 .goods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 22px;
   margin-bottom: 20px;
+}
+
+@media (min-width: 1500px) {
+  .cloud-showcase {
+    max-width: 1520px;
+  }
 }
 
 @media (max-width: 768px) {

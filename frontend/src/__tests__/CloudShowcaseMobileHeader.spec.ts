@@ -267,6 +267,13 @@ describe('CloudShowcase mobile compact header', () => {
     expect(globalPullContentRule).not.toContain('will-change: transform')
   })
 
+  it('keeps medium desktop at five columns and opens large desktop to six columns', () => {
+    expect(cloudShowcaseSource).toContain('max-width: 1400px;')
+    expect(cloudShowcaseSource).toContain('grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));')
+    expect(cloudShowcaseSource).toContain('@media (min-width: 1500px)')
+    expect(cloudShowcaseSource).toContain('max-width: 1520px;')
+  })
+
   it('opens the stats tab when the route query requests it', async () => {
     routeQuery.value = { tab: 'stats' }
 

@@ -57,17 +57,15 @@
       <h3
         ref="titleHostRef"
         class="mobile-goods-title"
-        :class="{ 'is-overflowing': titleOverflowing }"
+        :class="{ 'is-overflowing': titleOverflowing, 'is-scrollable': titleOverflowing }"
         :title="goods.name"
       >
-        <span class="mobile-goods-title-track">
-          <span class="mobile-title-marquee">{{ goods.name }}</span>
-          <span v-if="titleOverflowing" class="mobile-title-marquee" aria-hidden="true">
-            {{ goods.name }}
+        <span class="mobile-goods-title-clip">
+          <span ref="titleTextRef" class="mobile-title-text">{{ goods.name }}</span>
+          <span class="mobile-goods-title-track" aria-hidden="true">
+            <span class="mobile-title-scroll-text">{{ goods.name }}</span>
+            <span class="mobile-title-scroll-text">{{ goods.name }}</span>
           </span>
-        </span>
-        <span ref="titleMeasureRef" class="mobile-title-measure" aria-hidden="true">
-          {{ goods.name }}
         </span>
       </h3>
 
@@ -124,9 +122,10 @@ const emit = defineEmits<{
 
 const isLongPress = ref(false)
 const titleHostRef = ref<HTMLElement | null>(null)
-const titleMeasureRef = ref<HTMLElement | null>(null)
+const titleTextRef = ref<HTMLElement | null>(null)
 const titleOverflowing = ref(false)
 let longPressTimer: number | null = null
+let titleResizeObserver: ResizeObserver | null = null
 
 const selectable = computed(() => props.selectable)
 const selected = computed(() => props.selected)
@@ -163,14 +162,16 @@ const categoryStyle = computed(() => {
 
 const syncTitleOverflow = async () => {
   await nextTick()
-  const host = titleHostRef.value
-  const measure = titleMeasureRef.value
-  if (!host || !measure) {
-    titleOverflowing.value = false
+  const titleText = titleTextRef.value
+  if (!titleText) {
+    if (titleOverflowing.value) titleOverflowing.value = false
     return
   }
 
-  titleOverflowing.value = measure.scrollWidth > host.clientWidth + 1
+  const isOverflowing = titleText.scrollWidth > titleText.clientWidth + 1
+  if (titleOverflowing.value !== isOverflowing) {
+    titleOverflowing.value = isOverflowing
+  }
 }
 
 const handleClick = () => {
@@ -233,14 +234,25 @@ const handleTouchEnd = () => clearLongPressTimer()
 const handleTouchMove = () => clearLongPressTimer()
 
 onMounted(() => {
-  syncTitleOverflow()
-  window.addEventListener('resize', syncTitleOverflow)
+  void syncTitleOverflow()
+
+  if (typeof ResizeObserver === 'undefined') return
+
+  titleResizeObserver = new ResizeObserver(() => {
+    void syncTitleOverflow()
+  })
+
+  if (titleHostRef.value) {
+    titleResizeObserver.observe(titleHostRef.value)
+  }
+  if (titleTextRef.value) {
+    titleResizeObserver.observe(titleTextRef.value)
+  }
 })
 
-onBeforeUnmount(() => clearLongPressTimer())
-
 onBeforeUnmount(() => {
-  window.removeEventListener('resize', syncTitleOverflow)
+  clearLongPressTimer()
+  titleResizeObserver?.disconnect()
 })
 
 watch(() => props.goods.name, () => {
@@ -418,58 +430,90 @@ watch(() => props.goods.name, () => {
   white-space: nowrap;
 }
 
-.mobile-goods-title-track {
-  display: inline-flex;
-  align-items: center;
+.mobile-goods-title-clip {
+  position: relative;
+  display: block;
   max-width: 100%;
   min-width: 0;
-  vertical-align: top;
+  overflow: hidden;
 }
 
-.mobile-title-marquee {
-  display: inline-block;
+.mobile-title-text {
+  display: block;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.mobile-title-measure {
+.mobile-goods-title-track {
   position: absolute;
-  inset: 0 auto auto 0;
-  width: max-content;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 20px;
   max-width: none;
-  visibility: hidden;
-  pointer-events: none;
+  opacity: 0;
   white-space: nowrap;
+  pointer-events: none;
 }
 
-.mobile-goods-title.is-overflowing .mobile-goods-title-track {
-  max-width: none;
-  min-width: max-content;
-  animation: mobileTitleMarquee 7s linear 0.8s infinite;
-  will-change: transform;
+.mobile-title-scroll-text {
+  flex: 0 0 auto;
 }
 
-.mobile-goods-title.is-overflowing .mobile-title-marquee {
-  overflow: visible;
-  padding-right: 24px;
-  text-overflow: clip;
+.mobile-goods-title.is-scrollable .mobile-title-text {
+  animation: mobileTitleEllipsis 5.4s ease-in-out infinite;
 }
 
-@keyframes mobileTitleMarquee {
+.mobile-goods-title.is-scrollable .mobile-goods-title-track {
+  animation: mobileTitleScroll 5.4s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes mobileTitleEllipsis {
   0%,
-  12% {
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes mobileTitleScroll {
+  0%,
+  18% {
+    opacity: 0;
     transform: translateX(0);
   }
-  88%,
+
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 10px));
+  }
+
+  94%,
   100% {
-    transform: translateX(calc(-50%));
+    opacity: 0;
+    transform: translateX(calc(-50% - 10px));
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .mobile-goods-title.is-overflowing .mobile-goods-title-track {
+  .mobile-goods-title.is-scrollable .mobile-title-text,
+  .mobile-goods-title.is-scrollable .mobile-goods-title-track {
     animation: none;
   }
 }

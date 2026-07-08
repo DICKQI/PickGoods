@@ -41,11 +41,11 @@ const mockTitleMeasurements = ({
   textWidth: number
 }) => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
-    if (this.classList.contains('mobile-goods-title')) return hostWidth
+    if (this.classList.contains('mobile-title-text')) return hostWidth
     return 0
   })
   vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
-    if (this.classList.contains('mobile-title-measure')) return textWidth
+    if (this.classList.contains('mobile-title-text')) return textWidth
     return 0
   })
 }
@@ -121,10 +121,11 @@ describe('MobileGoodsCard', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.get('.mobile-goods-title').classes()).not.toContain('is-overflowing')
-    expect(wrapper.findAll('.mobile-title-marquee')).toHaveLength(1)
+    expect(wrapper.get('.mobile-goods-title').classes()).not.toContain('is-scrollable')
+    expect(wrapper.findAll('.mobile-title-scroll-text')).toHaveLength(2)
   })
 
-  it('uses a marquee track for overflowing single-line titles', async () => {
+  it('uses automatic ellipsis-to-scroll behavior for overflowing single-line titles', async () => {
     mockTitleMeasurements({ hostWidth: 100, textWidth: 240 })
     const wrapper = mountCard({
       goods: {
@@ -137,8 +138,9 @@ describe('MobileGoodsCard', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.get('.mobile-goods-title').classes()).toContain('is-overflowing')
-    expect(wrapper.get('.mobile-title-marquee').text()).toContain('A very very very very long goods title')
-    expect(wrapper.findAll('.mobile-title-marquee')).toHaveLength(2)
+    expect(wrapper.get('.mobile-goods-title').classes()).toContain('is-scrollable')
+    expect(wrapper.get('.mobile-title-text').text()).toContain('A very very very very long goods title')
+    expect(wrapper.findAll('.mobile-title-scroll-text')).toHaveLength(2)
   })
 
   it('hides the menu button when showMenu is false or selection mode is active', () => {

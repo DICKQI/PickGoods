@@ -67,36 +67,57 @@
         <div class="info-row">
           <span class="info-label">角色</span>
           <span class="info-value truncate">
-            {{ goods.characters.map(c => c.name).join('、') }}
+            {{ characterNames }}
           </span>
         </div>
       </div>
 
       <!-- 3. 底部脚部（解决移动端冲突的核心区域） -->
-      <div class="card-footer">
+      <div class="card-footer" :class="{ 'has-location': goods.location_path }">
         <!-- 品类标签：固定宽度不收缩 -->
         <div class="category-wrapper">
-          <span class="category-tag" :style="categoryStyle">
-            {{ goods.category.name }}
+          <span
+            ref="categoryTagRef"
+            class="category-tag"
+            :class="{ 'is-scrollable': isCategoryScrollable }"
+            :style="categoryStyle"
+            :title="goods.category.name"
+          >
+            <span class="category-tag-clip">
+              <span ref="categoryTextRef" class="category-tag-text">{{ goods.category.name }}</span>
+              <span class="category-tag-track" aria-hidden="true">
+                <span class="category-tag-scroll-text">{{ goods.category.name }}</span>
+                <span class="category-tag-scroll-text">{{ goods.category.name }}</span>
+              </span>
+            </span>
           </span>
         </div>
 
-        <!-- 位置信息：空间不足时自动收缩并显示省略号 -->
-        <div
-          v-if="goods.location_path"
-          class="location-box"
-          @click.stop="handleLocationClick"
-        >
-          <el-icon class="loc-icon"><Location /></el-icon>
-          <span class="location-text">{{ goods.location_path.split('/').pop() }}</span>
-        </div>
+      <!-- 位置信息：PC 端用面包屑强化“在哪儿”的识别 -->
+      <div
+        v-if="goods.location_path"
+        class="location-box"
+        :title="goods.location_path"
+        @click.stop="handleLocationClick"
+      >
+        <el-icon class="loc-icon"><Location /></el-icon>
+        <span class="location-breadcrumb">
+          <span
+            v-for="(segment, index) in locationDisplaySegments"
+            :key="`${segment}-${index}`"
+            class="location-segment"
+          >
+            {{ segment }}
+          </span>
+        </span>
+      </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Picture, Location, CircleCheck, MoreFilled, Brush, Check } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import type { GoodsListItem } from '@/api/types'
@@ -139,13 +160,43 @@ const tagClass = computed(() => ({
   'tag-unofficial': !props.goods.is_official
 }))
 
+const characterNames = computed(() =>
+  props.goods.characters.map(character => character.name).join('、'),
+)
+
+const categoryTagRef = ref<HTMLElement | null>(null)
+const categoryTextRef = ref<HTMLElement | null>(null)
+const isCategoryScrollable = ref(false)
+let categoryResizeObserver: ResizeObserver | null = null
+
+const updateCategoryScrollState = async () => {
+  await nextTick()
+  const textEl = categoryTextRef.value
+
+  if (!textEl) {
+    isCategoryScrollable.value = false
+    return
+  }
+
+  isCategoryScrollable.value = textEl.scrollWidth > textEl.clientWidth + 1
+}
+
+const locationDisplaySegments = computed(() => {
+  const segments = props.goods.location_path
+    .split('/')
+    .map(segment => segment.trim())
+    .filter(Boolean)
+
+  return segments.slice(-3)
+})
+
 // 动态计算品类标签样式
 const categoryStyle = computed(() => {
-  const color = props.goods.category.color_tag || '#D4AF37';
+  const color = props.goods.category.color_tag || 'var(--primary-gold)'
   return {
-    color: color,
-    backgroundColor: `${color}15`,
-    borderColor: `${color}30`
+    color,
+    backgroundColor: color.startsWith('#') ? `${color}14` : 'rgba(212, 175, 55, 0.12)',
+    borderColor: color.startsWith('#') ? `${color}36` : 'rgba(212, 175, 55, 0.28)',
   }
 })
 
@@ -207,32 +258,102 @@ const handleTouchStart = (event: TouchEvent) => {
 
 const handleTouchEnd = () => clearLongPressTimer()
 const handleTouchMove = () => clearLongPressTimer()
-onBeforeUnmount(() => clearLongPressTimer())
+
+onMounted(() => {
+  void updateCategoryScrollState()
+
+  if (typeof ResizeObserver === 'undefined') return
+
+  categoryResizeObserver = new ResizeObserver(() => {
+    void updateCategoryScrollState()
+  })
+
+  if (categoryTagRef.value) {
+    categoryResizeObserver.observe(categoryTagRef.value)
+  }
+  if (categoryTextRef.value) {
+    categoryResizeObserver.observe(categoryTextRef.value)
+  }
+})
+
+watch(
+  () => [props.goods.category.name, props.goods.location_path],
+  () => {
+    void updateCategoryScrollState()
+  },
+)
+
+onBeforeUnmount(() => {
+  clearLongPressTimer()
+  categoryResizeObserver?.disconnect()
+})
 </script>
 
 <style scoped>
 .goods-card {
-  --primary-gold: #D4AF37;
-  --text-main: #303133;
-  --text-sub: #909399;
-  --bg-gray: #f8f9fa;
+  --goods-card-gold: var(--primary-gold, #D4AF37);
+  --goods-card-gold-light: var(--primary-gold-light, #EACDA3);
+  --goods-card-gold-dark: var(--primary-gold-dark, #B8941F);
+  --goods-card-purple: var(--accent-purple, #A29BFE);
+  --goods-card-text: var(--text-dark, #333333);
+  --goods-card-subtle: var(--text-light, #888888);
+  --goods-card-muted: var(--text-regular, #606266);
+  --goods-card-surface: var(--bg-white, #FFFFFF);
+  --goods-card-rail: rgba(212, 175, 55, 0.16);
 
-  background-color: #fff;
-  border-radius: 16px;
+  isolation: isolate;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(250, 249, 246, 0.96)),
+    var(--goods-card-surface);
+  border-radius: var(--card-radius, 20px);
   overflow: hidden;
   position: relative;
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition:
+    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.24s ease,
+    border-color 0.24s ease;
+  border: 1px solid rgba(212, 175, 55, 0.26);
   display: flex;
   flex-direction: column;
   height: 100%;
+  box-shadow:
+    0 12px 30px rgba(28, 23, 12, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.goods-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: -1;
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.18), transparent 34%),
+    linear-gradient(315deg, rgba(162, 155, 254, 0.14), transparent 32%);
+  opacity: 0;
+  transition: opacity 0.24s ease;
+}
+
+.goods-card::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: calc(var(--card-radius, 20px) - 1px);
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
 }
 
 .goods-card:hover {
-  transform: translateY(-4px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.06);
-  border-color: var(--primary-gold);
+  transform: translateY(-3px);
+  border-color: rgba(212, 175, 55, 0.62);
+  box-shadow:
+    0 18px 38px rgba(28, 23, 12, 0.1),
+    0 0 0 3px rgba(212, 175, 55, 0.08);
+}
+
+.goods-card:hover::before {
+  opacity: 1;
 }
 
 .goods-card.is-selectable {
@@ -244,15 +365,19 @@ onBeforeUnmount(() => clearLongPressTimer())
 }
 
 .goods-card.is-selected {
-  border-color: var(--primary-gold);
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.22), 0 10px 22px rgba(0, 0, 0, 0.08);
+  border-color: var(--goods-card-gold);
+  box-shadow:
+    0 0 0 3px rgba(212, 175, 55, 0.2),
+    0 18px 34px rgba(28, 23, 12, 0.12);
 }
 
 .goods-card.is-selected .card-image-wrapper::after {
   content: '';
   position: absolute;
   inset: 0;
-  background: rgba(212, 175, 55, 0.12);
+  border-radius: 16px;
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.16), rgba(162, 155, 254, 0.08));
   pointer-events: none;
   z-index: 1;
 }
@@ -260,15 +385,51 @@ onBeforeUnmount(() => clearLongPressTimer())
 /* 图片区域 */
 .card-image-wrapper {
   position: relative;
-  width: 100%;
+  width: calc(100% - 24px);
+  margin: 12px 12px 0;
   aspect-ratio: 1;
-  background-color: var(--bg-gray);
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: transparent;
   overflow: hidden;
+  box-shadow: none;
 }
 
 .main-image {
   width: 100%;
   height: 100%;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.main-image :deep(.square-padded-image) {
+  height: 100%;
+  aspect-ratio: auto;
+  border-radius: inherit;
+  background: transparent;
+}
+
+.main-image :deep(.square-padded-image__media),
+.main-image :deep(.square-padded-image__placeholder) {
+  border-radius: inherit;
+}
+
+.image-placeholder {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(184, 148, 31, 0.48);
+  background:
+    linear-gradient(135deg, rgba(212, 175, 55, 0.1), rgba(162, 155, 254, 0.1)),
+    #f8fafc;
+}
+
+.image-placeholder .el-icon {
+  font-size: 34px;
 }
 
 /* 官谷/同人标签 */
@@ -276,57 +437,97 @@ onBeforeUnmount(() => clearLongPressTimer())
   position: absolute;
   top: 10px;
   left: 10px;
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 4px;
+  min-height: 22px;
+  max-width: calc(100% - 58px);
   padding: 3px 8px;
-  border-radius: 6px;
+  border-radius: 999px;
   font-size: 11px;
-  font-weight: bold;
+  font-weight: 800;
+  line-height: 1;
   z-index: 2;
-  backdrop-filter: blur(8px) brightness(0.85);
-  -webkit-backdrop-filter: blur(8px) brightness(0.85);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border: 1px solid rgba(255, 255, 255, 0.46);
+  backdrop-filter: blur(10px) saturate(1.24);
+  -webkit-backdrop-filter: blur(10px) saturate(1.24);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1);
 }
 
-.tag-official { background: rgba(212, 175, 55, 0.5); color: #FFD700; }
-.tag-unofficial { background: rgba(162, 155, 254, 0.5); color: #E0DEFF; }
+.tag-icon {
+  flex: none;
+  font-size: 11px;
+}
+
+.tag-official {
+  background: rgba(255, 249, 232, 0.46);
+  color: #a8790e;
+}
+
+.tag-unofficial {
+  background: rgba(245, 243, 255, 0.46);
+  color: #6657f0;
+}
 
 .quantity-badge {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
-  background: rgba(0, 0, 0, 0.65);
+  right: 16px;
+  bottom: 16px;
+  min-width: 30px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 999px;
+  background: rgba(31, 41, 55, 0.76);
   color: #fff;
-  padding: 2px 6px;
-  border-radius: 4px;
   font-size: 11px;
-  font-weight: bold;
+  font-weight: 800;
+  line-height: 22px;
+  text-align: center;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .menu-button {
   position: absolute;
-  top: 10px;
-  right: 10px;
-  width: 28px;
-  height: 28px;
-  background: rgba(255, 255, 255, 0.85);
+  top: 16px;
+  right: 16px;
+  width: 30px;
+  height: 30px;
+  background: rgba(255, 255, 255, 0.9);
+  color: #475569;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: all 0.2s ease;
+  transform: translateY(-2px);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease;
   z-index: 3;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.16);
 }
 
-.goods-card:hover .menu-button { opacity: 1; }
+.goods-card:hover .menu-button {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.menu-button:hover {
+  color: var(--goods-card-gold-dark);
+  box-shadow: 0 10px 22px rgba(212, 175, 55, 0.2);
+}
 
 .selection-indicator {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 16px;
+  right: 16px;
   width: 30px;
   height: 30px;
   border-radius: 50%;
@@ -342,7 +543,7 @@ onBeforeUnmount(() => clearLongPressTimer())
 }
 
 .selection-indicator.is-selected {
-  background: var(--primary-gold);
+  background: var(--goods-card-gold);
   border-color: #fff;
   transform: scale(1.04);
 }
@@ -354,7 +555,7 @@ onBeforeUnmount(() => clearLongPressTimer())
 
 /* 内容区 */
 .card-content {
-  padding: 12px;
+  padding: 13px 14px 14px;
   display: flex;
   flex-direction: column;
   flex: 1;
@@ -362,11 +563,11 @@ onBeforeUnmount(() => clearLongPressTimer())
 }
 
 .goods-title {
-  margin: 0 0 8px 0;
+  margin: 0 0 9px;
+  color: var(--goods-card-text);
   font-size: 14px;
-  font-weight: 600;
-  color: var(--text-main);
-  line-height: 1.4;
+  font-weight: 750;
+  line-height: 1.36;
   display: -webkit-box;
   line-clamp: 2;
   -webkit-line-clamp: 2;
@@ -378,33 +579,37 @@ onBeforeUnmount(() => clearLongPressTimer())
 .info-meta {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  margin-bottom: 10px;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding-bottom: 2px;
 }
 
 .info-row {
   display: flex;
   align-items: center;
+  gap: 8px;
+  min-width: 0;
   font-size: 12px;
 }
 
 .info-label {
-  color: var(--text-sub);
-  background: #f0f2f5;
-  padding: 1px 5px;
-  border-radius: 4px;
-  margin-right: 10px;
-  font-weight: 500;
-  width: 32px;
+  width: 30px;
+  flex: none;
+  color: rgba(184, 148, 31, 0.82);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
   text-align: center;
-  flex-shrink: 0;
-  font-size: 11px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.08);
 }
 
 .info-value {
-  color: #606266;
+  color: var(--goods-card-muted);
   flex: 1;
   min-width: 0;
+  line-height: 1.35;
 }
 
 .truncate {
@@ -416,59 +621,176 @@ onBeforeUnmount(() => clearLongPressTimer())
 /* 底部脚部 - 解决冲突的关键样式 */
 .card-footer {
   margin-top: auto;
-  padding-top: 10px;
-  border-top: 1px dashed #ebeef5;
-  display: flex;
-  justify-content: space-between;
+  padding-top: 11px;
+  border-top: 1px solid rgba(212, 175, 55, 0.14);
+  display: grid;
+  grid-template-columns: 1fr;
   align-items: center;
-  gap: 8px; /* 强制两者之间的最小间距 */
+  gap: 9px;
   width: 100%;
+  min-width: 0;
+}
+
+.card-footer.has-location {
+  grid-template-columns: minmax(94px, 42%) minmax(0, 1fr);
 }
 
 .category-wrapper {
-  flex-shrink: 0; /* 保证标签不会被挤压变窄 */
+  justify-self: stretch;
+  min-width: 0;
 }
 
 .category-tag {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
+  max-width: min(126px, 100%);
+  min-height: 24px;
+  min-width: 0;
+  width: max-content;
+  box-sizing: border-box;
+  overflow: hidden;
   font-size: 11px;
-  font-weight: bold;
-  padding: 2px 8px;
-  border-radius: 4px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 9px;
+  border-radius: 999px;
   border: 1px solid transparent;
   white-space: nowrap;
+}
+
+.category-tag-clip {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.category-tag-text {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.category-tag-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  max-width: none;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.category-tag-scroll-text {
+  flex: 0 0 auto;
+}
+
+.category-tag.is-scrollable .category-tag-text {
+  animation: categoryTagEllipsis 4.8s ease-in-out infinite;
+}
+
+.category-tag.is-scrollable .category-tag-track {
+  animation: categoryTagScroll 4.8s ease-in-out infinite;
+}
+
+@keyframes categoryTagEllipsis {
+  0%,
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes categoryTagScroll {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 8px));
+  }
+
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% - 8px));
+  }
 }
 
 .location-box {
   display: flex;
   align-items: center;
-  justify-content: flex-end; /* 在右侧对齐内容 */
-  gap: 3px;
+  justify-content: flex-end;
+  gap: 5px;
   font-size: 11px;
-  color: var(--text-sub);
-  flex: 1; /* 占据剩余所有空间 */
-  min-width: 0; /* flex容器内允许省略号的关键 */
+  color: var(--goods-card-subtle);
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  transition: color 0.18s ease;
+}
+
+.location-box:hover {
+  color: var(--goods-card-gold-dark);
 }
 
 .loc-icon {
-  flex-shrink: 0; /* 图标不收缩 */
+  flex: none;
+  font-size: 13px;
+}
+
+.location-breadcrumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.location-segment {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.location-segment + .location-segment::before {
+  content: '>';
+  margin-right: 4px;
+  color: rgba(148, 163, 184, 0.72);
 }
 
 .location-text {
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis; /* 长位置信息自动显示省略号 */
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-@media (max-width: 768px) {
-  .goods-title { line-clamp: 1; -webkit-line-clamp: 1; }
-  /* 移动端不常驻显示菜单按钮：长按卡片仍可唤起右键菜单 */
-  .menu-button { opacity: 0; }
-  .card-content { padding: 10px; }
-}
-@media (max-width: 768px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .goods-card {
-    border-radius: 20px;
     border-color: rgba(15, 23, 42, 0.04);
     box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
     transform: none;
@@ -487,7 +809,9 @@ onBeforeUnmount(() => clearLongPressTimer())
   .card-image-wrapper {
     width: calc(100% - 16px);
     margin: 8px 8px 0;
+    padding: 0;
     border-radius: 16px;
+    border: 0;
     background: linear-gradient(135deg, #f8fafc, #f1f5f9);
   }
 
@@ -562,127 +886,12 @@ onBeforeUnmount(() => clearLongPressTimer())
   .card-footer {
     padding-top: 8px;
     border-top: 0;
-    justify-content: flex-start;
-  }
-
-  .category-tag {
-    min-height: 28px;
-    padding: 4px 9px;
-    border-radius: 8px;
-    font-size: 12px;
-    display: inline-flex;
-    align-items: center;
-  }
-
-  .location-box {
-    display: none;
-  }
-
-  .menu-button {
-    opacity: 0;
-  }
-}
-
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  .goods-card {
-    border-radius: 20px;
-    border-color: rgba(15, 23, 42, 0.04);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-    transform: none;
-  }
-
-  .goods-card:hover {
-    transform: none;
-    border-color: rgba(212, 175, 55, 0.18);
-    box-shadow: 0 10px 26px rgba(15, 23, 42, 0.06);
-  }
-
-  .goods-card:active {
-    transform: scale(0.985);
-  }
-
-  .card-image-wrapper {
-    width: calc(100% - 16px);
-    margin: 8px 8px 0;
-    border-radius: 16px;
-    background: linear-gradient(135deg, #f8fafc, #f1f5f9);
-  }
-
-  .main-image,
-  .image-placeholder {
-    border-radius: inherit;
-  }
-
-  .attr-tag {
-    top: 8px;
-    left: 8px;
-    min-height: 28px;
-    padding: 4px 9px;
-    border-radius: 9px;
-    font-size: 12px;
-    box-shadow: 0 6px 16px rgba(15, 23, 42, 0.16);
-  }
-
-  .quantity-badge {
-    bottom: 8px;
-    right: 8px;
-    border-radius: 999px;
-    padding: 3px 7px;
-  }
-
-  .card-content {
-    padding: 10px 10px 12px;
-  }
-
-  .goods-title {
-    margin-bottom: 6px;
-    font-size: 15px;
-    line-height: 1.32;
-    line-clamp: 1;
-    -webkit-line-clamp: 1;
-  }
-
-  .info-meta {
     display: block;
-    margin-bottom: 8px;
-    color: #64748b;
-    font-size: 12px;
-    line-height: 1.5;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .info-row {
-    display: inline;
-    font-size: inherit;
-  }
-
-  .info-row + .info-row::before {
-    content: ' / ';
-    color: #cbd5e1;
-  }
-
-  .info-label {
-    display: none;
-  }
-
-  .info-value,
-  .truncate {
-    display: inline;
-    color: inherit;
-    overflow: visible;
-    white-space: inherit;
-    text-overflow: clip;
-  }
-
-  .card-footer {
-    padding-top: 8px;
-    border-top: 0;
-    justify-content: flex-start;
   }
 
   .category-tag {
+    max-width: 100%;
+    width: auto;
     min-height: 28px;
     padding: 4px 9px;
     border-radius: 8px;
