@@ -129,6 +129,12 @@
         </div>
       </div>
     </main>
+
+    <el-image-viewer
+      v-if="previewImage"
+      :url-list="[previewImage]"
+      @close="previewImage = null"
+    />
   </div>
 </template>
 
@@ -160,13 +166,14 @@ const emit = defineEmits<{
 
 const rootRef = ref<HTMLElement | null>(null)
 const density = ref<FullscreenDensity>(props.initialDensity)
+const previewImage = ref<string | null>(null)
 let previousBodyOverflow = ''
 
 const displayTitle = computed(() => (props.displayType === 'round' ? '吧唧展架' : '纸制品收纳册'))
 
 const onItemClick = (item: ShowcaseGoods) => {
-  if (props.readonly) return
-  emit('openGoods', item.goods)
+  if (!item.goods.main_photo) return
+  previewImage.value = item.goods.main_photo
 }
 
 onMounted(() => {
@@ -298,6 +305,11 @@ onBeforeUnmount(() => {
   border-radius: 22px 22px 0 0;
   padding: 10px 10px calc(env(safe-area-inset-bottom, 0px) + 14px);
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.fullscreen-body::-webkit-scrollbar {
+  display: none;
 }
 .round-fullscreen-grid,
 .paper-fullscreen-grid {

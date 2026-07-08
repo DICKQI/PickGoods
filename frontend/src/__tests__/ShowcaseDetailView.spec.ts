@@ -119,6 +119,11 @@ const mountDetail = (props: Partial<InstanceType<typeof ShowcaseDetailView>['$pr
           props: ['src', 'alt'],
           template: '<img class="el-image-stub" :src="src" :alt="alt" />',
         },
+        'el-image-viewer': {
+          props: ['urlList'],
+          emits: ['close'],
+          template: '<div data-test="fullscreen-main-photo-viewer" :data-url-list="urlList.join(\'|\')"><button data-test="fullscreen-main-photo-close" @click="$emit(\'close\')" /></div>',
+        },
         'el-skeleton': { template: '<div class="skeleton-stub" />' },
         'el-tag': { template: '<span class="el-tag-stub"><slot /></span>' },
         Teleport: true,
@@ -357,6 +362,30 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(showcaseDetailSource).toContain('.mobile-fullscreen-display-leave-active')
     expect(showcaseDetailSource).toContain('@keyframes mobile-fullscreen-display-in')
     expect(showcaseDetailSource).toContain('@keyframes mobile-fullscreen-display-out')
+  })
+
+  it('hides the native scrollbar in mobile fullscreen display', () => {
+    expect(mobileFullscreenSource).toContain('scrollbar-width: none;')
+    expect(mobileFullscreenSource).toContain('-ms-overflow-style: none;')
+    expect(mobileFullscreenSource).toContain('.fullscreen-body::-webkit-scrollbar')
+    expect(mobileFullscreenSource).toContain('display: none;')
+  })
+
+  it('全屏点击谷子时打开主图预览而不是详情抽屉', async () => {
+    setMobileViewport()
+    const wrapper = mountDetail({
+      goods: [
+        makeShowcaseGoods('1', { main_photo: 'https://example.com/badge-main.jpg' }),
+      ],
+    })
+
+    await wrapper.get('[data-test="round-fullscreen-button"]').trigger('click')
+    await nextTick()
+    await wrapper.get('[data-test="fullscreen-round-item"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.get('[data-test="fullscreen-main-photo-viewer"]').attributes('data-url-list')).toBe('https://example.com/badge-main.jpg')
+    expect(wrapper.emitted('openGoods')).toBeUndefined()
   })
 
   it('公共只读展柜全屏时继续加水印并不打开详情', async () => {
