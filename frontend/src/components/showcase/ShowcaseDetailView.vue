@@ -115,7 +115,20 @@
                 <span class="section-kicker">ROUND BADGE SHELF</span>
                 <h2 class="cabinet-label-title">吧唧展架</h2>
               </div>
-              <span class="cabinet-label-count">{{ roundGoods.length }} 枚</span>
+              <div class="section-actions">
+                <button
+                  v-if="isMobile"
+                  class="section-fullscreen-button"
+                  data-test="round-fullscreen-button"
+                  type="button"
+                  aria-label="Fullscreen badge shelf"
+                  title="Fullscreen"
+                  @click="openFullscreen('round')"
+                >
+                  <el-icon><FullScreen /></el-icon>
+                </button>
+                <span class="cabinet-label-count">{{ roundGoods.length }} 枚</span>
+              </div>
             </div>
 
             <div ref="cabinetRef" class="cabinet" :class="{ 'is-drag-active': dragging }">
@@ -179,6 +192,7 @@
             :showcase-id="showcase.id"
             :readonly="readonly"
             @open-goods="emit('openGoods', $event)"
+            @open-fullscreen="openFullscreen('paper')"
             @goods-context-menu-from-dom="forwardGoodsContextMenuFromDom"
           />
 
@@ -236,14 +250,28 @@
         <div v-else class="badge-placeholder"><el-icon><Picture /></el-icon></div>
       </div>
     </Teleport>
+
+    <Teleport to="body">
+      <ShowcaseMobileFullscreenDisplay
+        v-if="showcase && fullscreenDisplay"
+        :display-type="fullscreenDisplay"
+        :items="fullscreenDisplay === 'round' ? roundGoods : paperGoods"
+        :showcase-id="showcase.id"
+        :readonly="readonly"
+        @close="closeFullscreen"
+        @open-goods="emit('openGoods', $event)"
+        @goods-context-menu-from-dom="forwardGoodsContextMenuFromDom"
+      />
+    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, Delete, Edit, Goods, MoreFilled, Picture } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Edit, FullScreen, Goods, MoreFilled, Picture } from '@element-plus/icons-vue'
 import GoodsCard from '@/components/GoodsCard.vue'
 import PaperAlbumDisplay from '@/components/showcase/PaperAlbumDisplay.vue'
+import ShowcaseMobileFullscreenDisplay from '@/components/showcase/ShowcaseMobileFullscreenDisplay.vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
 import { groupShowcaseDisplayGoods } from './showcaseDisplayGrouping'
 import { useShowcaseDisplayDragSort } from './useShowcaseDisplayDragSort'
@@ -285,6 +313,30 @@ const handleMoreCommand = (command: string | number | object) => {
 
 const forwardGoodsContextMenuFromDom = (goodsId: string, event: MouseEvent) => {
   emit('goodsContextMenuFromDom', goodsId, event)
+}
+
+type FullscreenDisplay = 'round' | 'paper'
+const fullscreenDisplay = ref<FullscreenDisplay | null>(null)
+const isMobile = ref(false)
+let mediaQuery: MediaQueryList | null = null
+let mediaCleanup: (() => void) | null = null
+
+const openFullscreen = (type: FullscreenDisplay) => {
+  fullscreenDisplay.value = type
+}
+
+const closeFullscreen = () => {
+  fullscreenDisplay.value = null
+}
+
+if (typeof window !== 'undefined') {
+  mediaQuery = window.matchMedia('(max-width: 768px)')
+  const updateMobile = () => {
+    isMobile.value = !!mediaQuery?.matches
+  }
+  updateMobile()
+  mediaQuery.addEventListener?.('change', updateMobile)
+  mediaCleanup = () => mediaQuery?.removeEventListener?.('change', updateMobile)
 }
 
 const displayGroups = computed(() => groupShowcaseDisplayGoods(props.goods))
@@ -329,6 +381,7 @@ onMounted(() => attachObserver(cabinetRef.value))
 onBeforeUnmount(() => {
   ro?.disconnect()
   ro = null
+  mediaCleanup?.()
   cleanupDrag()
 })
 
@@ -663,6 +716,28 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
+}
+.section-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.section-fullscreen-button {
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(var(--c-display-holo), 0.12), rgba(var(--c-display-cyan), 0.1)),
+    rgba(255, 248, 230, 0.82);
+  color: rgba(var(--c-display-shadow), 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 12px;
+  font-weight: 800;
 }
 .cabinet-label-title {
   font-size: 18px;

@@ -50,11 +50,12 @@
         placeholder="全部IP"
         clearable
         filterable
+        :filter-method="handleIPFilter"
         size="small"
         @update:model-value="$emit('update:ip', $event)"
       >
         <el-option
-          v-for="opt in ipOptions"
+          v-for="opt in filteredIpOptions"
           :key="opt.id"
           :label="opt.name"
           :value="opt.id"
@@ -73,7 +74,7 @@
           remote
           reserve-keyword
           size="small"
-          :remote-method="searchCharacterStatsOptions"
+          :remote-method="handleCharacterStatsSearch"
           :loading="characterStatsLoading"
           @update:model-value="$emit('update:characterStatsTargetId', $event)"
         >
@@ -105,6 +106,8 @@
         :props="{ label: 'label', value: 'id', children: 'children' }"
         placeholder="全部品类"
         clearable
+        filterable
+        :filter-node-method="filterCategoryNode"
         size="small"
         check-strictly
         @update:model-value="$emit('update:category', $event)"
@@ -142,16 +145,20 @@
 </template>
 
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import { Top } from '@element-plus/icons-vue'
+import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
 import type { Character, GoodsStatus, IP } from '@/api/types'
 
 interface CategoryTreeNode {
   id: number
   label: string
+  pathName?: string
+  path_name?: string
   children?: CategoryTreeNode[]
 }
 
-withDefaults(defineProps<{
+const props = withDefaults(defineProps<{
   top?: number
   isOfficial?: boolean
   selectedStatuses: GoodsStatus[]
@@ -181,13 +188,35 @@ defineEmits<{
   'update:characterStatsTargetId': [value: number | undefined]
   openCharacterStats: []
 }>()
+
+const ipSearchKeyword = ref('')
+
+const filteredIpOptions = computed(() => (
+  props.ipOptions.filter((ip) => matchesTextOrPinyin(
+    ipSearchKeyword.value,
+    [ip.name, ...(ip.keywords?.map((keyword) => keyword.value) ?? [])],
+  ))
+))
+
+const handleIPFilter = (keyword: string) => {
+  ipSearchKeyword.value = keyword
+}
+
+const handleCharacterStatsSearch = (keyword: string) => {
+  return props.searchCharacterStatsOptions(keyword)
+}
+
+const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
+  if (!data) return false
+  return matchesTextOrPinyin(keyword, [data.label, data.pathName ?? '', data.path_name ?? ''])
+}
 </script>
 
 <style scoped>
 .stats-filter-grid {
   display: grid;
-  grid-template-columns: repeat(5, minmax(140px, 1fr));
-  gap: 16px 20px;
+  grid-template-columns: minmax(168px, 1.1fr) repeat(4, minmax(150px, 1fr));
+  gap: 18px 20px;
   align-items: start;
 }
 
@@ -203,10 +232,12 @@ defineEmits<{
 }
 
 .stats-filter-item label {
-  font-size: 12px;
-  color: var(--text-light);
-  font-weight: 500;
+  font-size: 11px;
+  color: rgba(100, 116, 139, 0.92);
+  font-weight: 800;
+  letter-spacing: 0.04em;
   line-height: 1.4;
+  text-transform: uppercase;
   flex-shrink: 0;
 }
 
@@ -222,11 +253,18 @@ defineEmits<{
 }
 
 .topn-value {
-  width: 28px;
-  text-align: right;
+  min-width: 34px;
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 249, 234, 0.8);
+  text-align: center;
   font-variant-numeric: tabular-nums;
-  font-size: 13px;
-  color: var(--text-dark);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 22px;
+  color: var(--primary-gold-dark);
   flex-shrink: 0;
 }
 
@@ -245,12 +283,37 @@ defineEmits<{
 
 .character-stats-button {
   flex-shrink: 0;
+  border-radius: 999px;
+  font-weight: 700;
 }
 
 .stats-filter-item :deep(.el-select),
 .stats-filter-item :deep(.el-tree-select),
 .stats-filter-item :deep(.el-date-editor) {
   width: 100%;
+}
+
+.stats-filter-item :deep(.el-select__wrapper),
+.stats-filter-item :deep(.el-tree-select__wrapper),
+.stats-filter-item :deep(.el-date-editor) {
+  min-height: 32px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
+  transition:
+    box-shadow var(--transition-fast, 0.2s ease),
+    background-color var(--transition-fast, 0.2s ease);
+}
+
+.stats-filter-item :deep(.el-select__wrapper:hover),
+.stats-filter-item :deep(.el-tree-select__wrapper:hover),
+.stats-filter-item :deep(.el-date-editor:hover) {
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.38) inset;
+}
+
+.status-group :deep(.el-checkbox-button__inner) {
+  border-radius: 999px !important;
+  border-left: 1px solid var(--el-border-color) !important;
+  font-weight: 700;
 }
 
 @media (max-width: 900px) {

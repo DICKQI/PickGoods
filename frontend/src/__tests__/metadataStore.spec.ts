@@ -2,10 +2,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useMetadataStore } from '@/stores/metadata'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
-import { getCategoryList, getThemeList } from '@/api/metadata'
+import { getCategoryList, getCharacterList, getIPCharacters, getThemeList } from '@/api/metadata'
 
 vi.mock('@/api/metadata', () => ({
   getIPList: vi.fn(),
+  getCharacterList: vi.fn(),
   getIPCharacters: vi.fn(),
   getCategoryList: vi.fn(),
   getThemeList: vi.fn(),
@@ -59,5 +60,27 @@ describe('useMetadataStore cache ownership', () => {
     expect(adminCategories).toMatchObject([{ goods_count: 9 }])
     expect(getCategoryList).toHaveBeenNthCalledWith(1, undefined)
     expect(getCategoryList).toHaveBeenNthCalledWith(2, { goods_count_scope: 'all' })
+  })
+
+  it('reuses cached all-character and per-IP character lists', async () => {
+    vi.mocked(getCharacterList).mockResolvedValue([
+      { id: 1, name: '流萤', ip: { id: 10, name: '崩坏：星穹铁道' }, gender: 'female' } as any,
+    ])
+    vi.mocked(getIPCharacters).mockResolvedValue([
+      { id: 2, name: '派蒙', ip: { id: 20, name: '原神' }, gender: 'female' } as any,
+    ])
+
+    const store = useMetadataStore()
+    const allCharactersFirst = await store.fetchCharacters()
+    const allCharactersSecond = await store.fetchCharacters()
+    const ipCharactersFirst = await store.fetchIPCharacters(20)
+    const ipCharactersSecond = await store.fetchIPCharacters(20)
+
+    expect(allCharactersFirst).toEqual(allCharactersSecond)
+    expect(ipCharactersFirst).toEqual(ipCharactersSecond)
+    expect(getCharacterList).toHaveBeenCalledTimes(1)
+    expect(getIPCharacters).toHaveBeenCalledTimes(1)
+    expect(store.characters).toHaveLength(1)
+    expect(store.charactersByIP[20]).toHaveLength(1)
   })
 })

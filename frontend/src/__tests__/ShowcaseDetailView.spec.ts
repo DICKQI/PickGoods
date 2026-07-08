@@ -3,10 +3,12 @@ import { resolve } from 'node:path'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { nextTick } from 'vue'
 import ShowcaseDetailView from '@/components/showcase/ShowcaseDetailView.vue'
 import type { GoodsListItem, Showcase, ShowcaseGoods } from '@/api/types'
 
 const showcaseManagerSource = readFileSync(resolve(process.cwd(), 'src/components/ShowcaseManager.vue'), 'utf8')
+const mobileFullscreenSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/ShowcaseMobileFullscreenDisplay.vue'), 'utf8')
 
 const makeGoods = (overrides: Partial<GoodsListItem> = {}): GoodsListItem => ({
   id: overrides.id || 'goods-1',
@@ -48,6 +50,15 @@ const showcase: Showcase = {
   cover_image: 'https://example.com/cover.jpg',
   is_public: false,
   showcase_goods: [],
+}
+
+const setMobileViewport = () => {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: query.includes('max-width: 768px'),
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
 }
 
 const mountDetail = (props: Partial<InstanceType<typeof ShowcaseDetailView>['$props']> = {}) => {
@@ -219,6 +230,94 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(wrapper.get('[data-test="paper-section-title"]').text()).toContain('纸制品收纳册')
     expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('其他谷子')
     expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('1 件')
+  })
+
+  it('移动端可以将吧唧展架切到全屏大图陈列', async () => {
+    setMobileViewport()
+    const wrapper = mountDetail({
+      goods: [
+        makeShowcaseGoods('1', { main_photo: 'https://example.com/badge-1.jpg' }),
+        makeShowcaseGoods('2', { main_photo: 'https://example.com/badge-2.jpg' }),
+        makeShowcaseGoods('3', { main_photo: 'https://example.com/badge-3.jpg' }),
+      ],
+    })
+
+    await wrapper.get('[data-test="round-fullscreen-button"]').trigger('click')
+    await nextTick()
+
+    const fullscreen = wrapper.get('[data-test="showcase-mobile-fullscreen-round"]')
+    expect(fullscreen.text()).toContain('吧唧展架')
+    expect(fullscreen.findAll('[data-test="fullscreen-round-item"]')).toHaveLength(3)
+    expect(fullscreen.find('[data-test="fullscreen-density-dense"]').exists()).toBe(true)
+
+    await wrapper.get('[data-test="fullscreen-close-button"]').trigger('click')
+    await nextTick()
+
+    expect(wrapper.find('[data-test="showcase-mobile-fullscreen-round"]').exists()).toBe(false)
+  })
+
+  it('移动端可以将纸制品收纳册切到全屏密集陈列', async () => {
+    setMobileViewport()
+    const wrapper = mountDetail({
+      goods: [
+        makeShowcaseGoods('1', {
+          category: {
+            id: 1,
+            name: '方卡',
+            parent: null,
+            path_name: '纸制品/方卡',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 1,
+          },
+          main_photo: 'https://example.com/paper-1.jpg',
+        }),
+        makeShowcaseGoods('2', {
+          category: {
+            id: 2,
+            name: '小卡',
+            parent: null,
+            path_name: '纸制品/小卡',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 2,
+          },
+          main_photo: 'https://example.com/paper-2.jpg',
+        }),
+      ],
+    })
+
+    await wrapper.get('[data-test="paper-fullscreen-button"]').trigger('click')
+    await nextTick()
+
+    const fullscreen = wrapper.get('[data-test="showcase-mobile-fullscreen-paper"]')
+    expect(fullscreen.text()).toContain('纸制品收纳册')
+    expect(fullscreen.findAll('[data-test="fullscreen-paper-item"]')).toHaveLength(2)
+    expect(fullscreen.find('[data-test="fullscreen-page-indicator"]').exists()).toBe(true)
+  })
+
+  it('does not split fullscreen display backgrounds at fixed viewport percentages', () => {
+    expect(mobileFullscreenSource).not.toContain('#232016 42%')
+    expect(mobileFullscreenSource).not.toContain('#262447 40%')
+    expect(mobileFullscreenSource).toContain('--fullscreen-body-bg')
+    expect(mobileFullscreenSource).toContain('background: var(--fullscreen-body-bg);')
+  })
+
+  it('公共只读展柜全屏时继续加水印并不打开详情', async () => {
+    setMobileViewport()
+    const wrapper = mountDetail({
+      readonly: true,
+      goods: [
+        makeShowcaseGoods('1', { main_photo: 'https://example.com/badge-1.jpg' }),
+      ],
+    })
+
+    await wrapper.get('[data-test="round-fullscreen-button"]').trigger('click')
+    await nextTick()
+    await wrapper.get('[data-test="fullscreen-round-item"]').trigger('click')
+
+    expect(wrapper.find('.watermark-image-stub').exists()).toBe(true)
+    expect(wrapper.emitted('openGoods')).toBeUndefined()
   })
 
   it('ShowcaseManager 将详情页编辑事件接到展柜编辑弹窗', () => {
