@@ -252,16 +252,18 @@
     </Teleport>
 
     <Teleport to="body">
-      <ShowcaseMobileFullscreenDisplay
-        v-if="showcase && fullscreenDisplay"
-        :display-type="fullscreenDisplay"
-        :items="fullscreenDisplay === 'round' ? roundGoods : paperGoods"
-        :showcase-id="showcase.id"
-        :readonly="readonly"
-        @close="closeFullscreen"
-        @open-goods="emit('openGoods', $event)"
-        @goods-context-menu-from-dom="forwardGoodsContextMenuFromDom"
-      />
+      <Transition name="mobile-fullscreen-display" appear>
+        <ShowcaseMobileFullscreenDisplay
+          v-if="showcase && fullscreenDisplay"
+          :display-type="fullscreenDisplay"
+          :items="fullscreenDisplay === 'round' ? roundGoods : paperGoods"
+          :showcase-id="showcase.id"
+          :readonly="readonly"
+          @close="closeFullscreen"
+          @open-goods="emit('openGoods', $event)"
+          @goods-context-menu-from-dom="forwardGoodsContextMenuFromDom"
+        />
+      </Transition>
     </Teleport>
   </div>
 </template>
@@ -435,6 +437,43 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   display: flex;
   flex-direction: column;
   color: #263238;
+}
+
+.mobile-fullscreen-display-enter-active {
+  animation: mobile-fullscreen-display-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.mobile-fullscreen-display-leave-active {
+  animation: mobile-fullscreen-display-out 0.22s cubic-bezier(0.4, 0, 1, 1) both;
+}
+
+.mobile-fullscreen-display-enter-from,
+.mobile-fullscreen-display-leave-to {
+  pointer-events: none;
+}
+
+@keyframes mobile-fullscreen-display-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes mobile-fullscreen-display-out {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(14px) scale(0.99);
+  }
 }
 
 .detail-loading {

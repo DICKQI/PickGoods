@@ -2,7 +2,7 @@
   <div
     ref="rootRef"
     class="mobile-fullscreen-display"
-    :class="[`is-${displayType}`, `density-${density}`, { 'is-drag-active': dragging }]"
+    :class="[`is-${displayType}`, `density-${density}`]"
     :data-test="`showcase-mobile-fullscreen-${displayType}`"
     @keydown.esc="emit('close')"
   >
@@ -38,44 +38,20 @@
           更多
         </button>
       </div>
-
-      <div v-if="displayType === 'paper'" class="page-controls">
-        <button
-          class="page-button"
-          data-test="fullscreen-prev-page"
-          type="button"
-          :disabled="currentPage <= 0"
-          @click="goPrev"
-        >
-          上一页
-        </button>
-        <span class="page-indicator" data-test="fullscreen-page-indicator">{{ currentPage + 1 }} / {{ totalPages }}</span>
-        <button
-          class="page-button"
-          data-test="fullscreen-next-page"
-          type="button"
-          :disabled="currentPage >= totalPages - 1"
-          @click="goNext"
-        >
-          下一页
-        </button>
-      </div>
     </div>
 
-    <main class="fullscreen-body" @touchstart="onTouchStart" @touchend="onTouchEnd">
+    <main class="fullscreen-body">
       <div v-if="displayType === 'round'" class="round-fullscreen-grid">
         <div
-          v-for="item in localOrder"
+          v-for="item in items"
           :key="item.id"
           class="fullscreen-round-item"
           data-test="fullscreen-round-item"
           :data-id="item.id"
-          :class="{ 'is-dragging': dragItemId === item.id }"
           :style="[
-            { cursor: readonly ? 'default' : 'grab' },
+            { cursor: readonly ? 'default' : 'pointer' },
             item.goods.category?.color_tag ? { '--item-accent': item.goods.category.color_tag } : {},
           ]"
-          @pointerdown="onPointerDown($event, item)"
           @click="onItemClick(item)"
           @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', item.goods.id, $event)"
           @dragstart.prevent
@@ -111,17 +87,15 @@
       <div v-else class="paper-fullscreen-shell">
         <div class="paper-fullscreen-grid">
           <div
-            v-for="item in visiblePaperItems"
+            v-for="item in items"
             :key="item.id"
             class="fullscreen-paper-item"
             data-test="fullscreen-paper-item"
             :data-id="item.id"
-            :class="{ 'is-dragging': dragItemId === item.id }"
             :style="[
-              { cursor: readonly ? 'default' : 'grab' },
+              { cursor: readonly ? 'default' : 'pointer' },
               item.goods.category?.color_tag ? { '--item-accent': item.goods.category.color_tag } : {},
             ]"
-            @pointerdown="onPointerDown($event, item)"
             @click="onItemClick(item)"
             @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', item.goods.id, $event)"
             @dragstart.prevent
@@ -155,31 +129,12 @@
         </div>
       </div>
     </main>
-
-    <Teleport to="body">
-      <div
-        v-if="dragGhost"
-        class="fullscreen-ghost"
-        :style="{
-          left: dragGhost.x + 'px',
-          top: dragGhost.y + 'px',
-          width: dragGhost.width + 'px',
-          height: dragGhost.height + 'px',
-          borderRadius: dragGhost.radius,
-          '--item-accent': dragGhost.ring,
-        }"
-      >
-        <img v-if="dragGhost.src" :src="dragGhost.src" :alt="dragGhost.alt" class="fullscreen-ghost-img" />
-        <div v-else class="fullscreen-placeholder">无图</div>
-      </div>
-    </Teleport>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
-import { useShowcaseDisplayDragSort } from './useShowcaseDisplayDragSort'
 import type { GoodsListItem, ShowcaseGoods } from '@/api/types'
 
 type FullscreenDisplayType = 'round' | 'paper'
@@ -205,136 +160,23 @@ const emit = defineEmits<{
 
 const rootRef = ref<HTMLElement | null>(null)
 const density = ref<FullscreenDensity>(props.initialDensity)
-const currentPage = ref(0)
-const viewportHeight = ref(typeof window === 'undefined' ? 760 : window.innerHeight)
-const touchStartX = ref(0)
-const touchStartY = ref(0)
-const touchStartAt = ref(0)
 let previousBodyOverflow = ''
 
 const displayTitle = computed(() => (props.displayType === 'round' ? '吧唧展架' : '纸制品收纳册'))
-const showcaseIdRef = computed(() => props.showcaseId)
-const readonlyRef = computed(() => props.readonly)
-const itemsRef = computed(() => props.items)
-const columns = computed(() => (density.value === 'dense' ? 4 : 3))
-const paperRows = computed(() => {
-  const chromeHeight = 156
-  const slotHeight = density.value === 'dense' ? 94 : 122
-  return Math.max(3, Math.floor((viewportHeight.value - chromeHeight) / slotHeight))
-})
-const paperItemsPerPage = computed(() => columns.value * paperRows.value)
-
-const updateViewport = () => {
-  viewportHeight.value = window.innerHeight || viewportHeight.value
-}
-
-const {
-  localOrder,
-  dragging,
-  dragItemId,
-  dragGhost,
-  onPointerDown,
-  shouldSuppressClick,
-  cleanupDrag,
-} = useShowcaseDisplayDragSort({
-  items: itemsRef,
-  showcaseId: showcaseIdRef,
-  readonly: readonlyRef,
-  itemSelector: props.displayType === 'round' ? '.fullscreen-round-item' : '.fullscreen-paper-item',
-  defaultRing: props.displayType === 'round' ? '#d4af37' : '#8e7dff',
-  errorMessage: props.displayType === 'round'
-    ? '吧唧排序更新失败，已恢复'
-    : '纸制品排序更新失败，已恢复',
-  ghostSize: () => {
-    if (props.displayType === 'round') {
-      const size = density.value === 'dense' ? 86 : 112
-      return { width: size, height: size, radius: '50%' }
-    }
-    const size = density.value === 'dense' ? 92 : 116
-    return { width: size, height: size, radius: '16px' }
-  },
-  onHoverEdge: (x, y) => {
-    if (props.displayType !== 'paper') return
-    const rect = rootRef.value?.getBoundingClientRect()
-    if (!rect || y < rect.top || y > rect.bottom) return
-    const edge = Math.min(72, rect.width * 0.18)
-    if (x < rect.left + edge) goPrev()
-    if (x > rect.right - edge) goNext()
-  },
-})
-
-const totalPages = computed(() => {
-  if (props.displayType !== 'paper') return 1
-  return Math.max(1, Math.ceil(localOrder.value.length / paperItemsPerPage.value))
-})
-
-const visiblePaperItems = computed(() => {
-  const start = currentPage.value * paperItemsPerPage.value
-  return localOrder.value.slice(start, start + paperItemsPerPage.value)
-})
-
-const goPrev = () => {
-  if (currentPage.value > 0) currentPage.value -= 1
-}
-
-const goNext = () => {
-  if (currentPage.value < totalPages.value - 1) currentPage.value += 1
-}
 
 const onItemClick = (item: ShowcaseGoods) => {
-  if (shouldSuppressClick()) return
   if (props.readonly) return
   emit('openGoods', item.goods)
 }
 
-const onTouchStart = (event: TouchEvent) => {
-  if (props.displayType !== 'paper' || dragging.value) return
-  const touch = event.touches[0]
-  if (!touch) return
-  touchStartX.value = touch.clientX
-  touchStartY.value = touch.clientY
-  touchStartAt.value = Date.now()
-}
-
-const onTouchEnd = (event: TouchEvent) => {
-  if (props.displayType !== 'paper' || !touchStartAt.value) return
-  const touch = event.changedTouches[0]
-  if (!touch) return
-  const deltaX = touch.clientX - touchStartX.value
-  const deltaY = touch.clientY - touchStartY.value
-  const elapsed = Date.now() - touchStartAt.value
-  touchStartAt.value = 0
-  if (Math.abs(deltaX) <= 48) return
-  if (Math.abs(deltaX) < Math.abs(deltaY) * 1.4) return
-  if (elapsed > 900) return
-  if (deltaX < 0) goNext()
-  else goPrev()
-}
-
-watch(totalPages, (next) => {
-  if (currentPage.value >= next) currentPage.value = Math.max(0, next - 1)
-})
-
-watch(() => props.displayType, () => {
-  currentPage.value = 0
-})
-
-watch(density, () => {
-  currentPage.value = Math.min(currentPage.value, totalPages.value - 1)
-})
-
 onMounted(() => {
   previousBodyOverflow = document.body.style.overflow
   document.body.style.overflow = 'hidden'
-  updateViewport()
-  window.addEventListener('resize', updateViewport)
   rootRef.value?.focus()
 })
 
 onBeforeUnmount(() => {
   document.body.style.overflow = previousBodyOverflow
-  window.removeEventListener('resize', updateViewport)
-  cleanupDrag()
 })
 </script>
 
@@ -423,8 +265,7 @@ onBeforeUnmount(() => {
   padding: 0 12px 10px;
   color: #fffaf0;
 }
-.density-toggle,
-.page-controls {
+.density-toggle {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -435,31 +276,19 @@ onBeforeUnmount(() => {
   background: rgba(255, 255, 255, 0.14);
   border: 1px solid rgba(255, 255, 255, 0.2);
 }
-.density-button,
-.page-button {
+.density-button {
   height: 30px;
   padding: 0 10px;
   border-radius: 999px;
   color: inherit;
   background: transparent;
 }
-.density-button.is-active,
-.page-button:not(:disabled) {
+.density-button.is-active {
   background: rgba(255, 255, 255, 0.88);
   color: #3c2d12;
 }
-.is-paper .density-button.is-active,
-.is-paper .page-button:not(:disabled) {
+.is-paper .density-button.is-active {
   color: #262447;
-}
-.page-button:disabled {
-  opacity: 0.42;
-}
-.page-indicator {
-  min-width: 44px;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 800;
 }
 .fullscreen-body {
   flex: 1 1 auto;
@@ -484,7 +313,7 @@ onBeforeUnmount(() => {
 .fullscreen-paper-item {
   position: relative;
   min-width: 0;
-  touch-action: none;
+  touch-action: manipulation;
   user-select: none;
   -webkit-user-drag: none;
   transition: transform 0.18s ease;
@@ -492,11 +321,6 @@ onBeforeUnmount(() => {
 .fullscreen-round-item:active,
 .fullscreen-paper-item:active {
   transform: scale(0.97);
-}
-.fullscreen-round-item.is-dragging,
-.fullscreen-paper-item.is-dragging {
-  opacity: 0;
-  pointer-events: none;
 }
 .round-photo,
 .paper-photo {
@@ -577,27 +401,6 @@ onBeforeUnmount(() => {
 }
 .fullscreen-official-dot.is-doujin {
   background: #9c6dd6;
-}
-.fullscreen-ghost {
-  position: fixed;
-  z-index: 2300;
-  pointer-events: none;
-  overflow: hidden;
-  background: #fff;
-  box-shadow:
-    0 0 0 2px rgba(255, 255, 255, 0.9),
-    0 0 0 5px var(--item-accent, rgba(212, 175, 55, 0.8)),
-    0 18px 28px -12px rgba(20, 17, 12, 0.45);
-  transform: scale(1.05);
-}
-.fullscreen-ghost-img {
-  display: block;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-.is-paper .fullscreen-ghost-img {
-  object-fit: contain;
 }
 
 @media (min-width: 769px) {

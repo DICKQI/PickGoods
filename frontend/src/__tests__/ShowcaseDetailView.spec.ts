@@ -8,6 +8,7 @@ import ShowcaseDetailView from '@/components/showcase/ShowcaseDetailView.vue'
 import type { GoodsListItem, Showcase, ShowcaseGoods } from '@/api/types'
 
 const showcaseManagerSource = readFileSync(resolve(process.cwd(), 'src/components/ShowcaseManager.vue'), 'utf8')
+const showcaseDetailSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/ShowcaseDetailView.vue'), 'utf8')
 const mobileFullscreenSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/ShowcaseMobileFullscreenDisplay.vue'), 'utf8')
 
 const makeGoods = (overrides: Partial<GoodsListItem> = {}): GoodsListItem => ({
@@ -256,7 +257,7 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(wrapper.find('[data-test="showcase-mobile-fullscreen-round"]').exists()).toBe(false)
   })
 
-  it('移动端可以将纸制品收纳册切到全屏密集陈列', async () => {
+  it('移动端可以将纸制品收纳册切到全屏单页完整陈列', async () => {
     setMobileViewport()
     const wrapper = mountDetail({
       goods: [
@@ -284,6 +285,42 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
           },
           main_photo: 'https://example.com/paper-2.jpg',
         }),
+        makeShowcaseGoods('3', {
+          category: {
+            id: 3,
+            name: '拍立得',
+            parent: null,
+            path_name: '纸制品/拍立得',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 3,
+          },
+          main_photo: 'https://example.com/paper-3.jpg',
+        }),
+        makeShowcaseGoods('4', {
+          category: {
+            id: 4,
+            name: '色纸',
+            parent: null,
+            path_name: '纸制品/色纸',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 4,
+          },
+          main_photo: 'https://example.com/paper-4.jpg',
+        }),
+        makeShowcaseGoods('5', {
+          category: {
+            id: 5,
+            name: '明信片',
+            parent: null,
+            path_name: '纸制品/明信片',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 5,
+          },
+          main_photo: 'https://example.com/paper-5.jpg',
+        }),
       ],
     })
 
@@ -292,8 +329,10 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
 
     const fullscreen = wrapper.get('[data-test="showcase-mobile-fullscreen-paper"]')
     expect(fullscreen.text()).toContain('纸制品收纳册')
-    expect(fullscreen.findAll('[data-test="fullscreen-paper-item"]')).toHaveLength(2)
-    expect(fullscreen.find('[data-test="fullscreen-page-indicator"]').exists()).toBe(true)
+    expect(fullscreen.findAll('[data-test="fullscreen-paper-item"]')).toHaveLength(5)
+    expect(fullscreen.find('[data-test="fullscreen-page-indicator"]').exists()).toBe(false)
+    expect(fullscreen.find('[data-test="fullscreen-prev-page"]').exists()).toBe(false)
+    expect(fullscreen.find('[data-test="fullscreen-next-page"]').exists()).toBe(false)
   })
 
   it('does not split fullscreen display backgrounds at fixed viewport percentages', () => {
@@ -301,6 +340,23 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(mobileFullscreenSource).not.toContain('#262447 40%')
     expect(mobileFullscreenSource).toContain('--fullscreen-body-bg')
     expect(mobileFullscreenSource).toContain('background: var(--fullscreen-body-bg);')
+  })
+
+  it('locks mobile fullscreen display order to prevent accidental drag sorting', () => {
+    expect(mobileFullscreenSource).not.toContain('useShowcaseDisplayDragSort')
+    expect(mobileFullscreenSource).not.toContain('@pointerdown=')
+    expect(mobileFullscreenSource).not.toContain('dragGhost')
+    expect(mobileFullscreenSource).not.toContain('is-drag-active')
+    expect(mobileFullscreenSource).not.toContain('is-dragging')
+    expect(mobileFullscreenSource).toContain("{ cursor: readonly ? 'default' : 'pointer' }")
+  })
+
+  it('animates mobile fullscreen display enter and leave transitions', () => {
+    expect(showcaseDetailSource).toContain('<Transition name="mobile-fullscreen-display" appear>')
+    expect(showcaseDetailSource).toContain('.mobile-fullscreen-display-enter-active')
+    expect(showcaseDetailSource).toContain('.mobile-fullscreen-display-leave-active')
+    expect(showcaseDetailSource).toContain('@keyframes mobile-fullscreen-display-in')
+    expect(showcaseDetailSource).toContain('@keyframes mobile-fullscreen-display-out')
   })
 
   it('公共只读展柜全屏时继续加水印并不打开详情', async () => {
