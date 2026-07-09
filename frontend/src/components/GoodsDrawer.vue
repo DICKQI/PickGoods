@@ -55,160 +55,186 @@
         @touchend="handleContentTouchEnd"
         @scroll="handleContentScroll"
       >
-        <!-- 图片画廊区域 -->
-        <div class="detail-images">
-          <div class="main-image-wrapper">
-            <SquarePaddedImage
-              v-if="detail.main_photo"
-              :src="detail.main_photo"
-              :preview-src-list="allImages"
-              class="main-image"
-            />
-          </div>
-
-          <div v-if="detail.additional_photos.length > 0" class="additional-images">
-            <div
-              v-for="(photo, index) in detail.additional_photos"
-              :key="photo.id"
-              class="additional-image-item"
-            >
-              <el-image
-                :src="photo.image"
-                fit="cover"
+        <section class="mobile-detail-panel">
+          <section class="mobile-hero-card">
+            <div class="mobile-main-image-wrapper">
+              <SquarePaddedImage
+                v-if="detail.main_photo"
+                :src="detail.main_photo"
                 :preview-src-list="allImages"
-                :initial-index="index + 1"
-                class="additional-image"
-              >
-                <template #error>
-                  <div class="image-error">
-                    <el-icon><Picture /></el-icon>
-                  </div>
-                </template>
-              </el-image>
-              <div
-                class="photo-label"
-                :class="{ 'is-placeholder': !photo.label }"
-                :aria-hidden="!photo.label ? 'true' : undefined"
-              >
-                {{ photo.label || '\u00a0' }}
+                class="mobile-main-image"
+              />
+              <div v-else class="mobile-image-placeholder">
+                <el-icon><Picture /></el-icon>
+                <span>暂无主图</span>
               </div>
             </div>
-          </div>
-        </div>
+          </section>
 
-        <!-- 详细信息 -->
-        <div class="detail-info">
-          <div class="header-row">
-            <h2 class="detail-title">{{ detail.name }}</h2>
-            <el-tag :type="statusTagType" effect="dark" class="status-badge">{{ statusText }}</el-tag>
-          </div>
+          <section class="mobile-profile-card">
+            <div class="mobile-title-row">
+              <h2 class="mobile-detail-title">{{ detail.name }}</h2>
+              <el-tag :type="statusTagType" effect="dark" class="mobile-status-badge">{{ statusText }}</el-tag>
+            </div>
 
-          <div class="info-section">
-            <div class="info-card">
-              <div v-if="detail.user?.username" class="info-row">
-                <span class="info-label">谷主</span>
-                <span class="info-value">{{ detail.user.username }}</span>
+            <div class="mobile-chip-row">
+              <span class="mobile-chip" :class="detail.is_official ? 'is-official' : 'is-fanmade'">
+                {{ detail.is_official ? '官谷' : '同人' }}
+              </span>
+              <span class="mobile-chip" :title="detail.category.path_name || detail.category.name">
+                {{ detail.category.name }}
+              </span>
+              <span
+                v-if="detail.theme"
+                class="mobile-chip is-theme mobile-theme-chip"
+                :class="{ 'is-scrollable': isMobileThemeNameScrollable }"
+                :title="detail.theme.name"
+              >
+                <span class="mobile-theme-chip-clip">
+                  <span ref="mobileThemeNameTextRef" class="mobile-theme-chip-text">{{ detail.theme.name }}</span>
+                  <span class="mobile-theme-chip-track" aria-hidden="true">
+                    <span class="mobile-theme-chip-scroll-text">{{ detail.theme.name }}</span>
+                    <span class="mobile-theme-chip-scroll-text">{{ detail.theme.name }}</span>
+                  </span>
+                </span>
+              </span>
+            </div>
+
+            <dl class="mobile-summary-list">
+              <div v-if="detail.user?.username" class="mobile-summary-row">
+                <dt>谷主</dt>
+                <dd :title="detail.user.username">{{ detail.user.username }}</dd>
               </div>
-              <div class="info-row">
-                <span class="info-label">IP作品</span>
-                <span class="info-value">{{ detail.ip.name }}</span>
+              <div class="mobile-summary-row">
+                <dt>IP作品</dt>
+                <dd :title="detail.ip.name">{{ detail.ip.name }}</dd>
               </div>
-              <div class="info-row">
-                <span class="info-label">角色</span>
-                <div class="info-value">
-                  <el-tag
+              <div class="mobile-summary-row is-characters">
+                <dt>角色</dt>
+                <dd class="mobile-character-list">
+                  <span
                     v-for="char in detail.characters"
                     :key="char.id"
-                    class="character-tag"
-                    size="small"
-                    :type="char.gender === 'male' ? 'primary' : char.gender === 'female' ? 'danger' : 'info'"
+                    class="mobile-character-chip"
+                    :title="char.name"
                   >
                     {{ char.name }}
-                  </el-tag>
-                </div>
+                  </span>
+                </dd>
               </div>
-              <div class="info-row">
-                <span class="info-label">品类</span>
-                <span class="info-value">{{ detail.category.name }}</span>
-              </div>
-              <div v-if="detail.theme" class="info-row">
-                <span class="info-label">主题</span>
-                <span class="info-value">{{ detail.theme.name }}</span>
-              </div>
-            </div>
+            </dl>
+          </section>
 
-            <div class="info-list">
-              <div v-if="detail.location_path" class="info-item">
-                <span class="info-label">位置</span>
-                <span class="info-value location-path">{{ detail.location_path }}</span>
-              </div>
-              <div v-if="detail.price" class="info-item">
-                <span class="info-label">购入价格</span>
-                <span class="info-value price">¥ {{ detail.price }}</span>
-              </div>
-              <div v-if="detail.purchase_date" class="info-item">
-                <span class="info-label">入手日期</span>
-                <span class="info-value">{{ detail.purchase_date }}</span>
-              </div>
-              <div class="info-item">
-                <span class="info-label">是否官谷</span>
-                <el-tag size="small" :type="detail.is_official ? 'success' : 'info'">
-                  {{ detail.is_official ? '是' : '否' }}
-                </el-tag>
-              </div>
-              <div class="info-item">
-                <span class="info-label">数量</span>
-                <span class="info-value">{{ detail.quantity }}</span>
-              </div>
-            </div>
-            
-            <div v-if="detail.notes" class="notes-section">
-              <span class="info-label">备注</span>
-              <div class="info-value notes">{{ detail.notes }}</div>
-            </div>
-          </div>
+          <section class="mobile-stat-grid" aria-label="入手信息">
+            <article class="mobile-stat-card">
+              <span class="mobile-stat-label">购买价格</span>
+              <strong class="mobile-stat-value is-price">{{ mobilePriceText }}</strong>
+            </article>
+            <article class="mobile-stat-card">
+              <span class="mobile-stat-label">入手日期</span>
+              <strong class="mobile-stat-value">{{ detail.purchase_date || '未记录' }}</strong>
+            </article>
+            <article class="mobile-stat-card">
+              <span class="mobile-stat-label">数量</span>
+              <strong class="mobile-stat-value">x{{ detail.quantity }}</strong>
+            </article>
+            <article class="mobile-stat-card">
+              <span class="mobile-stat-label">收纳位置</span>
+              <strong class="mobile-stat-value" :title="mobileLocationText">{{ mobileLocationText }}</strong>
+            </article>
+          </section>
 
-          <!-- 相同主题的谷子列表 -->
-          <div v-if="detail.theme" class="same-theme-section">
-            <el-collapse v-model="sameThemeExpanded" class="same-theme-collapse">
-              <el-collapse-item name="same-theme">
-                <template #title>
-                  <div class="same-theme-title">
-                    <el-icon class="theme-icon"><Collection /></el-icon>
-                    <span class="same-theme-title-text">相同主题的谷子</span>
-                    <span class="same-theme-count">{{ sameThemeGoods.length }}</span>
-                  </div>
-                </template>
-                <div v-if="sameThemeLoading" class="same-theme-loading">
-                  <el-skeleton :rows="3" animated />
-                </div>
-                <div v-else-if="sameThemeGoods.length === 0" class="same-theme-empty">
-                  <el-empty description="暂无相同主题的谷子" :image-size="80" />
-                </div>
-                <div v-else class="same-theme-grid">
-                  <div
-                    v-for="goods in sameThemeGoods"
-                    :key="goods.id"
-                    class="same-theme-item"
-                    @click="handleSameThemeItemClick(goods.id)"
-                  >
-                    <SquarePaddedImage
-                      v-if="goods.main_photo"
-                      :src="goods.main_photo"
-                      class="same-theme-image"
-                    />
-                    <div v-else class="same-theme-image-placeholder">
+          <section v-if="detail.additional_photos.length > 0" class="mobile-gallery-card">
+            <div class="mobile-section-title-row">
+              <h3>附加图片</h3>
+              <span>{{ detail.additional_photos.length }} 张</span>
+            </div>
+            <div class="mobile-gallery-rail">
+              <button
+                v-for="(photo, index) in detail.additional_photos"
+                :key="photo.id"
+                class="additional-image-item mobile-gallery-item"
+                type="button"
+                :title="photo.label || `附加图片 ${index + 1}`"
+              >
+                <el-image
+                  :src="photo.image"
+                  fit="cover"
+                  :preview-src-list="allImages"
+                  :initial-index="index + 1"
+                  class="mobile-gallery-image"
+                >
+                  <template #error>
+                    <div class="image-error mobile-gallery-error">
                       <el-icon><Picture /></el-icon>
                     </div>
-                    <div class="same-theme-item-name" :title="goods.name">
-                      <span class="same-theme-item-name-text">{{ goods.name }}</span>
-                    </div>
-                  </div>
+                  </template>
+                </el-image>
+                <span
+                  class="photo-label mobile-gallery-label"
+                  :class="{ 'is-placeholder': !photo.label }"
+                  :aria-hidden="!photo.label ? 'true' : undefined"
+                >
+                  {{ photo.label || '\u00a0' }}
+                </span>
+              </button>
+            </div>
+          </section>
+
+          <section v-if="detail.notes" class="mobile-notes-card">
+            <h3>备注</h3>
+            <p>{{ detail.notes }}</p>
+          </section>
+
+          <section v-if="detail.theme" class="mobile-same-theme-section">
+            <div class="mobile-section-title-row">
+              <h3><span class="same-theme-title-text">同主题收藏</span></h3>
+              <span class="same-theme-count">{{ sameThemeGoods.length }}</span>
+            </div>
+            <div v-if="sameThemeLoading" class="same-theme-loading">
+              <el-skeleton :rows="3" animated />
+            </div>
+            <div v-else-if="sameThemeGoods.length === 0" class="same-theme-empty">
+              <el-empty description="暂无同主题收藏" :image-size="80" />
+            </div>
+            <div v-else class="mobile-same-theme-rail">
+              <button
+                v-for="goods in sameThemeGoods"
+                :key="goods.id"
+                class="same-theme-item mobile-same-theme-card"
+                type="button"
+                @click="handleSameThemeItemClick(goods.id)"
+              >
+                <SquarePaddedImage
+                  v-if="goods.main_photo"
+                  :src="goods.main_photo"
+                  class="same-theme-image mobile-same-theme-image"
+                />
+                <div v-else class="same-theme-image-placeholder mobile-same-theme-placeholder">
+                  <el-icon><Picture /></el-icon>
                 </div>
-              </el-collapse-item>
-            </el-collapse>
-          </div>
-        </div>
+                <span
+                  class="same-theme-item-name mobile-same-theme-name"
+                  :class="{ 'is-scrollable': isMobileSameThemeNameScrollable(goods.id) }"
+                  :title="goods.name"
+                >
+                  <span class="mobile-same-theme-name-clip">
+                    <span
+                      :ref="(el) => setMobileSameThemeNameRef(goods.id, el)"
+                      class="same-theme-item-name-text mobile-same-theme-name-text"
+                    >
+                      {{ goods.name }}
+                    </span>
+                    <span class="mobile-same-theme-name-track" aria-hidden="true">
+                      <span class="mobile-same-theme-name-scroll-text">{{ goods.name }}</span>
+                      <span class="mobile-same-theme-name-scroll-text">{{ goods.name }}</span>
+                    </span>
+                  </span>
+                </span>
+              </button>
+            </div>
+          </section>
+        </section>
       </div>
     </div>
 
@@ -219,7 +245,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, onMounted, watch } from 'vue'
+import type { ComponentPublicInstance } from 'vue'
 import { Picture, Close, Collection } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -249,6 +276,12 @@ let currentRequestId: string | null = null
 const sameThemeGoods = ref<GoodsListItem[]>([])
 const sameThemeLoading = ref(false)
 const sameThemeExpanded = ref<string[]>([])
+const mobileThemeNameTextRef = ref<HTMLElement | null>(null)
+const isMobileThemeNameScrollable = ref(false)
+let mobileThemeNameResizeObserver: ResizeObserver | null = null
+const mobileSameThemeNameRefs = new Map<string, HTMLElement>()
+const scrollableMobileSameThemeNameIds = ref(new Set<string>())
+let mobileSameThemeNameResizeObserver: ResizeObserver | null = null
 
 // --- 移动端状态管理 ---
 const isDragging = ref(false) // 是否正在拖拽中
@@ -259,6 +292,8 @@ const currentDrawerHeight = ref<number | string>('65%') // 实时高度
 let startY = 0
 let startHeight = 0
 let windowHeight = 0
+let mobileBodyScrollTop = 0
+let mobileBodyStyleSnapshot: Partial<CSSStyleDeclaration> | null = null
 
 // 内容区域触摸相关变量
 let contentStartY = 0
@@ -314,6 +349,64 @@ const allImages = computed(() => {
   return images.concat(detail.value.additional_photos.map((p) => p.image))
 })
 
+const mobileLocationText = computed(() => detail.value?.location_path || '未收纳')
+const mobilePriceText = computed(() => (detail.value?.price ? `¥ ${detail.value.price}` : '未记录'))
+
+const updateMobileThemeNameScrollState = async () => {
+  await nextTick()
+  const textEl = mobileThemeNameTextRef.value
+  isMobileThemeNameScrollable.value = !!textEl && textEl.scrollWidth > textEl.clientWidth + 1
+}
+
+const observeMobileThemeNameText = async () => {
+  await nextTick()
+
+  mobileThemeNameResizeObserver?.disconnect()
+
+  const textEl = mobileThemeNameTextRef.value
+  if (textEl) {
+    mobileThemeNameResizeObserver?.observe(textEl)
+  }
+
+  void updateMobileThemeNameScrollState()
+}
+
+const updateMobileSameThemeNameScrollState = async () => {
+  await nextTick()
+  const nextScrollableIds = new Set<string>()
+
+  mobileSameThemeNameRefs.forEach((el, goodsId) => {
+    if (el.scrollWidth > el.clientWidth + 1) {
+      nextScrollableIds.add(goodsId)
+    }
+  })
+
+  const currentScrollableIds = scrollableMobileSameThemeNameIds.value
+  const hasChanged =
+    nextScrollableIds.size !== currentScrollableIds.size ||
+    [...nextScrollableIds].some(goodsId => !currentScrollableIds.has(goodsId))
+
+  if (hasChanged) {
+    scrollableMobileSameThemeNameIds.value = nextScrollableIds
+  }
+}
+
+const setMobileSameThemeNameRef = (goodsId: string, el: Element | ComponentPublicInstance | null) => {
+  const previousEl = mobileSameThemeNameRefs.get(goodsId)
+  if (previousEl && previousEl !== el) {
+    mobileSameThemeNameResizeObserver?.unobserve(previousEl)
+    mobileSameThemeNameRefs.delete(goodsId)
+  }
+
+  if (!(el instanceof HTMLElement)) return
+
+  mobileSameThemeNameRefs.set(goodsId, el)
+  mobileSameThemeNameResizeObserver?.observe(el)
+}
+
+const isMobileSameThemeNameScrollable = (goodsId: string) =>
+  scrollableMobileSameThemeNameIds.value.has(goodsId)
+
 watch(
   () => props.goodsId,
   async (newId, oldId) => {
@@ -336,6 +429,7 @@ watch(visible, async (newVal) => {
     if (isMobile.value) {
       sheetState.value = 'half'
       currentDrawerHeight.value = '65%' 
+      lockMobileBodyScroll()
     }
     // 如果已经有 goodsId，加载详情
     // 注意：这里可能会和 goodsId 的 watch 重复调用，但 loadDetail 内部会有去重处理
@@ -347,6 +441,7 @@ watch(visible, async (newVal) => {
       }
     }
   } else {
+    unlockMobileBodyScroll()
     // 清除当前请求标识
     currentRequestId = null
     // 延迟清理，避免关闭动画时闪烁
@@ -423,6 +518,7 @@ async function loadSameThemeGoods(themeId: number, currentGoodsId: string) {
     const allGoods = Array.isArray(response) ? response : (response.results || [])
     // 排除当前谷子本身
     sameThemeGoods.value = allGoods.filter(goods => goods.id !== currentGoodsId)
+    void updateMobileSameThemeNameScrollState()
   } catch (error) {
     console.error('加载相同主题的谷子失败:', error)
     sameThemeGoods.value = []
@@ -441,11 +537,59 @@ async function handleSameThemeItemClick(goodsId: string) {
   }
 }
 
-function handleClose() {}
+function lockMobileBodyScroll() {
+  if (!isMobile.value || mobileBodyStyleSnapshot) return
+
+  mobileBodyScrollTop = window.scrollY || document.documentElement.scrollTop || document.body.scrollTop || 0
+  mobileBodyStyleSnapshot = {
+    position: document.body.style.position,
+    top: document.body.style.top,
+    left: document.body.style.left,
+    right: document.body.style.right,
+    width: document.body.style.width,
+    overflow: document.body.style.overflow,
+    transform: document.body.style.transform,
+  }
+
+  document.body.style.position = 'fixed'
+  document.body.style.top = '0'
+  document.body.style.left = '0'
+  document.body.style.right = '0'
+  document.body.style.width = '100%'
+  document.body.style.overflow = 'hidden'
+  document.body.style.transform = `translateY(-${mobileBodyScrollTop}px)`
+}
+
+function unlockMobileBodyScroll() {
+  if (!mobileBodyStyleSnapshot) return
+
+  document.body.style.position = mobileBodyStyleSnapshot.position || ''
+  document.body.style.top = mobileBodyStyleSnapshot.top || ''
+  document.body.style.left = mobileBodyStyleSnapshot.left || ''
+  document.body.style.right = mobileBodyStyleSnapshot.right || ''
+  document.body.style.width = mobileBodyStyleSnapshot.width || ''
+  document.body.style.overflow = mobileBodyStyleSnapshot.overflow || ''
+  document.body.style.transform = mobileBodyStyleSnapshot.transform || ''
+
+  const scrollTop = mobileBodyScrollTop
+  mobileBodyStyleSnapshot = null
+  mobileBodyScrollTop = 0
+
+  if (scrollTop > 0) {
+    window.scrollTo(0, scrollTop)
+  }
+}
+
+function handleClose() {
+  unlockMobileBodyScroll()
+}
 function handleMobileClose() {
   visible.value = false
 }
-function handleOpen() { syncWindowHeight() }
+function handleOpen() {
+  syncWindowHeight()
+  lockMobileBodyScroll()
+}
 
 // ---------------- 核心：移动端跟随拖拽逻辑 ----------------
 
@@ -587,6 +731,68 @@ function handleContentTouchEnd(e: TouchEvent) {
 
 watch([isMobile, viewportHeight], () => {
   syncWindowHeight()
+  if (!isMobile.value) {
+    unlockMobileBodyScroll()
+  } else if (visible.value) {
+    lockMobileBodyScroll()
+  }
+})
+
+watch(
+  () => [
+    detail.value?.theme?.name,
+    detail.value?.category?.name,
+    detail.value?.is_official,
+    isMobile.value,
+  ],
+  () => {
+    void observeMobileThemeNameText()
+  },
+)
+
+watch(
+  () => sameThemeGoods.value.map(goods => `${goods.id}:${goods.name}`).join('|'),
+  () => {
+    const activeIds = new Set(sameThemeGoods.value.map(goods => goods.id))
+
+    mobileSameThemeNameRefs.forEach((el, goodsId) => {
+      if (!activeIds.has(goodsId)) {
+        mobileSameThemeNameResizeObserver?.unobserve(el)
+        mobileSameThemeNameRefs.delete(goodsId)
+      }
+    })
+
+    void updateMobileSameThemeNameScrollState()
+  },
+)
+
+onMounted(() => {
+  syncWindowHeight()
+  if (visible.value && isMobile.value) {
+    lockMobileBodyScroll()
+  }
+
+  void updateMobileThemeNameScrollState()
+  void updateMobileSameThemeNameScrollState()
+
+  if (typeof ResizeObserver === 'undefined') return
+
+  mobileThemeNameResizeObserver = new ResizeObserver(() => {
+    void updateMobileThemeNameScrollState()
+  })
+  mobileSameThemeNameResizeObserver = new ResizeObserver(() => {
+    void updateMobileSameThemeNameScrollState()
+  })
+
+  void observeMobileThemeNameText()
+  mobileSameThemeNameRefs.forEach(el => mobileSameThemeNameResizeObserver?.observe(el))
+})
+
+onBeforeUnmount(() => {
+  unlockMobileBodyScroll()
+  mobileThemeNameResizeObserver?.disconnect()
+  mobileSameThemeNameResizeObserver?.disconnect()
+  mobileSameThemeNameRefs.clear()
 })
 </script>
 
@@ -642,218 +848,425 @@ watch([isMobile, viewportHeight], () => {
   padding: 4px;
 }
 
-/* 图片区域 */
-.detail-images { margin-bottom: 20px; }
-
-.main-image-wrapper {
-  width: 100%;
-  height: 400px; /* PC默认 */
-  background-color: var(--bg-light-gray, #f7f8fa);
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 12px;
-}
-.main-image { width: 100%; height: 100%; display: block; }
-.image-placeholder { display: flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 40px; width: 100%; height: 100%; }
-
-/* 移动端覆盖 */
-.is-mobile .main-image-wrapper {
-  height: 38vh;
-  max-height: 450px;
-  min-height: 250px;
-  margin: 0;
-  border-radius: 0; 
-  border-bottom: 1px solid #eee;
-}
-
-.additional-images {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
-  gap: 12px;
-  padding: 0 4px; 
-}
-.is-mobile .additional-images { 
-  padding: 12px 16px 0 16px;
-  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
-  gap: 16px;
-}
-.additional-image-item {
+/* ---------------- 移动端详情内容 ---------------- */
+.mobile-detail-panel {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 14px;
+  padding: 0 12px calc(24px + env(safe-area-inset-bottom));
+  color: var(--text-dark, #333);
 }
-.additional-image {
-  width: 100%;
+
+.mobile-hero-card,
+.mobile-profile-card,
+.mobile-stat-card,
+.mobile-gallery-card,
+.mobile-notes-card,
+.mobile-same-theme-section {
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 18px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(255, 255, 255, 0.88)),
+    var(--secondary-gray, #f5f5f7);
+  box-shadow: 0 10px 28px rgba(82, 63, 16, 0.08);
+}
+
+.mobile-hero-card {
+  margin-top: 2px;
+  padding: 10px;
+}
+
+.mobile-main-image-wrapper {
   aspect-ratio: 1;
-  border-radius: 6px;
   overflow: hidden;
-  cursor: pointer;
-  border: 1px solid transparent;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #fafafa, var(--secondary-gray, #f5f5f7));
 }
-.additional-image:hover { border-color: var(--primary-gold, #e6a23c); }
-.image-error {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+
+.mobile-main-image {
   width: 100%;
   height: 100%;
-  background-color: #f5f7fa;
-  color: #909399;
 }
-.photo-label {
+
+.mobile-image-placeholder {
+  display: flex;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--text-light, #888);
+  font-size: 13px;
+}
+
+.mobile-image-placeholder .el-icon {
+  color: var(--primary-gold, #d4af37);
+  font-size: 38px;
+  opacity: 0.72;
+}
+
+.mobile-profile-card,
+.mobile-gallery-card,
+.mobile-notes-card,
+.mobile-same-theme-section {
+  padding: 15px;
+}
+
+.mobile-title-row,
+.mobile-section-title-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mobile-detail-title {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: #2f2a20;
+  font-size: 19px;
+  font-weight: 800;
+  line-height: 1.28;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.mobile-status-badge {
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.mobile-chip-row,
+.mobile-character-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mobile-chip-row {
+  flex-wrap: nowrap;
+  margin-top: 12px;
+}
+
+.mobile-chip,
+.mobile-character-chip {
+  max-width: 100%;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  color: #7c5f16;
   font-size: 12px;
-  color: #606266;
-  text-align: center;
-  line-height: 1.4;
-  padding: 0 4px;
+  font-weight: 700;
+  line-height: 1;
+  padding: 7px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-chip:not(.is-theme) {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
+.mobile-chip.is-fanmade {
+  border-color: rgba(162, 155, 254, 0.34);
+  background: var(--accent-purple-soft, #f6f4ff);
+  color: #6358bd;
+}
+
+.mobile-chip.is-official {
+  border-color: rgba(103, 194, 58, 0.32);
+  background: rgba(103, 194, 58, 0.1);
+  color: #3f8f2f;
+}
+
+.mobile-chip.is-theme {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(162, 155, 254, 0.12));
+}
+
+.mobile-theme-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.mobile-theme-chip-clip {
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.mobile-theme-chip-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.mobile-theme-chip-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  max-width: none;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.mobile-theme-chip-scroll-text {
+  flex: 0 0 auto;
+}
+
+.mobile-theme-chip.is-scrollable .mobile-theme-chip-text {
+  animation: mobileThemeChipEllipsis 5.4s ease-in-out infinite;
+}
+
+.mobile-theme-chip.is-scrollable .mobile-theme-chip-track {
+  animation: mobileThemeChipScroll 5.4s ease-in-out infinite;
+}
+
+@keyframes mobileThemeChipEllipsis {
+  0%,
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes mobileThemeChipScroll {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 8px));
+  }
+
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% - 8px));
+  }
+}
+
+.mobile-summary-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 14px 0 0;
+}
+
+.mobile-summary-row {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+}
+
+.mobile-summary-row.is-characters {
+  align-items: center;
+}
+
+.mobile-summary-row dt {
+  color: var(--text-light, #888);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mobile-summary-row dd {
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  color: #333;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+}
+
+.mobile-summary-row dd:not(.mobile-character-list) {
+  white-space: nowrap;
+}
+
+.mobile-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 9px;
+}
+
+.mobile-stat-card {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 15px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(255, 255, 255, 0.74)),
+    rgba(245, 245, 247, 0.88);
+  box-shadow: none;
+}
+
+.mobile-stat-label {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--text-light, #888);
+  font-size: 12px;
+}
+
+.mobile-stat-value {
+  display: block;
+  overflow: hidden;
+  color: #2f2a20;
+  font-size: 15px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mobile-stat-value.is-price {
+  color: #f56c6c;
+}
+
+.mobile-section-title-row {
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.mobile-section-title-row h3,
+.mobile-notes-card h3 {
+  margin: 0;
+  color: #2f2a20;
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.mobile-section-title-row > span:not(.same-theme-count) {
+  color: var(--text-light, #888);
+  font-size: 12px;
+}
+
+.mobile-gallery-rail,
+.mobile-same-theme-rail {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+}
+
+.mobile-gallery-rail::-webkit-scrollbar,
+.mobile-same-theme-rail::-webkit-scrollbar {
+  display: none;
+}
+
+.mobile-gallery-item,
+.mobile-same-theme-card {
+  flex: 0 0 92px;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.mobile-gallery-image,
+.mobile-gallery-error,
+.mobile-same-theme-image,
+.mobile-same-theme-placeholder {
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 12px;
+  background: var(--secondary-gray, #f5f5f7);
+}
+
+.mobile-gallery-error,
+.mobile-same-theme-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-light, #888);
+  font-size: 22px;
+}
+
+.photo-label,
+.mobile-same-theme-name {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text-regular, #606266);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .photo-label.is-placeholder {
   visibility: hidden;
 }
-.is-mobile .photo-label {
-  font-size: 13px;
-  padding: 0 2px;
-}
 
-/* ---------------- 信息区域 ---------------- */
-.detail-info { padding: 0 8px; }
-.is-mobile .detail-info { padding: 20px 16px; }
-
-.header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  margin-bottom: 20px;
-}
-.detail-title {
-  font-size: 20px;
-  font-weight: bold;
-  color: #303133;
-  margin: 0;
-  line-height: 1.4;
-  flex: 1;
-  margin-right: 12px;
-}
-
-.info-section { display: flex; flex-direction: column; gap: 16px; }
-.info-card {
-  background: var(--bg-light-gray, #f9f9f9);
-  padding: 16px;
+.mobile-notes-card p {
+  margin: 10px 0 0;
   border-radius: 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.info-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px 24px; }
-.is-mobile .info-list { grid-template-columns: 1fr; gap: 12px; }
-
-.info-row, .info-item { display: flex; align-items: center; gap: 10px; }
-.info-label { min-width: 60px; font-size: 13px; color: #909399; }
-.info-value { flex: 1; font-size: 14px; color: #303133; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
-
-.character-tag { border: none; }
-.location-path { color: var(--primary-gold, #e6a23c); font-weight: 500; }
-.price { color: #f56c6c; font-weight: bold; font-size: 16px; }
-.notes-section { margin-top: 8px; }
-.notes {
-  margin-top: 6px;
-  padding: 12px;
-  background-color: #f5f7fa;
-  border-radius: 8px;
-  line-height: 1.6;
-  white-space: pre-wrap;
+  background: rgba(245, 245, 247, 0.9);
+  color: var(--text-regular, #606266);
   font-size: 13px;
-  color: #606266;
-}
-
-/* 相同主题的谷子列表样式 */
-.same-theme-section {
-  margin-top: 24px;
-  padding: 0 8px;
-}
-
-.is-mobile .same-theme-section {
-  padding: 0;
-}
-
-.same-theme-collapse {
-  border: 0;
-  background: transparent;
-}
-
-.same-theme-collapse :deep(.el-collapse) {
-  border: 0;
-}
-
-.same-theme-collapse :deep(.el-collapse-item__header) {
-  min-height: 32px;
-  height: auto;
-  padding: 0;
-  border-bottom: 0;
-  background: transparent;
-  line-height: 1.4;
-}
-
-.same-theme-collapse :deep(.el-collapse-item__wrap) {
-  border-bottom: 0;
-  background: transparent;
-}
-
-.same-theme-collapse :deep(.el-collapse-item__content) {
-  padding-bottom: 0;
-}
-
-.same-theme-title {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-}
-
-.same-theme-title-text {
-  min-width: 0;
+  line-height: 1.7;
+  padding: 12px;
+  white-space: pre-wrap;
 }
 
 .same-theme-count {
-  min-width: 22px;
-  height: 20px;
+  min-width: 24px;
+  height: 22px;
   padding: 0 7px;
   border-radius: 999px;
-  background: #f4efe7;
-  color: #9a6a1f;
+  background: rgba(212, 175, 55, 0.14);
+  color: #8a6510;
   font-size: 12px;
-  font-weight: 600;
-  line-height: 20px;
+  font-weight: 800;
+  line-height: 22px;
   text-align: center;
 }
 
-.theme-icon {
-  color: var(--primary-gold, #e6a23c);
-  font-size: 16px;
-}
-
 .same-theme-loading {
-  padding: 10px 0 0;
+  padding-top: 4px;
 }
 
 .same-theme-empty {
-  padding: 12px 0 0;
-}
-
-.same-theme-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
-  gap: 14px;
-  padding: 10px 0 0;
+  padding-top: 4px;
 }
 
 .same-theme-item {
@@ -919,62 +1332,73 @@ watch([isMobile, viewportHeight], () => {
   will-change: transform;
 }
 
-.same-theme-item:hover .same-theme-item-name-text {
-  display: inline-block;
+.mobile-same-theme-name-clip {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.mobile-same-theme-name-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
   max-width: none;
-  min-width: max-content;
-  overflow: visible;
-  text-overflow: clip;
-  animation: same-theme-name-marquee 5s linear infinite;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
-@keyframes same-theme-name-marquee {
+.mobile-same-theme-name-scroll-text {
+  flex: 0 0 auto;
+}
+
+.mobile-same-theme-name.is-scrollable .mobile-same-theme-name-text {
+  animation: mobileSameThemeNameEllipsis 5.4s ease-in-out infinite;
+}
+
+.mobile-same-theme-name.is-scrollable .mobile-same-theme-name-track {
+  animation: mobileSameThemeNameScroll 5.4s ease-in-out infinite;
+}
+
+@keyframes mobileSameThemeNameEllipsis {
   0%,
-  14% {
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes mobileSameThemeNameScroll {
+  0%,
+  18% {
+    opacity: 0;
     transform: translateX(0);
   }
 
-  86%,
-  100% {
-    transform: translateX(calc(-100% + 100px));
-  }
-}
-
-.is-mobile .same-theme-grid {
-  display: flex;
-  gap: 10px;
-  padding: 10px 0 2px;
-  overflow-x: auto;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none;
-}
-
-.is-mobile .same-theme-grid::-webkit-scrollbar {
-  display: none;
-}
-
-.is-mobile .same-theme-item {
-  flex: 0 0 82px;
-}
-
-.is-mobile .same-theme-item-name {
-  font-size: 11px;
-  padding: 5px 1px 0;
-}
-
-.is-mobile .same-theme-item:hover .same-theme-item-name-text {
-  animation: same-theme-name-marquee-mobile 5s linear infinite;
-}
-
-@keyframes same-theme-name-marquee-mobile {
-  0%,
-  14% {
+  24% {
+    opacity: 1;
     transform: translateX(0);
   }
 
-  86%,
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 8px));
+  }
+
+  94%,
   100% {
-    transform: translateX(calc(-100% + 80px));
+    opacity: 0;
+    transform: translateX(calc(-50% - 8px));
   }
 }
 

@@ -73,6 +73,18 @@ const dispatchTouch = (el: Element, type: 'touchstart' | 'touchmove' | 'touchend
   el.dispatchEvent(createTouchEvent(type, clientY, el))
 }
 
+const flushDetailLoad = async () => {
+  await Promise.resolve()
+  await new Promise(resolve => window.setTimeout(resolve, 0))
+}
+
+const cssRuleBlock = (source: string, selector: string) => {
+  const start = source.indexOf(`${selector} {`)
+  if (start === -1) return ''
+  const end = source.indexOf('\n}', start)
+  return end === -1 ? source.slice(start) : source.slice(start, end + 2)
+}
+
 const mountDrawer = async () => {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -83,7 +95,7 @@ const mountDrawer = async () => {
 
   setActivePinia(createPinia())
 
-  return mount(GoodsDrawer, {
+  const wrapper = mount(GoodsDrawer, {
     attachTo: document.body,
     props: {
       modelValue: true,
@@ -113,6 +125,11 @@ const mountDrawer = async () => {
       },
     },
   })
+
+  await flushDetailLoad()
+  await wrapper.vm.$nextTick()
+
+  return wrapper
 }
 
 // --------------- Tests ---------------
@@ -325,6 +342,134 @@ describe('GoodsDrawer mobile gesture', () => {
 
       expect(source).toContain(':lock-scroll="!isMobile"')
     })
+
+    it('locks the background page scroll with a custom mobile body lock while open', async () => {
+      const scrollToSpy = vi.spyOn(window, 'scrollTo').mockImplementation(() => undefined)
+      wrapper.unmount()
+      document.body.removeAttribute('style')
+      Object.defineProperty(window, 'scrollY', { configurable: true, value: 180 })
+
+      const localWrapper = await mountDrawer()
+
+      expect(document.body.style.position).toBe('fixed')
+      expect(document.body.style.top).toBe('0px')
+      expect(document.body.style.left).toBe('0px')
+      expect(document.body.style.right).toBe('0px')
+      expect(document.body.style.width).toBe('100%')
+      expect(document.body.style.overflow).toBe('hidden')
+      expect(document.body.style.transform).toBe('translateY(-180px)')
+
+      await localWrapper.setProps({ modelValue: false })
+      await localWrapper.vm.$nextTick()
+
+      expect(document.body.style.position).toBe('')
+      expect(document.body.style.top).toBe('')
+      expect(document.body.style.overflow).toBe('')
+      expect(document.body.style.transform).toBe('')
+      expect(scrollToSpy).toHaveBeenCalledWith(0, 180)
+
+      scrollToSpy.mockRestore()
+    })
+  })
+})
+
+describe('GoodsDrawer mobile redesigned detail panel', () => {
+  beforeEach(() => {
+    vi.restoreAllMocks()
+    document.body.innerHTML = ''
+    setMobileViewport()
+    Object.assign(mockDetail, {
+      name: '鬼切《绀宇切芒》满赠吧唧',
+      status: 'in_cabinet',
+      main_photo: '/media/mobile-main.png',
+      additional_photos: [
+        { id: 1, image: '/media/mobile-without-label.png', label: '' },
+        { id: 2, image: '/media/mobile-with-label.png', label: '包装' },
+      ],
+      quantity: 2,
+      is_official: false,
+      price: '68.00',
+      purchase_date: '2026-05-31',
+      notes: '店铺：December十二月 TB店',
+      location_path: '卧室/A1柜/第三层',
+      ip: { id: 1, name: '阴阳师' },
+      characters: [{ id: 1, name: '鬼切', gender: 'male' }],
+      category: { id: 1, name: '58mm吧唧' },
+      theme: { id: 7, name: '绀宇切芒' },
+      user: { id: 1, username: 'admin' },
+    })
+    vi.mocked(getGoodsList).mockResolvedValue({ results: [] } as any)
+  })
+
+  it('uses the desktop-inspired mobile panel with compact touch sections', async () => {
+    const wrapper = await mountDrawer()
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('.mobile-detail-panel').exists()).toBe(true)
+    expect(wrapper.find('.mobile-hero-card').exists()).toBe(true)
+    expect(wrapper.find('.mobile-profile-card').exists()).toBe(true)
+    expect(wrapper.find('.mobile-stat-grid').exists()).toBe(true)
+    expect(wrapper.find('.mobile-gallery-rail').exists()).toBe(true)
+    expect(wrapper.find('.mobile-same-theme-section').exists()).toBe(true)
+    expect(wrapper.find('.detail-info').exists()).toBe(false)
+    expect(wrapper.find('.info-list').exists()).toBe(false)
+  })
+
+  it('prioritizes title, chips, stats, gallery, and notes for mobile scanning', async () => {
+    const wrapper = await mountDrawer()
+    await wrapper.vm.$nextTick()
+    const text = wrapper.text()
+
+    expect(text).toContain('鬼切《绀宇切芒》满赠吧唧')
+    expect(text).toContain('在馆')
+    expect(text).toContain('同人')
+    expect(text).toContain('58mm吧唧')
+    expect(text).toContain('阴阳师')
+    expect(text).toContain('鬼切')
+    expect(text).toContain('绀宇切芒')
+    expect(text).toContain('¥ 68.00')
+    expect(text).toContain('2026-05-31')
+    expect(text).toContain('x2')
+    expect(text).toContain('卧室/A1柜/第三层')
+    expect(text).toContain('店铺：December十二月 TB店')
+  })
+
+  it('removes the gold frame from the mobile main image itself', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+    const imageRule = cssRuleBlock(source, '.mobile-main-image-wrapper')
+
+    expect(imageRule).toContain('border-radius: 16px;')
+    expect(imageRule).not.toContain('border:')
+  })
+
+  it('keeps official and category chips complete while only overflowing theme names scroll', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+    const chipRowRule = cssRuleBlock(source, '.mobile-chip-row')
+    const fixedChipRule = cssRuleBlock(source, '.mobile-chip:not(.is-theme)')
+    const themeChipRule = cssRuleBlock(source, '.mobile-theme-chip')
+
+    expect(source).toContain('class="mobile-chip is-theme mobile-theme-chip"')
+    expect(source).toContain(':class="{ \'is-scrollable\': isMobileThemeNameScrollable }"')
+    expect(source).toContain('mobileThemeNameTextRef')
+    expect(source).toContain('mobile-theme-chip-track')
+    expect(source).toContain('mobile-theme-chip-scroll-text')
+    expect(source).toContain('@keyframes mobileThemeChipScroll')
+    expect(source).toContain('animation: mobileThemeChipScroll 5.4s ease-in-out infinite;')
+    expect(chipRowRule).toContain('flex-wrap: nowrap;')
+    expect(fixedChipRule).toContain('flex: 0 0 auto;')
+    expect(fixedChipRule).toContain('max-width: none;')
+    expect(themeChipRule).toContain('flex: 0 1 auto;')
+    expect(themeChipRule).toContain('min-width: 0;')
+  })
+
+  it('vertically centers the character label with character chips', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+    const characterRowRule = cssRuleBlock(source, '.mobile-summary-row.is-characters')
+    const characterListRule = cssRuleBlock(source, '.mobile-character-list')
+
+    expect(source).toContain('class="mobile-summary-row is-characters"')
+    expect(characterRowRule).toContain('align-items: center;')
+    expect(characterListRule).toContain('align-items: center;')
   })
 })
 
@@ -392,9 +537,21 @@ describe('GoodsDrawer same theme section', () => {
     await new Promise(resolve => window.setTimeout(resolve, 0))
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('.same-theme-title-text').text()).toBe('相同主题的谷子')
+    expect(wrapper.get('.same-theme-title-text').text()).toBe('同主题收藏')
     expect(wrapper.get('.same-theme-count').text()).toBe('1')
     expect(wrapper.get('.same-theme-item-name').attributes('title')).toBe('超长超长超长超长超长超长超长超长超长谷子名称')
     expect(wrapper.get('.same-theme-item-name-text').text()).toBe('超长超长超长超长超长超长超长超长超长谷子名称')
+  })
+
+  it('adds automatic marquee for overflowing mobile same-theme titles', () => {
+    const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+
+    expect(source).toContain('mobileSameThemeNameRefs')
+    expect(source).toContain('ResizeObserver')
+    expect(source).toContain('mobile-same-theme-name-track')
+    expect(source).toContain('mobile-same-theme-name-scroll-text')
+    expect(source).toContain('@keyframes mobileSameThemeNameScroll')
+    expect(source).toContain('animation: mobileSameThemeNameScroll 5.4s ease-in-out infinite;')
+    expect(source).not.toContain('same-theme-item:hover .same-theme-item-name-text')
   })
 })

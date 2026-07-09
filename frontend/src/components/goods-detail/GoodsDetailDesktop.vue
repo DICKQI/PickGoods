@@ -35,6 +35,20 @@
           <span class="desktop-chip" :title="detail.category.path_name || detail.category.name">
             {{ detail.category.name }}
           </span>
+          <span
+            v-if="detail.theme"
+            class="desktop-chip is-theme desktop-theme-chip"
+            :class="{ 'is-scrollable': isDesktopThemeNameScrollable }"
+            :title="detail.theme.name"
+          >
+            <span class="desktop-theme-chip-clip">
+              <span ref="desktopThemeNameTextRef" class="desktop-theme-chip-text">{{ detail.theme.name }}</span>
+              <span class="desktop-theme-chip-track" aria-hidden="true">
+                <span class="desktop-theme-chip-scroll-text">{{ detail.theme.name }}</span>
+                <span class="desktop-theme-chip-scroll-text">{{ detail.theme.name }}</span>
+              </span>
+            </span>
+          </span>
         </div>
 
         <dl class="desktop-summary-list">
@@ -58,12 +72,6 @@
           <div v-if="detail.user?.username" class="desktop-summary-row">
             <dt>谷主</dt>
             <dd :title="detail.user.username">{{ detail.user.username }}</dd>
-          </div>
-          <div v-if="detail.theme" class="desktop-summary-row is-theme-row">
-            <dt>主题</dt>
-            <dd>
-              <span class="desktop-theme-chip" :title="detail.theme.name">{{ detail.theme.name }}</span>
-            </dd>
           </div>
         </dl>
 
@@ -228,6 +236,9 @@ defineEmits<{
 
 const thumbnailPageSize = 4
 const thumbnailPage = ref(0)
+const desktopThemeNameTextRef = ref<HTMLElement | null>(null)
+const isDesktopThemeNameScrollable = ref(false)
+let desktopThemeNameResizeObserver: ResizeObserver | null = null
 const sameThemeNameRefs = new Map<string, HTMLElement>()
 const scrollableSameThemeNameIds = ref(new Set<string>())
 let sameThemeNameResizeObserver: ResizeObserver | null = null
@@ -252,6 +263,25 @@ const showPreviousThumbnails = () => {
 
 const showNextThumbnails = () => {
   thumbnailPage.value = Math.min(totalThumbnailPages.value - 1, thumbnailPage.value + 1)
+}
+
+const updateDesktopThemeNameScrollState = async () => {
+  await nextTick()
+  const textEl = desktopThemeNameTextRef.value
+  isDesktopThemeNameScrollable.value = !!textEl && textEl.scrollWidth > textEl.clientWidth + 1
+}
+
+const observeDesktopThemeNameText = async () => {
+  await nextTick()
+
+  desktopThemeNameResizeObserver?.disconnect()
+
+  const textEl = desktopThemeNameTextRef.value
+  if (textEl) {
+    desktopThemeNameResizeObserver?.observe(textEl)
+  }
+
+  void updateDesktopThemeNameScrollState()
 }
 
 const updateSameThemeNameScrollState = async () => {
@@ -298,6 +328,17 @@ watch(
 )
 
 watch(
+  () => [
+    props.detail.theme?.name,
+    props.detail.category?.name,
+    props.detail.is_official,
+  ],
+  () => {
+    void observeDesktopThemeNameText()
+  },
+)
+
+watch(
   () => props.sameThemeGoods.map(goods => `${goods.id}:${goods.name}`).join('|'),
   () => {
     const activeIds = new Set(props.sameThemeGoods.map(goods => goods.id))
@@ -314,18 +355,24 @@ watch(
 )
 
 onMounted(() => {
+  void updateDesktopThemeNameScrollState()
   void updateSameThemeNameScrollState()
 
   if (typeof ResizeObserver === 'undefined') return
 
+  desktopThemeNameResizeObserver = new ResizeObserver(() => {
+    void updateDesktopThemeNameScrollState()
+  })
   sameThemeNameResizeObserver = new ResizeObserver(() => {
     void updateSameThemeNameScrollState()
   })
 
+  void observeDesktopThemeNameText()
   sameThemeNameRefs.forEach(el => sameThemeNameResizeObserver?.observe(el))
 })
 
 onBeforeUnmount(() => {
+  desktopThemeNameResizeObserver?.disconnect()
   sameThemeNameResizeObserver?.disconnect()
   sameThemeNameRefs.clear()
 })
@@ -576,6 +623,11 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
+.desktop-chip:not(.is-theme) {
+  flex: 0 0 auto;
+  max-width: none;
+}
+
 .desktop-chip.is-fanmade {
   border-color: rgba(162, 155, 254, 0.34);
   background: var(--accent-purple-soft, #f6f4ff);
@@ -586,6 +638,100 @@ onBeforeUnmount(() => {
   border-color: rgba(103, 194, 58, 0.32);
   background: rgba(103, 194, 58, 0.1);
   color: #3f8f2f;
+}
+
+.desktop-chip.is-theme {
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(162, 155, 254, 0.12));
+}
+
+.desktop-chip-row {
+  flex-wrap: nowrap;
+}
+
+.desktop-theme-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.desktop-theme-chip-clip {
+  position: relative;
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.desktop-theme-chip-text {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.desktop-theme-chip-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  max-width: none;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.desktop-theme-chip-scroll-text {
+  flex: 0 0 auto;
+}
+
+.desktop-theme-chip.is-scrollable .desktop-theme-chip-text {
+  animation: desktopThemeChipEllipsis 5.4s ease-in-out infinite;
+}
+
+.desktop-theme-chip.is-scrollable .desktop-theme-chip-track {
+  animation: desktopThemeChipScroll 5.4s ease-in-out infinite;
+}
+
+@keyframes desktopThemeChipEllipsis {
+  0%,
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes desktopThemeChipScroll {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 8px));
+  }
+
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% - 8px));
+  }
 }
 
 .desktop-summary-list {
@@ -600,10 +746,6 @@ onBeforeUnmount(() => {
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
-}
-
-.desktop-summary-row.is-theme-row {
-  align-items: center;
 }
 
 .desktop-summary-row dt {
@@ -630,22 +772,6 @@ onBeforeUnmount(() => {
 
 .desktop-summary-row .is-location {
   color: var(--primary-gold-dark, #b8941f);
-}
-
-.desktop-theme-chip {
-  display: inline-block;
-  max-width: 100%;
-  overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.28);
-  border-radius: 999px;
-  background: linear-gradient(135deg, rgba(212, 175, 55, 0.12), rgba(162, 155, 254, 0.12));
-  color: #7c5f16;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 7px 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .desktop-stat-grid {
