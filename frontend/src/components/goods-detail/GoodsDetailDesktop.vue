@@ -745,7 +745,7 @@ onBeforeUnmount(() => {
   display: grid;
   grid-template-columns: 76px minmax(0, 1fr);
   gap: 12px;
-  align-items: start;
+  align-items: center;
 }
 
 .desktop-summary-row dt {
@@ -767,6 +767,7 @@ onBeforeUnmount(() => {
 }
 
 .desktop-summary-row dd:not(.desktop-character-list) {
+  padding-inline-start: 10px;
   white-space: nowrap;
 }
 
