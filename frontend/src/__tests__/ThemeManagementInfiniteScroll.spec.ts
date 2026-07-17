@@ -21,6 +21,58 @@ function cssRuleBlock(source: string, selector: string) {
 // 1. 源码结构断言：确保模板和 observer 配置正确
 // ============================================================
 describe('ThemeManagement infinite scroll – source structure', () => {
+  it('defines the redesigned desktop theme library workbench', () => {
+    expect(viewSource).toContain('class="desktop-theme-workbench hidden-xs-only"')
+    expect(viewSource).toContain('class="desktop-theme-header"')
+    expect(viewSource).toContain('class="desktop-theme-metrics"')
+    expect(viewSource).toContain('class="desktop-theme-toolbar"')
+    expect(viewSource).toContain('class="desktop-theme-table-panel"')
+    expect(viewSource).toContain('brand-add-btn brand-add-btn--compact desktop-theme-add')
+  })
+
+  it('keeps desktop filtering and refresh controls inside the workbench toolbar', () => {
+    expect(viewSource).toContain('class="desktop-theme-search"')
+    expect(viewSource).toContain('class="desktop-theme-sort"')
+    expect(viewSource).toContain('class="desktop-theme-date"')
+    expect(viewSource).toContain('class="desktop-theme-refresh"')
+    expect(viewSource).toContain('aria-label="刷新主题列表"')
+    expect(viewSource).not.toContain('class="refresh-fab hidden-xs-only"')
+  })
+
+  it('overrides the desktop date picker default width at the component root', () => {
+    expect(viewSource).toContain('class="desktop-theme-date"\n          style="width: 100%"')
+  })
+
+  it('keeps desktop table rows compact', () => {
+    const rowRule = cssRuleBlock(viewSource, '.pc-table :deep(.el-table__body td.el-table__cell)')
+
+    expect(rowRule).toContain('height: 52px;')
+  })
+
+  it('uses accessible icon actions in the desktop table and preserves the mobile list', () => {
+    expect(viewSource).toContain('class="desktop-theme-action desktop-theme-action--edit"')
+    expect(viewSource).toContain('class="desktop-theme-action desktop-theme-action--delete"')
+    expect(viewSource).toContain(':aria-label="`编辑主题 ${row.name}`"')
+    expect(viewSource).toContain(':aria-label="`删除主题 ${row.name}`"')
+    expect(viewSource).toContain('visible-xs-only mobile-list-container')
+    expect(viewSource).toContain('class="mobile-card"')
+    expect(viewSource).toContain('<MobileActionSheet')
+  })
+
+  it('calculates desktop table height from the table container position', () => {
+    expect(viewSource).toContain('windowHeight - containerRect.top - paginationHeight - bottomGap')
+    expect(viewSource).not.toContain('const searchCardHeight = 180')
+  })
+
+  it('recalculates desktop table height when filtered results change', () => {
+    const watcherStart = viewSource.indexOf('watch(filteredThemeList, () => {')
+    expect(watcherStart).toBeGreaterThan(-1)
+    const nextWatcherStart = viewSource.indexOf('watch(isMobile, () => {', watcherStart)
+    expect(nextWatcherStart).toBeGreaterThan(watcherStart)
+    const watcherBody = viewSource.slice(watcherStart, nextWatcherStart)
+    expect(watcherBody).toContain('nextTick(updateTableHeight)')
+  })
+
   it('defines the redesigned mobile theme editor sheet structure', () => {
     expect(viewSource).toContain('theme-editor-dialog')
     expect(viewSource).toContain('is-theme-editor-mobile')

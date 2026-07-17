@@ -1,5 +1,186 @@
 <template>
   <div class="theme-management-container">
+    <section class="desktop-theme-workbench hidden-xs-only">
+      <header class="desktop-theme-header">
+        <div class="desktop-theme-heading">
+          <span class="desktop-theme-eyebrow">主题资料库</span>
+          <div class="desktop-theme-title-row">
+            <h1>主题</h1>
+            <div class="desktop-theme-metrics" aria-label="主题统计">
+              <span class="desktop-theme-metric">
+                <span>全部</span>
+                <strong>{{ allThemes.length }}</strong>
+              </span>
+              <span class="desktop-theme-metric" :class="{ 'is-active': hasActiveFilters }">
+                <span>当前结果</span>
+                <strong>{{ filteredThemeList.length }}</strong>
+              </span>
+            </div>
+          </div>
+          <p>整理主题名称、备注与参考图，便于后续筛选和归档。</p>
+        </div>
+        <el-button
+          type="primary"
+          class="brand-add-btn brand-add-btn--compact desktop-theme-add"
+          @click="handleAdd"
+        >
+          <span class="brand-add-btn__content">
+            <el-icon><Plus /></el-icon>
+            <span>新增主题</span>
+          </span>
+        </el-button>
+      </header>
+
+      <section class="desktop-theme-toolbar" aria-label="主题筛选工具栏">
+        <el-input
+          v-model="searchText"
+          class="desktop-theme-search"
+          placeholder="搜索主题名称或描述"
+          clearable
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+        <el-select
+          v-model="sortBy"
+          class="desktop-theme-sort"
+          placeholder="排序方式"
+          clearable
+          @change="handleSortChange"
+        >
+          <el-option label="创建时间正序" value="created_asc" />
+          <el-option label="创建时间倒序" value="created_desc" />
+          <el-option label="名称正序" value="name_asc" />
+          <el-option label="名称倒序" value="name_desc" />
+        </el-select>
+        <el-date-picker
+          v-model="dateRange"
+          class="desktop-theme-date"
+          style="width: 100%"
+          type="daterange"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          format="YYYY-MM-DD"
+          value-format="YYYY-MM-DD"
+          clearable
+          @change="handleDateRangeChange"
+        />
+        <div class="desktop-theme-toolbar-actions">
+          <el-button type="primary" class="desktop-theme-search-button" @click="handleSearch">
+            <el-icon><Search /></el-icon>
+            <span>搜索</span>
+          </el-button>
+          <el-button v-if="hasActiveFilters" class="desktop-theme-clear" @click="clearFilters">
+            <el-icon><Close /></el-icon>
+            <span>清除</span>
+          </el-button>
+          <el-tooltip content="刷新主题列表" placement="top">
+            <el-button
+              class="desktop-theme-refresh"
+              circle
+              :loading="loading"
+              aria-label="刷新主题列表"
+              @click="handleRefresh"
+            >
+              <el-icon v-if="!loading"><Refresh /></el-icon>
+            </el-button>
+          </el-tooltip>
+        </div>
+      </section>
+
+      <section v-loading="loading" class="desktop-theme-table-panel">
+        <div ref="tableContainerRef" class="table-container">
+          <el-table
+            :data="paginatedThemeList"
+            class="pc-table"
+            row-key="id"
+            :height="tableHeight"
+            style="width: 100%"
+          >
+            <el-table-column prop="name" label="主题名称" min-width="220" fixed>
+              <template #default="{ row }">
+                <div class="theme-item-name">
+                  <span class="theme-icon-tile" aria-hidden="true">
+                    <el-icon class="theme-icon"><Star /></el-icon>
+                  </span>
+                  <span class="theme-name-text">{{ row.name }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="description" label="描述" min-width="360">
+              <template #default="{ row }">
+                <el-tooltip :content="row.description || '暂无描述'" placement="top" :show-after="500">
+                  <span class="description-text" :class="{ 'is-empty': !row.description }">
+                    {{ row.description || '暂无描述' }}
+                  </span>
+                </el-tooltip>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" width="180" sortable>
+              <template #default="{ row }">
+                <span class="time-text">{{ formatDate(row.created_at) }}</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="112" align="center" fixed="right">
+              <template #default="{ row }">
+                <div class="desktop-theme-actions">
+                  <el-tooltip content="编辑主题" placement="top" :show-after="400">
+                    <el-button
+                      text
+                      circle
+                      class="desktop-theme-action desktop-theme-action--edit"
+                      :aria-label="`编辑主题 ${row.name}`"
+                      @click="handleEdit(row)"
+                    >
+                      <el-icon><Edit /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                  <el-tooltip content="删除主题" placement="top" :show-after="400">
+                    <el-button
+                      text
+                      circle
+                      class="desktop-theme-action desktop-theme-action--delete"
+                      :aria-label="`删除主题 ${row.name}`"
+                      @click="handleDelete(row)"
+                    >
+                      <el-icon><Delete /></el-icon>
+                    </el-button>
+                  </el-tooltip>
+                </div>
+              </template>
+            </el-table-column>
+            <template #empty>
+              <div class="desktop-theme-empty">
+                <el-empty :description="hasActiveFilters ? '没有找到匹配的主题' : '还没有主题'" :image-size="88">
+                  <el-button v-if="hasActiveFilters" @click="clearFilters">清除筛选条件</el-button>
+                  <el-button v-else type="primary" class="desktop-theme-empty-add" @click="handleAdd">
+                    <el-icon><Plus /></el-icon>
+                    <span>新增主题</span>
+                  </el-button>
+                </el-empty>
+              </div>
+            </template>
+          </el-table>
+        </div>
+
+        <div v-if="filteredThemeList.length > 0" class="pagination-wrapper">
+          <el-pagination
+            v-model:current-page="currentPage"
+            v-model:page-size="pageSize"
+            :page-sizes="[10, 20, 50, 100]"
+            :total="filteredThemeList.length"
+            layout="total, sizes, prev, pager, next, jumper"
+            background
+            @size-change="handleSizeChange"
+            @current-change="handleCurrentChange"
+          />
+        </div>
+      </section>
+    </section>
+
+    <section class="visible-xs-only mobile-theme-workbench">
     <!-- ================= 顶部区域 ================= -->
     <div class="header-section">
       <div class="title-wrapper">
@@ -77,64 +258,6 @@
     <!-- ================= 顶部区域结束 ================= -->
 
     <div v-loading="loading" class="content-body">
-      <!-- PC端视图 -->
-      <div class="hidden-xs-only desktop-view">
-        <div class="table-container" ref="tableContainerRef">
-          <el-table
-            :data="paginatedThemeList"
-            style="width: 100%"
-            class="pc-table"
-            row-key="id"
-            border-radius="12"
-            :height="tableHeight"
-          >
-            <el-table-column prop="name" label="主题名称" min-width="200" fixed>
-              <template #default="{ row }">
-                <div class="theme-item-name">
-                  <el-icon class="theme-icon"><Star /></el-icon>
-                  <span class="theme-name-text">{{ row.name }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column prop="description" label="描述" min-width="300">
-              <template #default="{ row }">
-                <el-tooltip :content="row.description || '无描述'" placement="top" :show-after="500">
-                  <span class="description-text">{{ row.description || '—' }}</span>
-                </el-tooltip>
-              </template>
-            </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" width="180" sortable>
-              <template #default="{ row }">
-                <span class="time-text">{{ formatDate(row.created_at) }}</span>
-              </template>
-            </el-table-column>
-            <el-table-column label="操作" width="150" align="right" fixed="right">
-              <template #default="{ row }">
-                <div class="action-inline">
-                  <el-button link type="primary" @click="handleEdit(row)">编辑</el-button>
-                  <span class="action-divider" />
-                  <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-                </div>
-              </template>
-            </el-table-column>
-          </el-table>
-        </div>
-
-        <!-- 分页控件 -->
-        <div class="pagination-wrapper" v-if="filteredThemeList.length > 0">
-          <el-pagination
-            v-model:current-page="currentPage"
-            v-model:page-size="pageSize"
-            :page-sizes="[10, 20, 50, 100]"
-            :total="filteredThemeList.length"
-            layout="total, sizes, prev, pager, next, jumper"
-            background
-            @size-change="handleSizeChange"
-            @current-change="handleCurrentChange"
-          />
-        </div>
-      </div>
-
       <!-- 移动端视图 -->
       <div class="visible-xs-only mobile-list-container">
         <!-- 移动端筛选状态栏 -->
@@ -218,12 +341,7 @@
         </el-empty>
       </div>
     </div>
-
-    <!-- 刷新按钮 - 右下角悬浮（仅PC端） -->
-    <div class="refresh-fab hidden-xs-only" @click="handleRefresh" :class="{ loading: loading }">
-      <el-icon v-if="!loading"><Refresh /></el-icon>
-      <el-icon v-else class="is-loading"><Loading /></el-icon>
-    </div>
+    </section>
 
     <!-- 弹窗 -->
     <el-dialog
@@ -642,6 +760,7 @@ const hasMoreMobileData = computed(() => {
 watch(filteredThemeList, () => {
   currentPage.value = 1
   updateMobileDisplayList()
+  nextTick(updateTableHeight)
 }, { immediate: false })
 
 watch(isMobile, () => {
@@ -691,10 +810,9 @@ const updateTableHeight = () => {
   if (tableContainerRef.value && !isMobile.value) {
     const containerRect = tableContainerRef.value.getBoundingClientRect()
     const windowHeight = window.innerHeight
-    const headerHeight = 64
-    const searchCardHeight = 180
-    const paginationHeight = 72
-    const availableHeight = windowHeight - headerHeight - searchCardHeight - paginationHeight - 40
+    const paginationHeight = filteredThemeList.value.length > 0 ? 70 : 0
+    const bottomGap = 24
+    const availableHeight = windowHeight - containerRect.top - paginationHeight - bottomGap
     tableHeight.value = Math.max(200, Math.min(availableHeight, 800))
   }
 }
@@ -721,6 +839,7 @@ const fetchThemeList = async (force = false) => {
     const data = await metadataStore.fetchThemes(force)
     allThemes.value = data || []
     updateMobileDisplayList()
+    await nextTick()
     updateTableHeight()
   } finally {
     loading.value = false
@@ -959,10 +1078,359 @@ onUnmounted(() => {
 <style scoped>
 /* =========== PC/通用基础样式 =========== */
 .theme-management-container {
-  padding: 20px;
-  max-width: 1400px;
+  padding: 18px;
+  max-width: 1480px;
   margin: 0 auto;
   min-height: calc(100vh - 64px);
+}
+
+.desktop-theme-workbench {
+  color: #243042;
+}
+
+.desktop-theme-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 16px;
+}
+
+.desktop-theme-heading {
+  min-width: 0;
+}
+
+.desktop-theme-eyebrow {
+  display: block;
+  margin-bottom: 3px;
+  color: #8a650b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.desktop-theme-title-row {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.desktop-theme-title-row h1 {
+  margin: 0;
+  color: #243042;
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.desktop-theme-heading > p {
+  margin: 5px 0 0;
+  color: #6b7280;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.desktop-theme-metrics {
+  display: inline-flex;
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.desktop-theme-metric {
+  min-width: 92px;
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 7px;
+  padding: 6px 11px;
+  color: #6b7280;
+  font-size: 11px;
+  border-left: 1px solid #e5e7eb;
+}
+
+.desktop-theme-metric:first-child {
+  border-left: 0;
+}
+
+.desktop-theme-metric strong {
+  color: #243042;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.desktop-theme-metric.is-active strong {
+  color: var(--accent-purple-dark);
+}
+
+.desktop-theme-add {
+  --brand-add-radius: 8px;
+  flex-shrink: 0;
+}
+
+.desktop-theme-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 168px minmax(280px, 320px) auto;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.desktop-theme-search,
+.desktop-theme-sort,
+.desktop-theme-date {
+  width: 100%;
+  min-width: 0;
+}
+
+.desktop-theme-search :deep(.el-input__wrapper),
+.desktop-theme-sort :deep(.el-select__wrapper),
+.desktop-theme-date:deep(.el-input__wrapper) {
+  min-height: 38px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+  transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.desktop-theme-search :deep(.el-input__wrapper:hover),
+.desktop-theme-sort :deep(.el-select__wrapper:hover),
+.desktop-theme-date:deep(.el-input__wrapper:hover) {
+  border-color: rgba(212, 175, 55, 0.48);
+}
+
+.desktop-theme-search :deep(.el-input__wrapper.is-focus),
+.desktop-theme-sort :deep(.el-select__wrapper.is-focused),
+.desktop-theme-date:deep(.el-input__wrapper.is-active) {
+  border-color: rgba(212, 175, 55, 0.72);
+  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.12);
+}
+
+.desktop-theme-date :deep(.el-range-input) {
+  min-width: 0;
+  background: transparent;
+}
+
+.desktop-theme-toolbar-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.desktop-theme-search-button,
+.desktop-theme-clear,
+.desktop-theme-refresh {
+  min-height: 38px;
+  margin-left: 0;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+.desktop-theme-search-button {
+  padding-inline: 15px;
+}
+
+.desktop-theme-clear {
+  color: #475569;
+  border-color: #e2e8f0;
+  background: #fff;
+}
+
+.desktop-theme-clear:hover,
+.desktop-theme-clear:focus {
+  color: #7a5b08;
+  border-color: rgba(212, 175, 55, 0.48);
+  background: #fffaf0;
+}
+
+.desktop-theme-refresh {
+  width: 38px;
+  color: #64748b;
+  border-color: #e2e8f0;
+}
+
+.desktop-theme-refresh:hover,
+.desktop-theme-refresh:focus-visible {
+  color: #7a5b08;
+  border-color: rgba(212, 175, 55, 0.48);
+  background: #fffaf0;
+}
+
+.desktop-theme-table-panel {
+  overflow: hidden;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 3px 14px rgba(15, 23, 42, 0.04);
+}
+
+.table-container {
+  overflow: hidden;
+}
+
+.pc-table {
+  --el-table-border-color: #edf0f4;
+  --el-table-header-bg-color: #f8fafc;
+  --el-table-row-hover-bg-color: #fffaf0;
+}
+
+.pc-table :deep(.el-table__header-wrapper th.el-table__cell) {
+  height: 46px;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+  background: #f8fafc;
+}
+
+.pc-table :deep(.el-table__body td.el-table__cell) {
+  height: 52px;
+  transition: background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.pc-table :deep(.el-table__body tr:hover > td.el-table__cell) {
+  background: #fffaf0;
+}
+
+.pc-table :deep(.el-table__body tr:hover > td.el-table__cell:first-child) {
+  box-shadow: inset 3px 0 0 rgba(212, 175, 55, 0.9);
+}
+
+.theme-item-name {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  color: #243042;
+  font-weight: 700;
+}
+
+.theme-icon-tile {
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(212, 175, 55, 0.26);
+  border-radius: 8px;
+  background: linear-gradient(135deg, #fff8e6, #fff);
+}
+
+.theme-icon {
+  color: #9a740b;
+  font-size: 17px;
+}
+
+.theme-name-text,
+.description-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.description-text {
+  display: block;
+  max-width: 520px;
+  color: #526071;
+  font-size: 13px;
+}
+
+.description-text.is-empty {
+  color: #a0a8b4;
+}
+
+.time-text {
+  color: #7b8492;
+  font-size: 13px;
+}
+
+.desktop-theme-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.desktop-theme-action {
+  width: 34px;
+  height: 34px;
+  margin-left: 0;
+  border-radius: 8px;
+  font-size: 16px;
+}
+
+.desktop-theme-action--edit {
+  color: #8a650b;
+}
+
+.desktop-theme-action--edit:hover,
+.desktop-theme-action--edit:focus-visible {
+  color: #6b4a05;
+  background: rgba(212, 175, 55, 0.13);
+}
+
+.desktop-theme-action--delete {
+  color: #d45454;
+}
+
+.desktop-theme-action--delete:hover,
+.desktop-theme-action--delete:focus-visible {
+  color: #b42323;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.desktop-theme-action:focus-visible,
+.desktop-theme-refresh:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.62);
+  outline-offset: 2px;
+}
+
+.pagination-wrapper {
+  display: flex;
+  justify-content: flex-end;
+  padding: 14px 16px;
+  border-top: 1px solid #edf0f4;
+  background: #fff;
+}
+
+.pagination-wrapper :deep(.el-pagination) {
+  --el-pagination-bg-color: #f5f7fa;
+  --el-pagination-hover-color: #8a650b;
+}
+
+.desktop-theme-empty {
+  min-height: 260px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.desktop-theme-empty-add {
+  border-radius: 8px;
+}
+
+@media (min-width: 769px) and (max-width: 1180px) {
+  .desktop-theme-toolbar {
+    grid-template-columns: minmax(0, 1fr) 168px;
+  }
+
+  .desktop-theme-date {
+    grid-column: 1;
+  }
+
+  .desktop-theme-toolbar-actions {
+    grid-column: 2;
+  }
 }
 
 .header-section {
@@ -1074,36 +1542,6 @@ onUnmounted(() => {
   gap: 8px;
 }
 
-/* PC端表格容器 */
-.desktop-view {
-  background: #fff;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
-}
-
-.table-container {
-  overflow: hidden;
-}
-
-.pc-table {
-  border-radius: 12px;
-}
-
-/* 分页控件 */
-.pagination-wrapper {
-  display: flex;
-  justify-content: flex-end;
-  padding: 16px 20px;
-  background: #fff;
-  border-top: 1px solid #f0f2f5;
-}
-
-.pagination-wrapper :deep(.el-pagination) {
-  --el-pagination-bg-color: #f5f7fa;
-  --el-pagination-hover-color: #8e7dff;
-}
-
 /* PC端列表外壳 */
 .theme-list-wrapper {
   background: transparent;
@@ -1144,101 +1582,6 @@ onUnmounted(() => {
 .indicator-content .el-icon {
   font-size: 18px;
   transition: transform 0.3s;
-}
-
-/* PC 表格样式 */
-.theme-item-name {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 500;
-  color: #444;
-}
-
-.theme-icon {
-  color: #8e7dff;
-  font-size: 18px;
-}
-
-.theme-name-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.description-text {
-  color: #606266;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  display: block;
-  max-width: 280px;
-}
-
-.no-images {
-  color: #c0c4cc;
-  font-style: italic;
-}
-
-.time-text {
-  color: #909399;
-  font-size: 13px;
-}
-
-.image-count-tag {
-  background: linear-gradient(135deg, #f6f4ff 0%, #ebe7ff 100%);
-  border-color: #d9d4ff;
-  color: #8e7dff;
-}
-
-.action-inline {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-
-.action-divider {
-  display: inline-block;
-  width: 1px;
-  height: 16px;
-  background: #e4e7ed;
-}
-
-.action-inline :deep(.el-button.is-link:focus-visible),
-.action-inline :deep(.el-button.is-link:focus),
-.action-inline :deep(.el-button.is-link:active) {
-  box-shadow: none !important;
-  outline: none !important;
-  background-color: transparent !important;
-}
-
-/* PC 刷新按钮 */
-.refresh-fab {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 30px;
-  box-shadow: 0 4px 16px rgba(163, 150, 255, 0.4);
-  cursor: pointer;
-  transition: all 0.3s;
-  z-index: 999;
-}
-
-.refresh-fab:hover { transform: scale(1.1) rotate(180deg); }
-.refresh-fab .is-loading { animation: rotate 1s linear infinite; }
-
-@keyframes rotate {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
 }
 
 /* =========== 移动端适配样式 =========== */
