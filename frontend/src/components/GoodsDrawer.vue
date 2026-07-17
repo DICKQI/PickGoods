@@ -216,6 +216,7 @@
                 <span
                   class="same-theme-item-name mobile-same-theme-name"
                   :class="{ 'is-scrollable': isMobileSameThemeNameScrollable(goods.id) }"
+                  :style="{ '--same-theme-name-scroll-duration': getMobileSameThemeNameScrollDuration(goods.id) }"
                   :title="goods.name"
                 >
                   <span class="mobile-same-theme-name-clip">
@@ -253,6 +254,7 @@ import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getGoodsList } from '@/api/goods'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import GoodsDetailDesktop from '@/components/goods-detail/GoodsDetailDesktop.vue'
+import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
 import type { GoodsDetail, GoodsListItem } from '@/api/types'
 
 interface Props {
@@ -281,7 +283,9 @@ const isMobileThemeNameScrollable = ref(false)
 let mobileThemeNameResizeObserver: ResizeObserver | null = null
 const mobileSameThemeNameRefs = new Map<string, HTMLElement>()
 const scrollableMobileSameThemeNameIds = ref(new Set<string>())
+const mobileSameThemeNameScrollDurations = ref(new Map<string, string>())
 let mobileSameThemeNameResizeObserver: ResizeObserver | null = null
+const MOBILE_SAME_THEME_NAME_SCROLL_GAP_PX = 16
 
 // --- 移动端状态管理 ---
 const isDragging = ref(false) // 是否正在拖拽中
@@ -371,13 +375,22 @@ const observeMobileThemeNameText = async () => {
   void updateMobileThemeNameScrollState()
 }
 
+const hasDurationMapChanged = (nextDurations: Map<string, string>, currentDurations: Map<string, string>) =>
+  nextDurations.size !== currentDurations.size ||
+  [...nextDurations].some(([goodsId, duration]) => currentDurations.get(goodsId) !== duration)
+
 const updateMobileSameThemeNameScrollState = async () => {
   await nextTick()
   const nextScrollableIds = new Set<string>()
+  const nextScrollDurations = new Map<string, string>()
 
   mobileSameThemeNameRefs.forEach((el, goodsId) => {
     if (el.scrollWidth > el.clientWidth + 1) {
       nextScrollableIds.add(goodsId)
+      nextScrollDurations.set(
+        goodsId,
+        getReadableMarqueeDuration(el.scrollWidth + MOBILE_SAME_THEME_NAME_SCROLL_GAP_PX),
+      )
     }
   })
 
@@ -386,8 +399,14 @@ const updateMobileSameThemeNameScrollState = async () => {
     nextScrollableIds.size !== currentScrollableIds.size ||
     [...nextScrollableIds].some(goodsId => !currentScrollableIds.has(goodsId))
 
-  if (hasChanged) {
+  const durationsChanged = hasDurationMapChanged(
+    nextScrollDurations,
+    mobileSameThemeNameScrollDurations.value,
+  )
+
+  if (hasChanged || durationsChanged) {
     scrollableMobileSameThemeNameIds.value = nextScrollableIds
+    mobileSameThemeNameScrollDurations.value = nextScrollDurations
   }
 }
 
@@ -406,6 +425,9 @@ const setMobileSameThemeNameRef = (goodsId: string, el: Element | ComponentPubli
 
 const isMobileSameThemeNameScrollable = (goodsId: string) =>
   scrollableMobileSameThemeNameIds.value.has(goodsId)
+
+const getMobileSameThemeNameScrollDuration = (goodsId: string) =>
+  mobileSameThemeNameScrollDurations.value.get(goodsId) ?? '8s'
 
 watch(
   () => props.goodsId,
@@ -1357,11 +1379,11 @@ onBeforeUnmount(() => {
 }
 
 .mobile-same-theme-name.is-scrollable .mobile-same-theme-name-text {
-  animation: mobileSameThemeNameEllipsis 5.4s ease-in-out infinite;
+  animation: mobileSameThemeNameEllipsis var(--same-theme-name-scroll-duration, 8s) ease-in-out infinite;
 }
 
 .mobile-same-theme-name.is-scrollable .mobile-same-theme-name-track {
-  animation: mobileSameThemeNameScroll 5.4s ease-in-out infinite;
+  animation: mobileSameThemeNameScroll var(--same-theme-name-scroll-duration, 8s) ease-in-out infinite;
 }
 
 @keyframes mobileSameThemeNameEllipsis {

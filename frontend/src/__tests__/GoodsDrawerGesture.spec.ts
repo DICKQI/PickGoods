@@ -545,13 +545,26 @@ describe('GoodsDrawer same theme section', () => {
 
   it('adds automatic marquee for overflowing mobile same-theme titles', () => {
     const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+    const textRule = cssRuleBlock(
+      source,
+      '.mobile-same-theme-name.is-scrollable .mobile-same-theme-name-text',
+    )
+    const trackRule = cssRuleBlock(
+      source,
+      '.mobile-same-theme-name.is-scrollable .mobile-same-theme-name-track',
+    )
 
+    expect(source).toContain('getReadableMarqueeDuration')
+    expect(source).toContain('mobileSameThemeNameScrollDurations')
+    expect(source).toContain('--same-theme-name-scroll-duration')
     expect(source).toContain('mobileSameThemeNameRefs')
     expect(source).toContain('ResizeObserver')
     expect(source).toContain('mobile-same-theme-name-track')
     expect(source).toContain('mobile-same-theme-name-scroll-text')
     expect(source).toContain('@keyframes mobileSameThemeNameScroll')
-    expect(source).toContain('animation: mobileSameThemeNameScroll 5.4s ease-in-out infinite;')
+    expect(textRule).toContain('var(--same-theme-name-scroll-duration, 8s)')
+    expect(trackRule).toContain('animation: mobileSameThemeNameScroll var(--same-theme-name-scroll-duration, 8s) ease-in-out infinite;')
+    expect(trackRule).not.toContain('5.4s')
     expect(source).not.toContain('same-theme-item:hover .same-theme-item-name-text')
   })
 })

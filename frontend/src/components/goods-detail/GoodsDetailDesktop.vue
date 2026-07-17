@@ -193,6 +193,7 @@
           <span
             class="desktop-same-theme-name"
             :class="{ 'is-scrollable': isSameThemeNameScrollable(goods.id) }"
+            :style="{ '--same-theme-name-scroll-duration': getSameThemeNameScrollDuration(goods.id) }"
             :title="goods.name"
           >
             <span class="desktop-same-theme-name-clip">
@@ -219,6 +220,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import type { ComponentPublicInstance } from 'vue'
 import { ArrowLeft, ArrowRight, Picture } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
+import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
 import type { GoodsDetail, GoodsListItem } from '@/api/types'
 
 const props = defineProps<{
@@ -241,7 +243,9 @@ const isDesktopThemeNameScrollable = ref(false)
 let desktopThemeNameResizeObserver: ResizeObserver | null = null
 const sameThemeNameRefs = new Map<string, HTMLElement>()
 const scrollableSameThemeNameIds = ref(new Set<string>())
+const sameThemeNameScrollDurations = ref(new Map<string, string>())
 let sameThemeNameResizeObserver: ResizeObserver | null = null
+const DESKTOP_SAME_THEME_NAME_SCROLL_GAP_PX = 18
 
 const locationText = computed(() => props.detail.location_path || '未收纳')
 const priceText = computed(() => (props.detail.price ? `¥ ${props.detail.price}` : '未记录'))
@@ -284,13 +288,22 @@ const observeDesktopThemeNameText = async () => {
   void updateDesktopThemeNameScrollState()
 }
 
+const hasDurationMapChanged = (nextDurations: Map<string, string>, currentDurations: Map<string, string>) =>
+  nextDurations.size !== currentDurations.size ||
+  [...nextDurations].some(([goodsId, duration]) => currentDurations.get(goodsId) !== duration)
+
 const updateSameThemeNameScrollState = async () => {
   await nextTick()
   const nextScrollableIds = new Set<string>()
+  const nextScrollDurations = new Map<string, string>()
 
   sameThemeNameRefs.forEach((el, goodsId) => {
     if (el.scrollWidth > el.clientWidth + 1) {
       nextScrollableIds.add(goodsId)
+      nextScrollDurations.set(
+        goodsId,
+        getReadableMarqueeDuration(el.scrollWidth + DESKTOP_SAME_THEME_NAME_SCROLL_GAP_PX),
+      )
     }
   })
 
@@ -299,8 +312,14 @@ const updateSameThemeNameScrollState = async () => {
     nextScrollableIds.size !== currentScrollableIds.size ||
     [...nextScrollableIds].some(goodsId => !currentScrollableIds.has(goodsId))
 
-  if (hasChanged) {
+  const durationsChanged = hasDurationMapChanged(
+    nextScrollDurations,
+    sameThemeNameScrollDurations.value,
+  )
+
+  if (hasChanged || durationsChanged) {
     scrollableSameThemeNameIds.value = nextScrollableIds
+    sameThemeNameScrollDurations.value = nextScrollDurations
   }
 }
 
@@ -319,6 +338,9 @@ const setSameThemeNameRef = (goodsId: string, el: Element | ComponentPublicInsta
 
 const isSameThemeNameScrollable = (goodsId: string) =>
   scrollableSameThemeNameIds.value.has(goodsId)
+
+const getSameThemeNameScrollDuration = (goodsId: string) =>
+  sameThemeNameScrollDurations.value.get(goodsId) ?? '8s'
 
 watch(
   () => props.detail.id,
@@ -948,11 +970,11 @@ onBeforeUnmount(() => {
 }
 
 .desktop-same-theme-name.is-scrollable .desktop-same-theme-name-text {
-  animation: desktopSameThemeNameEllipsis 5.4s ease-in-out infinite;
+  animation: desktopSameThemeNameEllipsis var(--same-theme-name-scroll-duration, 8s) ease-in-out infinite;
 }
 
 .desktop-same-theme-name.is-scrollable .desktop-same-theme-name-track {
-  animation: desktopSameThemeNameScroll 5.4s ease-in-out infinite;
+  animation: desktopSameThemeNameScroll var(--same-theme-name-scroll-duration, 8s) ease-in-out infinite;
 }
 
 @keyframes desktopSameThemeNameEllipsis {

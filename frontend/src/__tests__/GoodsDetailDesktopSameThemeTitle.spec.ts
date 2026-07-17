@@ -13,6 +13,12 @@ const cssRuleBlock = (selector: string) => {
 
 describe('GoodsDetailDesktop same-theme title overflow', () => {
   it('uses automatic ellipsis-to-scroll behavior for long same-theme goods names', () => {
+    const textRule = cssRuleBlock('.desktop-same-theme-name.is-scrollable .desktop-same-theme-name-text')
+    const trackRule = cssRuleBlock('.desktop-same-theme-name.is-scrollable .desktop-same-theme-name-track')
+
+    expect(source).toContain('getReadableMarqueeDuration')
+    expect(source).toContain('sameThemeNameScrollDurations')
+    expect(source).toContain('--same-theme-name-scroll-duration')
     expect(source).toContain('isSameThemeNameScrollable(goods.id)')
     expect(source).toContain('setSameThemeNameRef(goods.id, el)')
     expect(source).toContain('sameThemeNameRefs')
@@ -20,7 +26,9 @@ describe('GoodsDetailDesktop same-theme title overflow', () => {
     expect(source).toContain('desktop-same-theme-name-track')
     expect(source).toContain('desktop-same-theme-name-scroll-text')
     expect(source).toContain('@keyframes desktopSameThemeNameScroll')
-    expect(source).toContain('animation: desktopSameThemeNameScroll 5.4s ease-in-out infinite;')
+    expect(textRule).toContain('var(--same-theme-name-scroll-duration, 8s)')
+    expect(trackRule).toContain('animation: desktopSameThemeNameScroll var(--same-theme-name-scroll-duration, 8s) ease-in-out infinite;')
+    expect(trackRule).not.toContain('5.4s')
     expect(source).not.toContain('.desktop-same-theme-card:hover .desktop-same-theme-name-text')
   })
 
