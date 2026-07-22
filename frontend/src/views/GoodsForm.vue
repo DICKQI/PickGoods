@@ -483,7 +483,10 @@
           :class="{ 'is-selected': selectedThemeImageIds.includes(image.id) }"
         >
           <input v-model="selectedThemeImageIds" type="checkbox" :value="image.id" class="theme-image-card__checkbox" />
-          <img :src="image.image" :alt="image.label || '主题图片'" class="theme-image-card__img" />
+          <span class="theme-image-card__checkmark" aria-hidden="true"></span>
+          <span class="theme-image-card__media">
+            <img :src="image.image" :alt="image.label || '主题图片'" class="theme-image-card__img" loading="lazy" />
+          </span>
           <span class="theme-image-card__label">{{ image.label || '主题图片' }}</span>
         </label>
       </div>
@@ -1959,6 +1962,119 @@ onUnmounted(() => {
 .duplicate-dialog-footer .duplicate-merge-btn:hover, .duplicate-dialog-footer .duplicate-merge-btn:focus { background-color: #D9B83D; border-color: #D9B83D; color: #1a1a1a; }
 .duplicate-dialog-footer .duplicate-merge-btn:disabled { background-color: var(--el-fill-color); border-color: var(--el-border-color-lighter); color: var(--el-text-color-placeholder); }
 
+.theme-image-dialog :deep(.el-dialog__body) {
+  padding-top: 12px;
+  max-height: min(70vh, 640px);
+  overflow-y: auto;
+}
+
+.theme-image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 14px;
+}
+
+.theme-image-card {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgba(17, 24, 39, 0.08);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.theme-image-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 28px rgba(17, 24, 39, 0.12);
+}
+
+.theme-image-card.is-selected {
+  border-color: #D4AF37;
+  box-shadow:
+    0 12px 28px rgba(17, 24, 39, 0.12),
+    0 0 0 3px rgba(212, 175, 55, 0.14);
+}
+
+.theme-image-card__checkbox {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-image-card__checkmark {
+  position: absolute;
+  z-index: 2;
+  top: 14px;
+  right: 14px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.92);
+  background: rgba(17, 24, 39, 0.32);
+  box-shadow: 0 4px 12px rgba(17, 24, 39, 0.18);
+}
+
+.theme-image-card.is-selected .theme-image-card__checkmark {
+  background: #D4AF37;
+}
+
+.theme-image-card.is-selected .theme-image-card__checkmark::after {
+  content: '';
+  position: absolute;
+  left: 6px;
+  top: 3px;
+  width: 6px;
+  height: 11px;
+  border: solid #ffffff;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.theme-image-card__media {
+  width: 100%;
+  aspect-ratio: 1;
+  overflow: hidden;
+  display: block;
+  border-radius: 10px;
+  background: #f5f7fa;
+}
+
+.theme-image-card__img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.theme-image-card__label {
+  min-width: 0;
+  overflow: hidden;
+  color: #303133;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.theme-image-dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 10px;
+}
+
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .goods-form {
     padding: 16px;
@@ -1994,6 +2110,25 @@ onUnmounted(() => {
 
   .photo-preview {
     height: 100px;
+  }
+
+  .theme-image-dialog :deep(.el-dialog) {
+    width: min(94vw, 720px) !important;
+  }
+
+  .theme-image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
+    gap: 12px;
+  }
+
+  .theme-image-dialog-footer {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .theme-image-dialog-footer :deep(.el-button) {
+    width: 100%;
+    margin-left: 0;
   }
 
   :global(.el-overlay-dialog:has(.is-goods-leave-mobile)),
