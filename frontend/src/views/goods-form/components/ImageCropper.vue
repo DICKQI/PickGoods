@@ -493,7 +493,7 @@ const cropperOptions = computed(() => {
   const base: any = {
     outputSize: 1, outputType: 'png', canScale: true, autoCrop: true,
     centerBox: true, high: true, cropData: {}, enlarge: 1, mode: 'contain',
-    maxImgSize: 2000, limitMinSize: [100, 100], viewMode: 1,
+    maxImgSize: 2000, limitMinSize: [16, 16], minCropBoxWidth: 16, minCropBoxHeight: 16, autoCropArea: 0.78, viewMode: 1,
     dragMode: 'crop', cropBoxMovable: true, cropBoxResizable: true, strict: true,
     ready: () => handleCropperReady(),
     crop: () => { updateRoundedRectPreviewRadius(); scheduleLivePreviewRefresh() },
@@ -842,15 +842,19 @@ const handleCropDialogClose = () => {
 <style scoped>
 .crop-dialog { z-index: 3000; }
 .crop-container { width: 100%; padding-top: 4px; }
-.crop-layout-inner { display: flex; gap: 18px; max-height: calc(100vh - 260px); }
+.crop-dialog :deep(.el-dialog) { max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; }
+.crop-dialog :deep(.el-dialog__body) { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+.crop-dialog :deep(.el-dialog__footer) { flex: 0 0 auto; }
+.crop-layout .crop-glass-panel { box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }
+.crop-layout-inner { display: flex; gap: 18px; height: min(520px, calc(100dvh - 360px)); min-height: 0; max-height: 520px; }
 .crop-left-panel { flex: 0 0 360px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 8px; }
 .crop-right-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: row; gap: 14px; }
-.crop-main-view, .crop-preview-view { flex: 1; min-height: 0; }
-.crop-main-view { border-radius: 14px; overflow: hidden; background: #f8f8f8; }
-.crop-preview-view { display: flex; flex-direction: column; }
-.crop-preview-view .live-preview { flex: 1; display: flex; flex-direction: column; }
-.crop-preview-view .live-preview-card { flex: 1; }
-.crop-preview-view .live-preview-img { width: 100%; height: 100%; object-fit: contain; }
+.crop-main-view, .crop-preview-view { min-height: 0; }
+.crop-main-view { flex: 1 1 0; border-radius: 14px; overflow: hidden; background: #f8f8f8; }
+.crop-preview-view { flex: 0 1 420px; max-width: 420px; min-width: 280px; display: flex; flex-direction: column; }
+.crop-preview-view .live-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.crop-preview-view .live-preview-card { flex: 0 1 auto; height: min(420px, 100%); max-height: 100%; }
+.crop-preview-view .live-preview-img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
 .crop-right-panel .cropper-wrapper { height: 100%; margin: 0; }
 .crop-right-panel .live-preview-card { min-height: 0; }
 
@@ -934,11 +938,12 @@ const handleCropDialogClose = () => {
 .live-preview-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
 .live-preview-title { font-size: 13px; color: #606266; }
 .live-preview-hint { font-size: 12px; color: #909399; }
-.live-preview-card { border-radius: 14px; border: 1px solid rgba(15,23,42,0.12); background: linear-gradient(45deg,rgba(15,23,42,0.05) 25%,transparent 25%),linear-gradient(-45deg,rgba(15,23,42,0.05) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(15,23,42,0.05) 75%),linear-gradient(-45deg,transparent 75%,rgba(15,23,42,0.05) 75%),#f7f8fa; background-size: 18px 18px; background-position: 0 0,0 9px,9px -9px,-9px 0px,0 0; padding: 10px; min-height: 160px; display: flex; align-items: center; justify-content: center; }
-.live-preview-img { width: 100%; height: 160px; object-fit: contain; display: block; border-radius: 10px; box-shadow: 0 0 0 1px rgba(15,23,42,0.18), 0 12px 28px rgba(15,23,42,0.18); }
+.live-preview-card { border-radius: 14px; border: 1px solid rgba(15,23,42,0.12); background: linear-gradient(45deg,rgba(15,23,42,0.05) 25%,transparent 25%),linear-gradient(-45deg,rgba(15,23,42,0.05) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(15,23,42,0.05) 75%),linear-gradient(-45deg,transparent 75%,rgba(15,23,42,0.05) 75%),#f7f8fa; background-size: 18px 18px; background-position: 0 0,0 9px,9px -9px,-9px 0px,0 0; padding: 10px; min-height: 160px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
+.live-preview-img { max-width: 100%; max-height: 160px; width: auto; height: auto; object-fit: contain; display: block; box-shadow: 0 0 0 1px rgba(15,23,42,0.18), 0 12px 28px rgba(15,23,42,0.18); }
 .live-preview-placeholder { font-size: 12px; color: #909399; }
 
-.cropper-wrapper { --rounded-radius: v-bind('roundedRadius + "%"'); width: 100%; margin: 12px auto 0; padding: 8px; border-radius: 18px; background: radial-gradient(circle at top, rgba(255,255,255,0.26), rgba(255,255,255,0.06)); border: 1px solid rgba(255,255,255,0.24); box-shadow: 0 20px 48px rgba(15,23,42,0.28), 0 0 0 1px rgba(255,255,255,0.16); }
+.cropper-wrapper { --rounded-radius: v-bind('roundedRadius + "%"'); box-sizing: border-box; width: 100%; max-width: 100%; margin: 12px auto 0; padding: 8px; overflow: hidden; border-radius: 18px; background: radial-gradient(circle at top, rgba(255,255,255,0.26), rgba(255,255,255,0.06)); border: 1px solid rgba(255,255,255,0.24); box-shadow: 0 20px 48px rgba(15,23,42,0.28), 0 0 0 1px rgba(255,255,255,0.16); }
+.cropper-wrapper :deep(.cropper-container) { max-width: 100% !important; max-height: 100% !important; }
 :deep(.cropper-canvas img), :deep(.cropper-view-box img) { filter: brightness(var(--brightness, 100%)) contrast(var(--contrast, 100%)) saturate(var(--saturate, 100%)) hue-rotate(var(--hue-rotate, 0deg)) !important; }
 
 .cropper-wrapper.circle-crop :deep(.cropper-view-box), .cropper-wrapper.circle-crop :deep(.cropper-face) { border-radius: 50%; }
@@ -952,6 +957,7 @@ const handleCropDialogClose = () => {
   .crop-header-row { flex-direction: column; align-items: stretch; }
   .crop-history-actions { width: 100%; }
   .crop-history-actions :deep(.el-button) { flex: 1; }
+  .live-preview-img { max-height: 160px; }
   .dialog-footer { gap: 8px; }
   .dialog-footer :deep(.el-button) { flex: 1; }
 }
@@ -959,6 +965,20 @@ const handleCropDialogClose = () => {
 @media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .crop-layout-inner {
     flex-direction: column;
+    height: auto;
+    min-height: 0;
+    max-height: none;
+  }
+
+  .crop-preview-view {
+    width: 100%;
+    max-width: none;
+    min-width: 0;
+  }
+
+  .crop-preview-view .live-preview-card {
+    height: auto;
+    min-height: 160px;
   }
 
   .crop-left-panel {
