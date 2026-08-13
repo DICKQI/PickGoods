@@ -18,7 +18,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Collection, Box, Star } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Collection, Box, Star, ShoppingCart } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const route = useRoute()
@@ -54,6 +54,11 @@ const navItems: NavItem[] = [
     path: '/theme',
     label: '主题',
     icon: Star
+  },
+  {
+    path: '/preorders',
+    label: '预购',
+    icon: ShoppingCart
   }
 ]
 
@@ -78,6 +83,9 @@ const isActive = (path: string): boolean => {
   }
   if (path === '/theme') {
     return currentPath.startsWith('/theme')
+  }
+  if (path === '/preorders') {
+    return currentPath.startsWith('/preorders')
   }
   return false
 }
@@ -118,12 +126,13 @@ const handleNavClick = (path: string) => {
 
 .nav-item {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 4px 8px;
+  padding: 4px 4px;
   cursor: pointer;
   transition: all 0.2s ease;
   user-select: none;
@@ -145,12 +154,13 @@ const handleNavClick = (path: string) => {
 }
 
 .nav-label {
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 500;
   transition: color 0.2s ease;
   color: #9ca3af;
   line-height: 1.2;
   text-align: center;
+  white-space: nowrap;
 }
 
 .nav-item.active .nav-icon {

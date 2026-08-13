@@ -5024,5 +5024,133 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 3. **商品拆分**：通过空间分析（边界框坐标）将多个商品拆分为独立条目，支持汇总行检测（如"共 N 件"）。
 4. **字段提取**：通过正则提取价格（`¥12.50`）、数量（`×1`）、日期、店铺名称和官方/同人状态。
 5. **元数据匹配**：多策略匹配（子串 → jieba 分词模糊 → 全文模糊兜底）将文本与数据库中的 IP、角色、品类匹配，最多返回 3 个角色建议。
+---
+
+## 十三、预购与尾款提醒模块（`apps.reminder`）
+
+### 9.1 概述
+
+用户在其他平台（淘宝 / 天猫 / 京东 / 代购等）下单手办并支付定金后，可在本平台登记预购信息。系统按**预计补款时间**自动生成站内通知，支持两种粒度：
+
+- **按月**（`time_granularity=month`，默认）：预计某月补款，`estimated_month` 存当月 1 日，提前 **30 天**进入提醒窗口；
+- **按季度**（`time_granularity=quarter`）：预计某季度内补款，`estimated_month` 存**季度首月** 1 日（如 Q3 存 7 月 1 日），提前 **45 天**进入提醒窗口，季度首月即视为进入补款期。
+
+- **即将补款**（`preorder_soon`）：进入预计补款月份首日往前 30 天的窗口后生成一次；
+- **已到补款期**（`preorder_due`）：到达预计补款月份首日（含逾期）后生成一次；
+- **已取消补款**（`preorder_cancelled`）：取消预购时生成，同时旧提醒标记为已过期（`is_stale`）；
+- **已转正**（`preorder_converted`）：补款后转正为谷子时生成。
+
+同一预购同一类型**只生成一条活跃通知**（数据库唯一约束 `(user, preorder, type, is_stale)` 兜底），重复轮询不会刷屏。
+
+### 9.2 数据模型
+
+#### `Preorder` 预购登记表
+
+| 字段名 | 类型 | 说明 |
+| ------ | ---- | ---- |
+| `id` | UUID (PK) | 预购 ID |
+| `user` | FK -> `User` | 所属用户 |
+| `name` | Char(200), 索引 | 手办名称（必填） |
+| `platform` | Char(50) | 下单平台（可空） |
+| `shop_name` | Char(100) | 店铺名称（可空） |
+| `order_no` | Char(100) | 订单号（可空） |
+| `deposit_amount` | Decimal(10,2) | 定金金额（必填，≥0） |
+| `balance_amount` | Decimal(10,2), 可空 | 尾款金额（未知可空，≥0） |
+| `estimated_month` | Date, 索引 | 预计补款时间（粒度起点）：月粒度存当月 1 日，季度粒度存**季度首月** 1 日 |
+| `time_granularity` | Char(10) | 时间粒度：`month` 按月（默认）/ `quarter` 按季度 |
+| `status` | Char(20) | `pending` 待补款 / `paid` 已补款 / `cancelled` 已取消 / `converted` 已转正 |
+| `paid_at` | DateTime, 可空 | 补款时间（mark-paid 时写入） |
+| `goods` | OneToOne -> `Goods`, 可空 | 转正后的谷子 |
+| `notes` | Text, 可空 | 备注 |
+| `created_at` / `updated_at` | DateTime | 时间戳 |
+
+**状态机（单向）**：`pending → paid`（mark-paid，不可逆）；`pending → cancelled`（取消）；`paid → converted`（转正，终态）。已补款后不能再取消；已取消 / 已补款后不能再转正。
+
+#### `Notification` 通知表
+
+| 字段名 | 类型 | 说明 |
+| ------ | ---- | ---- |
+| `id` | BigInt (PK) | 通知 ID |
+| `user` | FK -> `User`, 索引 | 接收用户 |
+| `type` | Char(30) | `preorder_soon` / `preorder_due` / `preorder_cancelled` / `preorder_converted` |
+| `title` / `message` | Char(100) / Text | 标题与正文 |
+| `preorder` | FK -> `Preorder`, 可空 | 关联预购（删除预购级联删除通知） |
+| `is_read` | Boolean, 索引 | 是否已读 |
+| `is_stale` | Boolean, 索引 | 是否已过期（月份修改 / 取消后置 True，界面置灰） |
+| `created_at` | DateTime, 索引 | 创建时间 |
+
+### 9.3 预购接口（`/api/preorders/`）
+
+权限：登录用户仅可操作自己的数据（管理员可见全部）。列表分页格式：`{count, page, page_size, next, previous, results}`。
+
+| 方法 / 路径 | 说明 |
+| ---------- | ---- |
+| `GET /api/preorders/` | 列表；`?status=` 过滤、`?search=` 名称模糊搜索；默认按 `estimated_month` 升序 |
+| `POST /api/preorders/` | 创建；`estimated_month` 归一化为粒度起点（月粒度=当月 1 日，季度粒度=**季度首月** 1 日，传季度内任意日期均可）；创建后若已进入提醒窗口立即生成通知 |
+| `GET /api/preorders/{id}/` | 详情（含 `goods_id` / `goods_name`） |
+| `PATCH /api/preorders/{id}/` | 部分更新；`status` 只读（状态流转走专用 action）；**修改月份后旧提醒置为已过期并按新月份重新生成** |
+| `DELETE /api/preorders/{id}/` | 删除（级联删除关联通知） |
+| `POST /api/preorders/{id}/mark-paid/` | 仅 `pending`；写 `paid_at`，关联提醒自动已读；不可逆 |
+| `POST /api/preorders/{id}/cancel/` | 仅 `pending`；旧提醒置为已过期，生成「已取消补款」通知 |
+| `POST /api/preorders/{id}/convert-to-goods/` | 仅 `paid` 且未转正（重复转正 409）；转正为谷子（见 9.4） |
+| `GET /api/preorders/stats/` | 统计概览（纯读，零副作用）；权限语义与列表一致：普通用户统计自己的预购，管理员统计全部 |
+
+`GET /api/preorders/stats/` 响应示例：
+
+```json
+{
+  "pending_count": 8,
+  "due_this_month": 2,
+  "due_this_quarter": 1,
+  "converted_count": 3,
+  "total_pending_deposit": "2450.50"
+}
+```
+
+- `pending_count`：待补款数量；
+- `due_this_month`：本月到期（**月粒度**且 `estimated_month` 为当月）；
+- `due_this_quarter`：本季到期（**季度粒度**且 `estimated_month` 为当季首月）；
+- `converted_count`：已转正数量；
+- `total_pending_deposit`：待补款预购的定金总额（字符串，两位小数）。
+
+### 9.4 转正为谷子
+
+补款完成后可将预购**转正**为平台内谷子对象，使用独立序列化器 `ConvertPreorderToGoodsSerializer`（不复用谷子创建接口的查重 / 合并逻辑）：
+
+**请求体**（`ip` / `category` / `characters` 均为 ID）：
+
+```json
+{
+  "name": "流萤 1/7 手办",
+  "ip": 1,
+  "category": 3,
+  "characters": [5, 6],
+  "theme": 2,
+  "status": "draft",
+  "notes": "补款完成"
+}
+```
+
+- `ip`、`category` 必填；`status` 默认 `draft`（草稿），非草稿时 `characters` 至少一个；
+- **金额 / 日期自动迁移**：`price = 定金 + 尾款`（尾款未知则仅定金）；`purchase_date = 补款日`；未显式传 `notes` 时沿用预购备注；
+- 成功返回 201 + 预购详情（`goods_id` / `goods_name` 已回填），并生成「已转正」通知；校验失败 400 且无任何写入。
+
+### 9.5 通知接口（`/api/notifications/`）
+
+| 方法 / 路径 | 说明 |
+| ---------- | ---- |
+| `GET /api/notifications/` | 当前用户通知分页列表（新→旧，page_size 20）；`?unread_only=1` 仅未读；**纯读、零副作用** |
+| `GET /api/notifications/unread-count/` | `{unread_count}`；**唯一触发惰性同步的读接口**（前端 60s 轮询驱动，同步频率有界） |
+| `POST /api/notifications/read/` | `{ids: [1,2]}` 批量已读（越权 id 忽略） |
+| `POST /api/notifications/read-all/` | 全部已读 |
+
+### 9.6 惰性同步机制
+
+通知生成采用**惰性同步**（无需 cron / 调度器）：
+
+1. `unread-count` 轮询或预购写操作（创建 / 更新 / 标记补款 / 取消 / 转正）时，扫描该用户 `pending` 预购；
+2. 按窗口规则 `get_or_create(user, preorder, type, is_stale=False)` 幂等生成；
+3. 时间修改 / 取消时，旧 `preorder_soon` / `preorder_due` 置为 `is_stale=True, is_read=True`，按新时间（含粒度切换）重新生成。
+
 
 

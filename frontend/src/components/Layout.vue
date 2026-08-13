@@ -35,6 +35,10 @@
               <el-icon><Star /></el-icon>
               <span>主题</span>
             </el-menu-item>
+            <el-menu-item index="/preorders">
+              <el-icon><ShoppingCart /></el-icon>
+              <span>预购</span>
+            </el-menu-item>
           </el-menu>
         </div>
         <!-- 登录/用户与设置 -->
@@ -44,6 +48,8 @@
               <span>登录</span>
             </el-button>
           </template>
+          <!-- 通知中心（仅登录态显示） -->
+          <NotificationCenter v-if="authStore.isAuthenticated" />
           <el-button
             text
             class="github-btn"
@@ -219,17 +225,20 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { Capacitor } from '@capacitor/core'
 import MobileBottomNav from './MobileBottomNav.vue'
+import NotificationCenter from './NotificationCenter.vue'
+import { useNotificationStore } from '@/stores/notification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 
 const router = useRouter()
 const route = useRoute()
 const guziStore = useGuziStore()
 const authStore = useAuthStore()
+const notificationStore = useNotificationStore()
 const { isMobile } = useResponsiveDevice()
 
 const refreshLoading = ref(false)
@@ -257,6 +266,7 @@ const activeMenu = computed(() => {
   ) return '/ipcharacter'
   if (currentPath.startsWith('/category')) return '/category'
   if (currentPath.startsWith('/theme')) return '/theme'
+  if (currentPath.startsWith('/preorders')) return '/preorders'
   return '/showcase'
 })
 
@@ -414,7 +424,21 @@ onMounted(() => {
 onUnmounted(() => {
   window.removeEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
   window.removeEventListener('scroll', handleFabScrollDim)
+  notificationStore.stopPolling()
 })
+
+// 登录态变化时启停未读通知轮询（60s）
+watch(
+  () => authStore.isAuthenticated,
+  (authenticated) => {
+    if (authenticated) {
+      notificationStore.startPolling()
+    } else {
+      notificationStore.stopPolling()
+    }
+  },
+  { immediate: true }
+)
 
 watch(isMobile, (mobile) => {
   if (!mobile) {

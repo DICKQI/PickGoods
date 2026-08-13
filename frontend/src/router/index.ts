@@ -109,6 +109,15 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/preorders',
+    name: 'PreorderManagement',
+    component: () => import('@/views/PreorderManagement.vue'),
+    meta: {
+      title: '预购',
+      requiresAuth: true,
+    },
+  },
+  {
     path: '/settings',
     name: 'Settings',
     component: () => import('@/views/Settings.vue'),

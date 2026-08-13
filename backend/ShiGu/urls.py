@@ -99,6 +99,8 @@ urlpatterns = [
     path("api/location/unassigned-goods/", LocationUnassignedGoodsView.as_view(), name="location-unassigned-goods"),
     # OCR 识别接口
     path("api/ocr/recognize/", ocr_recognize, name="ocr-recognize"),
+    # 预购与提醒接口
+    path("api/", include("apps.reminder.urls")),
     # 导出 Schema 文件 (YAML格式)
     path('api/schema/', SpectacularAPIView.as_view(), name='schema'),
     # 导出 Swagger UI 和 Redoc 界面

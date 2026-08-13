@@ -1098,3 +1098,103 @@ export interface BGMSyncJobItemListParams {
   status?: BGMSyncJobItemStatus
   ip_name_snapshot?: string
 }
+
+// ==================== 预购与尾款提醒（Reminder）====================
+
+/** 预购状态：待补款 / 已补款 / 已取消 / 已转正 */
+export type PreorderStatus = 'pending' | 'paid' | 'cancelled' | 'converted'
+
+/** 手办预购登记 */
+export interface Preorder {
+  id: string
+  name: string
+  platform: string
+  shop_name: string
+  order_no: string
+  deposit_amount: string
+  balance_amount: string | null
+  /** 时间粒度：month 按月 / quarter 按季度 */
+  time_granularity: 'month' | 'quarter'
+  /** 预计补款时间（粒度起点，YYYY-MM-DD）：月粒度=当月 1 日，季度粒度=季度首月 1 日 */
+  estimated_month: string
+  status: PreorderStatus
+  paid_at: string | null
+  /** 转正后的谷子 ID（未转正为 null） */
+  goods_id: string | null
+  goods_name: string | null
+  notes: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** 预购新增/编辑入参 */
+export interface PreorderInput {
+  name: string
+  platform?: string
+  shop_name?: string
+  order_no?: string
+  deposit_amount: string | number
+  balance_amount?: string | number | null
+  /** 时间粒度（默认 month）：quarter 时 estimated_month 传季度首月 */
+  time_granularity?: 'month' | 'quarter'
+  estimated_month: string
+  notes?: string | null
+}
+
+/** 转正为谷子入参（ip/category/characters 均为 ID） */
+export interface PreorderConvertInput {
+  name: string
+  ip: number
+  category: number
+  characters?: number[]
+  theme?: number | null
+  status?: GoodsStatus
+  notes?: string | null
+}
+
+export type PaginatedPreorderResponse = PaginatedResponse<Preorder>
+
+/** 通知类型 */
+export type NotificationType =
+  | 'preorder_soon'
+  | 'preorder_due'
+  | 'preorder_cancelled'
+  | 'preorder_converted'
+
+/** 站内通知 */
+export interface NotificationItem {
+  id: number
+  type: NotificationType
+  title: string
+  message: string
+  preorder_id: string | null
+  preorder_name: string | null
+  is_read: boolean
+  /** 是否已过期（预计月份修改 / 取消后为 true，界面置灰） */
+  is_stale: boolean
+  created_at: string
+}
+
+export interface NotificationUnreadCount {
+  unread_count: number
+}
+
+export interface NotificationReadResult {
+  updated: number
+}
+
+export type PaginatedNotificationResponse = PaginatedResponse<NotificationItem>
+
+/** 预购统计概览（GET /api/preorders/stats/） */
+export interface PreorderStats {
+  /** 待补款数量 */
+  pending_count: number
+  /** 本月到期（月粒度待补款且预计补款月份为当月） */
+  due_this_month: number
+  /** 本季到期（季度粒度待补款且预计补款季度为当季） */
+  due_this_quarter: number
+  /** 已转正数量 */
+  converted_count: number
+  /** 待补款预购的定金总额（字符串，如 "350.00"） */
+  total_pending_deposit: string
+}

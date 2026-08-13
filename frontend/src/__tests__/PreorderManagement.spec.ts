@@ -1,0 +1,576 @@
+import { computed, defineComponent, h, inject, onMounted, provide, ref, type InjectionKey, type PropType, type VNode } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+import { createMemoryHistory, createRouter } from 'vue-router'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
+import PreorderManagement from '@/views/PreorderManagement.vue'
+
+vi.mock('element-plus', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('element-plus')>()
+  return {
+    ...actual,
+    ElMessageBox: {
+      ...actual.ElMessageBox,
+      confirm: vi.fn().mockResolvedValue('confirm'),
+      alert: vi.fn(),
+    },
+    ElMessage: {
+      ...actual.ElMessage,
+      success: vi.fn(),
+      warning: vi.fn(),
+      error: vi.fn(),
+      info: vi.fn(),
+    },
+  }
+})
+
+vi.mock('@/composables/useResponsiveDevice', () => ({
+  useResponsiveDevice: () => ({ isMobile: computed(() => false) }),
+}))
+
+vi.mock('@/api/reminder', () => ({
+  listPreorders: vi.fn(),
+  getPreorder: vi.fn(),
+  getPreorderStats: vi.fn().mockResolvedValue({
+    pending_count: 0,
+    due_this_month: 0,
+    due_this_quarter: 0,
+    converted_count: 0,
+    total_pending_deposit: '0.00',
+  }),
+  createPreorder: vi.fn(),
+  updatePreorder: vi.fn(),
+  deletePreorder: vi.fn(),
+  markPreorderPaid: vi.fn(),
+  cancelPreorder: vi.fn(),
+  convertPreorderToGoods: vi.fn(),
+  getNotifications: vi.fn(),
+  getUnreadCount: vi.fn(),
+  markNotificationsRead: vi.fn(),
+  markAllNotificationsRead: vi.fn(),
+  NOTIFICATION_TYPE_LABELS: {},
+}))
+
+vi.mock('@/api/metadata', () => ({
+  getIPList: vi.fn().mockResolvedValue([{ id: 1, name: '测试IP', keywords: [] }]),
+  getCharacterList: vi.fn().mockResolvedValue([]),
+  getIPCharacters: vi.fn().mockResolvedValue([{ id: 11, name: '测试角色', ip: { id: 1 } }]),
+  getCategoryList: vi.fn().mockResolvedValue([{ id: 21, name: '手办', parent: null, order: 0 }]),
+  getThemeList: vi.fn().mockResolvedValue([]),
+}))
+
+import {
+  cancelPreorder,
+  convertPreorderToGoods,
+  createPreorder,
+  getPreorderStats,
+  listPreorders,
+  markPreorderPaid,
+} from '@/api/reminder'
+import type { Preorder } from '@/api/types'
+
+const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder => ({
+  id,
+  name: '流萤手办',
+  platform: '淘宝',
+  shop_name: '示例店',
+  order_no: 'ORD-001',
+  deposit_amount: '100.00',
+  balance_amount: '50.00',
+  time_granularity: 'month',
+  estimated_month: '2026-08-01',
+  status: 'pending',
+  paid_at: null,
+  goods_id: null,
+  goods_name: null,
+  notes: null,
+  created_at: '2026-06-01T00:00:00Z',
+  updated_at: '2026-06-01T00:00:00Z',
+  ...overrides,
+})
+
+const paginated = (results: Preorder[]) => ({
+  count: results.length,
+  page: 1,
+  page_size: 12,
+  next: null,
+  previous: null,
+  results,
+})
+
+// ─── Element Plus 组件 Stub ───
+const ElButtonStub = defineComponent({
+  props: ['disabled', 'loading', 'type', 'size', 'icon', 'text'],
+  emits: ['click'],
+  template: '<button class="el-button-stub" :disabled="disabled || loading" @click="$emit(\'click\', $event)"><slot /></button>',
+})
+
+const ElDialogStub = defineComponent({
+  props: { modelValue: Boolean, title: String, width: String },
+  emits: ['update:modelValue'],
+  template: '<section v-if="modelValue" class="el-dialog-stub"><header v-if="$slots.header"><slot name="header" /></header><header v-else>{{ title }}</header><slot /><footer><slot name="footer" /></footer></section>',
+})
+
+const ElFormStub = defineComponent({
+  props: ['model', 'rules', 'labelWidth'],
+  methods: {
+    validate: () => Promise.resolve(true),
+    clearValidate: () => undefined,
+  },
+  template: '<form class="el-form-stub"><slot /></form>',
+})
+
+const ElFormItemStub = defineComponent({
+  props: ['label', 'prop', 'required'],
+  template: '<label class="el-form-item-stub"><span>{{ label }}</span><slot /></label>',
+})
+
+const ElInputStub = defineComponent({
+  props: ['modelValue', 'placeholder', 'clearable', 'maxlength', 'type'],
+  emits: ['update:modelValue'],
+  template: '<input class="el-input-stub" :type="type || \'text\'" :placeholder="placeholder" :value="modelValue ?? \'\'" @input="$emit(\'update:modelValue\', $event.target.value)" /><slot />',
+})
+
+const ElInputNumberStub = defineComponent({
+  props: ['modelValue', 'min', 'precision', 'controls', 'placeholder'],
+  emits: ['update:modelValue'],
+  template: '<input class="el-input-number-stub" :placeholder="placeholder" :value="modelValue ?? \'\'" @input="$emit(\'update:modelValue\', $event.target.value === \'\' ? null : Number($event.target.value))" />',
+})
+
+const ElSelectStub = defineComponent({
+  props: ['modelValue', 'placeholder', 'disabled', 'filterable', 'allowCreate', 'clearable'],
+  emits: ['update:modelValue', 'change'],
+  methods: {
+    parseValue(value: string) {
+      if (value === '') return undefined
+      try { return JSON.parse(value) } catch { return value }
+    },
+  },
+  template: '<select class="el-select-stub" :disabled="disabled" :value="modelValue === undefined ? \'\' : JSON.stringify(modelValue)" @change="$emit(\'update:modelValue\', parseValue($event.target.value)); $emit(\'change\', parseValue($event.target.value))"><option value=""></option><slot /></select>',
+})
+
+const ElOptionStub = defineComponent({
+  props: ['label', 'value'],
+  template: '<option :value="JSON.stringify(value)">{{ label }}</option>',
+})
+
+const ElDatePickerStub = defineComponent({
+  props: ['modelValue', 'type', 'valueFormat', 'placeholder', 'clearable'],
+  emits: ['update:modelValue', 'change'],
+  template: '<input class="el-date-picker-stub" :placeholder="placeholder" :value="modelValue || \'\'" @change="$emit(\'update:modelValue\', $event.target.value)" />',
+})
+
+const ElTreeSelectStub = defineComponent({
+  props: {
+    modelValue: [Number, String, null],
+    data: { type: Array as PropType<Array<{ id: number; name: string; children?: unknown[] }>>, default: () => [] },
+  },
+  emits: ['update:modelValue', 'change'],
+  computed: {
+    flatOptions() {
+      const flatten = (nodes: Array<{ id: number; name: string; children?: unknown[] }>): Array<{ id: number; name: string }> =>
+        nodes.flatMap((node) => [node, ...(node.children ? flatten(node.children as Array<{ id: number; name: string; children?: unknown[] }>) : [])])
+      return flatten(this.data)
+    },
+  },
+  template: '<select class="el-tree-select-stub" :value="modelValue ?? \'\'" @change="$emit(\'update:modelValue\', $event.target.value ? Number($event.target.value) : undefined)"><option value=""></option><option v-for="option in flatOptions" :key="option.id" :value="option.id">{{ option.name }}</option></select>',
+})
+
+const ElRadioGroupStub = defineComponent({
+  props: { modelValue: { default: '' } },
+  emits: ['update:modelValue', 'change'],
+  provide() {
+    return {
+      radioGroupModel: () => this.modelValue,
+      radioGroupChange: (value: string) => {
+        this.$emit('update:modelValue', value)
+        this.$emit('change', value)
+      },
+    }
+  },
+  template: '<div class="el-radio-group-stub"><slot /></div>',
+})
+
+const ElRadioButtonStub = defineComponent({
+  props: ['value'],
+  inject: ['radioGroupModel', 'radioGroupChange'],
+  template: '<button class="el-radio-button" type="button" @click="radioGroupChange(value)"><slot /></button>',
+})
+
+const ElSegmentedStub = defineComponent({
+  props: {
+    modelValue: { default: '' },
+    options: { type: Array as PropType<Array<{ label: string; value: string }>>, default: () => [] },
+  },
+  emits: ['update:modelValue', 'change'],
+  template:
+    '<div class="el-segmented-stub"><button v-for="opt in options" :key="opt.value" type="button" :class="{ \'is-selected\': modelValue === opt.value }" @click="$emit(\'update:modelValue\', opt.value); $emit(\'change\', opt.value)">{{ opt.label }}</button></div>',
+})
+
+type ColumnRender = (scope: Record<string, unknown>) => VNode[]
+const REGISTER_COLUMN_KEY: InjectionKey<(render: ColumnRender | undefined) => void> =
+  Symbol('registerColumn') as unknown as InjectionKey<(render: ColumnRender | undefined) => void>
+
+const ElTableStub = defineComponent({
+  props: ['data', 'rowKey', 'rowClassName'],
+  setup(props, { slots }) {
+    const columns = ref<Array<{ render: ColumnRender | undefined }>>([])
+    provide(REGISTER_COLUMN_KEY, (render: ColumnRender | undefined) => {
+      columns.value.push({ render })
+    })
+    const rowClass = (row: Preorder) => {
+      const fn = props.rowClassName as ((arg: { row: Preorder }) => string) | undefined
+      return typeof fn === 'function' ? fn({ row }) : ''
+    }
+    return () => {
+      const rows = ((props.data as Preorder[]) || []).map((row, index) =>
+        h(
+          'tr',
+          { key: row.id, class: rowClass(row) },
+          columns.value.map((col, ci) =>
+            h('td', { key: ci }, col.render ? col.render({ row, column: {}, $index: index }) : [])
+          )
+        )
+      )
+      // 必须渲染默认插槽（列定义），否则 el-table-column 子组件不会挂载注册
+      return h('table', { class: 'el-table-stub' }, [h('tbody', rows), slots.default?.()])
+    }
+  },
+})
+
+const ElTableColumnStub = defineComponent({
+  props: ['label', 'prop', 'minWidth', 'width', 'sortable', 'fixed', 'sortBy'],
+  setup(_, { slots }) {
+    const register = inject(REGISTER_COLUMN_KEY)
+    onMounted(() => {
+      register?.((slots.default ?? undefined) as unknown as ColumnRender | undefined)
+    })
+    return () => null
+  },
+})
+
+const ElTagStub = defineComponent({
+  props: ['type', 'size', 'effect'],
+  template: '<span class="el-tag-stub"><slot /></span>',
+})
+
+const ElEmptyStub = defineComponent({
+  props: ['description', 'imageSize'],
+  template: '<section class="el-empty-stub">{{ description }}<slot /></section>',
+})
+
+const ElAlertStub = defineComponent({
+  props: ['title', 'type', 'closable', 'showIcon'],
+  template: '<div class="el-alert-stub">{{ title }}<slot /></div>',
+})
+
+const mountPage = async (query: Record<string, string> = {}) => {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/preorders', component: { template: '<div />' } }],
+  })
+  await router.push({ path: '/preorders', query })
+  await router.isReady()
+
+  setActivePinia(createPinia())
+
+  const wrapper = mount(PreorderManagement, {
+    global: {
+      plugins: [router],
+      directives: { loading: {} },
+      stubs: {
+        'el-button': ElButtonStub,
+        'el-dialog': ElDialogStub,
+        'el-form': ElFormStub,
+        'el-form-item': ElFormItemStub,
+        'el-input': ElInputStub,
+        'el-input-number': ElInputNumberStub,
+        'el-select': ElSelectStub,
+        'el-option': ElOptionStub,
+        'el-date-picker': ElDatePickerStub,
+        'el-tree-select': ElTreeSelectStub,
+        'el-radio-group': ElRadioGroupStub,
+        'el-radio-button': ElRadioButtonStub,
+        'el-segmented': ElSegmentedStub,
+        'el-table': ElTableStub,
+        'el-table-column': ElTableColumnStub,
+        'el-tag': ElTagStub,
+        'el-empty': ElEmptyStub,
+        'el-alert': ElAlertStub,
+        'el-pagination': true,
+        'el-icon': { template: '<i><slot /></i>' },
+        Teleport: true,
+      },
+    },
+  })
+  return { wrapper, router }
+}
+
+describe('PreorderManagement', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('渲染预购列表（桌面表格）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([makePreorder('p-1'), makePreorder('p-2', { status: 'paid' })]),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('流萤手办')
+    expect(wrapper.text()).toContain('待补款')
+    expect(wrapper.text()).toContain('已补款')
+    expect(wrapper.text()).toContain('2026年8月')
+    expect(wrapper.find('.el-table-stub').exists()).toBe(true)
+  })
+
+  it('按状态显隐操作按钮（状态机）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([
+        makePreorder('p-pending'),
+        makePreorder('p-paid', { status: 'paid', paid_at: '2026-07-01T00:00:00Z' }),
+        makePreorder('p-converted', { status: 'converted', goods_id: 'g-1', goods_name: '流萤手办' }),
+      ]),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const text = wrapper.text()
+    // pending 行可标记补款 / 取消，但没有转正按钮
+    expect(text).toContain('标记补款')
+    expect(text).toContain('取消')
+    // paid 行可转正；converted 行可查看谷子（补款不可逆，paid 行无取消）
+    expect(text).toContain('转正为谷子')
+    expect(text).toContain('查看谷子')
+  })
+
+  it('状态筛选改变时重新拉取并携带 status 参数', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(listPreorders).toHaveBeenLastCalledWith({
+      page: 1,
+      page_size: 12,
+      status: undefined,
+      search: undefined,
+    })
+    const paidSegment = wrapper.findAll('.el-segmented-stub button').find((w) => w.text() === '已补款')!
+    await paidSegment.trigger('click')
+    await flushPromises()
+    expect(listPreorders).toHaveBeenLastCalledWith({
+      page: 1,
+      page_size: 12,
+      status: 'paid',
+      search: undefined,
+    })
+  })
+
+  it('渲染统计概览指标（待补款/本月到期/已转正/待补定金）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    vi.mocked(getPreorderStats).mockResolvedValue({
+      pending_count: 8,
+      due_this_month: 2,
+      due_this_quarter: 1,
+      converted_count: 3,
+      total_pending_deposit: '2450.50',
+    })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const text = wrapper.text()
+    expect(text).toContain('待补款')
+    expect(text).toContain('本月到期')
+    expect(text).toContain('本季到期')
+    expect(text).toContain('已转正')
+    expect(text).toContain('待补定金')
+    expect(text).toContain('¥2450.50')
+    expect(getPreorderStats).toHaveBeenCalledTimes(1)
+  })
+
+  it('新增对话框提交调用 createPreorder 且月份归一化为当月1日', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    vi.mocked(createPreorder).mockResolvedValue(makePreorder('p-new'))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const addButton = wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!
+    await addButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.el-dialog-stub').exists()).toBe(true)
+    // 通过 vm 填写表单（避免与 element-plus 控件内部交互耦合）
+    const vm = wrapper.vm as unknown as {
+      form: { name: string; deposit_amount: number; balance_amount: number | null; estimated_month: string; platform: string }
+    }
+    vm.form.name = '花火手办'
+    vm.form.deposit_amount = 200
+    vm.form.balance_amount = 50
+    vm.form.estimated_month = '2026-09'
+    vm.form.platform = '淘宝'
+    const saveButton = wrapper.findAll('button').find((w) => w.text() === '保存')!
+    await saveButton.trigger('click')
+    await flushPromises()
+    expect(createPreorder).toHaveBeenCalled()
+    const payload = vi.mocked(createPreorder).mock.calls[0]![0]
+    expect(payload.name).toBe('花火手办')
+    expect(payload.deposit_amount).toBe(200)
+    expect(payload.estimated_month).toBe('2026-09-01')
+  })
+
+  it('标记补款需确认后调用接口', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    vi.mocked(markPreorderPaid).mockResolvedValue(makePreorder('p-1', { status: 'paid' }))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const markButton = wrapper.findAll('button').find((w) => w.text() === '标记补款')!
+    await markButton.trigger('click')
+    await flushPromises()
+    expect(markPreorderPaid).toHaveBeenCalledWith('p-1')
+  })
+
+  it('取消预购需确认后调用接口', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    vi.mocked(cancelPreorder).mockResolvedValue(makePreorder('p-1', { status: 'cancelled' }))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const cancelButton = wrapper.findAll('button').find((w) => w.text() === '取消')!
+    await cancelButton.trigger('click')
+    await flushPromises()
+    expect(cancelPreorder).toHaveBeenCalledWith('p-1')
+  })
+
+  it('转正对话框预填名称，提交调用 convertPreorderToGoods', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([makePreorder('p-1', { status: 'paid', paid_at: '2026-07-01T00:00:00Z' })]),
+    )
+    vi.mocked(convertPreorderToGoods).mockResolvedValue(
+      makePreorder('p-1', { status: 'converted', goods_id: 'g-1', goods_name: '流萤手办' }),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const convertButton = wrapper.findAll('button').find((w) => w.text().includes('转正为谷子'))!
+    await convertButton.trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.el-dialog-stub').exists()).toBe(true)
+    // 名称预填自预购
+    const convertVm = wrapper.vm as unknown as {
+      convertForm: { name: string; ip?: number; category?: number; characters: number[]; status: string }
+    }
+    expect(convertVm.convertForm.name).toBe('流萤手办')
+    // 补选 IP / 品类后提交（草稿模式角色可空）
+    convertVm.convertForm.ip = 1
+    convertVm.convertForm.category = 21
+    convertVm.convertForm.characters = []
+    const submitButton = wrapper.findAll('button').find((w) => w.text() === '转正')!
+    await submitButton.trigger('click')
+    await flushPromises()
+    expect(convertPreorderToGoods).toHaveBeenCalledWith(
+      'p-1',
+      expect.objectContaining({ name: '流萤手办', ip: 1, category: 21, status: 'draft' }),
+    )
+  })
+
+  it('通知跳转带 highlight 时高亮对应行', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    const { wrapper } = await mountPage({ highlight: 'p-1' })
+    await flushPromises()
+    expect(wrapper.find('tr.preorder-row-highlight').exists()).toBe(true)
+  })
+
+  it('highlight 目标不在第一页时跨页定位后高亮', async () => {
+    const page1 = Array.from({ length: 12 }, (_, i) =>
+      makePreorder('p-' + String(i + 1).padStart(2, '0')),
+    )
+    vi.mocked(listPreorders)
+      .mockResolvedValueOnce(paginated(page1))
+      .mockResolvedValueOnce(paginated([...page1, makePreorder('p-99')]))
+      .mockResolvedValueOnce(paginated([makePreorder('p-99')]))
+    const { wrapper } = await mountPage({ highlight: 'p-99' })
+    await flushPromises()
+    // 第一次：首页列表；第二次：跨页探测（最大 page_size）；第三次：跳转目标页
+    expect(listPreorders).toHaveBeenNthCalledWith(1, {
+      page: 1,
+      page_size: 12,
+      status: undefined,
+      search: undefined,
+    })
+    expect(listPreorders).toHaveBeenNthCalledWith(2, { page_size: 100 })
+    expect(listPreorders).toHaveBeenNthCalledWith(3, {
+      page: 2,
+      page_size: 12,
+      status: undefined,
+      search: undefined,
+    })
+    expect(wrapper.find('tr.preorder-row-highlight').exists()).toBe(true)
+  })
+
+  it('已停留在页面时再次点击通知触发重新定位（watch query.highlight）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([makePreorder('p-1'), makePreorder('p-2')]),
+    )
+    const { wrapper, router } = await mountPage()
+    await flushPromises()
+    expect(wrapper.find('tr.preorder-row-highlight').exists()).toBe(false)
+    // 模拟通知中心点击第二条通知：仅 query 变化，组件复用
+    await router.push({ path: '/preorders', query: { highlight: 'p-2' } })
+    await flushPromises()
+    expect(wrapper.find('tr.preorder-row-highlight').exists()).toBe(true)
+    // 目标已在当前列表，直接高亮，无需重新拉取
+    expect(listPreorders).toHaveBeenCalledTimes(1)
+  })
+
+  it('季度粒度预购在列表中显示季度文案', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([makePreorder('p-q', { time_granularity: 'quarter', estimated_month: '2026-07-01' })]),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('2026年 Q3')
+  })
+
+  it('按季度粒度提交时转换为季度首月', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    vi.mocked(createPreorder).mockResolvedValue(makePreorder('p-new'))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      form: { name: string; deposit_amount: number; time_granularity: 'month' | 'quarter'; estimated_month: string }
+    }
+    vm.form.name = '季度手办'
+    vm.form.deposit_amount = 300
+    vm.form.time_granularity = 'quarter'
+    vm.form.estimated_month = '2026-Q3'
+    await wrapper.findAll('button').find((w) => w.text() === '保存')!.trigger('click')
+    await flushPromises()
+    const payload = vi.mocked(createPreorder).mock.calls[0]![0]
+    expect(payload.time_granularity).toBe('quarter')
+    expect(payload.estimated_month).toBe('2026-07-01')
+  })
+
+  it('编辑季度粒度预购时回填季度格式', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([makePreorder('p-q', { time_granularity: 'quarter', estimated_month: '2026-07-01' })]),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const editButton = wrapper.findAll('button').find((w) => w.text() === '编辑')!
+    await editButton.trigger('click')
+    await flushPromises()
+    const vm = wrapper.vm as unknown as { form: { time_granularity: string; estimated_month: string } }
+    expect(vm.form.time_granularity).toBe('quarter')
+    expect(vm.form.estimated_month).toBe('2026-Q3')
+  })
+
+  it('季度下拉选项覆盖前后年份且格式为 YYYY-Qn（契约）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      quarterOptions: Array<{ label: string; value: string }>
+    }
+    expect(vm.quarterOptions.length).toBeGreaterThanOrEqual(8)
+    expect(vm.quarterOptions[0]?.value).toMatch(/^\d{4}-Q[1-4]$/)
+    // 契约：quarterToMonth 可逆解析（'<year>-Q3' → '<year>-07-01'）
+    const currentYear = new Date().getFullYear()
+    const sample = vm.quarterOptions.find((o) => o.value === `${currentYear}-Q3`)
+    expect(sample?.label).toBe(`${currentYear}年 Q3`)
+  })
+})

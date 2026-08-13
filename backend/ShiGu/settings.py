@@ -64,6 +64,7 @@ INSTALLED_APPS = [
     "apps.users.apps.UsersConfig",
     "apps.admin_api.apps.AdminApiConfig",
     "apps.ocr.apps.OcrConfig",
+    "apps.reminder.apps.ReminderConfig",
 ]
 
 MIDDLEWARE = [
