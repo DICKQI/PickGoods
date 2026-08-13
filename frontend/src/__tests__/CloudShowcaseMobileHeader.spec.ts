@@ -34,6 +34,10 @@ const setWindowScrollY = (value: number) => {
   })
 }
 
+// 记录本次测试挂载的 wrapper，beforeEach 统一卸载，
+// 避免上一个用例的 window 事件监听器残留污染后续用例
+const mountedWrappers: Array<{ unmount: () => void }> = []
+
 const createTouchEvent = (type: string, clientY: number) => {
   const event = new Event(type, {
     bubbles: true,
@@ -133,6 +137,7 @@ const mountCloudShowcase = async ({
   })
 
   await wrapper.vm.$nextTick()
+  mountedWrappers.push(wrapper)
   return wrapper
 }
 
@@ -157,6 +162,7 @@ describe('CloudShowcase mobile compact header', () => {
 
   beforeEach(() => {
     vi.restoreAllMocks()
+    mountedWrappers.splice(0).forEach((wrapper) => wrapper.unmount())
     routeQuery.value = {}
     getGoodsListMock.mockReset()
     vi.stubGlobal('IntersectionObserver', class {
@@ -333,5 +339,46 @@ describe('CloudShowcase mobile compact header', () => {
     expect(mobilePanelRule).toContain('width: 100%;')
     expect(mobilePanelRule).toContain('min-width: 0;')
     expect(mobilePanelRule).toContain('box-sizing: border-box;')
+  })
+
+  it('refreshing on the journal tab triggers journal refresh only', async () => {
+    routeQuery.value = { tab: 'journal' }
+    await mountCloudShowcase({ viewport: 'desktop' })
+
+    const seen: string[] = []
+    const listener = (e: Event) => { seen.push(e.type) }
+    window.addEventListener('cloud-showcase:journal-refresh', listener)
+    window.addEventListener('cloud-showcase:stats-refresh', listener)
+
+    window.dispatchEvent(new CustomEvent('cloud-showcase:refresh'))
+    await flushPromises()
+
+    expect(seen).toContain('cloud-showcase:journal-refresh')
+    expect(seen).not.toContain('cloud-showcase:stats-refresh')
+
+    window.removeEventListener('cloud-showcase:journal-refresh', listener)
+    window.removeEventListener('cloud-showcase:stats-refresh', listener)
+  })
+
+  it('defers refresh-complete on the journal tab until journal refresh finishes', async () => {
+    routeQuery.value = { tab: 'journal' }
+    await mountCloudShowcase({ viewport: 'desktop' })
+
+    const seen: string[] = []
+    const listener = (e: Event) => { seen.push(e.type) }
+    window.addEventListener('cloud-showcase:refresh-complete', listener)
+
+    window.dispatchEvent(new CustomEvent('cloud-showcase:refresh'))
+    await flushPromises()
+
+    // 手帐刷新完成前不应发送 refresh-complete（Layout 刷新态保持）
+    expect(seen).not.toContain('cloud-showcase:refresh-complete')
+
+    // 模拟 JournalWorkspace 完成刷新
+    window.dispatchEvent(new CustomEvent('cloud-showcase:journal-refresh-complete'))
+    await flushPromises()
+
+    expect(seen).toContain('cloud-showcase:refresh-complete')
+    window.removeEventListener('cloud-showcase:refresh-complete', listener)
   })
 })

@@ -35,14 +35,18 @@ export const useGuziStore = defineStore('guzi', () => {
     return pagination.value.next !== null
   })
 
-  // 内部搜索函数（不带防抖）
-  const _searchGuzi = async (params?: GoodsSearchParams, keepPage?: boolean, append?: boolean) => {
-    if (loading.value) return
-    if (!append && loadingMore.value) return
+  // 搜索轮次序号：每次新的搜索会递增；在途旧请求的响应按序号丢弃，
+  // 避免快速连续搜索/筛选时旧结果覆盖新结果，或新筛选条件被静默丢弃。
+  let searchSeq = 0
 
-    if (!append) {
-      loading.value = true
+  // 内部搜索函数（不带防抖）。返回 true 表示本次结果已生效，false 表示被丢弃/失败。
+  const _searchGuzi = async (params?: GoodsSearchParams, keepPage?: boolean, append?: boolean): Promise<boolean> => {
+    // 追加加载（loadMore）：仅在无搜索在途时执行，避免与新一轮搜索交错
+    if (append) {
+      if (loading.value) return false
+      pagination.value.page += 1
     }
+
     error.value = null
 
     // 检查是否有除 page 之外的筛选条件变化
@@ -53,10 +57,19 @@ export const useGuziStore = defineStore('guzi', () => {
       pagination.value.page = 1
     }
 
-    // 更新筛选条件（排除 page，page 由分页逻辑单独处理）
+    // 更新筛选条件（排除 page，page 由分页逻辑单独处理）。
+    // 注意：即使有请求在途也必须先合并参数，新请求会带着最新条件发出，
+    // 在途旧请求的结果随后按序号作废。
     if (params) {
       const { page, ...filterParams } = params
       filters.value = { ...filters.value, ...filterParams }
+    }
+
+    // 本轮搜索序号：非 append 开启新的一轮
+    const seq = append ? searchSeq : ++searchSeq
+
+    if (!append) {
+      loading.value = true
     }
 
     try {
@@ -71,6 +84,9 @@ export const useGuziStore = defineStore('guzi', () => {
             page: pagination.value.page,
             page_size: pagination.value.page_size,
           })
+
+      // 请求期间又发起了更新的搜索/筛选，丢弃本次过期结果
+      if (seq !== searchSeq) return false
 
       // 统一处理为扁平列表格式
       let results: GoodsListItem[] = []
@@ -140,13 +156,19 @@ export const useGuziStore = defineStore('guzi', () => {
       if (guziList.value.length === 0 && !error.value) {
         // 空结果不是错误，不需要设置错误信息
       }
+
+      return true
     } catch (err: any) {
+      // 过期请求的失败不覆盖最新状态
+      if (seq !== searchSeq) return false
       error.value = err.message || '搜索失败'
       if (!append) {
         guziList.value = []
       }
+      return false
     } finally {
-      if (!append) {
+      // 仅最新一轮搜索负责复位 loading（旧请求结束时不能提前关掉 loading）
+      if (!append && seq === searchSeq) {
         loading.value = false
       }
     }
@@ -190,7 +212,7 @@ export const useGuziStore = defineStore('guzi', () => {
     if (loading.value || loadingMore.value || !hasMore.value) return
     loadingMore.value = true
     try {
-      pagination.value.page += 1
+      // 页码推进在 _searchGuzi 的 append 分支内完成，避免请求被拒时页码空转
       await _searchGuzi(undefined, true, true)
     } finally {
       loadingMore.value = false

@@ -57,8 +57,12 @@ export const useShowcaseStore = defineStore('showcase', () => {
     return [...showcaseGoods.value].slice().sort((a, b) => (a.order ?? 0) - (b.order ?? 0))
   })
 
+  // 列表/详情请求序号：快速切换展柜或翻页时，在途旧请求的响应按序号丢弃
+  let listSeq = 0
+  let detailSeq = 0
+
   const fetchList = async (opts?: { page?: number; page_size?: number }) => {
-    if (listLoading.value) return
+    const seq = ++listSeq
     listLoading.value = true
     error.value = null
     try {
@@ -67,6 +71,9 @@ export const useShowcaseStore = defineStore('showcase', () => {
 
       const apiFunc = scope.value === 'public' ? getPublicShowcases : getPrivateShowcases
       const data = await apiFunc({ page, page_size })
+
+      // 请求期间又发起了更新的列表请求，丢弃本次过期结果
+      if (seq !== listSeq) return
 
       pagination.value = data
       const results = data.results || []
@@ -84,28 +91,32 @@ export const useShowcaseStore = defineStore('showcase', () => {
         ...map,
       }
     } catch (e: any) {
+      if (seq !== listSeq) return
       error.value = e?.message || '加载展柜列表失败'
       list.value = []
     } finally {
-      listLoading.value = false
+      if (seq === listSeq) listLoading.value = false
     }
   }
 
   const fetchDetail = async (id?: string) => {
     const targetId = id ?? activeShowcaseId.value
     if (!targetId) return
-    if (detailLoading.value) return
+    const seq = ++detailSeq
     detailLoading.value = true
     error.value = null
     try {
       const data = await getShowcaseDetail(targetId)
+      // 请求期间又选中了其他展柜，丢弃本次过期结果
+      if (seq !== detailSeq) return
       activeShowcaseId.value = data.id
       activeShowcase.value = data
     } catch (e: any) {
+      if (seq !== detailSeq) return
       error.value = e?.message || '加载展柜详情失败'
       activeShowcase.value = null
     } finally {
-      detailLoading.value = false
+      if (seq === detailSeq) detailLoading.value = false
     }
   }
 

@@ -1124,17 +1124,46 @@ watch(
   },
 )
 
+// 响应云展柜页面的「刷新」事件：保留当前选中页与未保存内容，仅重载当前页与版本列表。
+// 完成后派发 journal-refresh-complete，由云展柜页驱动 Layout 关闭刷新态。
+const handleJournalRefresh = async () => {
+  try {
+    if (journalStore.dirty) {
+      const saved = await journalStore.saveActivePage({ createVersion: false })
+      // 保存失败（如 409 冲突）时中止刷新，避免用服务端版本覆盖本地未保存内容
+      if (!saved) return
+    }
+    const pageId = journalStore.activePageId
+    if (!pageId) {
+      await journalStore.fetchBooks()
+      return
+    }
+    try {
+      await journalStore.fetchPageDetail(pageId)
+      await journalStore.fetchVersions(pageId)
+    } catch {
+      // 当前页可能已被删除，退化为整本刷新
+      await journalStore.fetchBooks()
+    }
+  } finally {
+    // 通知云展柜页刷新完成（驱动 Layout 关闭刷新态）
+    window.dispatchEvent(new CustomEvent('cloud-showcase:journal-refresh-complete'))
+  }
+}
+
 onMounted(() => {
   journalStore.fetchBooks()
   window.addEventListener('click', closeContextMenus)
   window.addEventListener('scroll', closeContextMenus, true)
   window.addEventListener('resize', closeContextMenus)
+  window.addEventListener('cloud-showcase:journal-refresh', handleJournalRefresh)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('click', closeContextMenus)
   window.removeEventListener('scroll', closeContextMenus, true)
   window.removeEventListener('resize', closeContextMenus)
+  window.removeEventListener('cloud-showcase:journal-refresh', handleJournalRefresh)
   if (autoSaveTimer !== null) {
     window.clearTimeout(autoSaveTimer)
     autoSaveTimer = null

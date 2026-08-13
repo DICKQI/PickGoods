@@ -1,4 +1,4 @@
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
@@ -37,6 +37,7 @@ const journalStore = reactive({
   revisionConflict: null as any,
   clearRevisionConflict: vi.fn(),
   fetchPageDetail: vi.fn(),
+  fetchVersions: vi.fn(),
   renameBook: vi.fn(),
 })
 
@@ -126,6 +127,9 @@ describe('JournalWorkspace', () => {
     canvasState.selectedLayerIds = []
     journalStore.fetchBooks.mockClear()
     journalStore.updateActivePageBackground.mockClear()
+    journalStore.fetchPageDetail.mockClear()
+    journalStore.fetchVersions.mockClear()
+    journalStore.saveActivePage.mockClear()
     canvasState.alignSelectedLayers.mockClear()
     canvasState.distributeSelectedLayers.mockClear()
     canvasState.toggleLayerLock.mockClear()
@@ -311,5 +315,56 @@ describe('JournalWorkspace', () => {
     await wrapper.get('[data-test="journal-create-book-top"]').trigger('click')
 
     expect(journalStore.createBook).toHaveBeenCalledTimes(2)
+  })
+
+  it('responds to the journal refresh event by reloading the current page', async () => {
+    journalStore.activePageId = 'page-1'
+    journalStore.dirty = false
+    const wrapper = mountWorkspace()
+
+    window.dispatchEvent(new CustomEvent('cloud-showcase:journal-refresh'))
+    await flushPromises()
+
+    expect(journalStore.fetchPageDetail).toHaveBeenCalledWith('page-1')
+    expect(journalStore.fetchVersions).toHaveBeenCalledWith('page-1')
+    wrapper.unmount()
+  })
+
+  it('saves dirty content before refreshing on the journal refresh event', async () => {
+    journalStore.activePageId = 'page-1'
+    journalStore.dirty = true
+    journalStore.saveActivePage.mockResolvedValueOnce({ id: 'page-1' } as never)
+    const wrapper = mountWorkspace()
+
+    window.dispatchEvent(new CustomEvent('cloud-showcase:journal-refresh'))
+    await flushPromises()
+
+    expect(journalStore.saveActivePage).toHaveBeenCalledWith({ createVersion: false })
+    // 保存成功后继续重载当前页
+    expect(journalStore.fetchPageDetail).toHaveBeenCalledWith('page-1')
+    wrapper.unmount()
+  })
+
+  it('aborts the refresh without reloading when saving dirty content fails', async () => {
+    journalStore.activePageId = 'page-1'
+    journalStore.dirty = true
+    journalStore.saveActivePage.mockResolvedValueOnce(null)
+    const wrapper = mountWorkspace()
+
+    const completed: string[] = []
+    const listener = (e: Event) => { completed.push(e.type) }
+    window.addEventListener('cloud-showcase:journal-refresh-complete', listener)
+
+    window.dispatchEvent(new CustomEvent('cloud-showcase:journal-refresh'))
+    await flushPromises()
+
+    // 保存失败（返回 null）时不得用服务端版本覆盖本地未保存内容
+    expect(journalStore.fetchPageDetail).not.toHaveBeenCalled()
+    expect(journalStore.fetchVersions).not.toHaveBeenCalled()
+    // 但仍需通知刷新完成，避免刷新态卡死
+    expect(completed).toContain('cloud-showcase:journal-refresh-complete')
+
+    window.removeEventListener('cloud-showcase:journal-refresh-complete', listener)
+    wrapper.unmount()
   })
 })

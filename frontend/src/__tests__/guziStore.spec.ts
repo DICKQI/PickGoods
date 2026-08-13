@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useGuziStore } from '@/stores/guzi'
-import type { GoodsListItem } from '@/api/types'
+import type { GoodsListItem, PaginatedResponse } from '@/api/types'
 
 vi.mock('@/api/goods', () => ({
   getGoodsList: vi.fn(),
@@ -179,5 +179,92 @@ describe('useGuziStore', () => {
     const store = useGuziStore()
     await store.setViewMode('similar')
     expect(store.hasMore).toBe(false)
+  })
+
+  it('并发搜索时，旧响应不覆盖最新结果（乱序返回）', async () => {
+    let resolveOld!: (v: PaginatedResponse<GoodsListItem>) => void
+    let resolveNew!: (v: PaginatedResponse<GoodsListItem>) => void
+    vi.mocked(getGoodsList).mockReset()
+    vi.mocked(getGoodsList)
+      .mockReturnValueOnce(new Promise<PaginatedResponse<GoodsListItem>>((r) => { resolveOld = r }))
+      .mockReturnValueOnce(new Promise<PaginatedResponse<GoodsListItem>>((r) => { resolveNew = r }))
+
+    const store = useGuziStore()
+    const p1 = store.searchGuziImmediate({ search: '旧' })
+    const p2 = store.searchGuziImmediate({ search: '新' })
+
+    // 新请求先返回
+    resolveNew(makePaginatedResponse([makeGoods('2', 'N2')]))
+    await p2
+    expect(store.guziList.map(g => g.name)).toEqual(['N2'])
+    expect(store.filters.search).toBe('新')
+
+    // 旧请求后返回，应被丢弃
+    resolveOld(makePaginatedResponse([makeGoods('1', 'O1')]))
+    await p1
+    expect(store.guziList.map(g => g.name)).toEqual(['N2'])
+    expect(store.loading).toBe(false)
+  })
+
+  it('请求在途时再次搜索不会丢弃新的筛选条件', async () => {
+    let resolveFirst!: (v: PaginatedResponse<GoodsListItem>) => void
+    vi.mocked(getGoodsList).mockReset()
+    vi.mocked(getGoodsList)
+      .mockReturnValueOnce(new Promise<PaginatedResponse<GoodsListItem>>((r) => { resolveFirst = r }))
+      .mockResolvedValue(makePaginatedResponse([makeGoods('2', 'N2')]))
+
+    const store = useGuziStore()
+    const p1 = store.searchGuziImmediate({ search: '旧' })
+    const p2 = store.searchGuziImmediate({ search: '新' })
+
+    // 新参数在第二个请求发出时即已合并，不再被丢弃
+    expect(store.filters.search).toBe('新')
+
+    resolveFirst(makePaginatedResponse([makeGoods('1', 'O1')]))
+    await p1
+    await p2
+    expect(store.guziList.map(g => g.name)).toEqual(['N2'])
+    expect(store.filters.search).toBe('新')
+    expect(store.loading).toBe(false)
+  })
+
+  it('loadMore 在搜索在途时不会推进页码', async () => {
+    vi.mocked(getGoodsList).mockReset()
+    vi.mocked(getGoodsList).mockResolvedValueOnce(
+      makePaginatedResponse([makeGoods('1', 'G1')], 100, 1, 2)
+    )
+
+    const store = useGuziStore()
+    await store.searchGuziImmediate()
+    expect(store.hasMore).toBe(true)
+
+    let resolveSecond!: (v: PaginatedResponse<GoodsListItem>) => void
+    vi.mocked(getGoodsList).mockReturnValueOnce(
+      new Promise<PaginatedResponse<GoodsListItem>>((r) => { resolveSecond = r })
+    )
+    const p2 = store.searchGuziImmediate({ search: 'x' })
+
+    // 搜索在途时 loadMore 应被拒绝，页码保持不变
+    await store.loadMore()
+    expect(store.pagination.page).toBe(1)
+
+    resolveSecond(makePaginatedResponse([makeGoods('2', 'G2')], 1, 1, null))
+    await p2
+    expect(store.pagination.page).toBe(1)
+    expect(store.guziList.map(g => g.name)).toEqual(['G2'])
+  })
+
+  it('loadMore 正常追加下一页', async () => {
+    vi.mocked(getGoodsList).mockReset()
+    vi.mocked(getGoodsList)
+      .mockResolvedValueOnce(makePaginatedResponse([makeGoods('1', 'G1')], 100, 1, 2))
+      .mockResolvedValueOnce(makePaginatedResponse([makeGoods('2', 'G2')], 100, 2, null))
+
+    const store = useGuziStore()
+    await store.searchGuziImmediate()
+    await store.loadMore()
+    expect(store.guziList.map(g => g.name)).toEqual(['G1', 'G2'])
+    expect(store.pagination.page).toBe(2)
+    expect(store.loadingMore).toBe(false)
   })
 })

@@ -716,14 +716,29 @@ const handleMoveToTop = async () => {
 }
 
 let statsRefreshCompleteHandler: (() => void) | null = null
+let journalRefreshCompleteHandler: (() => void) | null = null
+let journalRefreshTimeout: number | null = null
+
+// 手帐刷新完成：清理监听与兜底超时，通知 Layout 关闭刷新态
+const handleJournalRefreshComplete = () => {
+  if (journalRefreshTimeout !== null) {
+    window.clearTimeout(journalRefreshTimeout)
+    journalRefreshTimeout = null
+  }
+  window.removeEventListener('cloud-showcase:journal-refresh-complete', handleJournalRefreshComplete)
+  journalRefreshCompleteHandler = null
+  window.dispatchEvent(new CustomEvent('cloud-showcase:refresh-complete'))
+}
 
 const handleShowcaseRefresh = async () => {
+  // 记录本次刷新的目标 Tab，避免刷新期间用户切换 Tab 导致 finally 误判
+  const refreshTarget = activeTab.value
   try {
-    if (activeTab.value === 'barn') {
+    if (refreshTarget === 'barn') {
       await refreshBarnList()
       return
     }
-    if (activeTab.value === 'showcase') {
+    if (refreshTarget === 'showcase') {
       showcaseRefreshing.value = true
       try {
         await showcaseStore.fetchList()
@@ -733,6 +748,23 @@ const handleShowcaseRefresh = async () => {
       } finally {
         showcaseRefreshing.value = false
       }
+      return
+    }
+    // 手帐：交由 JournalWorkspace 自行刷新当前页（保留选中页与未保存内容），
+    // 完成后由 journal-refresh-complete 再通知 Layout 关闭刷新态（避免过早关闭）
+    if (refreshTarget === 'journal') {
+      if (journalRefreshCompleteHandler) {
+        window.removeEventListener('cloud-showcase:journal-refresh-complete', handleJournalRefreshComplete)
+      }
+      journalRefreshCompleteHandler = handleJournalRefreshComplete
+      window.addEventListener('cloud-showcase:journal-refresh-complete', handleJournalRefreshComplete)
+      // 兜底：JournalWorkspace 未挂载或刷新异常时，超时后仍关闭刷新态，避免旋转图标卡死
+      if (journalRefreshTimeout !== null) window.clearTimeout(journalRefreshTimeout)
+      journalRefreshTimeout = window.setTimeout(() => {
+        journalRefreshTimeout = null
+        handleJournalRefreshComplete()
+      }, 10000)
+      window.dispatchEvent(new CustomEvent('cloud-showcase:journal-refresh'))
       return
     }
     // stats：交给 StatsDashboard 自己监听刷新事件处理
@@ -748,8 +780,10 @@ const handleShowcaseRefresh = async () => {
     }
     window.addEventListener('cloud-showcase:stats-refresh-complete', statsRefreshCompleteHandler)
   } finally {
-    // 通知 Layout.vue 刷新完成
-    window.dispatchEvent(new CustomEvent('cloud-showcase:refresh-complete'))
+    // 通知 Layout.vue 刷新完成（手帐分支由 journal-refresh-complete 驱动，不能在这里提前发）
+    if (refreshTarget !== 'journal') {
+      window.dispatchEvent(new CustomEvent('cloud-showcase:refresh-complete'))
+    }
   }
 }
 
@@ -819,6 +853,14 @@ onUnmounted(() => {
   window.removeEventListener('cloud-showcase:selection-exit', handleSelectionExit as EventListener)
   if (statsRefreshCompleteHandler) {
     window.removeEventListener('cloud-showcase:stats-refresh-complete', statsRefreshCompleteHandler)
+  }
+  if (journalRefreshCompleteHandler) {
+    window.removeEventListener('cloud-showcase:journal-refresh-complete', handleJournalRefreshComplete)
+    journalRefreshCompleteHandler = null
+  }
+  if (journalRefreshTimeout !== null) {
+    window.clearTimeout(journalRefreshTimeout)
+    journalRefreshTimeout = null
   }
 })
 
