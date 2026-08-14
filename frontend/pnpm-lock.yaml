@@ -4,13 +4,18 @@ settings:
   autoInstallPeers: true
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  '@capacitor-community/http@1.4.1':
+    hash: l3dn6sg6myqui6aru7vcvxrcoa
+    path: patches/@capacitor-community__http@1.4.1.patch
+
 importers:
 
   .:
     dependencies:
       '@capacitor-community/http':
         specifier: ^1.4.1
-        version: 1.4.1
+        version: 1.4.1(patch_hash=l3dn6sg6myqui6aru7vcvxrcoa)
       '@capacitor/android':
         specifier: ^8.0.0
         version: 8.0.0(@capacitor/core@8.0.0)
@@ -3408,7 +3413,7 @@ snapshots:
     dependencies:
       '@withtypes/mime': 0.1.2
 
-  '@capacitor-community/http@1.4.1':
+  '@capacitor-community/http@1.4.1(patch_hash=l3dn6sg6myqui6aru7vcvxrcoa)':
     dependencies:
       '@capacitor/android': 3.9.0(@capacitor/core@3.9.0)
       '@capacitor/core': 3.9.0

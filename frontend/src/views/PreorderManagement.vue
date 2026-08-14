@@ -405,14 +405,30 @@ const GRANULARITY_OPTIONS: Array<{ label: string; value: 'month' | 'quarter' }> 
   { label: '按季度', value: 'quarter' },
 ]
 
-// 季度下拉选项（'YYYY-Qn'，前一年 ~ 后两年，覆盖远期预购）
+// 季度下拉选项（'YYYY-Qn'）：从打开表单时的当前季度起向后生成未来 3 年（12 个季度），自动滚动免维护
+const QUARTER_OPTIONS_FUTURE_COUNT = 12
+
+// 打开表单时的基准时间，随 openCreate/openEdit 刷新，保证按用户实际使用时间生成
+const nowRef = ref(new Date())
+
 const quarterOptions = computed(() => {
-  const year = new Date().getFullYear()
+  const now = nowRef.value
   const options: Array<{ label: string; value: string }> = []
-  for (let y = year - 1; y <= year + 2; y++) {
-    for (let q = 1; q <= 4; q++) {
-      options.push({ label: `${y}年 Q${q}`, value: `${y}-Q${q}` })
+  let year = now.getFullYear()
+  let quarter = Math.floor(now.getMonth() / 3) + 1
+  for (let i = 0; i < QUARTER_OPTIONS_FUTURE_COUNT; i++) {
+    options.push({ label: `${year}年 Q${quarter}`, value: `${year}-Q${quarter}` })
+    if (quarter === 4) {
+      quarter = 1
+      year++
+    } else {
+      quarter++
     }
+  }
+  // 编辑已过期季度的旧记录时，把原值追加为「已过期」选项，保证可回显、可保留
+  const current = form.estimated_month
+  if (typeof current === 'string' && /^\d{4}-Q[1-4]$/i.test(current) && !options.some((o) => o.value === current)) {
+    options.push({ label: `${current}（已过期）`, value: current })
   }
   return options
 })
@@ -685,10 +701,12 @@ const resetForm = () => {
 
 const openCreate = () => {
   resetForm()
+  nowRef.value = new Date()
   formDialogVisible.value = true
 }
 
 const openEdit = (item: Preorder) => {
+  nowRef.value = new Date()
   editingId.value = item.id
   form.name = item.name
   form.platform = item.platform || ''
@@ -1591,12 +1609,9 @@ onMounted(async () => {
   background: linear-gradient(135deg, var(--accent-purple-hover), var(--accent-purple-dark));
 }
 
-/* 表单内粒度切换：小号胶囊 */
+/* 表单内粒度切换：与右侧输入控件等高（44px）、同圆角（12px），消除左右高度不齐 */
+/* 注意：granularity-select 即 el-segmented 根元素本身，容器样式与变量必须写在此处 */
 .granularity-select {
-  width: 100%;
-}
-
-.granularity-select :deep(.el-segmented) {
   --el-segmented-bg-color: rgba(244, 243, 247, 0.9);
   --el-segmented-padding: 2px;
   --el-segmented-item-selected-bg-color: linear-gradient(135deg, #fdf4da 0%, #f4da94 100%);
@@ -1604,18 +1619,23 @@ onMounted(async () => {
   --el-segmented-item-hover-bg-color: rgba(212, 175, 55, 0.1);
   --el-segmented-item-hover-color: #8a650b;
   width: 100%;
-  border-radius: 999px;
+  height: 44px;
+  padding: 2px;
+  box-sizing: border-box;
+  border-radius: 12px;
 }
 
 .granularity-select :deep(.el-segmented__item) {
+  height: 40px;
+  line-height: 40px;
   padding: 0 16px;
-  border-radius: 999px;
+  border-radius: 12px;
   font-size: 13px;
   font-weight: 600;
 }
 
 .granularity-select :deep(.el-segmented__item-selected) {
-  border-radius: 999px;
+  border-radius: 12px;
   box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.8);
 }
 

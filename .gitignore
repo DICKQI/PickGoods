@@ -153,3 +153,4 @@ AGENTS.md
 .codegraph/daemon.pid
 .reasonix/desktop-topic-titles.json
 .reasonix/desktop-topic-title-sources.json
+.zcode/

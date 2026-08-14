@@ -559,18 +559,38 @@ describe('PreorderManagement', () => {
     expect(vm.form.estimated_month).toBe('2026-Q3')
   })
 
-  it('季度下拉选项覆盖前后年份且格式为 YYYY-Qn（契约）', async () => {
+  it('季度下拉从当前季度起向后生成未来 3 年共 12 项且格式为 YYYY-Qn（契约）', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([]))
     const { wrapper } = await mountPage()
     await flushPromises()
     const vm = wrapper.vm as unknown as {
       quarterOptions: Array<{ label: string; value: string }>
     }
-    expect(vm.quarterOptions.length).toBeGreaterThanOrEqual(8)
-    expect(vm.quarterOptions[0]?.value).toMatch(/^\d{4}-Q[1-4]$/)
-    // 契约：quarterToMonth 可逆解析（'<year>-Q3' → '<year>-07-01'）
-    const currentYear = new Date().getFullYear()
-    const sample = vm.quarterOptions.find((o) => o.value === `${currentYear}-Q3`)
-    expect(sample?.label).toBe(`${currentYear}年 Q3`)
+    // 从当前季度起向后 12 个季度（未来 3 年），首项即当前季度，不含已过期季度
+    const now = new Date()
+    const currentQuarter = `Q${Math.floor(now.getMonth() / 3) + 1}`
+    expect(vm.quarterOptions).toHaveLength(12)
+    expect(vm.quarterOptions[0]?.value).toBe(`${now.getFullYear()}-${currentQuarter}`)
+    expect(vm.quarterOptions[0]?.label).toBe(`${now.getFullYear()}年 ${currentQuarter}`)
+    vm.quarterOptions.forEach((o) => expect(o.value).toMatch(/^\d{4}-Q[1-4]$/))
+  })
+
+  it('编辑已过期季度的记录时回填原季度并在下拉中标注（已过期）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([makePreorder('p-old', { time_granularity: 'quarter', estimated_month: '2025-10-01' })]),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      form: { time_granularity: string; estimated_month: string }
+      quarterOptions: Array<{ label: string; value: string }>
+    }
+    expect(vm.form.time_granularity).toBe('quarter')
+    expect(vm.form.estimated_month).toBe('2025-Q4')
+    const expired = vm.quarterOptions.find((o) => o.value === '2025-Q4')
+    expect(expired).toBeDefined()
+    expect(expired?.label).toContain('已过期')
   })
 })
