@@ -74,13 +74,17 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function fetchCurrentUser() {
-    if (!token.value) return
+  /** 刷新用户信息；成功返回 true，失败（网络错误等）返回 false 并保留原 user。
+   *  token 真失效时请求会 401，由请求拦截器统一处理会话清理与跳转。 */
+  async function fetchCurrentUser(): Promise<boolean> {
+    if (!token.value) return false
     try {
       const data = await authApi.getCurrentUser()
       user.value = data
+      return true
     } catch {
-      // 保留原 user：网络/瞬时错误不降级角色；token 真失效由 401 拦截器统一处理
+      // 保留原 user：网络/瞬时错误不降级角色
+      return false
     }
   }
 

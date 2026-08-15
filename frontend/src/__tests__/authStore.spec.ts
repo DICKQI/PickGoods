@@ -150,6 +150,15 @@ describe('useAuthStore', () => {
     expect(store.token).toBe('tok')
   })
 
+  it('fetchCurrentUser 返回布尔结果（成功 true / 失败 false）', async () => {
+    const store = useAuthStore()
+    store.setToken('tok')
+    vi.mocked(authApi.getCurrentUser).mockResolvedValue({ id: 1, username: 'ok', role: 'User' } as any)
+    await expect(store.fetchCurrentUser()).resolves.toBe(true)
+    vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('net'))
+    await expect(store.fetchCurrentUser()).resolves.toBe(false)
+  })
+
   it('clearSession 清空 token/user/localStorage', () => {
     const store = useAuthStore()
     store.setToken('tok')

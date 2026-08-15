@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
+import type { NavigationGuardNext, RouteLocationNormalized, RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 
 const routes: RouteRecordRaw[] = [
@@ -212,12 +212,7 @@ const routes: RouteRecordRaw[] = [
   },
 ]
 
-const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
-  routes,
-})
-
-router.beforeEach(async (to, from, next) => {
+export async function authGuard(to: RouteLocationNormalized, _from: RouteLocationNormalized, next: NavigationGuardNext) {
   document.title = to.meta.title ? `${to.meta.title} - 拾谷 PickGoods` : '拾谷 PickGoods'
 
   const authStore = useAuthStore()
@@ -237,14 +232,27 @@ router.beforeEach(async (to, from, next) => {
     return
   }
   if (requiresAdmin) {
-    // 实时复核角色：管理员被降权后旧会话立即失效（后端 IsAdmin 仍兜底）
+    // 实时复核角色：管理员被降权后旧会话立即失效（后端 IsAdmin 仍兜底）。
+    // 注意：若 token 已过期，fetchCurrentUser 的请求会 401，拦截器会清会话并整页跳转登录页，
+    // 此时 isAuthenticated 已变 false——下面的 next() 会被页面卸载打断，属预期行为。
     await authStore.fetchCurrentUser()
+    if (!authStore.isAuthenticated) {
+      next() // 401 拦截器已接管跳转；放行当前导航避免守卫挂起
+      return
+    }
     if (!authStore.isAdmin) {
       next({ name: 'Settings' })
       return
     }
   }
   next()
+}
+
+const router = createRouter({
+  history: createWebHistory(import.meta.env.BASE_URL),
+  routes,
 })
+
+router.beforeEach(authGuard)
 
 export default router

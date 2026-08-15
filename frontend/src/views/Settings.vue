@@ -237,11 +237,13 @@ const roleLabel = computed(() => {
 const handleRefreshUser = async () => {
   refreshingUser.value = true
   try {
-    await authStore.fetchCurrentUser()
-    ElMessage.success('已刷新')
-  } catch {
-    ElMessage.error('登录状态已失效，请重新登录')
-    await router.push('/login')
+    const ok = await authStore.fetchCurrentUser()
+    if (ok) {
+      ElMessage.success('已刷新')
+    } else {
+      // token 失效场景已由 401 拦截器统一跳转登录页，此处仅提示网络类失败
+      ElMessage.error('刷新失败，请检查网络后重试')
+    }
   } finally {
     refreshingUser.value = false
   }

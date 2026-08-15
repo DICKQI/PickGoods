@@ -95,6 +95,7 @@ axiosInstance.interceptors.request.use(
 type UnauthorizedCleanup = () => void
 
 let unauthorizedCleanup: UnauthorizedCleanup | null = null
+// 注意：该标志依赖「整页跳转卸载页面」来重置模块状态；若未来改为 SPA 内导航，需在登录成功后复位
 let redirectingToLogin = false
 
 /** 注册 401 时的会话清理回调（main.ts 中注册为 authStore.clearSession） */
@@ -107,11 +108,12 @@ export function resetUnauthorizedRedirectFlag() {
   redirectingToLogin = false
 }
 
-/** 认证接口自身返回 401 表示凭据错误，不触发会话过期跳转（防御后端回归） */
+/** 认证接口自身返回 401 表示凭据错误，不触发会话过期跳转（防御后端回归）。
+ *  按精确路径匹配（去 query、去尾斜杠），避免子串误伤未来新增端点。 */
 const AUTH_ENDPOINTS = ['/api/auth/login', '/api/auth/register']
 function isAuthRequest(config: any): boolean {
-  const url = config?.url || ''
-  return AUTH_ENDPOINTS.some((p) => url.includes(p))
+  const url = (String(config?.url || '').split('?')[0] ?? '').replace(/\/+$/, '')
+  return AUTH_ENDPOINTS.includes(url)
 }
 
 function redirectToLogin() {
@@ -126,7 +128,7 @@ export function handleResponseError(error: any): Promise<any> {
   const status = error.response?.status
   const suppressGlobalError = Boolean(error.config?.suppressGlobalError)
 
-  // 处理 401：未认证（token 无效/过期），清理会话并跳转登录页（并发去重）
+  // 401 始终全局处理（token 失效优先级最高），不受 suppressGlobalError 影响
   if (status === 401 && !isAuthRequest(error.config)) {
     if (typeof window !== 'undefined' && !redirectingToLogin) {
       redirectingToLogin = true
