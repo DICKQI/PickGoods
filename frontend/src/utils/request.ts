@@ -90,47 +90,83 @@ axiosInstance.interceptors.request.use(
   }
 )
 
+// ==================== 401 统一处理（可测试）====================
+
+type UnauthorizedCleanup = () => void
+
+let unauthorizedCleanup: UnauthorizedCleanup | null = null
+let redirectingToLogin = false
+
+/** 注册 401 时的会话清理回调（main.ts 中注册为 authStore.clearSession） */
+export function setUnauthorizedCleanup(fn: UnauthorizedCleanup | null) {
+  unauthorizedCleanup = fn
+}
+
+/** 仅供测试：重置 401 去重标志 */
+export function resetUnauthorizedRedirectFlag() {
+  redirectingToLogin = false
+}
+
+/** 认证接口自身返回 401 表示凭据错误，不触发会话过期跳转（防御后端回归） */
+const AUTH_ENDPOINTS = ['/api/auth/login', '/api/auth/register']
+function isAuthRequest(config: any): boolean {
+  const url = config?.url || ''
+  return AUTH_ENDPOINTS.some((p) => url.includes(p))
+}
+
+function redirectToLogin() {
+  if (typeof window === 'undefined') return
+  const redirect = encodeURIComponent(window.location.pathname + window.location.search)
+  const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || ''
+  const loginPath = base ? `${base}/login` : '/login'
+  window.location.href = `${window.location.origin}${loginPath}?redirect=${redirect}`
+}
+
+export function handleResponseError(error: any): Promise<any> {
+  const status = error.response?.status
+  const suppressGlobalError = Boolean(error.config?.suppressGlobalError)
+
+  // 处理 401：未认证（token 无效/过期），清理会话并跳转登录页（并发去重）
+  if (status === 401 && !isAuthRequest(error.config)) {
+    if (typeof window !== 'undefined' && !redirectingToLogin) {
+      redirectingToLogin = true
+      unauthorizedCleanup?.()
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+      ElMessage.warning('登录已过期，请重新登录')
+      redirectToLogin()
+    }
+    return Promise.reject(error)
+  }
+  if (suppressGlobalError) {
+    return Promise.reject(error)
+  }
+  // 处理 403：无权限
+  if (status === 403) {
+    ElMessage.error('无权限访问')
+    return Promise.reject(error)
+  }
+  // 处理限流错误
+  if (status === 429) {
+    ElMessage.warning('搜索太快了，请稍后再试')
+    return Promise.reject(error)
+  }
+  // 409 由业务层（如谷子新建去重弹窗）单独处理，不弹全局错误
+  if (status === 409) {
+    return Promise.reject(error)
+  }
+  // 处理其他错误
+  const message = error.response?.data?.detail || error.message || '请求失败'
+  ElMessage.error(message)
+  return Promise.reject(error)
+}
+
 // 响应拦截器
 axiosInstance.interceptors.response.use(
   <T = any>(response: AxiosResponse<T>) => {
     return response.data
   },
   (error: any) => {
-    const status = error.response?.status
-    const suppressGlobalError = Boolean(error.config?.suppressGlobalError)
-    // 处理 401：未认证，清除 Token 并跳转登录页
-    if (status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem(AUTH_TOKEN_KEY)
-        const redirect = encodeURIComponent(window.location.pathname + window.location.search)
-        const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || ''
-        const loginPath = base ? `${base}/login` : '/login'
-        const fullPath = `${window.location.origin}${loginPath}?redirect=${redirect}`
-        window.location.href = fullPath
-      }
-      return Promise.reject(error)
-    }
-    if (suppressGlobalError) {
-      return Promise.reject(error)
-    }
-    // 处理 403：无权限
-    if (status === 403) {
-      ElMessage.error('无权限访问')
-      return Promise.reject(error)
-    }
-    // 处理限流错误
-    if (status === 429) {
-      ElMessage.warning('搜索太快了，请稍后再试')
-      return Promise.reject(error)
-    }
-    // 409 由业务层（如谷子新建去重弹窗）单独处理，不弹全局错误
-    if (status === 409) {
-      return Promise.reject(error)
-    }
-    // 处理其他错误
-    const message = error.response?.data?.detail || error.message || '请求失败'
-    ElMessage.error(message)
-    return Promise.reject(error)
+    return handleResponseError(error)
   }
 )
 
