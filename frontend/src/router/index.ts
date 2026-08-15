@@ -236,9 +236,13 @@ router.beforeEach(async (to, from, next) => {
     next(typeof redirect === 'string' ? redirect : '/showcase')
     return
   }
-  if (requiresAdmin && !authStore.isAdmin) {
-    next({ name: 'Settings' })
-    return
+  if (requiresAdmin) {
+    // 实时复核角色：管理员被降权后旧会话立即失效（后端 IsAdmin 仍兜底）
+    await authStore.fetchCurrentUser()
+    if (!authStore.isAdmin) {
+      next({ name: 'Settings' })
+      return
+    }
   }
   next()
 })

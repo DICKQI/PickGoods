@@ -11,6 +11,8 @@ import { Capacitor } from '@capacitor/core'
 
 import App from './App.vue'
 import router from './router'
+import { setUnauthorizedCleanup } from '@/utils/request'
+import { useAuthStore } from '@/stores/auth'
 import './styles/index.css'
 import './styles/element-plus-theme.css'
 import './styles/admin.css'
@@ -36,6 +38,8 @@ for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
 }
 
 app.use(createPinia())
+// 401 时同步清空认证内存态（localStorage 由 request 拦截器兜底清除）
+setUnauthorizedCleanup(() => useAuthStore().clearSession())
 app.use(router)
 app.use(ElementPlus, {
   locale: zhCn,
