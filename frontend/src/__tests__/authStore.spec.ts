@@ -124,4 +124,59 @@ describe('useAuthStore', () => {
     await store.initFromStorage()
     expect(authApi.getCurrentUser).not.toHaveBeenCalled()
   })
+
+  it('isAdmin 对带空格角色名返回 true（trim）', () => {
+    const store = useAuthStore()
+    store.user = { id: 1, username: 'a', role: ' Admin ' } as any
+    expect(store.isAdmin).toBe(true)
+  })
+
+  it('fetchCurrentUser 成功时更新 user', async () => {
+    vi.mocked(authApi.getCurrentUser).mockResolvedValue({ id: 9, username: 'fresh', role: 'User' } as any)
+    const store = useAuthStore()
+    store.setToken('tok')
+    store.user = { id: 1, username: 'old', role: 'User' } as any
+    await store.fetchCurrentUser()
+    expect(store.user?.username).toBe('fresh')
+  })
+
+  it('fetchCurrentUser 失败时保留原 user 与 token', async () => {
+    vi.mocked(authApi.getCurrentUser).mockRejectedValue(new Error('network'))
+    const store = useAuthStore()
+    store.setToken('tok')
+    store.user = { id: 1, username: 'keep', role: 'Admin' } as any
+    await store.fetchCurrentUser()
+    expect(store.user?.username).toBe('keep')
+    expect(store.token).toBe('tok')
+  })
+
+  it('clearSession 清空 token/user/localStorage', () => {
+    const store = useAuthStore()
+    store.setToken('tok')
+    store.user = { id: 1, username: 'x', role: 'User' } as any
+    store.clearSession()
+    expect(store.token).toBeNull()
+    expect(store.user).toBeNull()
+    expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull()
+  })
+
+  it('logout 成功后清空会话', async () => {
+    vi.mocked(authApi.logout).mockResolvedValue(undefined as any)
+    const originalLocation = window.location
+    Object.defineProperty(window, 'location', {
+      configurable: true,
+      value: { ...originalLocation, href: 'http://localhost:5173/settings', origin: 'http://localhost:5173' },
+    })
+    try {
+      const store = useAuthStore()
+      store.setToken('tok')
+      store.user = { id: 1, username: 'x', role: 'User' } as any
+      await store.logout()
+      expect(store.token).toBeNull()
+      expect(store.user).toBeNull()
+      expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull()
+    } finally {
+      Object.defineProperty(window, 'location', { configurable: true, value: originalLocation })
+    }
+  })
 })

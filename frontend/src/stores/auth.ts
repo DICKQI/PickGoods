@@ -11,7 +11,7 @@ export const useAuthStore = defineStore('auth', () => {
   const initialized = ref(false)
 
   const isAuthenticated = computed(() => !!token.value)
-  const isAdmin = computed(() => user.value?.role?.toLowerCase() === 'admin')
+  const isAdmin = computed(() => user.value?.role?.trim().toLowerCase() === 'admin')
 
   function setToken(value: string | null) {
     token.value = value
@@ -65,13 +65,22 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
+  /** 清空会话内存态并删除本地 token（401 清理与登出共用的唯一入口） */
+  function clearSession() {
+    token.value = null
+    user.value = null
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(AUTH_TOKEN_KEY)
+    }
+  }
+
   async function fetchCurrentUser() {
     if (!token.value) return
     try {
       const data = await authApi.getCurrentUser()
       user.value = data
     } catch {
-      user.value = null
+      // 保留原 user：网络/瞬时错误不降级角色；token 真失效由 401 拦截器统一处理
     }
   }
 
@@ -81,10 +90,8 @@ export const useAuthStore = defineStore('auth', () => {
     } catch {
       // 忽略登出接口失败（如网络错误），仍清除本地状态
     } finally {
-      token.value = null
-      user.value = null
+      clearSession()
       if (typeof window !== 'undefined') {
-        localStorage.removeItem(AUTH_TOKEN_KEY)
         const base = (import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || ''
         const loginPath = base ? `${base}/login` : '/login'
         window.location.href = loginPath.startsWith('http') ? loginPath : `${window.location.origin}${loginPath}`
@@ -105,5 +112,6 @@ export const useAuthStore = defineStore('auth', () => {
     fetchCurrentUser,
     logout,
     setToken,
+    clearSession,
   }
 })
