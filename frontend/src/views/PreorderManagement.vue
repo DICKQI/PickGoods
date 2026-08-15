@@ -283,6 +283,36 @@
               <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="选填" />
             </el-form-item>
           </section>
+
+          <!-- 截图识别（弱化入口：默认收起，置于表单末尾） -->
+          <section class="preorder-editor-section preorder-ocr-section">
+            <button type="button" class="preorder-ocr-toggle" @click="ocrPanelVisible = !ocrPanelVisible">
+              <el-icon><Picture /></el-icon>
+              <span>{{ ocrPanelVisible ? '收起截图识别' : '📸 用订单截图自动填写' }}</span>
+              <el-icon class="preorder-ocr-chevron" :class="{ 'is-open': ocrPanelVisible }"><ArrowDown /></el-icon>
+            </button>
+            <p class="preorder-ocr-hint">上传淘宝 / 哔哩哔哩会员购订单截图，自动填入表单；也可完全不用，手动填写即可</p>
+            <div v-if="ocrPanelVisible" class="preorder-ocr-body">
+              <el-upload
+                ref="ocrUploadRef"
+                class="preorder-ocr-upload"
+                :show-file-list="false"
+                :auto-upload="false"
+                accept="image/*"
+                :on-change="handleOcrFileChange"
+              >
+                <div class="preorder-ocr-trigger" :class="{ 'is-loading': ocrUploading }">
+                  <el-icon v-if="!ocrUploading"><Picture /></el-icon>
+                  <el-icon v-else class="is-spinning"><Loading /></el-icon>
+                  <span>{{ ocrUploading ? '识别中...' : '上传订单截图自动识别' }}</span>
+                </div>
+              </el-upload>
+              <div v-if="ocrWarnings.length" class="preorder-ocr-warnings">
+                <el-icon><Warning /></el-icon>
+                <span>识别提示：{{ ocrWarnings.join('；') }}</span>
+              </div>
+            </div>
+          </section>
         </el-form>
         <template #footer>
           <el-button class="preorder-editor-cancel" @click="formDialogVisible = false">取消</el-button>
@@ -387,11 +417,11 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, InfoFilled, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
+import { ArrowDown, Close, InfoFilled, Loading, MagicStick, Picture, Plus, Search, ShoppingCart, Warning } from '@element-plus/icons-vue'
 import * as reminderApi from '@/api/reminder'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMetadataStore } from '@/stores/metadata'
-import type { Category, GoodsStatus, Preorder, PreorderInput, PreorderStats, PreorderStatus } from '@/api/types'
+import type { Category, GoodsStatus, Preorder, PreorderInput, PreorderOcrFields, PreorderStats, PreorderStatus } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
@@ -425,10 +455,17 @@ const quarterOptions = computed(() => {
       quarter++
     }
   }
-  // 编辑已过期季度的旧记录时，把原值追加为「已过期」选项，保证可回显、可保留
+  // 回显超出未来 12 个季度的旧值（编辑历史记录 / OCR 识别远期季度）：
+  // 仅当确实早于当前季度时标注「已过期」，避免远期季度被误标
   const current = form.estimated_month
   if (typeof current === 'string' && /^\d{4}-Q[1-4]$/i.test(current) && !options.some((o) => o.value === current)) {
-    options.push({ label: `${current}（已过期）`, value: current })
+    const m = current.match(/^(\d{4})-Q([1-4])$/i)!
+    const now = nowRef.value
+    const nowYear = now.getFullYear()
+    const nowQuarter = Math.floor(now.getMonth() / 3) + 1
+    const isPast =
+      Number(m[1]) < nowYear || (Number(m[1]) === nowYear && Number(m[2]) < nowQuarter)
+    options.push({ label: isPast ? `${current}（已过期）` : current, value: current })
   }
   return options
 })
@@ -702,12 +739,20 @@ const resetForm = () => {
 const openCreate = () => {
   resetForm()
   nowRef.value = new Date()
+  ocrSession++
+  ocrUploading.value = false
+  ocrWarnings.value = []
+  ocrPanelVisible.value = false
   formDialogVisible.value = true
 }
 
 const openEdit = (item: Preorder) => {
   nowRef.value = new Date()
   editingId.value = item.id
+  ocrSession++
+  ocrUploading.value = false
+  ocrWarnings.value = []
+  ocrPanelVisible.value = false
   form.name = item.name
   form.platform = item.platform || ''
   form.shop_name = item.shop_name || ''
@@ -730,7 +775,86 @@ const handleGranularityChange = () => {
   form.estimated_month = ''
 }
 
+// ─── 智能识别（截图，弱化入口）───
+const ocrUploadRef = ref()
+const ocrUploading = ref(false)
+const ocrPanelVisible = ref(false)
+const ocrWarnings = ref<string[]>([])
+// 识别会话号：openCreate/openEdit 时递增；请求返回时若会话已切换（对话框关闭/换目标），
+// 丢弃迟到结果，避免覆盖编辑中的表单
+let ocrSession = 0
+
+const ocrDetail = (err: any): string => {
+  return err?.response?.data?.detail || err?.message || '识别失败，请重试'
+}
+
+// 识别结果 → 表单：只覆盖识别到的字段，未识别字段保留用户手填值
+const applyOcrResult = (fields: PreorderOcrFields) => {
+  let filled = 0
+  if (fields.name) { form.name = fields.name; filled++ }
+  if (fields.platform) { form.platform = fields.platform; filled++ }
+  if (fields.shop_name) { form.shop_name = fields.shop_name; filled++ }
+  if (fields.order_no) { form.order_no = fields.order_no; filled++ }
+  if (fields.deposit_amount !== null && fields.deposit_amount !== undefined && fields.deposit_amount !== '') {
+    const amount = Number(fields.deposit_amount)
+    if (Number.isFinite(amount)) {
+      form.deposit_amount = amount
+      filled++
+    }
+  }
+  if (fields.balance_amount !== null && fields.balance_amount !== undefined && fields.balance_amount !== '') {
+    const amount = Number(fields.balance_amount)
+    if (Number.isFinite(amount)) {
+      form.balance_amount = amount
+      filled++
+    }
+  }
+  if (fields.estimated_month) {
+    const isQuarter = fields.time_granularity === 'quarter'
+    form.time_granularity = isQuarter ? 'quarter' : 'month'
+    // 后端返回粒度起点 'YYYY-MM'：月粒度截 'YYYY-MM'，季度粒度转表单值 'YYYY-Qn'
+    form.estimated_month = isQuarter
+      ? monthToQuarter(fields.estimated_month + '-01')
+      : fields.estimated_month.slice(0, 7)
+    filled++
+  }
+  ocrWarnings.value = fields.warnings || []
+  formRef.value?.clearValidate()
+  if (ocrWarnings.value.length) {
+    ElMessage.warning(`已自动填入 ${filled} 个字段，请核对下方提示`)
+  } else {
+    ElMessage.success(`已自动填入 ${filled} 个字段，请核对后保存`)
+  }
+}
+
+const handleOcrFileChange = async (uploadFile: any) => {
+  const file = uploadFile?.raw as File | undefined
+  if (!file) return
+  if (ocrUploading.value) {
+    ElMessage.warning('正在识别中，请稍候再上传')
+    return
+  }
+  const session = ocrSession
+  ocrUploading.value = true
+  ocrWarnings.value = []
+  try {
+    const result = await reminderApi.recognizePreorderImage(file)
+    if (session !== ocrSession) return // 对话框已关闭或切换目标，丢弃迟到结果
+    applyOcrResult(result.preorder)
+  } catch (err: any) {
+    if (session === ocrSession) ElMessage.error(ocrDetail(err))
+  } finally {
+    // 仅当会话未切换时才复位 loading：旧请求的 finally 不得影响新会话的上传状态
+    if (session === ocrSession) ocrUploading.value = false
+    ocrUploadRef.value?.clearFiles()
+  }
+}
+
 const submitForm = async () => {
+  if (ocrUploading.value) {
+    ElMessage.warning('识别进行中，请稍候再保存')
+    return
+  }
   await formRef.value.validate()
   formSubmitting.value = true
   try {
@@ -1539,6 +1663,110 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 0 16px;
+}
+
+/* ─── 截图识别（弱化入口，置于表单末尾、默认收起） ─── */
+.preorder-ocr-section {
+  border-top: 1px dashed rgba(212, 175, 55, 0.25);
+  padding-top: 12px;
+}
+
+.preorder-ocr-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #9ca3af;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.preorder-ocr-toggle:hover {
+  color: #b88230;
+}
+
+.preorder-ocr-chevron {
+  font-size: 12px;
+  transition: transform 0.2s;
+}
+
+.preorder-ocr-chevron.is-open {
+  transform: rotate(180deg);
+}
+
+.preorder-ocr-hint {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #c0c4cc;
+  line-height: 1.6;
+}
+
+.preorder-ocr-body {
+  margin-top: 12px;
+}
+
+.preorder-ocr-body :deep(.el-upload) {
+  width: 100%;
+}
+
+.preorder-ocr-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 10px 18px;
+  border-radius: 12px;
+  border: 1px dashed rgba(212, 175, 55, 0.45);
+  background: #fdfaf3;
+  color: #7a6a3a;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.2s, background-color 0.2s, box-shadow 0.2s;
+}
+
+.preorder-ocr-trigger:hover {
+  border-color: var(--primary-gold);
+  background: #fbf5e4;
+  box-shadow: 0 4px 12px rgba(212, 175, 55, 0.12);
+}
+
+.preorder-ocr-trigger.is-loading {
+  cursor: wait;
+  opacity: 0.8;
+}
+
+.preorder-ocr-trigger .is-spinning {
+  animation: preorder-ocr-rotate 1.1s linear infinite;
+}
+
+@keyframes preorder-ocr-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.preorder-ocr-warnings {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(230, 162, 60, 0.1);
+  border: 1px solid rgba(230, 162, 60, 0.28);
+  color: #b88230;
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.preorder-ocr-warnings .el-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 .preorder-editor-form :deep(.el-form-item) {

@@ -7,6 +7,7 @@ import type {
   Preorder,
   PreorderConvertInput,
   PreorderInput,
+  PreorderOcrResult,
   PreorderStats,
   PreorderStatus,
 } from './types'
@@ -61,6 +62,17 @@ export function cancelPreorder(id: string) {
 // 转正为谷子
 export function convertPreorderToGoods(id: string, data: PreorderConvertInput) {
   return request.post<Preorder>(`/api/preorders/${id}/convert-to-goods/`, data)
+}
+
+// 上传订单截图，识别定金单并返回预购字段（mode=preorder）
+export function recognizePreorderImage(file: File) {
+  const formData = new FormData()
+  formData.append('image', file)
+  formData.append('mode', 'preorder')
+  return request.post<PreorderOcrResult>('/api/ocr/recognize/', formData, {
+    timeout: 120000,
+    suppressGlobalError: true,
+  })
 }
 
 // ==================== 通知（/api/notifications/）====================

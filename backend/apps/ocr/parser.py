@@ -4,9 +4,11 @@
 从 PaddleOCR 识别结果中提取结构化字段：
 - 商品名称、价格、数量、入手日期、店铺名
 - 并结合 jieba 分词与数据库进行 IP/角色/品类模糊匹配。
+- 预购定金单（parse_preorder）：定金、尾款、预计出货（补款）时间。
 """
 import re
 import logging
+from datetime import date
 from rapidfuzz import fuzz
 from decimal import Decimal
 from typing import Any, Optional
@@ -41,8 +43,10 @@ _QUANTITY_RE = re.compile(
     r'[×xX\*]\s*(\d+)|数量[：:]\s*(\d+)|(\d+)\s*[件个]'
 )
 
-# 订单号：纯数字长串 (>12位)
-_ORDER_NO_RE = re.compile(r'\b(\d{14,})\b')
+# 订单号：纯数字长串 (>12位)。
+# 用数字前后环视而非 \b：中文（如「订单号5127…」）与数字间无词边界，
+# \b 会漏检，导致订单号行不被判噪音、被兜底选为商品名称。
+_ORDER_NO_RE = re.compile(r'(?<!\d)(\d{14,})(?!\d)')
 
 # 店铺：含 "店" 或 "铺" 的行
 _SHOP_KEYWORDS = ('店', '铺', '店铺')
@@ -549,6 +553,274 @@ def parse_ocr_results(ocr_lines: list[str]) -> dict:
         'shop_name': shop_name,
         'raw_text': raw_text,
     }
+
+
+# ── 预购（定金单）解析 ──────────────────────────────────────────
+
+# 定金单特征关键词：全文命中任一即判定为预购定金单
+# 注：不含「全款」（全款预付不是定金+尾款模式），避免误入
+_PREORDER_HINTS = ('定金', '订金', '尾款', '补款', '预售', '预定')
+
+_PLATFORM_BILIBILI_HINTS = ('会员购', 'bilibili', '哔哩')
+# 「尾款时间」是会员购常用文案，但淘宝商家文案也可能出现「付尾款时间」，
+# 作为弱信号：仅当全文无淘宝特征时才用于推断哔哩
+_PLATFORM_BILIBILI_WEAK_HINTS = ('尾款时间',)
+_PLATFORM_TAOBAO_HINTS = (
+    '订单信息', '实付款', '交易快照', '加入购物车', '极速退款', '退货宝', '订单保障',
+)
+
+# 定金：优先"实付价/实付款"行（定金单实付即定金），其次"定金"字样，兜底商品区价格
+# 数字后跟 年/月/- + 数字 或更多数字属于日期续写（如「实付价：2027年4月15日」），不算金额
+_PAID_PRICE_RE = re.compile(
+    r'实付(?:价|款)?[：: ]*[¥￥]?\s*(\d+(?:\.\d{1,2})?)(?!\s*(?:年|月|[/\-])\s*\d|\d)'
+)
+_DEPOSIT_RE = re.compile(
+    r'(?:定金|订金)[：: ]*[¥￥]?\s*(\d+(?:\.\d{1,2})?)(?!\s*(?:年|月|[/\-])\s*\d|\d)'
+)
+# 尾款：数字后跟 年/月/- + 数字 属于日期续写（如「尾款：2027年4月15日」），不算尾款金额；
+# (?!\d) 防止回溯（\d+ 缩成部分数字如 202 绕过日期前瞻）
+_BALANCE_RE = re.compile(
+    r'(?:尾款|补款)[：: ]*[¥￥]?\s*(\d+(?:\.\d{1,2})?)(?!\s*(?:年|月|[/\-])\s*\d|\d)'
+)
+
+# 预计出货（= 补款）时间：季度 → 带年月份 → 时间在出货字样后 → 仅月份（推断年份）
+_SHIP_YEAR_MONTH_RE = re.compile(
+    r'预计[^0-9]{0,10}(\d{4})[年/\-](\d{1,2})[月]?\s*(?:出货|出荷|发货|发售|到货|到仓)?'
+)
+_SHIP_TIME_AFTER_RE = re.compile(
+    r'(?:出货|出荷|发货|发售|到货|到仓|补款|尾款)时间?[：: ]*(\d{4})[年/\-](\d{1,2})[月]?'
+)
+# 季度：阿拉伯数字（2027年4季度 / 2027年Q2）与中文数字（2027年第四季度）
+_CN_QUARTER_MAP = {'一': 1, '二': 2, '三': 3, '四': 4}
+_SHIP_QUARTER_RE = re.compile(
+    r'预计[^0-9]{0,10}(\d{4})[年/\-]?\s*(?:第)?([1-4])\s*(?:季度|季)|'
+    r'预计[^0-9]{0,10}(\d{4})[年/\-]?\s*[Qq]([1-4])|'
+    r'预计[^0-9]{0,10}(\d{4})[年/\-]?\s*第?([一二三四])\s*季度'
+)
+_SHIP_MONTH_ONLY_RE = re.compile(
+    r'预计[^0-9]{0,10}(\d{1,2})[月]\s*(?:出货|出荷|发货|发售|到货|到仓)'
+)
+
+# 名称清洗：丢弃含这些关键词的行（订单页横幅 / 括号组残留 / 服务信息）
+_PREORDER_NAME_NOISE = (
+    '定金', '订金', '尾款', '补款', '预计', '预定', '预售', '全款',
+    '出货', '出荷', '发货', '发售', '到货', '到仓',
+    '送货', '收货', '地址', '凭据', '快照', '开票', '赔付', '运费',
+    '规则', '满足', '服务', '恢复', '进店', '逛逛', '客服', '退款',
+    '88VIP', 'VIP', '更多', '查看', '复制', '收集进度', '系列+', '还差', '假一赔',
+)
+_BRACKET_GROUP_RE = re.compile(r'【[^】]*】')
+# 尾部 ASCII 品牌词（带捕获组，用于长度判断）
+_TRAILING_ASCII_RE = re.compile(r'\s*([A-Za-z][A-Za-z0-9]*)\s*$')
+
+
+def _preorder_platform(raw_text: str) -> Optional[str]:
+    """按页面特征推断下单平台。
+
+    「会员购/bilibili/哔哩」为强信号；「尾款时间」为弱信号（淘宝商家文案
+    也可能出现「付尾款时间」），弱信号仅在全文无淘宝特征时生效。
+    """
+    lowered = raw_text.lower()
+    strong_bili = any(kw.lower() in lowered for kw in _PLATFORM_BILIBILI_HINTS)
+    weak_bili = any(kw.lower() in lowered for kw in _PLATFORM_BILIBILI_WEAK_HINTS)
+    taobao = any(kw in raw_text for kw in _PLATFORM_TAOBAO_HINTS)
+    if strong_bili or (weak_bili and not taobao):
+        return '哔哩哔哩会员购'
+    if taobao:
+        return '淘宝'
+    return None
+
+
+def _preorder_name(lines: list[dict], window: list[dict]) -> tuple[Optional[str], list[str]]:
+    """提取手办名称。
+
+    优先取与商品区首个价格同行的非噪音行（淘宝定金单标题行右侧即定金价），
+    否则取商品窗口内最长非噪音行；再做括号组与尾部品牌词清理。
+    """
+    warnings: list[str] = []
+
+    def is_noise(line: dict) -> bool:
+        text = line['text']
+        if _is_line_noise_for_name(text):
+            return True
+        return any(kw in text for kw in _PREORDER_NAME_NOISE)
+
+    price_line = next(
+        (
+            line for line in window
+            if _PRICE_ANY_RE.search(line['text'])
+            or _PAID_PRICE_RE.search(line['text'])
+            or _DEPOSIT_RE.search(line['text'])
+        ),
+        None,
+    )
+
+    name = None
+    if price_line is not None:
+        same_row = [
+            line for line in window
+            if not is_noise(line) and _is_same_row(line, price_line)
+        ]
+        if same_row:
+            name = ' '.join(
+                line['text'] for line in sorted(same_row, key=lambda l: (l['top'], l['left']))
+            )
+    if name is None:
+        candidates = [
+            line for line in window if not is_noise(line) and len(line['text']) >= 2
+        ]
+        if candidates:
+            name = max(candidates, key=lambda line: len(line['text']))['text']
+
+    if name:
+        name = _BRACKET_GROUP_RE.sub('', name)
+        name = ' '.join(name.split())
+        # 仅去除 ≥5 字符的尾部 ASCII 品牌词（miHoYo/GoodSmile 等），
+        # 保留 DX/EX/SP 等短后缀（可能是商品版本标识）
+        trailing = _TRAILING_ASCII_RE.search(name)
+        if trailing and len(trailing.group(1)) >= 5:
+            name = name[: trailing.start()].rstrip()
+        if name:
+            return name, warnings
+    warnings.append('未识别到手办名称，请手动填写')
+    return None, warnings
+
+
+def _parse_preorder_from_lines(lines: list[dict]) -> Optional[dict]:
+    """从带坐标的 OCR 行解析单个预购定金单；非定金单返回 None。"""
+    raw_text = '\n'.join(line['text'] for line in lines)
+    if not any(hint in raw_text for hint in _PREORDER_HINTS):
+        return None
+
+    warnings: list[str] = []
+
+    # 商品区窗口：店铺行之下、汇总行之上（跳过订单页顶部横幅与底部服务信息）
+    shop_line = next((line for line in lines if _extract_shop_name([line])), None)
+    if shop_line is not None:
+        shop_y = shop_line['y_center']
+    else:
+        # 无店铺行（如纯文本粘贴）：以商品区首个价格为窗口起点，并向上留出约两行
+        # 高度，避免把「价格行上方紧邻的标题行」切出窗口
+        price_anchor = next(
+            (
+                line for line in lines
+                if _PRICE_ANY_RE.search(line['text']) or _PAID_PRICE_RE.search(line['text'])
+            ),
+            None,
+        )
+        shop_y = (
+            price_anchor['y_center'] - max(_line_height(price_anchor) * 2.2, 20.0)
+            if price_anchor is not None
+            else None
+        )
+    summary_y = None
+    for line in lines:
+        if _is_summary_line(line['text']):
+            summary_y = line['y_center']
+            break
+    window = [
+        line for line in lines
+        if (shop_y is None or line['y_center'] > shop_y)
+        and (summary_y is None or line['y_center'] < summary_y)
+    ]
+
+    name, name_warnings = _preorder_name(lines, window)
+    warnings.extend(name_warnings)
+
+    # 定金：实付价/实付款行 → "定金"字样 → 商品区首个价格
+    deposit = None
+    for line in lines:
+        m = _PAID_PRICE_RE.search(line['text'])
+        if m:
+            deposit = _decimal_to_string(m.group(1))
+            break
+    if deposit is None:
+        m = _DEPOSIT_RE.search(raw_text)
+        if m:
+            deposit = _decimal_to_string(m.group(1))
+    if deposit is None:
+        for line in window:
+            m = _PRICE_ANY_RE.search(line['text'])
+            if m:
+                deposit = _decimal_to_string(m.group(1) or m.group(2))
+                break
+    if deposit is None:
+        warnings.append('未识别到定金金额，请手动填写')
+
+    # 尾款（未知可留空）
+    balance = None
+    m = _BALANCE_RE.search(raw_text)
+    if m:
+        balance = _decimal_to_string(m.group(1))
+    else:
+        warnings.append('未识别到尾款金额，可留空后手动补充')
+
+    # 预计补款时间（出货月即补款月）
+    # 顺序：季度优先（「2027年4季度」「2027年Q2」→ quarter，避免被月份正则把季度数字
+    # 误当月份）→ 带年月份（「预计2027年4月出货」→ month）→ 出货字样后时间（「出货时间：2027年4月」）
+    # → 仅月份（「预计12月到货」推断年份）
+    estimated_month = None
+    granularity = 'month'
+    m = _SHIP_QUARTER_RE.search(raw_text)
+    if m:
+        year = m.group(1) or m.group(3) or m.group(5)
+        quarter_raw = m.group(2) or m.group(4) or m.group(6)
+        quarter = int(quarter_raw) if quarter_raw.isdigit() else _CN_QUARTER_MAP[quarter_raw]
+        estimated_month = f'{year}-{(quarter - 1) * 3 + 1:02d}'
+        granularity = 'quarter'
+    else:
+        m = _SHIP_YEAR_MONTH_RE.search(raw_text) or _SHIP_TIME_AFTER_RE.search(raw_text)
+        if m:
+            estimated_month = f'{m.group(1)}-{int(m.group(2)):02d}'
+        else:
+            m = _SHIP_MONTH_ONLY_RE.search(raw_text)
+            if m:
+                today = date.today()
+                month = int(m.group(1))
+                year = today.year if month >= today.month else today.year + 1
+                estimated_month = f'{year}-{month:02d}'
+    if estimated_month is None:
+        warnings.append('未识别到预计补款时间，请手动选择')
+
+    # 订单号 / 店铺
+    order_no = None
+    for line in lines:
+        m = _ORDER_NO_RE.search(line['text'])
+        if m:
+            order_no = m.group(1)
+            break
+    shop_name = _extract_shop_name(lines)
+
+    # 多商品防护：多个不同实付价 → 仅按第一条登记（Decimal 归一化，'60' 与 '60.00' 视为同值）
+    paid_values: set[Decimal] = set()
+    for line in lines:
+        m = _PAID_PRICE_RE.search(line['text'])
+        value = _decimal_to_string(m.group(1)) if m else None
+        if value is not None:
+            paid_values.add(Decimal(value))
+    if len(paid_values) > 1:
+        warnings.append('截图含多个商品实付价，仅按第一条登记，请逐个确认')
+
+    return {
+        'name': name,
+        'platform': _preorder_platform(raw_text),
+        'shop_name': shop_name,
+        'order_no': order_no,
+        'deposit_amount': deposit,
+        'balance_amount': balance,
+        'estimated_month': estimated_month,
+        'time_granularity': granularity,
+        'raw_text': raw_text,
+        'warnings': warnings,
+    }
+
+
+def parse_preorder(ocr_entries: list[dict]) -> Optional[dict]:
+    """从带坐标的 OCR 行解析单个预购定金单；非定金单截图返回 None。"""
+    lines = _normalize_ocr_entries(ocr_entries)
+    if not lines:
+        return None
+    return _parse_preorder_from_lines(lines)
 
 
 def match_metadata(name: Optional[str], all_ips: list, all_characters: list,

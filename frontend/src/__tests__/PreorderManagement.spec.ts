@@ -5,6 +5,11 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PreorderManagement from '@/views/PreorderManagement.vue'
 
+// jsdom 未实现 scrollIntoView：高亮定位的异步调用会抛未处理异常污染套件（既有问题）
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => undefined
+}
+
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
   return {
@@ -44,6 +49,7 @@ vi.mock('@/api/reminder', () => ({
   markPreorderPaid: vi.fn(),
   cancelPreorder: vi.fn(),
   convertPreorderToGoods: vi.fn(),
+  recognizePreorderImage: vi.fn(),
   getNotifications: vi.fn(),
   getUnreadCount: vi.fn(),
   markNotificationsRead: vi.fn(),
@@ -66,8 +72,10 @@ import {
   getPreorderStats,
   listPreorders,
   markPreorderPaid,
+  recognizePreorderImage,
 } from '@/api/reminder'
-import type { Preorder } from '@/api/types'
+import { ElMessage } from 'element-plus'
+import type { Preorder, PreorderOcrResult } from '@/api/types'
 
 const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder => ({
   id,
@@ -264,6 +272,15 @@ const ElAlertStub = defineComponent({
   template: '<div class="el-alert-stub">{{ title }}<slot /></div>',
 })
 
+const ElUploadStub = defineComponent({
+  props: ['showFileList', 'autoUpload', 'accept', 'onChange'],
+  methods: {
+    clearFiles: () => undefined,
+  },
+  template:
+    '<div class="el-upload-stub"><button type="button" class="el-upload-trigger" @click="onChange && onChange({ raw: { name: \'order.jpg\', type: \'image/jpeg\' } })"><slot /></button></div>',
+})
+
 const mountPage = async (query: Record<string, string> = {}) => {
   const router = createRouter({
     history: createMemoryHistory(),
@@ -297,6 +314,7 @@ const mountPage = async (query: Record<string, string> = {}) => {
         'el-tag': ElTagStub,
         'el-empty': ElEmptyStub,
         'el-alert': ElAlertStub,
+        'el-upload': ElUploadStub,
         'el-pagination': true,
         'el-icon': { template: '<i><slot /></i>' },
         Teleport: true,
@@ -592,5 +610,189 @@ describe('PreorderManagement', () => {
     const expired = vm.quarterOptions.find((o) => o.value === '2025-Q4')
     expect(expired).toBeDefined()
     expect(expired?.label).toContain('已过期')
+  })
+
+  it('上传订单截图识别后自动填入表单（月粒度）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    vi.mocked(recognizePreorderImage).mockResolvedValue({
+      preorder: {
+        name: '流萤粘土人手办',
+        platform: '淘宝',
+        shop_name: 'miHoYo旗舰店',
+        order_no: '5127621876609013146',
+        deposit_amount: '60',
+        balance_amount: '309',
+        estimated_month: '2027-04',
+        time_granularity: 'month',
+        raw_text: '...',
+        warnings: [],
+      },
+    })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    // 识别入口默认收起：先展开面板再上传
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      form: {
+        name: string
+        platform: string
+        shop_name: string
+        order_no: string
+        deposit_amount: number
+        balance_amount: number | null
+        time_granularity: 'month' | 'quarter'
+        estimated_month: string
+      }
+    }
+    expect(vm.form.name).toBe('流萤粘土人手办')
+    expect(vm.form.platform).toBe('淘宝')
+    expect(vm.form.shop_name).toBe('miHoYo旗舰店')
+    expect(vm.form.order_no).toBe('5127621876609013146')
+    expect(vm.form.deposit_amount).toBe(60)
+    expect(vm.form.balance_amount).toBe(309)
+    expect(vm.form.time_granularity).toBe('month')
+    expect(vm.form.estimated_month).toBe('2027-04')
+    expect(ElMessage.success).toHaveBeenCalledWith('已自动填入 7 个字段，请核对后保存')
+  })
+
+  it('截图识别为季度粒度时转换为表单季度值，未识别字段保留手填值', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    vi.mocked(recognizePreorderImage).mockResolvedValue({
+      preorder: {
+        name: '流萤粘土人手办',
+        platform: null,
+        shop_name: null,
+        order_no: null,
+        deposit_amount: '60',
+        balance_amount: null,
+        estimated_month: '2027-04',
+        time_granularity: 'quarter',
+        raw_text: '...',
+        warnings: ['未识别到尾款金额，可留空后手动补充'],
+      },
+    })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      form: {
+        name: string
+        platform: string
+        deposit_amount: number
+        balance_amount: number | null
+        time_granularity: 'month' | 'quarter'
+        estimated_month: string
+      }
+      ocrWarnings: string[]
+    }
+    // 未识别字段（尾款）保留手填值
+    vm.form.balance_amount = 123
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    expect(vm.form.name).toBe('流萤粘土人手办')
+    expect(vm.form.deposit_amount).toBe(60)
+    expect(vm.form.balance_amount).toBe(123)
+    expect(vm.form.time_granularity).toBe('quarter')
+    expect(vm.form.estimated_month).toBe('2027-Q2')
+    expect(vm.ocrWarnings).toContain('未识别到尾款金额，可留空后手动补充')
+    expect(wrapper.find('.preorder-ocr-warnings').text()).toContain('识别提示')
+    expect(ElMessage.warning).toHaveBeenCalledWith('已自动填入 3 个字段，请核对下方提示')
+  })
+
+  it('截图识别失败时展示接口错误信息', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    vi.mocked(recognizePreorderImage).mockRejectedValue({
+      response: { data: { detail: '未能识别到定金/尾款信息，请确认是定金订单截图' } },
+    })
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    expect(ElMessage.error).toHaveBeenCalledWith('未能识别到定金/尾款信息，请确认是定金订单截图')
+  })
+
+  it('识别进行中重复上传会提示且不发起第二次请求', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    let resolveOcr: (value: PreorderOcrResult) => void = () => undefined
+    vi.mocked(recognizePreorderImage).mockImplementation(
+      () => new Promise<PreorderOcrResult>((resolve) => { resolveOcr = resolve }),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    expect(recognizePreorderImage).toHaveBeenCalledTimes(1)
+    expect(ElMessage.warning).toHaveBeenCalledWith('正在识别中，请稍候再上传')
+    resolveOcr({
+      preorder: {
+        name: '流萤粘土人手办',
+        deposit_amount: '60',
+        balance_amount: null,
+        estimated_month: '2027-04',
+        time_granularity: 'month',
+        raw_text: '',
+        warnings: [],
+      },
+    })
+    await flushPromises()
+  })
+
+  it('对话框关闭后迟到的识别结果不会污染编辑表单（会话守卫）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    let resolveOcr: (value: PreorderOcrResult) => void = () => undefined
+    vi.mocked(recognizePreorderImage).mockImplementation(
+      () => new Promise<PreorderOcrResult>((resolve) => { resolveOcr = resolve }),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    // 新增对话框 → 展开识别面板 → 触发识别（请求挂起）
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    // 关闭对话框 → 打开编辑 p-1（会话切换）
+    await wrapper.find('.preorder-editor-cancel').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
+    await flushPromises()
+    const vm = wrapper.vm as unknown as {
+      form: { name: string; deposit_amount: number }
+    }
+    expect(vm.form.name).toBe('流萤手办')
+    // 迟到响应返回：不得覆盖编辑表单
+    resolveOcr({
+      preorder: {
+        name: '流萤粘土人手办',
+        deposit_amount: '60',
+        balance_amount: null,
+        estimated_month: '2027-04',
+        time_granularity: 'month',
+        raw_text: '',
+        warnings: [],
+      },
+    })
+    await flushPromises()
+    expect(vm.form.name).toBe('流萤手办')
+    expect(vm.form.deposit_amount).toBe(100)
   })
 })

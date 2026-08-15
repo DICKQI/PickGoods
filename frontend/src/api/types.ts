@@ -549,6 +549,28 @@ export interface OcrGoodsItem {
   warnings: string[]
 }
 
+/** 预购定金单 OCR / 文本解析结果字段 */
+export interface PreorderOcrFields {
+  name?: string | null
+  platform?: string | null
+  shop_name?: string | null
+  order_no?: string | null
+  /** 定金金额（字符串，如 "60"） */
+  deposit_amount?: string | null
+  /** 尾款金额（未知为 null） */
+  balance_amount?: string | null
+  /** 预计补款时间：'YYYY-MM'（季度粒度存季度首月） */
+  estimated_month?: string | null
+  time_granularity?: 'month' | 'quarter'
+  raw_text: string
+  warnings: string[]
+}
+
+/** 预购定金单解析响应体（mode=preorder） */
+export interface PreorderOcrResult {
+  preorder: PreorderOcrFields
+}
+
 /** 图片品类分类建议项 */
 export interface ClassifySuggestion {
   id: number

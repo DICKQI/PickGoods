@@ -17,7 +17,12 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 
 from apps.goods.models import Category, Character, IP
-from .parser import parse_ocr_items, parse_ocr_results, match_metadata
+from .parser import (
+    match_metadata,
+    parse_ocr_items,
+    parse_ocr_results,
+    parse_preorder,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -154,9 +159,11 @@ def recognize(request):
     订单截图 OCR 识别接口。
 
     入参：multipart/form-data，字段名 `image`（图片文件，最大 10MB）。
+          可选 `mode`（'goods' 默认 | 'preorder'）：preorder 模式返回定金单
+          预购字段（定金/尾款/预计补款时间等），不拆分多商品、不做元数据匹配。
           可选 `confidence_threshold`（float，默认 0.0），用于过滤低置信度匹配。
 
-    返回：
+    返回（goods 模式）：
     ```json
     {
         "name": "商品名",
@@ -170,6 +177,24 @@ def recognize(request):
             "ip": {"id": 1, "name": "原神", "confidence": 0.85} | null,
             "characters": [{"id": 5, "name": "甘雨", "confidence": 0.88}],
             "category": {"id": 3, "name": "吧唧", "confidence": 0.76} | null
+        }
+    }
+    ```
+
+    返回（preorder 模式）：
+    ```json
+    {
+        "preorder": {
+            "name": "流萤粘土人手办",
+            "platform": "淘宝",
+            "shop_name": "miHoYo旗舰店",
+            "order_no": "5127621876609013146",
+            "deposit_amount": "60",
+            "balance_amount": "309",
+            "estimated_month": "2027-04",
+            "time_granularity": "month",
+            "raw_text": "全部OCR文本",
+            "warnings": []
         }
     }
     ```
@@ -216,6 +241,16 @@ def recognize(request):
             {'detail': '未能从图片中识别到文字，请确认图片清晰且包含文字'},
             status=status.HTTP_400_BAD_REQUEST,
         )
+
+    # 预购模式：整图解析为单个定金单，不做多商品拆分 / 元数据匹配
+    if request.data.get('mode') == 'preorder':
+        parsed = parse_preorder(ocr_entries)
+        if parsed is None:
+            return Response(
+                {'detail': '未能识别到定金/尾款信息，请确认是定金订单截图'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return Response({'preorder': parsed})
 
     ocr_lines = [entry['text'] for entry in ocr_entries]
     raw_text = '\n'.join(ocr_lines)
