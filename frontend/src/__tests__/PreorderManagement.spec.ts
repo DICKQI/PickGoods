@@ -795,4 +795,45 @@ describe('PreorderManagement', () => {
     expect(vm.form.name).toBe('流萤手办')
     expect(vm.form.deposit_amount).toBe(100)
   })
+
+  it('旧识别请求的 finally 不清空新会话的上传文件（会话守卫）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    let resolveOcr: (value: PreorderOcrResult) => void = () => undefined
+    vi.mocked(recognizePreorderImage).mockImplementation(
+      () => new Promise<PreorderOcrResult>((resolve) => { resolveOcr = resolve }),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    // 新增对话框 → 展开识别面板 → 触发识别（请求挂起）
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    await wrapper.find('.el-upload-trigger').trigger('click')
+    await flushPromises()
+    // 关闭对话框 → 打开编辑 p-1（会话切换）→ 展开识别面板，拿到新会话的 upload 实例
+    await wrapper.find('.preorder-editor-cancel').trigger('click')
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
+    await flushPromises()
+    await wrapper.find('.preorder-ocr-toggle').trigger('click')
+    await flushPromises()
+    const upload = wrapper.findComponent({ ref: 'ocrUploadRef' })
+    expect(upload.exists()).toBe(true)
+    const clearSpy = vi.spyOn(upload.vm, 'clearFiles')
+    // 迟到响应返回：新会话的上传文件列表不得被旧请求的 finally 清空
+    resolveOcr({
+      preorder: {
+        name: '流萤粘土人手办',
+        deposit_amount: '60',
+        balance_amount: null,
+        estimated_month: '2027-04',
+        time_granularity: 'month',
+        raw_text: '',
+        warnings: [],
+      },
+    })
+    await flushPromises()
+    expect(clearSpy).not.toHaveBeenCalled()
+  })
 })

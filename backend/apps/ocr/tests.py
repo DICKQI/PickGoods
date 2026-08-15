@@ -341,6 +341,17 @@ class OcrPreorderParserTestCase(TestCase):
         ]
         self.assertIsNone(parse_preorder(entries))
 
+    def test_parse_preorder_full_payment_not_deposit_order(self):
+        """「全款」预付单不是定金+尾款模式，不进入预购解析"""
+        entries = [
+            preorder_entry('miHoYo旗舰店', 100),
+            preorder_entry('流萤粘土人手办', 200),
+            preorder_entry('全款￥369', 230, x=620),
+            preorder_entry('实付价￥369', 350),
+            preorder_entry('商品总价', 500, x=29),
+        ]
+        self.assertIsNone(parse_preorder(entries))
+
     def test_parse_preorder_missing_balance_and_ship_time(self):
         """尾款 / 出货时间未知：留空并给出警告"""
         entries = [
@@ -410,7 +421,7 @@ class OcrPreorderParserTestCase(TestCase):
         self.assertEqual(result['time_granularity'], 'quarter')
 
     def test_parse_preorder_balance_date_not_mistaken(self):
-        """「尾款：2027年4月15日」是日期不是尾款金额"""
+        """「尾款：2027年4月15日」是日期：不是尾款金额，也不作为预计补款月（需「尾款时间」字样）"""
         entries = [
             preorder_entry('miHoYo旗舰店', 100),
             preorder_entry('流萤粘土人手办miHoYo', 200),
@@ -423,6 +434,7 @@ class OcrPreorderParserTestCase(TestCase):
         result = parse_preorder(entries)
         self.assertIsNotNone(result)
         self.assertIsNone(result['balance_amount'])
+        self.assertIsNone(result['estimated_month'])
         self.assertTrue(any('尾款金额' in w for w in result['warnings']))
 
     def test_parse_preorder_order_no_with_cjk_prefix(self):
@@ -635,6 +647,23 @@ class OcrPreorderApiTestCase(TestCase):
             preorder_entry('￥60', 200, x=620),
             preorder_entry('X1', 250, x=700),
             preorder_entry('商品总价', 400, x=30),
+        ]
+        response = self.client.post(
+            '/api/ocr/recognize/',
+            {'image': self._image_file(), 'mode': 'preorder'},
+            format='multipart',
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    @patch('apps.ocr.views._prepare_and_run_ocr')
+    def test_recognize_mode_preorder_rejects_full_payment_order(self, run_mock):
+        """mode=preorder 但截图是「全款」预付单 → 400"""
+        run_mock.return_value = [
+            preorder_entry('miHoYo旗舰店', 100),
+            preorder_entry('流萤粘土人手办', 200),
+            preorder_entry('全款￥369', 230, x=620),
+            preorder_entry('实付价￥369', 350),
+            preorder_entry('商品总价', 500, x=29),
         ]
         response = self.client.post(
             '/api/ocr/recognize/',

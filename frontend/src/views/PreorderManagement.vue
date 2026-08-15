@@ -844,9 +844,11 @@ const handleOcrFileChange = async (uploadFile: any) => {
   } catch (err: any) {
     if (session === ocrSession) ElMessage.error(ocrDetail(err))
   } finally {
-    // 仅当会话未切换时才复位 loading：旧请求的 finally 不得影响新会话的上传状态
-    if (session === ocrSession) ocrUploading.value = false
-    ocrUploadRef.value?.clearFiles()
+    // 仅当会话未切换时才复位 loading / 清空文件列表：旧请求的 finally 不得影响新会话的上传状态
+    if (session === ocrSession) {
+      ocrUploading.value = false
+      ocrUploadRef.value?.clearFiles()
+    }
   }
 }
 
