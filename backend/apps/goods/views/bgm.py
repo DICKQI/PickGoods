@@ -3,8 +3,11 @@ BGM API 相关的视图函数
 """
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
+
+from core.permissions import IsAdmin
 
 from ..bgm_service import search_ip_characters, search_subjects_list, get_subject_info, get_characters
 from ..models import Character, IP
@@ -90,6 +93,7 @@ def bgm_search_characters(request):
     responses={200: None}  # 响应结构较复杂，暂时省略或后续补充Serializer
 )
 @api_view(['POST'])
+@permission_classes([IsAuthenticated, IsAdmin])
 def bgm_create_characters(request):
     """
     根据角色列表创建IP和角色到数据库
