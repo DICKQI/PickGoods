@@ -219,6 +219,9 @@
         <el-icon v-else><MoreFilled /></el-icon>
       </button>
     </div>
+
+    <!-- 版本号徽标：桌面端所有页面显示；移动端仅登录页显示 -->
+    <span v-if="showAppVersion" class="app-version" title="版本号">v{{ appVersion }}</span>
   </div>
 </template>
 
@@ -248,6 +251,13 @@ const isNativePlatform = ref(Capacitor.isNativePlatform())
 const statusBarHeight = ref(0)
 const navbarRef = ref<HTMLElement | null>(null)
 const showcaseActiveTab = ref<'showcase' | 'barn' | 'stats' | null>(route.path.startsWith('/showcase') ? 'barn' : null)
+// 应用版本号（由 Vite define 注入，来源：package.json 的 version 字段）
+const appVersion = __APP_VERSION__
+// 版本号徽标显示策略：桌面端所有页面显示；移动端仅在登录页显示
+const showAppVersion = computed(() => {
+  if (!isMobile.value) return true
+  return route.path === '/login'
+})
 
 const isCharacterStatsFromShowcase = computed(() => {
   const returnTo = route.query.returnTo
@@ -590,6 +600,25 @@ watch(isMobile, (mobile) => {
 
 .github-icon {
   display: block;
+}
+
+/* 左下角版本号徽标：低调展示，不遮挡点击（pointer-events: none） */
+.app-version {
+  position: fixed;
+  left: 10px;
+  bottom: 8px;
+  z-index: 100;
+  padding: 2px 8px;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--text-muted, #909399);
+  font-family: 'Consolas', 'Monaco', monospace;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(144, 147, 153, 0.24);
+  border-radius: 999px;
+  user-select: none;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .nav-item-hint {
