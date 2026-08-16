@@ -5130,7 +5130,7 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
   "due_this_month": 2,
   "due_this_quarter": 1,
   "converted_count": 3,
-  "total_pending_deposit": "2450.50"
+  "total_pending_balance": "2450.50"
 }
 ```
 
@@ -5138,7 +5138,7 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 - `due_this_month`：本月到期（**月粒度**且 `estimated_month` 为当月）；
 - `due_this_quarter`：本季到期（**季度粒度**且 `estimated_month` 为当季首月）；
 - `converted_count`：已转正数量；
-- `total_pending_deposit`：待补款预购的定金总额（字符串，两位小数）。
+- `total_pending_balance`：待补款预购的尾款总额（字符串，两位小数；尾款未知的条目按 0 计）。
 
 ### 9.4 转正为谷子
 

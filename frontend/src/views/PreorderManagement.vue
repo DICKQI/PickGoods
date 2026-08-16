@@ -1,8 +1,8 @@
 <template>
   <div class="preorder-page">
     <div class="preorder-page-inner">
-      <!-- 玻璃拟态 Hero：眉题 + 标题 + 统计指标 -->
-      <section class="preorder-hero">
+      <!-- 玻璃拟态 Hero：眉题 + 标题 + 统计指标（桌面端） -->
+      <section v-if="!isMobile" class="preorder-hero">
         <div class="preorder-hero-left">
           <span class="preorder-eyebrow">PREORDER &amp; REMINDER</span>
           <h1 class="preorder-title">预购与尾款提醒</h1>
@@ -27,16 +27,16 @@
               <span class="metric-label">已转正</span>
             </div>
             <div class="preorder-metric">
-              <span class="metric-value is-gold">¥{{ formatAmount(stats.total_pending_deposit) }}</span>
-              <span class="metric-label">待补定金</span>
+              <span class="metric-value is-gold">¥{{ formatAmount(stats.total_pending_balance) }}</span>
+              <span class="metric-label">待补尾款</span>
             </div>
           </div>
           <el-button class="preorder-add-btn" type="primary" :icon="Plus" @click="openCreate">新增预购</el-button>
         </div>
       </section>
 
-      <!-- 工具栏：状态筛选 + 搜索 -->
-      <section class="preorder-toolbar">
+      <!-- 工具栏：状态筛选 + 搜索（桌面端） -->
+      <section v-if="!isMobile" class="preorder-toolbar">
         <el-segmented
           v-model="statusFilter"
           :options="STATUS_OPTIONS"
@@ -55,8 +55,8 @@
         </el-input>
       </section>
 
-      <!-- 精装表格面板 -->
-      <section class="preorder-table-panel">
+      <!-- 精装表格面板（桌面端） -->
+      <section v-if="!isMobile" class="preorder-table-panel">
         <el-table
           v-if="!isMobile"
           ref="tableRef"
@@ -88,7 +88,7 @@
             <template #default="{ row }">
               <div class="cell-amount">
                 <span class="deposit">¥{{ formatAmount(row.deposit_amount) }}</span>
-                <span class="cell-muted">尾款 {{ row.balance_amount ? '¥' + formatAmount(row.balance_amount) : '未知' }}</span>
+                <span class="cell-muted">尾款 {{ row.balance_amount !== null && row.balance_amount !== undefined ? '¥' + formatAmount(row.balance_amount) : '未知' }}</span>
               </div>
             </template>
           </el-table-column>
@@ -136,55 +136,79 @@
         </div>
       </section>
 
-      <!-- 移动端卡片列表（保持现状） -->
-      <div v-if="isMobile" class="preorder-mobile-list">
-        <div
-          v-for="item in preorders"
-          :id="'preorder-row-' + item.id"
-          :key="item.id"
-          class="preorder-card"
-          :class="{ 'is-highlight': item.id === highlightId }"
-        >
-          <div class="preorder-card-head">
-            <span class="preorder-card-name">{{ item.name }}</span>
-            <el-tag :type="statusTagType(item.status)" size="small">{{ statusLabel(item.status) }}</el-tag>
-          </div>
-          <div class="preorder-card-meta">
-            <span v-if="item.platform || item.shop_name">{{ [item.platform, item.shop_name].filter(Boolean).join(" · ") }}</span>
-            <span v-if="item.order_no" class="cell-muted">订单 {{ item.order_no }}</span>
-          </div>
-          <div class="preorder-card-meta">
-            <span>定金 ¥{{ formatAmount(item.deposit_amount) }}</span>
-            <span class="cell-muted">尾款 {{ item.balance_amount ? "¥" + formatAmount(item.balance_amount) : "未知" }}</span>
-            <span class="preorder-card-month">{{ formatMonth(item) }}</span>
-          </div>
-          <div v-if="item.notes" class="preorder-card-notes">{{ item.notes }}</div>
-          <div class="preorder-card-actions">
-            <el-button v-if="item.status === 'pending'" size="small" type="primary" plain @click="handleMarkPaid(item)">标记补款</el-button>
-            <el-button v-if="item.status === 'paid'" size="small" type="primary" plain @click="openConvert(item)">转正为谷子</el-button>
-            <el-button v-if="item.status === 'converted' && item.goods_id" size="small" type="primary" plain @click="goToGoods(item)">查看谷子</el-button>
-            <el-button v-if="item.status === 'pending'" size="small" @click="handleCancelPreorder(item)">取消</el-button>
-            <el-button size="small" @click="openEdit(item)">编辑</el-button>
-            <el-button size="small" type="danger" plain @click="handleDelete(item)">删除</el-button>
-          </div>
+      <!-- 移动端：紧凑页头 + 主次统计 + 吸顶筛选 + 无限滚动卡片 -->
+      <section
+        v-if="isMobile"
+        class="preorder-mobile-page"
+        @touchstart="handleTouchStart"
+        @touchmove="handleTouchMove"
+        @touchend="handleTouchEnd"
+      >
+        <div class="preorder-mobile-pull" :style="{ height: pullDistance + 'px' }">
+          <el-icon :class="{ 'is-spinning': isRefreshing }"><Loading /></el-icon>
+          <span>{{ isRefreshing ? '刷新中…' : '下拉刷新' }}</span>
         </div>
-        <el-empty v-if="!loading && !switching && preorders.length === 0" :description="emptyText" :image-size="88" />
-        <div v-if="total > pageSize" class="preorder-mobile-pagination">
-          <el-pagination
-            background
-            layout="prev, pager, next"
-            :total="total"
-            :page-size="pageSize"
-            :current-page="page"
-            @current-change="handlePageChange"
-          />
+
+        <header class="preorder-mobile-header">
+          <h1 class="preorder-mobile-title">预购与尾款提醒</h1>
+        </header>
+
+        <PreorderMobileStats :stats="stats" />
+
+        <PreorderMobileFilterBar
+          v-model:status-filter="statusFilter"
+          v-model:search-keyword="searchKeyword"
+          :total="total"
+          @search="handleSearchInput"
+          @clear="handleSearchClear"
+          @status-change="handleFilterChange"
+        />
+
+        <div v-if="loading" class="preorder-mobile-skeletons">
+          <div v-for="n in 3" :key="n" class="preorder-mobile-skeleton"></div>
         </div>
-      </div>
+
+        <template v-else>
+          <div class="preorder-mobile-list" :class="{ 'is-switching': switching }" @scroll.passive="handleListScroll">
+            <div v-for="item in preorders" :id="'preorder-row-' + item.id" :key="item.id">
+              <PreorderMobileCard
+                :ref="setCardRef(item.id)"
+                :item="item"
+                :highlight="item.id === highlightId"
+                @primary="handleMobilePrimary(item)"
+                @menu="openCardMenu(item)"
+                @swipe-action="handleMobileSwipe(item, $event)"
+                @swipe-start="closeAllSwipe(item.id)"
+              />
+            </div>
+          </div>
+          <el-empty
+            v-if="!switching && preorders.length === 0"
+            :description="emptyText"
+            :image-size="88"
+          >
+            <el-button type="primary" class="preorder-mobile-empty-btn" @click="openCreate">新增预购</el-button>
+          </el-empty>
+          <div ref="sentinelRef" class="preorder-mobile-sentinel" :class="{ 'is-hidden': !hasNext }">
+            <span v-if="hasNext && !loadError">加载中…</span>
+          </div>
+          <div v-if="!hasNext && preorders.length > 0" class="preorder-mobile-end">没有更多了</div>
+          <button v-if="loadError" type="button" class="preorder-mobile-retry" @click="loadMore">
+            加载失败，点击重试
+          </button>
+        </template>
+      </section>
+
+      <!-- 移动端：新增预购 FAB -->
+      <button v-if="isMobile" type="button" class="preorder-mobile-fab" aria-label="新增预购" @click="openCreate">
+        <el-icon><Plus /></el-icon>
+      </button>
 
       <!-- 新增 / 编辑对话框（编辑器式） -->
       <el-dialog
+        v-if="!isMobile"
         v-model="formDialogVisible"
-        :title="editingId ? '编辑预购' : '新增预购'"
+        :title="editingTarget ? '编辑预购' : '新增预购'"
         width="640px"
         class="custom-dialog preorder-editor-dialog"
         :show-close="false"
@@ -196,132 +220,25 @@
             <span class="preorder-editor-icon"><el-icon><ShoppingCart /></el-icon></span>
             <div class="preorder-editor-heading">
               <span class="preorder-editor-kicker">PREORDER FORM</span>
-              <h3>{{ editingId ? '编辑预购' : '新增预购' }}</h3>
-              <p>{{ editingId ? '修改登记信息；改期后旧提醒自动失效并按新月份重新提醒' : '登记外部平台下单的手办定金' }}</p>
+              <h3>{{ editingTarget ? '编辑预购' : '新增预购' }}</h3>
+              <p>{{ editingTarget ? '修改登记信息；改期后旧提醒自动失效并按新月份重新提醒' : '登记外部平台下单的手办定金' }}</p>
             </div>
             <button type="button" class="preorder-editor-close" aria-label="关闭" @click="formDialogVisible = false">
               <el-icon><Close /></el-icon>
             </button>
           </div>
         </template>
-        <el-form ref="formRef" :model="form" :rules="formRules" label-position="top" class="preorder-editor-form">
-          <section class="preorder-editor-section">
-            <div class="preorder-editor-section-title">
-              <h4>基本信息</h4>
-              <p>手办名称与下单渠道</p>
-            </div>
-            <el-form-item label="手办名称" prop="name">
-              <el-input v-model="form.name" placeholder="例如：流萤 1/7 手办" maxlength="200" />
-            </el-form-item>
-            <div class="preorder-editor-grid">
-              <el-form-item label="下单平台">
-                <el-select v-model="form.platform" placeholder="选择或输入平台" filterable allow-create clearable style="width: 100%">
-                  <el-option v-for="p in PLATFORM_OPTIONS" :key="p" :label="p" :value="p" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="店铺名称">
-                <el-input v-model="form.shop_name" placeholder="选填" maxlength="100" />
-              </el-form-item>
-            </div>
-            <el-form-item label="订单号">
-              <el-input v-model="form.order_no" placeholder="选填" maxlength="100" />
-            </el-form-item>
-          </section>
-
-          <section class="preorder-editor-section">
-            <div class="preorder-editor-section-title">
-              <h4>金额与补款</h4>
-              <p>定金必填，尾款未知可留空</p>
-            </div>
-            <div class="preorder-editor-grid">
-              <el-form-item label="定金金额" prop="deposit_amount">
-                <el-input-number v-model="form.deposit_amount" :min="0" :precision="2" :controls="false" placeholder="0.00" style="width: 100%" />
-              </el-form-item>
-              <el-form-item label="尾款金额">
-                <el-input-number v-model="form.balance_amount" :min="0" :precision="2" :controls="false" placeholder="未知可留空" style="width: 100%" />
-              </el-form-item>
-            </div>
-            <div class="preorder-editor-grid">
-              <el-form-item label="时间粒度">
-                <el-segmented
-                  v-model="form.time_granularity"
-                  :options="GRANULARITY_OPTIONS"
-                  class="granularity-select"
-                  @change="handleGranularityChange"
-                />
-              </el-form-item>
-              <el-form-item :label="form.time_granularity === 'quarter' ? '预计补款季度' : '预计补款月份'" prop="estimated_month">
-                <el-date-picker
-                  v-if="form.time_granularity === 'month'"
-                  v-model="form.estimated_month"
-                  type="month"
-                  value-format="YYYY-MM"
-                  placeholder="选择预计补款月份"
-                  style="width: 100%"
-                  :clearable="false"
-                />
-                <!-- EP 2.13 无 type="quarter" 面板，季度用下拉选择（契约值 'YYYY-Qn'） -->
-                <el-select
-                  v-else
-                  v-model="form.estimated_month"
-                  placeholder="选择预计补款季度"
-                  style="width: 100%"
-                  class="quarter-select"
-                >
-                  <el-option v-for="opt in quarterOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-                </el-select>
-              </el-form-item>
-            </div>
-          </section>
-
-          <section class="preorder-editor-section">
-            <div class="preorder-editor-section-title">
-              <h4>备注</h4>
-              <p>选填</p>
-            </div>
-            <el-form-item label="">
-              <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="选填" />
-            </el-form-item>
-          </section>
-
-          <!-- 截图识别（弱化入口：默认收起，置于表单末尾） -->
-          <section class="preorder-editor-section preorder-ocr-section">
-            <button type="button" class="preorder-ocr-toggle" @click="ocrPanelVisible = !ocrPanelVisible">
-              <el-icon><Picture /></el-icon>
-              <span>{{ ocrPanelVisible ? '收起截图识别' : '📸 用订单截图自动填写' }}</span>
-              <el-icon class="preorder-ocr-chevron" :class="{ 'is-open': ocrPanelVisible }"><ArrowDown /></el-icon>
-            </button>
-            <p class="preorder-ocr-hint">上传淘宝 / 哔哩哔哩会员购订单截图，自动填入表单；也可完全不用，手动填写即可</p>
-            <div v-if="ocrPanelVisible" class="preorder-ocr-body">
-              <el-upload
-                ref="ocrUploadRef"
-                class="preorder-ocr-upload"
-                :show-file-list="false"
-                :auto-upload="false"
-                accept="image/*"
-                :on-change="handleOcrFileChange"
-              >
-                <div class="preorder-ocr-trigger" :class="{ 'is-loading': ocrUploading }">
-                  <el-icon v-if="!ocrUploading"><Picture /></el-icon>
-                  <el-icon v-else class="is-spinning"><Loading /></el-icon>
-                  <span>{{ ocrUploading ? '识别中...' : '上传订单截图自动识别' }}</span>
-                </div>
-              </el-upload>
-              <div v-if="ocrWarnings.length" class="preorder-ocr-warnings">
-                <el-icon><Warning /></el-icon>
-                <span>识别提示：{{ ocrWarnings.join('；') }}</span>
-              </div>
-            </div>
-          </section>
-        </el-form>
-        <template #footer>
-          <el-button class="preorder-editor-cancel" @click="formDialogVisible = false">取消</el-button>
-          <el-button class="preorder-editor-submit" type="primary" :loading="formSubmitting" @click="submitForm">保存</el-button>
-        </template>
+        <PreorderEditorForm
+          :visible="formDialogVisible"
+          :editing-target="editingTarget"
+          @close="formDialogVisible = false"
+          @saved="handleEditorSaved"
+        />
       </el-dialog>
 
       <!-- 转正为谷子对话框（同款编辑器式） -->
       <el-dialog
+        v-if="!isMobile"
         v-model="convertDialogVisible"
         title="转正为谷子"
         width="640px"
@@ -343,289 +260,164 @@
             </button>
           </div>
         </template>
-        <div class="convert-tip">
-          <el-icon class="convert-tip-icon"><InfoFilled /></el-icon>
-          <span>金额自动带入（定金 + 尾款），购入日期为补款日；默认保存为草稿，可稍后补充图片等信息。</span>
-        </div>
-        <el-form ref="convertRef" :model="convertForm" :rules="convertRules" label-position="top" class="preorder-editor-form">
-          <section class="preorder-editor-section">
-            <div class="preorder-editor-section-title">
-              <h4>谷子信息</h4>
-              <p>名称默认预填预购名</p>
-            </div>
-            <el-form-item label="谷子名称" prop="name">
-              <el-input v-model="convertForm.name" maxlength="200" />
-            </el-form-item>
-            <div class="preorder-editor-grid">
-              <el-form-item label="IP作品" prop="ip">
-                <el-select v-model="convertForm.ip" placeholder="选择IP" filterable style="width: 100%" @change="handleConvertIpChange">
-                  <el-option v-for="ip in ipOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="品类" prop="category">
-                <el-tree-select
-                  v-model="convertForm.category"
-                  :data="categoryTreeOptions"
-                  :props="{ label: 'name', value: 'id', children: 'children' }"
-                  placeholder="选择品类"
-                  style="width: 100%"
-                  check-strictly
-                  filterable
-                />
-              </el-form-item>
-            </div>
-            <el-form-item label="角色" :required="convertForm.status !== 'draft'">
-              <el-select v-model="convertForm.characters" placeholder="选择角色（可多选）" multiple filterable :disabled="!convertForm.ip" style="width: 100%">
-                <el-option v-for="c in ipCharacters" :key="c.id" :label="c.name" :value="c.id" />
-              </el-select>
-              <div v-if="convertForm.status === 'draft'" class="convert-hint">草稿状态角色可暂不选择</div>
-            </el-form-item>
-          </section>
-
-          <section class="preorder-editor-section">
-            <div class="preorder-editor-section-title">
-              <h4>状态与归属</h4>
-              <p>非草稿状态需至少关联一个角色</p>
-            </div>
-            <el-form-item label="状态">
-              <el-radio-group v-model="convertForm.status">
-                <el-radio-button value="draft">草稿</el-radio-button>
-                <el-radio-button value="in_cabinet">在馆</el-radio-button>
-              </el-radio-group>
-            </el-form-item>
-            <div class="preorder-editor-grid">
-              <el-form-item label="主题">
-                <el-select v-model="convertForm.theme" placeholder="选填" clearable filterable style="width: 100%">
-                  <el-option v-for="theme in themeOptions" :key="theme.id" :label="theme.name" :value="theme.id" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="备注">
-                <el-input v-model="convertForm.notes" type="textarea" :rows="2" placeholder="选填" />
-              </el-form-item>
-            </div>
-          </section>
-        </el-form>
-        <template #footer>
-          <el-button class="preorder-editor-cancel" @click="convertDialogVisible = false">取消</el-button>
-          <el-button class="preorder-editor-submit" type="primary" :loading="convertSubmitting" @click="submitConvert">转正</el-button>
-        </template>
+        <ConvertGoodsForm
+          :visible="convertDialogVisible"
+          :target="convertTarget"
+          @close="convertDialogVisible = false"
+          @converted="handleConverted"
+        />
       </el-dialog>
+
+      <!-- 移动端：新增 / 编辑底部抽屉 -->
+      <BaseBottomSheet
+        v-if="isMobile"
+        v-model="formDialogVisible"
+        :title="editingTarget ? '编辑预购' : '新增预购'"
+        :subtitle="editingTarget ? '修改登记信息；改期后旧提醒自动失效' : '登记外部平台下单的手办定金'"
+      >
+        <PreorderEditorForm
+          :visible="formDialogVisible"
+          :editing-target="editingTarget"
+          @close="formDialogVisible = false"
+          @saved="handleEditorSaved"
+        />
+      </BaseBottomSheet>
+
+      <!-- 移动端：转正为谷子底部抽屉 -->
+      <BaseBottomSheet
+        v-if="isMobile"
+        v-model="convertDialogVisible"
+        title="转正为谷子"
+        subtitle="补款完成后将预购登记转为平台内谷子"
+      >
+        <ConvertGoodsForm
+          :visible="convertDialogVisible"
+          :target="convertTarget"
+          @close="convertDialogVisible = false"
+          @converted="handleConverted"
+        />
+      </BaseBottomSheet>
+
+      <!-- 移动端：卡片 ⋯ 操作菜单 -->
+      <MobileActionSheet
+        v-model="menuSheetVisible"
+        :title="menuItem ? menuItem.name : ''"
+        :actions="menuActions"
+        @select="handleMenuSelect"
+      />
+
+      <!-- 移动端：危险操作底部确认面板 -->
+      <MobileActionSheet
+        v-model="confirmSheetVisible"
+        :title="confirmSheet ? confirmSheet.title : ''"
+        :actions="[]"
+        :message="confirmSheet ? confirmSheet.message : ''"
+        :confirm-text="confirmSheet ? confirmSheet.confirmText : '确认'"
+        :confirm-tone="confirmSheet ? confirmSheet.tone : 'primary'"
+        @confirm="handleConfirmAction"
+      />
     </div>
   </div>
 </template>
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowDown, Close, InfoFilled, Loading, MagicStick, Picture, Plus, Search, ShoppingCart, Warning } from '@element-plus/icons-vue'
+import { Close, Delete, Edit, Loading, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
 import * as reminderApi from '@/api/reminder'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
-import { useMetadataStore } from '@/stores/metadata'
-import type { Category, GoodsStatus, Preorder, PreorderInput, PreorderOcrFields, PreorderStats, PreorderStatus } from '@/api/types'
+import { usePreorderList } from '@/composables/usePreorderList'
+import { usePreorderStats } from '@/composables/usePreorderStats'
+import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
+import MobileActionSheet from '@/components/MobileActionSheet.vue'
+import PreorderEditorForm from '@/components/preorder/PreorderEditorForm.vue'
+import ConvertGoodsForm from '@/components/preorder/ConvertGoodsForm.vue'
+import PreorderMobileStats from '@/components/preorder/PreorderMobileStats.vue'
+import PreorderMobileFilterBar from '@/components/preorder/PreorderMobileFilterBar.vue'
+import PreorderMobileCard from '@/components/preorder/PreorderMobileCard.vue'
+import { PREORDER_STATUS_OPTIONS } from '@/utils/preorder'
+import { formatAmount, formatMonth, isDueNow, preorderStatusLabel } from '@/utils/preorder'
+import type { Preorder, PreorderStatus } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
 const { isMobile } = useResponsiveDevice()
-const metadataStore = useMetadataStore()
 
-const PLATFORM_OPTIONS = ['淘宝', '天猫', '京东', '拼多多', '抖音', 'B站会员购', '代购', '线下展会', '其他']
-
-const GRANULARITY_OPTIONS: Array<{ label: string; value: 'month' | 'quarter' }> = [
-  { label: '按月', value: 'month' },
-  { label: '按季度', value: 'quarter' },
-]
-
-// 季度下拉选项（'YYYY-Qn'）：从打开表单时的当前季度起向后生成未来 3 年（12 个季度），自动滚动免维护
-const QUARTER_OPTIONS_FUTURE_COUNT = 12
-
-// 打开表单时的基准时间，随 openCreate/openEdit 刷新，保证按用户实际使用时间生成
-const nowRef = ref(new Date())
-
-const quarterOptions = computed(() => {
-  const now = nowRef.value
-  const options: Array<{ label: string; value: string }> = []
-  let year = now.getFullYear()
-  let quarter = Math.floor(now.getMonth() / 3) + 1
-  for (let i = 0; i < QUARTER_OPTIONS_FUTURE_COUNT; i++) {
-    options.push({ label: `${year}年 Q${quarter}`, value: `${year}-Q${quarter}` })
-    if (quarter === 4) {
-      quarter = 1
-      year++
-    } else {
-      quarter++
-    }
-  }
-  // 回显超出未来 12 个季度的旧值（编辑历史记录 / OCR 识别远期季度）：
-  // 仅当确实早于当前季度时标注「已过期」，避免远期季度被误标
-  const current = form.estimated_month
-  if (typeof current === 'string' && /^\d{4}-Q[1-4]$/i.test(current) && !options.some((o) => o.value === current)) {
-    const m = current.match(/^(\d{4})-Q([1-4])$/i)!
-    const now = nowRef.value
-    const nowYear = now.getFullYear()
-    const nowQuarter = Math.floor(now.getMonth() / 3) + 1
-    const isPast =
-      Number(m[1]) < nowYear || (Number(m[1]) === nowYear && Number(m[2]) < nowQuarter)
-    options.push({ label: isPast ? `${current}（已过期）` : current, value: current })
-  }
-  return options
-})
-
-const STATUS_OPTIONS: Array<{ label: string; value: PreorderStatus | '' }> = [
-  { label: '全部', value: '' },
-  { label: '待补款', value: 'pending' },
-  { label: '已补款', value: 'paid' },
-  { label: '已转正', value: 'converted' },
-  { label: '已取消', value: 'cancelled' },
-]
-
-const STATUS_LABELS: Record<string, string> = {
-  pending: '待补款',
-  paid: '已补款',
-  converted: '已转正',
-  cancelled: '已取消',
-}
-
-const STATUS_TAG_TYPES: Record<string, 'warning' | 'success' | 'primary' | 'info'> = {
-  pending: 'warning',
-  paid: 'success',
-  converted: 'primary',
-  cancelled: 'info',
-}
-
-const statusLabel = (s: string) => STATUS_LABELS[s] || s
-const statusTagType = (s: string) => STATUS_TAG_TYPES[s] || 'info'
-
-const formatAmount = (value: string | number | null | undefined): string => {
-  if (value === null || value === undefined || value === '') return '0.00'
-  return Number(value).toFixed(2)
-}
+const STATUS_OPTIONS = PREORDER_STATUS_OPTIONS
+const statusLabel = preorderStatusLabel
 
 const sortByMonth = (row: Preorder) => row.estimated_month
 
-// 季度字符串 ↔ 月份转换（表单 '2026-Q3' ↔ 后端存储 '2026-07-01'）
-const quarterToMonth = (q: string): string => {
-  const m = q.match(/^(\d{4})-Q([1-4])$/i)
-  if (!m) return q
-  const month = (Number(m[2]) - 1) * 3 + 1
-  return `${m[1]}-${String(month).padStart(2, '0')}-01`
-}
-
-const monthToQuarter = (ymd: string): string => {
-  const d = new Date(ymd + 'T00:00:00')
-  if (Number.isNaN(d.getTime())) return ''
-  const q = Math.floor(d.getMonth() / 3) + 1
-  return `${d.getFullYear()}-Q${q}`
-}
-
-const toMonthStart = (v: string, granularity: 'month' | 'quarter'): string => {
-  // 提交时统一转为粒度起点日期：月粒度 '2026-08' → '2026-08-01'；季度 '2026-Q3' → '2026-07-01'
-  if (granularity === 'quarter') return quarterToMonth(v)
-  return v + '-01'
-}
-
-const formatMonth = (row: Preorder): string => {
-  if (!row.estimated_month) return '—'
-  const d = new Date(row.estimated_month + 'T00:00:00')
-  if (Number.isNaN(d.getTime())) return row.estimated_month
-  if (row.time_granularity === 'quarter') {
-    const q = Math.floor(d.getMonth() / 3) + 1
-    return `${d.getFullYear()}年 Q${q}`
-  }
-  return d.getFullYear() + '年' + (d.getMonth() + 1) + '月'
-}
-
-// 已到补款期（待补款且预计月份不晚于当月）
-const isDueNow = (row: Preorder): boolean => {
-  if (row.status !== 'pending') return false
-  const month = new Date(row.estimated_month + 'T00:00:00')
-  if (Number.isNaN(month.getTime())) return false
-  const now = new Date()
-  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1)
-  return month <= thisMonth
-}
-
 // ─── 统计概览 ───
-const stats = ref<PreorderStats>({
-  pending_count: 0,
-  due_this_month: 0,
-  due_this_quarter: 0,
-  converted_count: 0,
-  total_pending_deposit: '0.00',
+const { stats, loadStats } = usePreorderStats()
+
+// ─── 列表（桌面分页 / 移动无限滚动共用逻辑） ───
+const list = usePreorderList({
+  isInfinite: () => isMobile.value,
+  initialStatus: (route.query.status as PreorderStatus | '') || '',
 })
-
-const loadStats = async () => {
-  try {
-    const data = await reminderApi.getPreorderStats()
-    stats.value = data
-  } catch {
-    // 统计失败不阻断页面
-  }
-}
-
-// ─── 列表 ───
-const preorders = ref<Preorder[]>([])
-const total = ref(0)
-const page = ref(1)
-const pageSize = 12
-// 首次加载：全遮罩；切换（筛选/搜索/翻页）：仅内容变淡，避免遮罩闪烁
-const loading = ref(false)
-const switching = ref(false)
-const statusFilter = ref<PreorderStatus | ''>((route.query.status as PreorderStatus | '') || '')
-const searchKeyword = ref('')
+const {
+  preorders,
+  total,
+  page,
+  pageSize,
+  loading,
+  switching,
+  hasNext,
+  loadError,
+  statusFilter,
+  searchKeyword,
+  emptyText,
+  loadInitial,
+  loadMore,
+  refresh,
+  handleFilterChange,
+  handleSearchInput,
+  handleSearchClear,
+  loadUntilId,
+} = list
 const highlightId = ref<string | null>(null)
 const tableRef = ref()
 
-const emptyText = computed(() =>
-  statusFilter.value || searchKeyword.value
-    ? '没有找到匹配的预购'
-    : '还没有预购登记，点击「新增预购」登记第一笔手办定金吧'
-)
-
-const loadList = async (mode: 'initial' | 'switch' = 'switch') => {
-  if (mode === 'initial') {
-    loading.value = true
+// ─── 移动端左滑复位：滚动 / 点击非操作区时统一收起所有已展开的滑动操作 ───
+const cardRefs = new Map<string, InstanceType<typeof PreorderMobileCard>>()
+const setCardRef = (id: string) => (el: unknown) => {
+  if (el) {
+    cardRefs.set(id, el as InstanceType<typeof PreorderMobileCard>)
   } else {
-    switching.value = true
-  }
-  try {
-    const data = await reminderApi.listPreorders({
-      page: page.value,
-      page_size: pageSize,
-      status: statusFilter.value || undefined,
-      search: searchKeyword.value || undefined,
-    })
-    preorders.value = data.results
-    total.value = data.count
-  } catch {
-    // 全局错误提示已由 request 拦截器处理
-  } finally {
-    loading.value = false
-    switching.value = false
+    cardRefs.delete(id)
   }
 }
-
-const handleFilterChange = () => {
-  page.value = 1
-  loadList()
+const closeAllSwipe = (exceptId?: string) => {
+  cardRefs.forEach((card, id) => {
+    if (id !== exceptId) card.closeSwipe()
+  })
 }
-
-let searchTimer: ReturnType<typeof setTimeout> | null = null
-const handleSearchInput = () => {
-  if (searchTimer) clearTimeout(searchTimer)
-  searchTimer = setTimeout(() => {
-    page.value = 1
-    loadList()
-  }, 300)
+const handleGlobalTouchStart = (e: Event) => {
+  const target = e.target as HTMLElement | null
+  // 点击已露出的“编辑/删除”按钮时不收起，保证操作可点中
+  if (target?.closest('.preorder-mobile-card__swipe-actions')) return
+  closeAllSwipe()
 }
-
-const handleSearchClear = () => {
-  page.value = 1
-  loadList()
+const handleWindowScroll = () => closeAllSwipe()
+const handleListScroll = () => closeAllSwipe()
+let swipeResetListenersAttached = false
+const syncSwipeResetListeners = (mobile: boolean) => {
+  if (mobile && !swipeResetListenersAttached) {
+    window.addEventListener('scroll', handleWindowScroll, { passive: true })
+    window.addEventListener('touchstart', handleGlobalTouchStart, { passive: true })
+    swipeResetListenersAttached = true
+  } else if (!mobile && swipeResetListenersAttached) {
+    window.removeEventListener('scroll', handleWindowScroll)
+    window.removeEventListener('touchstart', handleGlobalTouchStart)
+    swipeResetListenersAttached = false
+  }
 }
 
 const handlePageChange = (p: number) => {
   page.value = p
-  loadList()
+  loadInitial()
 }
 
 const rowClassName = ({ row }: { row: Preorder }) =>
@@ -677,12 +469,26 @@ const resolveHighlight = async () => {
     applyHighlight(id)
     return
   }
-  // 目标不在当前列表：清空筛选，跨页定位后跳转
+  // 目标不在当前列表：清空筛选后定位
   statusFilter.value = ''
   searchKeyword.value = ''
+  if (isMobile.value) {
+    // 移动端无限滚动：回到第一页后顺序翻页探测
+    page.value = 1
+    await loadInitial()
+    const found = await loadUntilId(id)
+    if (found) {
+      applyHighlight(id)
+    } else {
+      ElMessage.info('未找到对应预购，已回到第一页')
+      clearHighlightQuery()
+    }
+    return
+  }
+  // 桌面分页：按最大页容量探测其所在页码并跳转
   const targetPage = await locatePreorderPage(id)
   page.value = targetPage ?? 1
-  await loadList()
+  await loadInitial()
   if (preorders.value.some((p) => p.id === id)) {
     applyHighlight(id)
   } else {
@@ -699,203 +505,77 @@ watch(
   }
 )
 
-// ─── 新增 / 编辑 ───
+// ─── 新增 / 编辑（表单逻辑在 PreorderEditorForm / usePreorderEditor） ───
 const formDialogVisible = ref(false)
-const editingId = ref<string | null>(null)
-const formSubmitting = ref(false)
-const formRef = ref()
-const form = reactive<PreorderInput>({
-  name: '',
-  platform: '',
-  shop_name: '',
-  order_no: '',
-  deposit_amount: 0,
-  balance_amount: null,
-  time_granularity: 'month',
-  estimated_month: '',
-  notes: '',
-})
-
-const formRules = {
-  name: [{ required: true, message: '请输入手办名称', trigger: 'blur' }],
-  deposit_amount: [{ required: true, message: '请输入定金金额', trigger: 'blur' }],
-  estimated_month: [{ required: true, message: '请选择预计补款时间', trigger: 'change' }],
-}
-
-const resetForm = () => {
-  editingId.value = null
-  form.name = ''
-  form.platform = ''
-  form.shop_name = ''
-  form.order_no = ''
-  form.deposit_amount = 0
-  form.balance_amount = null
-  form.time_granularity = 'month'
-  form.estimated_month = ''
-  form.notes = ''
-  formRef.value?.clearValidate()
-}
+const editingTarget = ref<Preorder | null>(null)
 
 const openCreate = () => {
-  resetForm()
-  nowRef.value = new Date()
-  ocrSession++
-  ocrUploading.value = false
-  ocrWarnings.value = []
-  ocrPanelVisible.value = false
+  editingTarget.value = null
   formDialogVisible.value = true
 }
 
 const openEdit = (item: Preorder) => {
-  nowRef.value = new Date()
-  editingId.value = item.id
-  ocrSession++
-  ocrUploading.value = false
-  ocrWarnings.value = []
-  ocrPanelVisible.value = false
-  form.name = item.name
-  form.platform = item.platform || ''
-  form.shop_name = item.shop_name || ''
-  form.order_no = item.order_no || ''
-  form.deposit_amount = Number(item.deposit_amount)
-  form.balance_amount = item.balance_amount !== null ? Number(item.balance_amount) : null
-  form.time_granularity = item.time_granularity
-  // 按粒度回填表单值：月粒度 '2026-08-01' → '2026-08'；季度粒度 → '2026-Q3'
-  form.estimated_month =
-    item.time_granularity === 'quarter'
-      ? monthToQuarter(item.estimated_month)
-      : (item.estimated_month || '').slice(0, 7)
-  form.notes = item.notes || ''
+  editingTarget.value = item
   formDialogVisible.value = true
-  nextTick(() => formRef.value?.clearValidate())
 }
 
-// 切换时间粒度时清空已选时间，避免残留不匹配的格式
-const handleGranularityChange = () => {
-  form.estimated_month = ''
+const handleEditorSaved = async () => {
+  formDialogVisible.value = false
+  // 移动端无限滚动：回到第一页，保证新增/修改记录立即可见
+  if (isMobile.value) page.value = 1
+  await Promise.all([loadInitial(), loadStats()])
 }
 
-// ─── 智能识别（截图，弱化入口）───
-const ocrUploadRef = ref()
-const ocrUploading = ref(false)
-const ocrPanelVisible = ref(false)
-const ocrWarnings = ref<string[]>([])
-// 识别会话号：openCreate/openEdit 时递增；请求返回时若会话已切换（对话框关闭/换目标），
-// 丢弃迟到结果，避免覆盖编辑中的表单
-let ocrSession = 0
-
-const ocrDetail = (err: any): string => {
-  return err?.response?.data?.detail || err?.message || '识别失败，请重试'
-}
-
-// 识别结果 → 表单：只覆盖识别到的字段，未识别字段保留用户手填值
-const applyOcrResult = (fields: PreorderOcrFields) => {
-  let filled = 0
-  if (fields.name) { form.name = fields.name; filled++ }
-  if (fields.platform) { form.platform = fields.platform; filled++ }
-  if (fields.shop_name) { form.shop_name = fields.shop_name; filled++ }
-  if (fields.order_no) { form.order_no = fields.order_no; filled++ }
-  if (fields.deposit_amount !== null && fields.deposit_amount !== undefined && fields.deposit_amount !== '') {
-    const amount = Number(fields.deposit_amount)
-    if (Number.isFinite(amount)) {
-      form.deposit_amount = amount
-      filled++
-    }
-  }
-  if (fields.balance_amount !== null && fields.balance_amount !== undefined && fields.balance_amount !== '') {
-    const amount = Number(fields.balance_amount)
-    if (Number.isFinite(amount)) {
-      form.balance_amount = amount
-      filled++
-    }
-  }
-  if (fields.estimated_month) {
-    const isQuarter = fields.time_granularity === 'quarter'
-    form.time_granularity = isQuarter ? 'quarter' : 'month'
-    // 后端返回粒度起点 'YYYY-MM'：月粒度截 'YYYY-MM'，季度粒度转表单值 'YYYY-Qn'
-    form.estimated_month = isQuarter
-      ? monthToQuarter(fields.estimated_month + '-01')
-      : fields.estimated_month.slice(0, 7)
-    filled++
-  }
-  ocrWarnings.value = fields.warnings || []
-  formRef.value?.clearValidate()
-  if (ocrWarnings.value.length) {
-    ElMessage.warning(`已自动填入 ${filled} 个字段，请核对下方提示`)
+// ─── 状态流转（桌面 ElMessageBox 确认；移动端复用 perform* + 底部确认面板） ───
+const performMarkPaid = async (item: Preorder) => {
+  const updated = await reminderApi.markPreorderPaid(item.id)
+  ElMessage.success('已标记补款')
+  if (isMobile.value) {
+    // 移动端保持无限滚动列表不坍塌：本地替换该条状态，仅刷新统计
+    preorders.value = preorders.value.map((p) => (p.id === item.id ? updated : p))
+    await loadStats()
   } else {
-    ElMessage.success(`已自动填入 ${filled} 个字段，请核对后保存`)
+    await Promise.all([loadInitial(), loadStats()])
   }
 }
 
-const handleOcrFileChange = async (uploadFile: any) => {
-  const file = uploadFile?.raw as File | undefined
-  if (!file) return
-  if (ocrUploading.value) {
-    ElMessage.warning('正在识别中，请稍候再上传')
-    return
-  }
-  const session = ocrSession
-  ocrUploading.value = true
-  ocrWarnings.value = []
-  try {
-    const result = await reminderApi.recognizePreorderImage(file)
-    if (session !== ocrSession) return // 对话框已关闭或切换目标，丢弃迟到结果
-    applyOcrResult(result.preorder)
-  } catch (err: any) {
-    if (session === ocrSession) ElMessage.error(ocrDetail(err))
-  } finally {
-    // 仅当会话未切换时才复位 loading / 清空文件列表：旧请求的 finally 不得影响新会话的上传状态
-    if (session === ocrSession) {
-      ocrUploading.value = false
-      ocrUploadRef.value?.clearFiles()
-    }
+const performCancelPreorder = async (item: Preorder) => {
+  await reminderApi.cancelPreorder(item.id)
+  ElMessage.success('已取消')
+  if (isMobile.value) {
+    preorders.value = preorders.value.map((p) =>
+      p.id === item.id ? { ...p, status: 'cancelled' as const } : p
+    )
+    await loadStats()
+  } else {
+    await Promise.all([loadInitial(), loadStats()])
   }
 }
 
-const submitForm = async () => {
-  if (ocrUploading.value) {
-    ElMessage.warning('识别进行中，请稍候再保存')
-    return
-  }
-  await formRef.value.validate()
-  formSubmitting.value = true
-  try {
-    const payload: PreorderInput = {
-      ...form,
-      deposit_amount: form.deposit_amount,
-      balance_amount: form.balance_amount ?? null,
-      time_granularity: form.time_granularity,
-      // 统一转为粒度起点日期：后端按粒度归一化存储
-      estimated_month: form.estimated_month
-        ? toMonthStart(form.estimated_month, form.time_granularity ?? 'month')
-        : '',
-    }
-    if (editingId.value) {
-      await reminderApi.updatePreorder(editingId.value, payload)
-      ElMessage.success('预购已更新')
-    } else {
-      await reminderApi.createPreorder(payload)
-      ElMessage.success('预购已登记，到补款期将自动提醒')
-    }
-    formDialogVisible.value = false
-    await Promise.all([loadList(), loadStats()])
-  } catch {
-    // 校验错误由表单 / 拦截器提示
-  } finally {
-    formSubmitting.value = false
+const deleteMessage = (item: Preorder) =>
+  item.goods_id
+    ? '该预购已转正为谷子，删除仅移除预购记录，谷子不受影响。确定删除？'
+    : '确定删除「' + item.name + '」？相关通知将一并删除。'
+
+const performDelete = async (item: Preorder) => {
+  await reminderApi.deletePreorder(item.id)
+  ElMessage.success('已删除')
+  if (isMobile.value) {
+    preorders.value = preorders.value.filter((p) => p.id !== item.id)
+    total.value = Math.max(0, total.value - 1)
+    await loadStats()
+  } else {
+    await Promise.all([loadInitial(), loadStats()])
   }
 }
 
-// ─── 状态流转 ───
 const handleMarkPaid = async (item: Preorder) => {
   await ElMessageBox.confirm(
     '确认将「' + item.name + '」标记为已补款？此操作不可撤销。',
     '标记已补款',
     { type: 'warning', confirmButtonText: '确认补款', cancelButtonText: '再想想' }
   )
-  await reminderApi.markPreorderPaid(item.id)
-  ElMessage.success('已标记补款')
-  await Promise.all([loadList(), loadStats()])
+  await performMarkPaid(item)
 }
 
 const handleCancelPreorder = async (item: Preorder) => {
@@ -904,24 +584,156 @@ const handleCancelPreorder = async (item: Preorder) => {
     '取消预购',
     { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '再想想' }
   )
-  await reminderApi.cancelPreorder(item.id)
-  ElMessage.success('已取消')
-  await Promise.all([loadList(), loadStats()])
+  await performCancelPreorder(item)
 }
 
 const handleDelete = async (item: Preorder) => {
-  const message = item.goods_id
-    ? '该预购已转正为谷子，删除仅移除预购记录，谷子不受影响。确定删除？'
-    : '确定删除「' + item.name + '」？相关通知将一并删除。'
-  await ElMessageBox.confirm(message, '删除预购', {
+  await ElMessageBox.confirm(deleteMessage(item), '删除预购', {
     type: 'warning',
     confirmButtonText: '删除',
     cancelButtonText: '取消',
   })
-  await reminderApi.deletePreorder(item.id)
-  ElMessage.success('已删除')
-  await Promise.all([loadList(), loadStats()])
+  await performDelete(item)
 }
+
+// ─── 移动端：卡片主操作 / ⋯ 菜单 / 左滑快捷操作 ───
+const menuItem = ref<Preorder | null>(null)
+const menuSheetVisible = ref(false)
+
+const menuActions = computed(() => {
+  const item = menuItem.value
+  if (!item) return []
+  const actions: Array<{ key: string; label: string; icon: Component; tone?: 'default' | 'primary' | 'danger' }> = [
+    { key: 'edit', label: '编辑', icon: markRaw(Edit) },
+  ]
+  if (item.status === 'pending') {
+    actions.push({ key: 'cancel', label: '取消预购', icon: markRaw(Close), tone: 'danger' })
+  }
+  actions.push({ key: 'delete', label: '删除', icon: markRaw(Delete), tone: 'danger' })
+  return actions
+})
+
+interface MobileConfirm {
+  title: string
+  message: string
+  confirmText: string
+  tone: 'primary' | 'danger'
+  action: () => Promise<void>
+}
+
+const confirmSheet = ref<MobileConfirm | null>(null)
+const confirmSheetVisible = ref(false)
+
+const requestConfirm = (config: MobileConfirm) => {
+  confirmSheet.value = config
+  confirmSheetVisible.value = true
+}
+
+const handleConfirmAction = async () => {
+  const config = confirmSheet.value
+  if (!config) return
+  await config.action()
+}
+
+const openCardMenu = (item: Preorder) => {
+  menuItem.value = item
+  menuSheetVisible.value = true
+}
+
+const handleMenuSelect = (key: string) => {
+  const item = menuItem.value
+  if (!item) return
+  if (key === 'edit') {
+    openEdit(item)
+  } else if (key === 'cancel') {
+    requestConfirm({
+      title: '取消预购',
+      message: '确认取消「' + item.name + '」的预购登记？相关提醒将失效。',
+      confirmText: '确认取消',
+      tone: 'danger',
+      action: () => performCancelPreorder(item),
+    })
+  } else if (key === 'delete') {
+    requestConfirm({
+      title: '删除预购',
+      message: deleteMessage(item),
+      confirmText: '删除',
+      tone: 'danger',
+      action: () => performDelete(item),
+    })
+  }
+}
+
+const handleMobilePrimary = (item: Preorder) => {
+  if (item.status === 'pending') {
+    requestConfirm({
+      title: '标记已补款',
+      message: '确认将「' + item.name + '」标记为已补款？此操作不可撤销。',
+      confirmText: '确认补款',
+      tone: 'primary',
+      action: () => performMarkPaid(item),
+    })
+  } else if (item.status === 'paid') {
+    openConvert(item)
+  } else if (item.status === 'converted' && item.goods_id) {
+    goToGoods(item)
+  }
+}
+
+const handleMobileSwipe = (item: Preorder, key: 'edit' | 'delete') => {
+  if (key === 'edit') {
+    openEdit(item)
+  } else {
+    requestConfirm({
+      title: '删除预购',
+      message: deleteMessage(item),
+      confirmText: '删除',
+      tone: 'danger',
+      action: () => performDelete(item),
+    })
+  }
+}
+
+// ─── 移动端：下拉刷新 ───
+const {
+  pullDistance,
+  isRefreshing,
+  handleTouchStart,
+  handleTouchMove,
+  handleTouchEnd,
+} = useMobilePullRefresh({
+  enabled: isMobile,
+  onRefresh: async () => {
+    await Promise.all([refresh(), loadStats()])
+  },
+})
+
+// ─── 移动端：无限滚动哨兵 ───
+const sentinelRef = ref<HTMLElement | null>(null)
+let sentinelObserver: IntersectionObserver | null = null
+
+const setupSentinelObserver = () => {
+  sentinelObserver?.disconnect()
+  if (typeof IntersectionObserver === 'undefined' || !sentinelRef.value) return
+  sentinelObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        loadMore()
+      }
+    },
+    { rootMargin: '200px 0px' }
+  )
+  sentinelObserver.observe(sentinelRef.value)
+}
+
+// 设备断点切换：重置到第一页，避免分页 / 合并语义错乱；
+// 并重建哨兵观察，避免断点往返后观察器仍挂在已卸载的旧 DOM 上
+watch(isMobile, (mobile) => {
+  page.value = 1
+  loadInitial()
+  nextTick(setupSentinelObserver)
+  syncSwipeResetListeners(mobile)
+})
 
 const goToGoods = (item: Preorder) => {
   if (item.goods_id) {
@@ -929,113 +741,34 @@ const goToGoods = (item: Preorder) => {
   }
 }
 
-// ─── 转正为谷子 ───
+// ─── 转正为谷子（表单逻辑在 ConvertGoodsForm / usePreorderConvert） ───
 const convertDialogVisible = ref(false)
 const convertTarget = ref<Preorder | null>(null)
-const convertSubmitting = ref(false)
-const convertRef = ref()
-const convertForm = reactive({
-  name: '',
-  ip: undefined as number | undefined,
-  category: undefined as number | undefined,
-  characters: [] as number[],
-  status: 'draft' as GoodsStatus,
-  theme: null as number | null,
-  notes: '',
-})
 
-const convertRules = {
-  name: [{ required: true, message: '请输入谷子名称', trigger: 'blur' }],
-  ip: [{ required: true, message: '请选择IP作品', trigger: 'change' }],
-  category: [{ required: true, message: '请选择品类', trigger: 'change' }],
-}
-
-const ipOptions = computed(() => metadataStore.ips)
-const themeOptions = computed(() => metadataStore.themes)
-const ipCharacters = computed(() =>
-  convertForm.ip ? metadataStore.charactersByIP[convertForm.ip] || [] : []
-)
-
-const buildCategoryTree = (list: Category[]) => {
-  const map = new Map<number, Category & { children: Category[] }>()
-  list.forEach((item) => map.set(item.id, { ...item, children: [] }))
-  const roots: Category[] = []
-  map.forEach((node) => {
-    if (node.parent !== null && map.has(node.parent)) {
-      map.get(node.parent)!.children!.push(node)
-    } else {
-      roots.push(node)
-    }
-  })
-  const sortTree = (nodes: Category[]) => {
-    nodes.sort((a, b) => (a.order ?? 0) - (b.order ?? 0) || a.name.localeCompare(b.name))
-    nodes.forEach((n) => n.children && sortTree(n.children))
-  }
-  sortTree(roots)
-  return roots
-}
-
-const categoryTreeOptions = computed(() => buildCategoryTree(metadataStore.categories))
-
-const openConvert = async (item: Preorder) => {
+const openConvert = (item: Preorder) => {
   convertTarget.value = item
-  convertForm.name = item.name
-  convertForm.ip = undefined
-  convertForm.category = undefined
-  convertForm.characters = []
-  convertForm.status = 'draft'
-  convertForm.theme = null
-  convertForm.notes = item.notes || ''
   convertDialogVisible.value = true
-  nextTick(() => convertRef.value?.clearValidate())
-  // 确保元数据可用
-  await Promise.allSettled([
-    metadataStore.fetchIPs(),
-    metadataStore.fetchCategories(),
-    metadataStore.fetchThemes(),
-  ])
 }
 
-const handleConvertIpChange = () => {
-  convertForm.characters = []
-  if (convertForm.ip) {
-    metadataStore.fetchIPCharacters(convertForm.ip)
-  }
-}
-
-const submitConvert = async () => {
-  await convertRef.value.validate()
-  if (convertForm.status !== 'draft' && convertForm.characters.length === 0) {
-    ElMessage.warning('非草稿状态至少需要关联一个角色')
-    return
-  }
-  if (!convertTarget.value) return
-  convertSubmitting.value = true
-  try {
-    await reminderApi.convertPreorderToGoods(convertTarget.value.id, {
-      name: convertForm.name,
-      ip: convertForm.ip!,
-      category: convertForm.category!,
-      characters: convertForm.characters,
-      theme: convertForm.theme ?? null,
-      status: convertForm.status,
-      notes: convertForm.notes || null,
-    })
-    ElMessage.success('已转正为谷子，可在谷子编辑页补充图片等信息')
-    convertDialogVisible.value = false
-    await Promise.all([loadList(), loadStats()])
-  } catch {
-    // 400 / 409 错误已由拦截器或全局提示展示
-  } finally {
-    convertSubmitting.value = false
-  }
+const handleConverted = async () => {
+  convertDialogVisible.value = false
+  if (isMobile.value) page.value = 1
+  await Promise.all([loadInitial(), loadStats()])
 }
 
 onMounted(async () => {
+  syncSwipeResetListeners(isMobile.value)
   loadStats()
-  await loadList('initial')
+  await loadInitial()
+  nextTick(setupSentinelObserver)
   // 带 highlight 进入页面（通知跳转 / 刷新）：列表加载完成后尝试定位
   if (route.query.highlight) await resolveHighlight()
+})
+
+onUnmounted(() => {
+  syncSwipeResetListeners(false)
+  sentinelObserver?.disconnect()
+  list.clearSearchTimer()
 })
 </script>
 <style scoped>
@@ -1895,119 +1628,166 @@ onMounted(async () => {
   line-height: 1.6;
 }
 
-/* ─── 移动端（保持现状，仅微调间距） ─── */
+/* ─── 移动端：页面骨架 / 卡片列表 / FAB / 刷新指示 ─── */
+.preorder-mobile-page {
+  min-height: calc(100dvh - 64px - env(safe-area-inset-top));
+}
+
+.preorder-mobile-pull {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  color: #9a740b;
+  font-size: 12px;
+  font-weight: 700;
+  transition: height 0.18s ease;
+}
+
+.preorder-mobile-pull .is-spinning {
+  animation: preorder-mobile-spin 1s linear infinite;
+}
+
+@keyframes preorder-mobile-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.preorder-mobile-header {
+  padding: 4px 2px 10px;
+}
+
+.preorder-mobile-title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  color: #2f2a20;
+}
+
 .preorder-mobile-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  margin-top: 10px;
+  transition: opacity 0.2s ease;
 }
 
-.preorder-card {
-  background: #fff;
-  border-radius: 12px;
-  padding: 14px 16px;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-  border: 1px solid #f0f0f0;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+.preorder-mobile-list.is-switching {
+  opacity: 0.55;
+  pointer-events: none;
 }
 
-.preorder-card.is-highlight {
-  border-color: var(--primary-gold);
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.25);
+.preorder-mobile-skeletons {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 10px;
 }
 
-.preorder-card-head {
+.preorder-mobile-skeleton {
+  height: 168px;
+  border-radius: 14px;
+  background: linear-gradient(100deg, #f3f1f7 40%, #faf9fd 50%, #f3f1f7 60%);
+  background-size: 200% 100%;
+  animation: preorder-mobile-shimmer 1.3s ease-in-out infinite;
+}
+
+@keyframes preorder-mobile-shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -20% 0; }
+}
+
+.preorder-mobile-sentinel {
+  min-height: 44px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.preorder-card-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-dark);
-  word-break: break-all;
-}
-
-.preorder-card-meta {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  font-size: 13px;
-  color: #606266;
-  margin-top: 4px;
-}
-
-.preorder-card-month {
-  margin-left: auto;
-  color: var(--primary-gold);
-  font-weight: 600;
-}
-
-.preorder-card-notes {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #909399;
-  word-break: break-all;
-}
-
-.preorder-card-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 12px;
-}
-
-.preorder-mobile-pagination {
-  display: flex;
   justify-content: center;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.preorder-mobile-sentinel.is-hidden {
+  min-height: 12px;
+}
+
+.preorder-mobile-end {
+  padding: 4px 0 12px;
+  text-align: center;
+  color: #c0c4cc;
+  font-size: 12px;
+}
+
+.preorder-mobile-retry {
+  width: 100%;
+  min-height: 44px;
   margin-top: 8px;
+  border: 1px solid rgba(212, 175, 55, 0.28);
+  border-radius: 12px;
+  background: #fffdf6;
+  color: #8a650b;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.preorder-mobile-empty-btn {
+  min-height: 44px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+.preorder-mobile-fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(76px + env(safe-area-inset-bottom));
+  z-index: 950;
+  width: 56px;
+  height: 56px;
+  border: 1px solid rgba(255, 255, 255, 0.68);
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--primary-gold), #b8941f 60%, var(--accent-purple-hover));
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 26px;
+  box-shadow:
+    0 16px 30px rgba(96, 78, 18, 0.28),
+    0 5px 14px rgba(142, 125, 255, 0.25);
+  cursor: pointer;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.preorder-mobile-fab:active {
+  transform: scale(0.94);
+}
+
+@supports not (bottom: calc(76px + env(safe-area-inset-bottom))) {
+  .preorder-mobile-fab {
+    bottom: 76px;
+  }
 }
 
 @media (max-width: 768px) {
   .preorder-page {
-    padding: 16px 12px 90px;
+    padding: 12px 12px calc(90px + env(safe-area-inset-bottom));
   }
+}
 
-  .preorder-hero {
-    padding: 20px 18px;
-    border-radius: 16px;
+@supports not (padding: calc(90px + env(safe-area-inset-bottom))) {
+  @media (max-width: 768px) {
+    .preorder-page {
+      padding: 12px 12px 90px;
+    }
   }
+}
 
-  .preorder-hero-right {
-    align-items: stretch;
-    width: 100%;
-  }
-
-  .preorder-metrics {
-    width: 100%;
-  }
-
-  .preorder-metric {
-    flex: 1;
-    min-width: 0;
-  }
-
-  .preorder-add-btn {
-    width: 100%;
-  }
-
-  .preorder-toolbar {
-    align-items: stretch;
-    padding: 12px;
-  }
-
-  .preorder-search {
-    width: 100%;
-  }
-
-  .preorder-status-filter {
-    width: 100%;
-    overflow-x: auto;
+@media (prefers-reduced-motion: reduce) {
+  .preorder-mobile-skeleton {
+    animation: none;
   }
 }
 </style>

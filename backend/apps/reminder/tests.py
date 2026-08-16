@@ -193,12 +193,14 @@ class PreorderStatsTestCase(TestCase):
         month: str,
         status: str = Preorder.STATUS_PENDING,
         deposit: str = "100.00",
+        balance: str | None = None,
         granularity: str = Preorder.GRANULARITY_MONTH,
     ):
         return Preorder.objects.create(
             user=user,
             name=f"统计-{month}",
             deposit_amount=Decimal(deposit),
+            balance_amount=Decimal(balance) if balance is not None else None,
             estimated_month=datetime.date.fromisoformat(month),
             status=status,
             time_granularity=granularity,
@@ -207,16 +209,17 @@ class PreorderStatsTestCase(TestCase):
     @patch("django.utils.timezone.localdate", return_value=TODAY)
     def test_stats_counts_and_ownership(self, _mocked):
         # 本人：2 待补款（其中 1 条本月到期、1 条本季到期）、1 已转正；他人 1 待补款不计入
-        self._create(self.user, "2026-06-01")  # 月粒度，本月到期
-        self._create(self.user, "2026-09-01", deposit="250.00")  # 普通待补款
+        self._create(self.user, "2026-06-01", balance="100.00")  # 月粒度，本月到期
+        self._create(self.user, "2026-09-01", deposit="250.00", balance="250.00")  # 普通待补款
         self._create(
             self.user,
             "2026-04-01",
             deposit="80.00",
+            balance="80.00",
             granularity=Preorder.GRANULARITY_QUARTER,
         )  # 季度粒度 Q2（季度首月 4 月），本季到期（ORM 直建需传季度首月）
         self._create(self.user, "2026-06-01", status=Preorder.STATUS_CONVERTED)
-        self._create(self.other, "2026-06-01", deposit="999.00")
+        self._create(self.other, "2026-06-01", deposit="999.00", balance="999.00")
 
         response = self.client.get("/api/preorders/stats/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
@@ -227,20 +230,48 @@ class PreorderStatsTestCase(TestCase):
                 "due_this_month": 1,
                 "due_this_quarter": 1,
                 "converted_count": 1,
-                "total_pending_deposit": "430.00",
+                "total_pending_balance": "430.00",
             },
         )
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
-    def test_stats_excludes_non_pending_deposit_and_cancelled(self, _mocked):
-        # 已转正 / 已取消的定金不计入待补款定金总额
-        self._create(self.user, "2026-06-01", status=Preorder.STATUS_CONVERTED, deposit="500.00")
-        self._create(self.user, "2026-06-01", status=Preorder.STATUS_CANCELLED, deposit="300.00")
-        self._create(self.user, "2026-08-01", deposit="120.00")
+    def test_stats_total_pending_balance_uses_balance_amount(self, _mocked):
+        # 定金是已支付金额，不计入“待补”；待补金额应为尾款（60 定金 / 309 尾款 → 309.00）
+        self._create(self.user, "2026-08-01", deposit="60.00", balance="309.00")
+        response = self.client.get("/api/preorders/stats/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data["total_pending_balance"], "309.00")
+
+    @patch("django.utils.timezone.localdate", return_value=TODAY)
+    def test_stats_excludes_non_pending_balance_and_cancelled(self, _mocked):
+        # 已转正 / 已取消的尾款不计入待补尾款总额
+        self._create(
+            self.user,
+            "2026-06-01",
+            status=Preorder.STATUS_CONVERTED,
+            deposit="500.00",
+            balance="500.00",
+        )
+        self._create(
+            self.user,
+            "2026-06-01",
+            status=Preorder.STATUS_CANCELLED,
+            deposit="300.00",
+            balance="300.00",
+        )
+        self._create(self.user, "2026-08-01", deposit="120.00", balance="120.00")
         response = self.client.get("/api/preorders/stats/")
         data = response.json()
         self.assertEqual(data["pending_count"], 1)
-        self.assertEqual(data["total_pending_deposit"], "120.00")
+        self.assertEqual(data["total_pending_balance"], "120.00")
+
+    @patch("django.utils.timezone.localdate", return_value=TODAY)
+    def test_stats_unknown_balance_counts_as_zero(self, _mocked):
+        # 尾款未知的待补款不参与总额（视为 0），不用已付定金代替
+        self._create(self.user, "2026-08-01", deposit="60.00")
+        response = self.client.get("/api/preorders/stats/")
+        self.assertEqual(response.json()["total_pending_balance"], "0.00")
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
     def test_stats_empty_returns_zeros(self, _mocked):
@@ -252,19 +283,19 @@ class PreorderStatsTestCase(TestCase):
                 "due_this_month": 0,
                 "due_this_quarter": 0,
                 "converted_count": 0,
-                "total_pending_deposit": "0.00",
+                "total_pending_balance": "0.00",
             },
         )
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
     def test_stats_admin_sees_all_users(self, _mocked):
-        self._create(self.user, "2026-06-01", deposit="100.00")
-        self._create(self.other, "2026-06-01", deposit="200.00")
+        self._create(self.user, "2026-06-01", deposit="100.00", balance="100.00")
+        self._create(self.other, "2026-06-01", deposit="200.00", balance="200.00")
         response = self.admin_client.get("/api/preorders/stats/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertEqual(data["pending_count"], 2)
-        self.assertEqual(data["total_pending_deposit"], "300.00")
+        self.assertEqual(data["total_pending_balance"], "300.00")
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
     def test_stats_requires_auth(self, _mocked):

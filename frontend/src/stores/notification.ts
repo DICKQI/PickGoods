@@ -10,6 +10,9 @@ export const useNotificationStore = defineStore('notification', () => {
   const unreadCount = ref(0)
   const notifications = ref<NotificationItem[]>([])
   const loading = ref(false)
+  const page = ref(1)
+  const total = ref(0)
+  const hasNext = ref(false)
   let pollTimer: ReturnType<typeof setInterval> | null = null
 
   /** 拉取未读数（后端在 unread-count 接口内执行惰性同步） */
@@ -22,19 +25,38 @@ export const useNotificationStore = defineStore('notification', () => {
     }
   }
 
-  /** 拉取最新通知列表（纯读） */
-  async function fetchNotifications() {
+  /** 拉取最新通知列表（纯读）。reset=true 重置到第一页；reset=false 用于移动端加载更多。返回是否成功。 */
+  async function fetchNotifications(options: { reset?: boolean } = {}): Promise<boolean> {
+    const reset = options.reset ?? true
     loading.value = true
     try {
-      const data = await reminderApi.getNotifications({ page_size: 20 })
-      notifications.value = data.results
+      if (reset) {
+        page.value = 1
+        notifications.value = []
+      }
+      const data = await reminderApi.getNotifications({ page: page.value, page_size: 20 })
+      notifications.value = reset
+        ? data.results
+        : [...notifications.value, ...data.results]
+      total.value = data.count
+      hasNext.value = data.next !== null
       // 顺带刷新未读数，保持徽标一致
       await fetchUnreadCount()
+      return true
     } catch {
       // 静默失败
+      return false
     } finally {
       loading.value = false
     }
+  }
+
+  /** 加载下一页并追加（无下一页或加载中时不发请求）；失败时回退页码，保证可重试同一页 */
+  async function fetchMoreNotifications() {
+    if (!hasNext.value || loading.value) return
+    page.value += 1
+    const success = await fetchNotifications({ reset: false })
+    if (!success) page.value -= 1
   }
 
   /** 批量标记已读并同步本地状态 */
@@ -83,8 +105,12 @@ export const useNotificationStore = defineStore('notification', () => {
     unreadCount,
     notifications,
     loading,
+    page,
+    total,
+    hasNext,
     fetchUnreadCount,
     fetchNotifications,
+    fetchMoreNotifications,
     markRead,
     markAllRead,
     startPolling,

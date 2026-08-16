@@ -16,24 +16,43 @@
               <span class="mobile-action-sheet__title">{{ title }}</span>
             </header>
 
-            <div class="mobile-action-sheet__menu">
-              <button
-                v-for="action in actions"
-                :key="action.key"
-                type="button"
-                class="mobile-action-sheet__item"
-                :class="`mobile-action-sheet__item--${action.tone || 'default'}`"
-                :disabled="action.disabled"
-                @click="selectAction(action.key)"
-              >
-                <span class="mobile-action-sheet__icon">
-                  <el-icon><component :is="resolveIcon(action.icon)" /></el-icon>
-                </span>
-                <span class="mobile-action-sheet__label">{{ action.label }}</span>
-              </button>
-            </div>
+            <template v-if="message">
+              <p class="mobile-action-sheet__message">{{ message }}</p>
+              <div class="mobile-action-sheet__confirm-actions">
+                <button type="button" class="mobile-action-sheet__confirm-btn" @click="close">
+                  {{ cancelText }}
+                </button>
+                <button
+                  type="button"
+                  class="mobile-action-sheet__confirm-btn"
+                  :class="`mobile-action-sheet__confirm-btn--${confirmTone}`"
+                  @click="confirm"
+                >
+                  {{ confirmText }}
+                </button>
+              </div>
+            </template>
 
-            <button type="button" class="mobile-action-sheet__cancel" @click="close">取消</button>
+            <template v-else>
+              <div class="mobile-action-sheet__menu">
+                <button
+                  v-for="action in actions"
+                  :key="action.key"
+                  type="button"
+                  class="mobile-action-sheet__item"
+                  :class="`mobile-action-sheet__item--${action.tone || 'default'}`"
+                  :disabled="action.disabled"
+                  @click="selectAction(action.key)"
+                >
+                  <span class="mobile-action-sheet__icon">
+                    <el-icon><component :is="resolveIcon(action.icon)" /></el-icon>
+                  </span>
+                  <span class="mobile-action-sheet__label">{{ action.label }}</span>
+                </button>
+              </div>
+
+              <button type="button" class="mobile-action-sheet__cancel" @click="close">取消</button>
+            </template>
           </section>
         </Transition>
       </div>
@@ -52,15 +71,30 @@ interface MobileAction {
   disabled?: boolean
 }
 
-defineProps<{
-  modelValue: boolean
-  title: string
-  actions: MobileAction[]
-}>()
+withDefaults(
+  defineProps<{
+    modelValue: boolean
+    title: string
+    actions: MobileAction[]
+    /** 提供时为确认模式：渲染描述文案与「取消 / 确认」双按钮，替代菜单列表 */
+    message?: string
+    confirmText?: string
+    cancelText?: string
+    confirmTone?: 'primary' | 'danger'
+  }>(),
+  {
+    actions: () => [],
+    message: undefined,
+    confirmText: '确认',
+    cancelText: '取消',
+    confirmTone: 'primary',
+  }
+)
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
   select: [key: string]
+  confirm: []
 }>()
 
 const close = () => {
@@ -69,6 +103,11 @@ const close = () => {
 
 const selectAction = (key: string) => {
   emit('select', key)
+  close()
+}
+
+const confirm = () => {
+  emit('confirm')
   close()
 }
 
@@ -199,6 +238,56 @@ const resolveIcon = (icon: Component) => toRaw(icon)
 
 .mobile-action-sheet__label {
   min-width: 0;
+}
+
+.mobile-action-sheet__message {
+  margin: 0;
+  padding: 2px 10px 14px;
+  color: #56515f;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  text-align: center;
+  word-break: break-all;
+}
+
+.mobile-action-sheet__confirm-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.mobile-action-sheet__confirm-btn {
+  min-height: 50px;
+  border-radius: 12px;
+  border: 1px solid rgba(229, 229, 231, 0.92);
+  background: var(--secondary-gray);
+  color: var(--text-regular);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  font-weight: 800;
+  transition: transform var(--transition-fast), background var(--transition-fast), border-color var(--transition-fast);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.mobile-action-sheet__confirm-btn:active {
+  transform: scale(0.98);
+}
+
+.mobile-action-sheet__confirm-btn--primary {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple-dark));
+  box-shadow: var(--shadow-purple);
+}
+
+.mobile-action-sheet__confirm-btn--danger {
+  color: #fff;
+  border-color: transparent;
+  background: linear-gradient(135deg, #f56c6c, #e5484d);
+  box-shadow: 0 8px 20px -8px rgba(245, 108, 108, 0.55);
 }
 
 .mobile-action-sheet__cancel {

@@ -154,3 +154,5 @@ AGENTS.md
 .reasonix/desktop-topic-titles.json
 .reasonix/desktop-topic-title-sources.json
 .zcode/
+docs/superpowers/
+dsh-usage/

@@ -1,5 +1,7 @@
 <template>
+  <!-- 桌面端：popover 面板（保持不变） -->
   <el-popover
+    v-if="!isMobile"
     placement="bottom-end"
     :width="360"
     trigger="click"
@@ -69,19 +71,96 @@
       </div>
     </div>
   </el-popover>
+
+  <!-- 移动端：铃铛 + 底部抽屉 -->
+  <template v-else>
+    <el-button text class="notification-btn" aria-label="通知中心" :title="unreadText" @click="openSheet">
+      <el-badge :value="store.unreadCount" :hidden="store.unreadCount === 0" :max="99" class="notification-badge">
+        <el-icon class="notification-icon"><Bell /></el-icon>
+      </el-badge>
+    </el-button>
+
+    <BaseBottomSheet v-model="sheetVisible" title="通知中心">
+      <template #header-extra>
+        <el-button
+          v-if="store.unreadCount > 0"
+          text
+          size="small"
+          type="primary"
+          class="notification-read-all notification-read-all--mobile"
+          @click="handleReadAll"
+        >
+          全部已读
+        </el-button>
+      </template>
+
+      <!-- 预购管理主入口：预购=提醒工作流，任何通知状态都可达 -->
+      <button type="button" class="notification-preorder-entry" @click="goToPreorderManagement">
+        <span class="notification-preorder-entry__icon">
+          <el-icon><ShoppingCart /></el-icon>
+        </span>
+        <span class="notification-preorder-entry__copy">
+          <strong>管理预购</strong>
+          <small>登记定金 · 补款提醒 · 一键转正</small>
+        </span>
+        <el-icon class="notification-preorder-entry__arrow"><ArrowRight /></el-icon>
+      </button>
+
+      <div v-if="store.loading && !store.notifications.length" class="notification-empty">
+        <el-icon class="is-loading"><Loading /></el-icon>
+        <span>加载中…</span>
+      </div>
+
+      <div v-else-if="!store.notifications.length" class="notification-empty">
+        <el-icon><BellFilled /></el-icon>
+        <span>暂无通知</span>
+      </div>
+
+      <div v-else class="notification-list notification-list--mobile">
+        <div
+          v-for="item in store.notifications"
+          :key="item.id"
+          class="notification-item notification-item--mobile"
+          :class="{ 'is-unread': !item.is_read, 'is-stale': item.is_stale }"
+          role="button"
+          tabindex="0"
+          @click="handleItemClick(item)"
+          @keydown.enter="handleItemClick(item)"
+        >
+          <span v-if="!item.is_read && !item.is_stale" class="notification-dot" aria-hidden="true"></span>
+          <span v-if="item.is_stale" class="notification-stale-tag">已过期</span>
+          <div class="notification-item-body">
+            <div class="notification-item-title">{{ item.title }}</div>
+            <div class="notification-item-message">{{ item.message }}</div>
+            <div class="notification-item-meta">
+              <span class="notification-item-type">{{ typeLabel(item.type) }}</span>
+              <span class="notification-item-time">{{ relativeTime(item.created_at) }}</span>
+            </div>
+          </div>
+        </div>
+        <div ref="sentinelRef" class="notification-load-more">
+          <span v-if="store.hasNext">{{ store.loading ? '加载中…' : '上拉加载更多' }}</span>
+          <span v-else-if="store.notifications.length">没有更多了</span>
+        </div>
+      </div>
+    </BaseBottomSheet>
+  </template>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, nextTick, onUnmounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { Bell, BellFilled, Loading } from '@element-plus/icons-vue'
+import { Bell, BellFilled, Loading, ArrowRight, ShoppingCart } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { useNotificationStore } from '@/stores/notification'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
 import { NOTIFICATION_TYPE_LABELS } from '@/api/reminder'
 import type { NotificationItem } from '@/api/types'
 
 const router = useRouter()
 const store = useNotificationStore()
+const { isMobile } = useResponsiveDevice()
 
 const unreadText = computed(() =>
   store.unreadCount > 0 ? `有 ${store.unreadCount} 条未读通知` : '通知中心'
@@ -110,6 +189,7 @@ const handleItemClick = (item: NotificationItem) => {
     store.markRead([item.id])
   }
   if (item.preorder_id) {
+    sheetVisible.value = false
     router.push({ path: '/preorders', query: { highlight: item.preorder_id } })
   }
 }
@@ -120,8 +200,46 @@ const handleReadAll = () => {
 }
 
 const goToAll = () => {
+  sheetVisible.value = false
   router.push({ path: '/preorders', query: { status: 'pending' } })
 }
+
+const goToPreorderManagement = () => {
+  sheetVisible.value = false
+  router.push('/preorders')
+}
+
+// ─── 移动端：底部抽屉 + 无限滚动 ───
+const sheetVisible = ref(false)
+const sentinelRef = ref<HTMLElement | null>(null)
+let sentinelObserver: IntersectionObserver | null = null
+
+const openSheet = () => {
+  sheetVisible.value = true
+  store.fetchNotifications()
+}
+
+const setupSentinel = () => {
+  sentinelObserver?.disconnect()
+  if (typeof IntersectionObserver === 'undefined' || !sentinelRef.value) return
+  sentinelObserver = new IntersectionObserver(
+    (entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        store.fetchMoreNotifications()
+      }
+    },
+    { rootMargin: '200px 0px' }
+  )
+  sentinelObserver.observe(sentinelRef.value)
+}
+
+watch([sheetVisible, () => store.notifications.length, () => store.hasNext], () => {
+  if (sheetVisible.value) nextTick(setupSentinel)
+})
+
+onUnmounted(() => {
+  sentinelObserver?.disconnect()
+})
 </script>
 
 <style scoped>
@@ -277,5 +395,107 @@ const goToAll = () => {
   padding-top: 8px;
   display: flex;
   justify-content: center;
+}
+
+/* ─── 移动端抽屉 ─── */
+.notification-read-all--mobile {
+  min-height: 44px;
+  padding: 0 8px;
+  white-space: nowrap;
+}
+
+.notification-list--mobile {
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+}
+
+.notification-item--mobile {
+  min-height: 64px;
+  padding: 12px 4px;
+  border-bottom: 1px solid #f5f5f7;
+}
+
+.notification-item--mobile:last-child {
+  border-bottom: none;
+}
+
+.notification-item--mobile:active {
+  background-color: #f5f5f7;
+}
+
+.notification-load-more {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+/* 移动端：预购管理主入口卡片（始终位于通知列表之前） */
+.notification-preorder-entry {
+  width: 100%;
+  min-height: 60px;
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% 0%, rgba(212, 175, 55, 0.18), transparent 46%),
+    linear-gradient(135deg, #fffdf6, #f8f5ff);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.notification-preorder-entry:active {
+  transform: scale(0.98);
+  box-shadow: 0 8px 18px -10px rgba(212, 175, 55, 0.4);
+}
+
+.notification-preorder-entry__icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.2), rgba(162, 155, 254, 0.18));
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  color: #9a740b;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.notification-preorder-entry__copy {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notification-preorder-entry__copy strong {
+  font-size: 15px;
+  font-weight: 800;
+  color: #2f2a20;
+  line-height: 1.3;
+}
+
+.notification-preorder-entry__copy small {
+  font-size: 12px;
+  color: #8a6c14;
+  line-height: 1.4;
+}
+
+.notification-preorder-entry__arrow {
+  flex-shrink: 0;
+  color: #c0b388;
+  font-size: 16px;
 }
 </style>

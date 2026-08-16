@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from django.db import models, transaction
+from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters
@@ -81,7 +82,8 @@ class PreorderViewSet(viewsets.ModelViewSet):
 
         权限语义与列表一致：普通用户统计自己的预购，管理员统计全部。
         - due_this_month：按月粒度的预购中，预计补款月份为当月；
-        - due_this_quarter：按季度粒度的预购中，预计补款季度为当季。
+        - due_this_quarter：按季度粒度的预购中，预计补款季度为当季；
+        - total_pending_balance：待补款预购的尾款总额（尾款未知按 0 计）。
         """
         qs = self.get_queryset()
         today = timezone.localdate()
@@ -110,8 +112,13 @@ class PreorderViewSet(viewsets.ModelViewSet):
             converted_count=models.Count(
                 "id", filter=models.Q(status=Preorder.STATUS_CONVERTED)
             ),
-            total_pending_deposit=models.Sum(
-                "deposit_amount", filter=models.Q(status=Preorder.STATUS_PENDING)
+            total_pending_balance=models.Sum(
+                Coalesce(
+                    "balance_amount",
+                    0,
+                    output_field=models.DecimalField(max_digits=10, decimal_places=2),
+                ),
+                filter=models.Q(status=Preorder.STATUS_PENDING),
             ),
         )
         return Response(
@@ -120,9 +127,9 @@ class PreorderViewSet(viewsets.ModelViewSet):
                 "due_this_month": aggregated["due_this_month"],
                 "due_this_quarter": aggregated["due_this_quarter"],
                 "converted_count": aggregated["converted_count"],
-                "total_pending_deposit": (
-                    f"{aggregated['total_pending_deposit']:.2f}"
-                    if aggregated["total_pending_deposit"] is not None
+                "total_pending_balance": (
+                    f"{aggregated['total_pending_balance']:.2f}"
+                    if aggregated["total_pending_balance"] is not None
                     else "0.00"
                 ),
             }

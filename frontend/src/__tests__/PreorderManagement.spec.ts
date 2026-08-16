@@ -4,6 +4,8 @@ import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PreorderManagement from '@/views/PreorderManagement.vue'
+import PreorderEditorForm from '@/components/preorder/PreorderEditorForm.vue'
+import ConvertGoodsForm from '@/components/preorder/ConvertGoodsForm.vue'
 
 // jsdom 未实现 scrollIntoView：高亮定位的异步调用会抛未处理异常污染套件（既有问题）
 if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
@@ -41,7 +43,7 @@ vi.mock('@/api/reminder', () => ({
     due_this_month: 0,
     due_this_quarter: 0,
     converted_count: 0,
-    total_pending_deposit: '0.00',
+    total_pending_balance: '0.00',
   }),
   createPreorder: vi.fn(),
   updatePreorder: vi.fn(),
@@ -324,6 +326,12 @@ const mountPage = async (query: Record<string, string> = {}) => {
   return { wrapper, router }
 }
 
+// 表单逻辑已抽取到子组件：通过 defineExpose 的 editor/convert 访问状态
+const getEditor = (wrapper: ReturnType<typeof mount>) =>
+  (wrapper.findComponent(PreorderEditorForm).vm as unknown as { editor: any }).editor
+const getConvert = (wrapper: ReturnType<typeof mount>) =>
+  (wrapper.findComponent(ConvertGoodsForm).vm as unknown as { convert: any }).convert
+
 describe('PreorderManagement', () => {
   beforeEach(() => {
     vi.clearAllMocks()
@@ -382,14 +390,14 @@ describe('PreorderManagement', () => {
     })
   })
 
-  it('渲染统计概览指标（待补款/本月到期/已转正/待补定金）', async () => {
+  it('渲染统计概览指标（待补款/本月到期/已转正/待补尾款）', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([]))
     vi.mocked(getPreorderStats).mockResolvedValue({
       pending_count: 8,
       due_this_month: 2,
       due_this_quarter: 1,
       converted_count: 3,
-      total_pending_deposit: '2450.50',
+      total_pending_balance: '2450.50',
     })
     const { wrapper } = await mountPage()
     await flushPromises()
@@ -398,7 +406,7 @@ describe('PreorderManagement', () => {
     expect(text).toContain('本月到期')
     expect(text).toContain('本季到期')
     expect(text).toContain('已转正')
-    expect(text).toContain('待补定金')
+    expect(text).toContain('待补尾款')
     expect(text).toContain('¥2450.50')
     expect(getPreorderStats).toHaveBeenCalledTimes(1)
   })
@@ -412,15 +420,13 @@ describe('PreorderManagement', () => {
     await addButton.trigger('click')
     await flushPromises()
     expect(wrapper.find('.el-dialog-stub').exists()).toBe(true)
-    // 通过 vm 填写表单（避免与 element-plus 控件内部交互耦合）
-    const vm = wrapper.vm as unknown as {
-      form: { name: string; deposit_amount: number; balance_amount: number | null; estimated_month: string; platform: string }
-    }
-    vm.form.name = '花火手办'
-    vm.form.deposit_amount = 200
-    vm.form.balance_amount = 50
-    vm.form.estimated_month = '2026-09'
-    vm.form.platform = '淘宝'
+    // 通过表单子组件暴露的编辑器状态填写（避免与 element-plus 控件内部交互耦合）
+    const editor = getEditor(wrapper)
+    editor.form.name = '花火手办'
+    editor.form.deposit_amount = 200
+    editor.form.balance_amount = 50
+    editor.form.estimated_month = '2026-09'
+    editor.form.platform = '淘宝'
     const saveButton = wrapper.findAll('button').find((w) => w.text() === '保存')!
     await saveButton.trigger('click')
     await flushPromises()
@@ -467,14 +473,12 @@ describe('PreorderManagement', () => {
     await flushPromises()
     expect(wrapper.find('.el-dialog-stub').exists()).toBe(true)
     // 名称预填自预购
-    const convertVm = wrapper.vm as unknown as {
-      convertForm: { name: string; ip?: number; category?: number; characters: number[]; status: string }
-    }
-    expect(convertVm.convertForm.name).toBe('流萤手办')
+    const convert = getConvert(wrapper)
+    expect(convert.convertForm.name).toBe('流萤手办')
     // 补选 IP / 品类后提交（草稿模式角色可空）
-    convertVm.convertForm.ip = 1
-    convertVm.convertForm.category = 21
-    convertVm.convertForm.characters = []
+    convert.convertForm.ip = 1
+    convert.convertForm.category = 21
+    convert.convertForm.characters = []
     const submitButton = wrapper.findAll('button').find((w) => w.text() === '转正')!
     await submitButton.trigger('click')
     await flushPromises()
@@ -549,13 +553,11 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
     await flushPromises()
-    const vm = wrapper.vm as unknown as {
-      form: { name: string; deposit_amount: number; time_granularity: 'month' | 'quarter'; estimated_month: string }
-    }
-    vm.form.name = '季度手办'
-    vm.form.deposit_amount = 300
-    vm.form.time_granularity = 'quarter'
-    vm.form.estimated_month = '2026-Q3'
+    const editor = getEditor(wrapper)
+    editor.form.name = '季度手办'
+    editor.form.deposit_amount = 300
+    editor.form.time_granularity = 'quarter'
+    editor.form.estimated_month = '2026-Q3'
     await wrapper.findAll('button').find((w) => w.text() === '保存')!.trigger('click')
     await flushPromises()
     const payload = vi.mocked(createPreorder).mock.calls[0]![0]
@@ -572,25 +574,26 @@ describe('PreorderManagement', () => {
     const editButton = wrapper.findAll('button').find((w) => w.text() === '编辑')!
     await editButton.trigger('click')
     await flushPromises()
-    const vm = wrapper.vm as unknown as { form: { time_granularity: string; estimated_month: string } }
-    expect(vm.form.time_granularity).toBe('quarter')
-    expect(vm.form.estimated_month).toBe('2026-Q3')
+    const editor = getEditor(wrapper)
+    expect(editor.form.time_granularity).toBe('quarter')
+    expect(editor.form.estimated_month).toBe('2026-Q3')
   })
 
   it('季度下拉从当前季度起向后生成未来 3 年共 12 项且格式为 YYYY-Qn（契约）', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([]))
     const { wrapper } = await mountPage()
     await flushPromises()
-    const vm = wrapper.vm as unknown as {
-      quarterOptions: Array<{ label: string; value: string }>
-    }
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+    const editor = getEditor(wrapper)
+    const options = editor.quarterOptions.value as Array<{ label: string; value: string }>
     // 从当前季度起向后 12 个季度（未来 3 年），首项即当前季度，不含已过期季度
     const now = new Date()
     const currentQuarter = `Q${Math.floor(now.getMonth() / 3) + 1}`
-    expect(vm.quarterOptions).toHaveLength(12)
-    expect(vm.quarterOptions[0]?.value).toBe(`${now.getFullYear()}-${currentQuarter}`)
-    expect(vm.quarterOptions[0]?.label).toBe(`${now.getFullYear()}年 ${currentQuarter}`)
-    vm.quarterOptions.forEach((o) => expect(o.value).toMatch(/^\d{4}-Q[1-4]$/))
+    expect(options).toHaveLength(12)
+    expect(options[0]?.value).toBe(`${now.getFullYear()}-${currentQuarter}`)
+    expect(options[0]?.label).toBe(`${now.getFullYear()}年 ${currentQuarter}`)
+    options.forEach((o) => expect(o.value).toMatch(/^\d{4}-Q[1-4]$/))
   })
 
   it('编辑已过期季度的记录时回填原季度并在下拉中标注（已过期）', async () => {
@@ -601,13 +604,12 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
     await flushPromises()
-    const vm = wrapper.vm as unknown as {
-      form: { time_granularity: string; estimated_month: string }
-      quarterOptions: Array<{ label: string; value: string }>
-    }
-    expect(vm.form.time_granularity).toBe('quarter')
-    expect(vm.form.estimated_month).toBe('2025-Q4')
-    const expired = vm.quarterOptions.find((o) => o.value === '2025-Q4')
+    const editor = getEditor(wrapper)
+    expect(editor.form.time_granularity).toBe('quarter')
+    expect(editor.form.estimated_month).toBe('2025-Q4')
+    const expired = (editor.quarterOptions.value as Array<{ label: string; value: string }>).find(
+      (o) => o.value === '2025-Q4'
+    )
     expect(expired).toBeDefined()
     expect(expired?.label).toContain('已过期')
   })
@@ -637,26 +639,15 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.find('.el-upload-trigger').trigger('click')
     await flushPromises()
-    const vm = wrapper.vm as unknown as {
-      form: {
-        name: string
-        platform: string
-        shop_name: string
-        order_no: string
-        deposit_amount: number
-        balance_amount: number | null
-        time_granularity: 'month' | 'quarter'
-        estimated_month: string
-      }
-    }
-    expect(vm.form.name).toBe('流萤粘土人手办')
-    expect(vm.form.platform).toBe('淘宝')
-    expect(vm.form.shop_name).toBe('miHoYo旗舰店')
-    expect(vm.form.order_no).toBe('5127621876609013146')
-    expect(vm.form.deposit_amount).toBe(60)
-    expect(vm.form.balance_amount).toBe(309)
-    expect(vm.form.time_granularity).toBe('month')
-    expect(vm.form.estimated_month).toBe('2027-04')
+    const editor = getEditor(wrapper)
+    expect(editor.form.name).toBe('流萤粘土人手办')
+    expect(editor.form.platform).toBe('淘宝')
+    expect(editor.form.shop_name).toBe('miHoYo旗舰店')
+    expect(editor.form.order_no).toBe('5127621876609013146')
+    expect(editor.form.deposit_amount).toBe(60)
+    expect(editor.form.balance_amount).toBe(309)
+    expect(editor.form.time_granularity).toBe('month')
+    expect(editor.form.estimated_month).toBe('2027-04')
     expect(ElMessage.success).toHaveBeenCalledWith('已自动填入 7 个字段，请核对后保存')
   })
 
@@ -680,29 +671,19 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
     await flushPromises()
-    const vm = wrapper.vm as unknown as {
-      form: {
-        name: string
-        platform: string
-        deposit_amount: number
-        balance_amount: number | null
-        time_granularity: 'month' | 'quarter'
-        estimated_month: string
-      }
-      ocrWarnings: string[]
-    }
+    const editor = getEditor(wrapper)
     // 未识别字段（尾款）保留手填值
-    vm.form.balance_amount = 123
+    editor.form.balance_amount = 123
     await wrapper.find('.preorder-ocr-toggle').trigger('click')
     await flushPromises()
     await wrapper.find('.el-upload-trigger').trigger('click')
     await flushPromises()
-    expect(vm.form.name).toBe('流萤粘土人手办')
-    expect(vm.form.deposit_amount).toBe(60)
-    expect(vm.form.balance_amount).toBe(123)
-    expect(vm.form.time_granularity).toBe('quarter')
-    expect(vm.form.estimated_month).toBe('2027-Q2')
-    expect(vm.ocrWarnings).toContain('未识别到尾款金额，可留空后手动补充')
+    expect(editor.form.name).toBe('流萤粘土人手办')
+    expect(editor.form.deposit_amount).toBe(60)
+    expect(editor.form.balance_amount).toBe(123)
+    expect(editor.form.time_granularity).toBe('quarter')
+    expect(editor.form.estimated_month).toBe('2027-Q2')
+    expect(editor.ocrWarnings.value).toContain('未识别到尾款金额，可留空后手动补充')
     expect(wrapper.find('.preorder-ocr-warnings').text()).toContain('识别提示')
     expect(ElMessage.warning).toHaveBeenCalledWith('已自动填入 3 个字段，请核对下方提示')
   })
@@ -775,10 +756,8 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
     await flushPromises()
-    const vm = wrapper.vm as unknown as {
-      form: { name: string; deposit_amount: number }
-    }
-    expect(vm.form.name).toBe('流萤手办')
+    const editor = getEditor(wrapper)
+    expect(editor.form.name).toBe('流萤手办')
     // 迟到响应返回：不得覆盖编辑表单
     resolveOcr({
       preorder: {
@@ -792,8 +771,8 @@ describe('PreorderManagement', () => {
       },
     })
     await flushPromises()
-    expect(vm.form.name).toBe('流萤手办')
-    expect(vm.form.deposit_amount).toBe(100)
+    expect(editor.form.name).toBe('流萤手办')
+    expect(editor.form.deposit_amount).toBe(100)
   })
 
   it('旧识别请求的 finally 不清空新会话的上传文件（会话守卫）', async () => {
@@ -818,9 +797,9 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.find('.preorder-ocr-toggle').trigger('click')
     await flushPromises()
-    const upload = wrapper.findComponent({ ref: 'ocrUploadRef' })
-    expect(upload.exists()).toBe(true)
-    const clearSpy = vi.spyOn(upload.vm, 'clearFiles')
+    const upload = getEditor(wrapper).ocrUploadRef.value
+    expect(upload).toBeTruthy()
+    const clearSpy = vi.spyOn(upload, 'clearFiles')
     // 迟到响应返回：新会话的上传文件列表不得被旧请求的 finally 清空
     resolveOcr({
       preorder: {

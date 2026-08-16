@@ -66,6 +66,86 @@ describe('useNotificationStore', () => {
     expect(store.unreadCount).toBe(1)
   })
 
+  it('fetchNotifications(reset) 清空列表并请求第一页，fetchMore 追加且更新 hasNext', async () => {
+    vi.mocked(getNotifications).mockResolvedValueOnce({
+      count: 3,
+      page: 1,
+      page_size: 20,
+      next: 2,
+      previous: null,
+      results: [makeNotification(1)],
+    })
+    vi.mocked(getNotifications).mockResolvedValueOnce({
+      count: 3,
+      page: 2,
+      page_size: 20,
+      next: null,
+      previous: 1,
+      results: [makeNotification(2), makeNotification(3)],
+    })
+    vi.mocked(getUnreadCount).mockResolvedValue({ unread_count: 3 })
+    const store = useNotificationStore()
+    await store.fetchNotifications()
+    expect(store.page).toBe(1)
+    expect(store.total).toBe(3)
+    expect(store.hasNext).toBe(true)
+
+    await store.fetchMoreNotifications()
+    expect(getNotifications).toHaveBeenLastCalledWith({ page: 2, page_size: 20 })
+    expect(store.notifications.map((n) => n.id)).toEqual([1, 2, 3])
+    expect(store.hasNext).toBe(false)
+  })
+
+  it('没有下一页时 fetchMoreNotifications 不再发请求', async () => {
+    vi.mocked(getNotifications).mockResolvedValueOnce({
+      count: 1,
+      page: 1,
+      page_size: 20,
+      next: null,
+      previous: null,
+      results: [makeNotification(1)],
+    })
+    vi.mocked(getUnreadCount).mockResolvedValue({ unread_count: 1 })
+    const store = useNotificationStore()
+    await store.fetchNotifications()
+    await store.fetchMoreNotifications()
+    expect(getNotifications).toHaveBeenCalledTimes(1)
+  })
+
+  it('加载更多失败时回退页码，可重试同一页', async () => {
+    vi.mocked(getNotifications)
+      .mockResolvedValueOnce({
+        count: 3,
+        page: 1,
+        page_size: 20,
+        next: 2,
+        previous: null,
+        results: [makeNotification(1)],
+      })
+      .mockRejectedValueOnce(new Error('network'))
+    vi.mocked(getUnreadCount).mockResolvedValue({ unread_count: 1 })
+    const store = useNotificationStore()
+    await store.fetchNotifications()
+    expect(store.page).toBe(1)
+
+    await store.fetchMoreNotifications()
+    expect(store.page).toBe(1)
+    expect(store.hasNext).toBe(true)
+
+    vi.mocked(getNotifications).mockResolvedValueOnce({
+      count: 3,
+      page: 2,
+      page_size: 20,
+      next: null,
+      previous: 1,
+      results: [makeNotification(2)],
+    })
+    await store.fetchMoreNotifications()
+    expect(getNotifications).toHaveBeenLastCalledWith({ page: 2, page_size: 20 })
+    expect(store.page).toBe(2)
+    expect(store.notifications.map((n) => n.id)).toEqual([1, 2])
+  })
+
   it('markRead 更新本地已读状态与未读数', async () => {
     vi.mocked(getNotifications).mockResolvedValue({
       count: 2,

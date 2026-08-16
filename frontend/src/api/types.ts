@@ -1217,6 +1217,6 @@ export interface PreorderStats {
   due_this_quarter: number
   /** 已转正数量 */
   converted_count: number
-  /** 待补款预购的定金总额（字符串，如 "350.00"） */
-  total_pending_deposit: string
+  /** 待补款预购的尾款总额（字符串，如 "350.00"；尾款未知按 0 计） */
+  total_pending_balance: string
 }
