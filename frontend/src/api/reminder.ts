@@ -6,10 +6,13 @@ import type {
   PaginatedPreorderResponse,
   Preorder,
   PreorderConvertInput,
+  PreorderDelayInput,
+  PreorderDelayRecord,
   PreorderInput,
   PreorderOcrResult,
   PreorderStats,
   PreorderStatus,
+  PreorderUpdateInput,
 } from './types'
 
 // ==================== 预购（/api/preorders/）====================
@@ -40,7 +43,7 @@ export function createPreorder(data: PreorderInput) {
 }
 
 // 更新预购
-export function updatePreorder(id: string, data: Partial<PreorderInput>) {
+export function updatePreorder(id: string, data: Partial<PreorderUpdateInput>) {
   return request.patch<Preorder>(`/api/preorders/${id}/`, data)
 }
 
@@ -57,6 +60,16 @@ export function markPreorderPaid(id: string) {
 // 取消预购
 export function cancelPreorder(id: string) {
   return request.post<Preorder>(`/api/preorders/${id}/cancel/`)
+}
+
+// 跳票延期：顺延预计补款时间（记录历史并重新生成提醒）
+export function delayPreorder(id: string, data: PreorderDelayInput) {
+  return request.post<Preorder>(`/api/preorders/${id}/delay/`, data)
+}
+
+// 预购延期历史（新→旧）
+export function listPreorderDelays(id: string) {
+  return request.get<PreorderDelayRecord[]>(`/api/preorders/${id}/delays/`)
 }
 
 // 转正为谷子
@@ -107,4 +120,5 @@ export const NOTIFICATION_TYPE_LABELS: Record<string, string> = {
   preorder_due: '已到补款期',
   preorder_cancelled: '已取消补款',
   preorder_converted: '已转正',
+  preorder_delayed: '已延期',
 }

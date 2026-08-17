@@ -90,6 +90,11 @@ class Preorder(models.Model):
         verbose_name="时间粒度",
         help_text="month=按具体月份补款；quarter=按季度补款（estimated_month 存季度首月）",
     )
+    delay_count = models.PositiveIntegerField(
+        default=0,
+        verbose_name="延期次数",
+        help_text="厂家跳票延期累计次数（跳票延期动作递增）",
+    )
     status = models.CharField(
         max_length=20,
         choices=STATUS_CHOICES,
@@ -127,6 +132,57 @@ class Preorder(models.Model):
         return self.name
 
 
+class PreorderDelayRecord(models.Model):
+    """预购延期记录（厂家跳票顺延补款时间，可重复多次）。"""
+
+    id = models.BigAutoField(primary_key=True, verbose_name="记录ID")
+    preorder = models.ForeignKey(
+        "reminder.Preorder",
+        on_delete=models.CASCADE,
+        related_name="delay_records",
+        db_index=True,
+        verbose_name="关联预购",
+    )
+    from_month = models.DateField(
+        verbose_name="原预计补款时间",
+        help_text="粒度起点：按月存当月 1 日，按季度存季度首月 1 日",
+    )
+    to_month = models.DateField(
+        verbose_name="延期后补款时间",
+        help_text="粒度起点：按月存当月 1 日，按季度存季度首月 1 日",
+    )
+    from_granularity = models.CharField(
+        max_length=10,
+        choices=Preorder.GRANULARITY_CHOICES,
+        verbose_name="原时间粒度",
+    )
+    to_granularity = models.CharField(
+        max_length=10,
+        choices=Preorder.GRANULARITY_CHOICES,
+        verbose_name="延期后时间粒度",
+    )
+    reason = models.CharField(
+        max_length=100,
+        default="厂家跳票",
+        verbose_name="延期原因",
+    )
+    note = models.TextField(
+        blank=True,
+        default="",
+        verbose_name="补充说明",
+        help_text="选填，如官方公告延期到某月等",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="操作时间")
+
+    class Meta:
+        verbose_name = "预购延期记录"
+        verbose_name_plural = "预购延期记录"
+        ordering = ["-created_at", "-id"]
+
+    def __str__(self) -> str:
+        return f"{self.preorder.name}: {self.from_month} -> {self.to_month}"
+
+
 class Notification(models.Model):
     """站内通知（尾款提醒等）。"""
 
@@ -134,12 +190,14 @@ class Notification(models.Model):
     TYPE_DUE = "preorder_due"
     TYPE_CANCELLED = "preorder_cancelled"
     TYPE_CONVERTED = "preorder_converted"
+    TYPE_DELAYED = "preorder_delayed"
 
     TYPE_CHOICES = (
         (TYPE_SOON, "即将补款"),
         (TYPE_DUE, "已到补款期"),
         (TYPE_CANCELLED, "已取消补款"),
         (TYPE_CONVERTED, "已转正"),
+        (TYPE_DELAYED, "已延期"),
     )
 
     id = models.BigAutoField(primary_key=True, verbose_name="通知ID")

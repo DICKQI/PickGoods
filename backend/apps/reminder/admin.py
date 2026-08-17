@@ -1,13 +1,20 @@
 from django.contrib import admin
 
-from .models import Notification, Preorder
+from .models import Notification, Preorder, PreorderDelayRecord
 
 
 @admin.register(Preorder)
 class PreorderAdmin(admin.ModelAdmin):
-    list_display = ("name", "user", "status", "estimated_month", "deposit_amount", "created_at")
+    list_display = ("name", "user", "status", "estimated_month", "delay_count", "deposit_amount", "created_at")
     list_filter = ("status",)
     search_fields = ("name", "user__username")
+
+
+@admin.register(PreorderDelayRecord)
+class PreorderDelayRecordAdmin(admin.ModelAdmin):
+    list_display = ("preorder", "from_month", "to_month", "reason", "created_at")
+    list_filter = ("reason",)
+    search_fields = ("preorder__name",)
 
 
 @admin.register(Notification)

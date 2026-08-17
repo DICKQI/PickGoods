@@ -18,6 +18,7 @@ const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder =
   balance_amount: null,
   time_granularity: 'month',
   estimated_month: '2026-08-01',
+  delay_count: 0,
   status: 'pending',
   paid_at: null,
   goods_id: null,

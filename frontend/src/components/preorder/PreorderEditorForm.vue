@@ -37,7 +37,7 @@
             <el-input-number v-model="form.balance_amount" :min="0" :precision="2" :controls="false" placeholder="未知可留空" style="width: 100%" />
           </el-form-item>
         </div>
-        <div class="preorder-editor-grid">
+        <div v-if="!editingTarget" class="preorder-editor-grid preorder-time-grid">
           <el-form-item label="时间粒度">
             <el-segmented
               v-model="form.time_granularity"
@@ -81,7 +81,7 @@
       </section>
 
       <!-- 截图识别（弱化入口：默认收起，置于表单末尾） -->
-      <section class="preorder-editor-section preorder-ocr-section">
+      <section v-if="!editingTarget" class="preorder-editor-section preorder-ocr-section">
         <button type="button" class="preorder-ocr-toggle" @click="ocrPanelVisible = !ocrPanelVisible">
           <el-icon><Picture /></el-icon>
           <span>{{ ocrPanelVisible ? '收起截图识别' : '📸 用订单截图自动填写' }}</span>
@@ -141,6 +141,7 @@
     </el-form>
 
     <MobileActionSheet
+      v-if="!editingTarget"
       v-model="photoSourceSheetVisible"
       title="上传订单截图"
       :actions="photoSourceActions"

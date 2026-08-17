@@ -1139,6 +1139,8 @@ export interface Preorder {
   time_granularity: 'month' | 'quarter'
   /** 预计补款时间（粒度起点，YYYY-MM-DD）：月粒度=当月 1 日，季度粒度=季度首月 1 日 */
   estimated_month: string
+  /** 厂家跳票延期累计次数（跳票延期动作递增） */
+  delay_count: number
   status: PreorderStatus
   paid_at: string | null
   /** 转正后的谷子 ID（未转正为 null） */
@@ -1149,7 +1151,7 @@ export interface Preorder {
   updated_at: string
 }
 
-/** 预购新增/编辑入参 */
+/** 预购创建入参 */
 export interface PreorderInput {
   name: string
   platform?: string
@@ -1163,6 +1165,9 @@ export interface PreorderInput {
   notes?: string | null
 }
 
+/** 预购普通编辑入参；预计补款时间只能通过延期接口调整 */
+export type PreorderUpdateInput = Omit<PreorderInput, 'time_granularity' | 'estimated_month'>
+
 /** 转正为谷子入参（ip/category/characters 均为 ID） */
 export interface PreorderConvertInput {
   name: string
@@ -1174,6 +1179,30 @@ export interface PreorderConvertInput {
   notes?: string | null
 }
 
+/** 跳票延期入参（POST /api/preorders/{id}/delay/） */
+export interface PreorderDelayInput {
+  /** 延期后的目标时间（粒度起点 YYYY-MM-DD；后端按当前粒度归一化并校验必须晚于当前） */
+  to_month: string
+  /** 延期原因（默认「厂家跳票」） */
+  reason?: string
+  /** 补充说明（选填） */
+  note?: string | null
+}
+
+/** 预购延期记录（GET /api/preorders/{id}/delays/） */
+export interface PreorderDelayRecord {
+  id: number
+  /** 原预计补款时间（粒度起点 YYYY-MM-DD） */
+  from_month: string
+  /** 延期后补款时间（粒度起点 YYYY-MM-DD） */
+  to_month: string
+  from_granularity: 'month' | 'quarter'
+  to_granularity: 'month' | 'quarter'
+  reason: string
+  note: string
+  created_at: string
+}
+
 export type PaginatedPreorderResponse = PaginatedResponse<Preorder>
 
 /** 通知类型 */
@@ -1182,6 +1211,7 @@ export type NotificationType =
   | 'preorder_due'
   | 'preorder_cancelled'
   | 'preorder_converted'
+  | 'preorder_delayed'
 
 /** 站内通知 */
 export interface NotificationItem {
@@ -1192,7 +1222,7 @@ export interface NotificationItem {
   preorder_id: string | null
   preorder_name: string | null
   is_read: boolean
-  /** 是否已过期（预计月份修改 / 取消后为 true，界面置灰） */
+  /** 是否已过期（预购取消 / 延期后为 true，界面置灰） */
   is_stale: boolean
   created_at: string
 }

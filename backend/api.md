@@ -5063,7 +5063,8 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 - **即将补款**（`preorder_soon`）：进入预计补款月份首日往前 30 天的窗口后生成一次；
 - **已到补款期**（`preorder_due`）：到达预计补款月份首日（含逾期）后生成一次；
 - **已取消补款**（`preorder_cancelled`）：取消预购时生成，同时旧提醒标记为已过期（`is_stale`）；
-- **已转正**（`preorder_converted`）：补款后转正为谷子时生成。
+- **已转正**（`preorder_converted`）：补款后转正为谷子时生成；
+- **已延期**（`preorder_delayed`）：跳票延期时生成，正文写明原时间→新时间；再次延期时上一条自动置为已过期。
 
 同一预购同一类型**只生成一条活跃通知**（数据库唯一约束 `(user, preorder, type, is_stale)` 兜底），重复轮询不会刷屏。
 
@@ -5083,6 +5084,7 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 | `balance_amount` | Decimal(10,2), 可空 | 尾款金额（未知可空，≥0） |
 | `estimated_month` | Date, 索引 | 预计补款时间（粒度起点）：月粒度存当月 1 日，季度粒度存**季度首月** 1 日 |
 | `time_granularity` | Char(10) | 时间粒度：`month` 按月（默认）/ `quarter` 按季度 |
+| `delay_count` | PositiveInt | 跳票延期累计次数（只读，由 delay action 递增） |
 | `status` | Char(20) | `pending` 待补款 / `paid` 已补款 / `cancelled` 已取消 / `converted` 已转正 |
 | `paid_at` | DateTime, 可空 | 补款时间（mark-paid 时写入） |
 | `goods` | OneToOne -> `Goods`, 可空 | 转正后的谷子 |
@@ -5091,34 +5093,49 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 
 **状态机（单向）**：`pending → paid`（mark-paid，不可逆）；`pending → cancelled`（取消）；`paid → converted`（转正，终态）。已补款后不能再取消；已取消 / 已补款后不能再转正。
 
+#### `PreorderDelayRecord` 预购延期记录表
+
+| 字段名 | 类型 | 说明 |
+| ------ | ---- | ---- |
+| `id` | BigInt (PK) | 记录 ID |
+| `preorder` | FK -> `Preorder`, 索引 | 关联预购（删除预购级联删除） |
+| `from_month` | Date | 原预计补款时间（粒度起点） |
+| `to_month` | Date | 延期后补款时间（粒度起点） |
+| `from_granularity` / `to_granularity` | Char(10) | 原 / 延期后时间粒度（延期不改粒度，两者相同） |
+| `reason` | Char(100) | 延期原因（默认「厂家跳票」） |
+| `note` | Text | 补充说明（选填） |
+| `created_at` | DateTime | 操作时间 |
+
 #### `Notification` 通知表
 
 | 字段名 | 类型 | 说明 |
 | ------ | ---- | ---- |
 | `id` | BigInt (PK) | 通知 ID |
 | `user` | FK -> `User`, 索引 | 接收用户 |
-| `type` | Char(30) | `preorder_soon` / `preorder_due` / `preorder_cancelled` / `preorder_converted` |
+| `type` | Char(30) | `preorder_soon` / `preorder_due` / `preorder_cancelled` / `preorder_converted` / `preorder_delayed` |
 | `title` / `message` | Char(100) / Text | 标题与正文 |
 | `preorder` | FK -> `Preorder`, 可空 | 关联预购（删除预购级联删除通知） |
 | `is_read` | Boolean, 索引 | 是否已读 |
-| `is_stale` | Boolean, 索引 | 是否已过期（月份修改 / 取消后置 True，界面置灰） |
+| `is_stale` | Boolean, 索引 | 是否已过期（取消 / 延期后置 True，界面置灰） |
 | `created_at` | DateTime, 索引 | 创建时间 |
 
 ### 9.3 预购接口（`/api/preorders/`）
 
 权限：登录用户仅可操作自己的数据（管理员可见全部）。列表分页格式：`{count, page, page_size, next, previous, results}`。
 
-> **快速录入**：新增 / 编辑预购支持智能录入（见第十二章 OCR 接口）——上传订单截图（`mode=preorder`），自动解析手办名称、平台、店铺、订单号、定金、尾款、预计补款时间并预填表单，解析不了的字段留空由用户补充。
+> **快速录入**：新增预购支持智能录入（见第十二章 OCR 接口）——上传订单截图（`mode=preorder`），自动解析手办名称、平台、店铺、订单号、定金、尾款、预计补款时间并预填表单，解析不了的字段留空由用户补充。编辑预购不提供 OCR。
 
 | 方法 / 路径 | 说明 |
 | ---------- | ---- |
 | `GET /api/preorders/` | 列表；`?status=` 过滤、`?search=` 名称模糊搜索；默认按 `estimated_month` 升序 |
 | `POST /api/preorders/` | 创建；`estimated_month` 归一化为粒度起点（月粒度=当月 1 日，季度粒度=**季度首月** 1 日，传季度内任意日期均可）；创建后若已进入提醒窗口立即生成通知 |
 | `GET /api/preorders/{id}/` | 详情（含 `goods_id` / `goods_name`） |
-| `PATCH /api/preorders/{id}/` | 部分更新；`status` 只读（状态流转走专用 action）；**修改月份后旧提醒置为已过期并按新月份重新生成** |
+| `PATCH /api/preorders/{id}/` | 部分更新；`status` 只读（状态流转走专用 action）；`estimated_month` / `time_granularity` 创建后不可修改，改期必须走 `delay` action |
 | `DELETE /api/preorders/{id}/` | 删除（级联删除关联通知） |
 | `POST /api/preorders/{id}/mark-paid/` | 仅 `pending`；写 `paid_at`，关联提醒自动已读；不可逆 |
 | `POST /api/preorders/{id}/cancel/` | 仅 `pending`；旧提醒置为已过期，生成「已取消补款」通知 |
+| `POST /api/preorders/{id}/delay/` | 仅 `pending`；跳票延期：顺延预计补款时间（必须晚于当前，粒度不变），写延期记录、`delay_count` 递增、旧提醒置过期并按新时间重新生成，生成「已延期」通知（见 9.3.1） |
+| `GET /api/preorders/{id}/delays/` | 延期历史（新→旧，不分页）；越权 404 |
 | `POST /api/preorders/{id}/convert-to-goods/` | 仅 `paid` 且未转正（重复转正 409）；转正为谷子（见 9.4） |
 | `GET /api/preorders/stats/` | 统计概览（纯读，零副作用）；权限语义与列表一致：普通用户统计自己的预购，管理员统计全部 |
 
@@ -5139,6 +5156,33 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 - `due_this_quarter`：本季到期（**季度粒度**且 `estimated_month` 为当季首月）；
 - `converted_count`：已转正数量；
 - `total_pending_balance`：待补款预购的尾款总额（字符串，两位小数；尾款未知的条目按 0 计）。
+
+### 9.3.1 跳票延期（`POST /api/preorders/{id}/delay/`）
+
+手办厂商产能不足跳票时，可将预计补款时间**顺延**到更晚的月份/季度，每次延期留下历史记录：
+
+**请求体**：
+
+```json
+{
+  "to_month": "2026-12-01",
+  "reason": "厂家跳票",
+  "note": "官方公告延期到 12 月"
+}
+```
+
+- `to_month` 必填：延期后的目标时间，按预购当前粒度归一化（月粒度=当月 1 日，季度粒度=季度首月 1 日，传季度内任意日期均可）；**必须严格晚于当前预计补款时间**，相等或更早返回 400；
+- `reason` 选填（默认 `厂家跳票`，≤100 字）；`note` 选填（补充说明）；
+- 仅 `pending` 可延期（含已过补款期仍未补款的），其余状态 400；时间粒度创建后不可修改。
+
+**动作副作用（整体事务）**：事务内先通过行锁重新读取预购，状态和目标时间校验均以锁定后的最新值为准，并发延期按获得锁的顺序串行处理。
+
+1. 写一条 `PreorderDelayRecord`（原时间→新时间、原因、备注）；
+2. `estimated_month` 更新为新时间，`delay_count` +1；
+3. 旧 `preorder_soon` / `preorder_due` 提醒置 `is_stale=True, is_read=True`，按新时间重新生成（新时间若已进提醒窗口立即生成，否则由惰性轮询生成）；
+4. 生成一条 `preorder_delayed`「已延期」通知（标题《XX》已延期，正文含原→新时间）；再次延期时上一条活跃的「已延期」通知自动置为已过期。
+
+成功返回 200 + 预购详情（含 `delay_count`）。
 
 ### 9.4 转正为谷子
 
@@ -5175,9 +5219,9 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 
 通知生成采用**惰性同步**（无需 cron / 调度器）：
 
-1. `unread-count` 轮询或预购写操作（创建 / 更新 / 标记补款 / 取消 / 转正）时，扫描该用户 `pending` 预购；
+1. `unread-count` 轮询或预购写操作（创建 / 更新 / 标记补款 / 取消 / 转正 / 跳票延期）时，扫描该用户 `pending` 预购；
 2. 按窗口规则 `get_or_create(user, preorder, type, is_stale=False)` 幂等生成；
-3. 时间修改 / 取消时，旧 `preorder_soon` / `preorder_due` 置为 `is_stale=True, is_read=True`，按新时间（含粒度切换）重新生成。
+3. 取消 / 延期时，旧 `preorder_soon` / `preorder_due` 置为 `is_stale=True, is_read=True`；延期后按新时间重新生成。
 
 
 

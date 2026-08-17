@@ -1,7 +1,7 @@
 import { computed, nextTick, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import * as reminderApi from '@/api/reminder'
-import type { Preorder, PreorderInput, PreorderOcrFields } from '@/api/types'
+import type { Preorder, PreorderInput, PreorderOcrFields, PreorderUpdateInput } from '@/api/types'
 import { monthToQuarter, toMonthStart } from '@/utils/preorder'
 
 export const PLATFORM_OPTIONS = ['淘宝', '天猫', '京东', '拼多多', '抖音', 'B站会员购', '代购', '线下展会', '其他']
@@ -26,7 +26,7 @@ const emptyForm = (): PreorderInput => ({
   notes: '',
 })
 
-/** 预购新增 / 编辑表单逻辑（含 OCR 截图识别）；成功提交返回 true，由视图负责关闭弹层与刷新 */
+/** 预购新增 / 编辑表单逻辑（OCR 仅用于新增）；成功提交返回 true，由视图负责关闭弹层与刷新 */
 export function usePreorderEditor() {
   const formRef = ref()
   const editingId = ref<string | null>(null)
@@ -199,20 +199,29 @@ export function usePreorderEditor() {
     }
     formSubmitting.value = true
     try {
-      const payload: PreorderInput = {
-        ...form,
-        deposit_amount: form.deposit_amount,
-        balance_amount: form.balance_amount ?? null,
-        time_granularity: form.time_granularity,
-        // 统一转为粒度起点日期：后端按粒度归一化存储
-        estimated_month: form.estimated_month
-          ? toMonthStart(form.estimated_month, form.time_granularity ?? 'month')
-          : '',
-      }
       if (editingId.value) {
+        const payload: PreorderUpdateInput = {
+          name: form.name,
+          platform: form.platform,
+          shop_name: form.shop_name,
+          order_no: form.order_no,
+          deposit_amount: form.deposit_amount,
+          balance_amount: form.balance_amount ?? null,
+          notes: form.notes,
+        }
         await reminderApi.updatePreorder(editingId.value, payload)
         ElMessage.success('预购已更新')
       } else {
+        const payload: PreorderInput = {
+          ...form,
+          deposit_amount: form.deposit_amount,
+          balance_amount: form.balance_amount ?? null,
+          time_granularity: form.time_granularity,
+          // 统一转为粒度起点日期：后端按粒度归一化存储
+          estimated_month: form.estimated_month
+            ? toMonthStart(form.estimated_month, form.time_granularity ?? 'month')
+            : '',
+        }
         await reminderApi.createPreorder(payload)
         ElMessage.success('预购已登记，到补款期将自动提醒')
       }

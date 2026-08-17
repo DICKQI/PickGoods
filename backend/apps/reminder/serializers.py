@@ -10,15 +10,16 @@ from apps.goods.models import Category, Character, Goods, IP, Theme
 from apps.goods.utils import compress_image
 from core.permissions import is_admin
 
-from .models import Notification, Preorder
+from .models import Notification, Preorder, PreorderDelayRecord
 
 
 class PreorderSerializer(serializers.ModelSerializer):
     """预购登记读写序列化器。
 
     - status / paid_at 只读：状态流转必须走专用 action（mark-paid / cancel / convert-to-goods）；
+    - estimated_month / time_granularity 仅创建时可设置，创建后改期必须走 delay action；
     - estimated_month 强制归一化为粒度起点（月粒度=当月 1 日，季度粒度=季度首月 1 日）；
-    - time_granularity 决定展示与提醒粒度：month / quarter。
+    - delay_count 只读：由跳票延期 action（delay）递增。
     """
 
     goods_id = serializers.SerializerMethodField()
@@ -47,6 +48,7 @@ class PreorderSerializer(serializers.ModelSerializer):
             "balance_amount",
             "estimated_month",
             "time_granularity",
+            "delay_count",
             "status",
             "paid_at",
             "goods_id",
@@ -61,6 +63,7 @@ class PreorderSerializer(serializers.ModelSerializer):
             "paid_at",
             "goods_id",
             "goods_name",
+            "delay_count",
             "created_at",
             "updated_at",
         )
@@ -80,9 +83,23 @@ class PreorderSerializer(serializers.ModelSerializer):
         )
         if granularity == Preorder.GRANULARITY_QUARTER and month is not None:
             quarter_start = ((month.month - 1) // 3) * 3 + 1
-            if month.month != quarter_start:
-                # 仅改粒度（PATCH 不含 estimated_month）时，回退用实例时间并写回 attrs
+            if "estimated_month" in attrs and month.month != quarter_start:
                 attrs["estimated_month"] = month.replace(month=quarter_start)
+
+        if self.instance is not None:
+            errors = {}
+            if (
+                "estimated_month" in attrs
+                and attrs["estimated_month"] != self.instance.estimated_month
+            ):
+                errors["estimated_month"] = "预计补款时间只能通过延期操作调整"
+            if (
+                "time_granularity" in attrs
+                and attrs["time_granularity"] != self.instance.time_granularity
+            ):
+                errors["time_granularity"] = "时间粒度创建后不可修改"
+            if errors:
+                raise serializers.ValidationError(errors)
         return attrs
 
     def get_goods_id(self, obj):
@@ -208,3 +225,57 @@ class ReadNotificationsSerializer(serializers.Serializer):
         allow_empty=True,
         help_text="要标记为已读的通知ID列表",
     )
+
+
+class DelayPreorderSerializer(serializers.Serializer):
+    """POST /api/preorders/{id}/delay/ 请求体（跳票延期）。"""
+
+    to_month = serializers.DateField(help_text="延期后的目标时间（粒度起点：月粒度当月 1 日，季度粒度季度首月 1 日，传季度内任意日期均可）")
+    reason = serializers.CharField(
+        max_length=100,
+        required=False,
+        allow_blank=True,
+        help_text="延期原因（默认「厂家跳票」）",
+    )
+    note = serializers.CharField(
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="补充说明（选填）",
+    )
+
+    def validate_to_month(self, value):
+        # 与 PreorderSerializer 一致的粒度起点归一化，按预购当前粒度处理
+        preorder = self.context.get("preorder")
+        granularity = (
+            preorder.time_granularity
+            if preorder is not None
+            else Preorder.GRANULARITY_MONTH
+        )
+        if granularity == Preorder.GRANULARITY_QUARTER:
+            quarter_start = ((value.month - 1) // 3) * 3 + 1
+            return value.replace(month=quarter_start, day=1)
+        return value.replace(day=1)
+
+    def validate(self, attrs):
+        if not attrs.get("reason"):
+            attrs["reason"] = "厂家跳票"
+        return attrs
+
+
+class PreorderDelayRecordSerializer(serializers.ModelSerializer):
+    """预购延期记录（只读）。"""
+
+    class Meta:
+        model = PreorderDelayRecord
+        fields = (
+            "id",
+            "from_month",
+            "to_month",
+            "from_granularity",
+            "to_granularity",
+            "reason",
+            "note",
+            "created_at",
+        )
+        read_only_fields = fields

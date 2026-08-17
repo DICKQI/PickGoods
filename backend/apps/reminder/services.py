@@ -3,16 +3,18 @@
 设计约定：
 - 提醒窗口：预计补款月份首日往前推 SOON_LEAD_DAYS 天；
 - 同一预购同一类型仅生成一条“活跃”通知（配合模型唯一约束）；
-- 预计月份修改 / 取消时，旧提醒被标记为 is_stale（已过期）并置为已读；
+- 取消 / 延期时，旧提醒被标记为 is_stale（已过期）并置为已读；
 - GET 列表接口零副作用，惰性同步只由 unread-count 轮询与预购写操作触发。
 """
 from __future__ import annotations
 
 import datetime
 
+from django.core.exceptions import ValidationError
+from django.db import transaction
 from django.utils import timezone
 
-from .models import Notification, Preorder
+from .models import Notification, Preorder, PreorderDelayRecord
 
 #: 进入「即将补款」提醒窗口的提前天数（按月粒度）
 SOON_LEAD_DAYS_MONTH = 30
@@ -73,6 +75,95 @@ def _build_content(preorder: Preorder, ntype: str) -> tuple[str, str]:
     raise ValueError(f"unknown notification type: {ntype}")
 
 
+def _period_text_for(day: datetime.date, granularity: str) -> str:
+    if granularity == Preorder.GRANULARITY_QUARTER:
+        return _quarter_text(day)
+    return _month_text(day)
+
+
+def _build_delayed_content(
+    preorder: Preorder,
+    from_month: datetime.date,
+    from_granularity: str,
+    reason: str,
+) -> tuple[str, str]:
+    """构建「已延期」通知标题与正文（原时间→新时间）。"""
+    return (
+        f"《{preorder.name}》已延期",
+        f"因{reason}，预计补款时间由 {_period_text_for(from_month, from_granularity)} "
+        f"调整为 {_period_text(preorder)}。",
+    )
+
+
+def mark_preorder_delayed_notifications_stale(preorder: Preorder) -> int:
+    """将预购的活跃「已延期」通知标记为已过期（再次延期时调用，满足唯一约束）。"""
+    return Notification.objects.filter(
+        user=preorder.user,
+        preorder=preorder,
+        type=Notification.TYPE_DELAYED,
+        is_stale=False,
+    ).update(is_stale=True, is_read=True)
+
+
+def create_delayed_notification(
+    preorder: Preorder,
+    from_month: datetime.date,
+    from_granularity: str,
+    reason: str,
+) -> Notification:
+    """生成一条「已延期」通知（每次延期新建一条，前置置旧通知过期）。"""
+    title, message = _build_delayed_content(preorder, from_month, from_granularity, reason)
+    return Notification.objects.create(
+        user=preorder.user,
+        preorder=preorder,
+        type=Notification.TYPE_DELAYED,
+        title=title,
+        message=message,
+    )
+
+
+@transaction.atomic
+def delay_preorder(
+    preorder: Preorder,
+    to_month: datetime.date,
+    reason: str = "厂家跳票",
+    note: str = "",
+) -> Preorder:
+    """顺延预购补款时间（厂家跳票），记录历史并重新同步提醒。
+
+    事务内锁定并重新读取预购，状态、当前时间、延期历史和计数均以锁定行
+    为准。to_month 已由请求序列化器按当前粒度起点归一化。
+    """
+    preorder = Preorder.objects.select_for_update().get(pk=preorder.pk)
+    if preorder.status != Preorder.STATUS_PENDING:
+        raise ValidationError({"detail": "仅待补款状态的预购可延期"})
+    if to_month <= preorder.estimated_month:
+        raise ValidationError(
+            {"to_month": "延期后的时间必须晚于当前预计补款时间"}
+        )
+
+    from_month = preorder.estimated_month
+    granularity = preorder.time_granularity
+    PreorderDelayRecord.objects.create(
+        preorder=preorder,
+        from_month=from_month,
+        to_month=to_month,
+        from_granularity=granularity,
+        to_granularity=granularity,
+        reason=reason,
+        note=note or "",
+    )
+    preorder.estimated_month = to_month
+    preorder.delay_count += 1
+    preorder.save(update_fields=["estimated_month", "delay_count", "updated_at"])
+    # 旧 soon/due 提醒置过期，按新时间重新生成（新时间若已进窗口立即生成）
+    mark_preorder_notifications_stale(preorder)
+    sync_preorder(preorder)
+    # 「已延期」通知：先过期上一条活跃记录（满足唯一约束），再新建
+    mark_preorder_delayed_notifications_stale(preorder)
+    create_delayed_notification(preorder, from_month, granularity, reason)
+    return preorder
+
 def sync_preorder(preorder: Preorder) -> bool:
     """为单个待补款预购生成到期提醒（幂等）。返回是否新建了通知。"""
     if preorder.status != Preorder.STATUS_PENDING:
@@ -107,7 +198,7 @@ def sync_due_notifications(user) -> int:
 
 
 def mark_preorder_notifications_stale(preorder: Preorder) -> int:
-    """将预购的活跃提醒通知标记为已过期（预计月份修改 / 取消时调用）。"""
+    """将预购的活跃提醒通知标记为已过期（取消 / 延期时调用）。"""
     return Notification.objects.filter(
         user=preorder.user,
         preorder=preorder,

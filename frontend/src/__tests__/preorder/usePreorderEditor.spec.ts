@@ -25,6 +25,7 @@ const makePreorder = (overrides: Partial<Preorder> = {}): Preorder => ({
   balance_amount: '700.00',
   time_granularity: 'month',
   estimated_month: '2026-08-01',
+  delay_count: 0,
   status: 'pending',
   paid_at: null,
   goods_id: null,
@@ -66,10 +67,9 @@ describe('usePreorderEditor', () => {
     expect(editor.form.deposit_amount).toBe(350)
   })
 
-  it('提交月粒度归一化为月初，季度粒度归一化为季度首月', async () => {
+  it('新增提交将月粒度时间归一化为月初', async () => {
     const editor = attachFormRef(usePreorderEditor())
     vi.mocked(createPreorder).mockResolvedValue(makePreorder())
-    vi.mocked(updatePreorder).mockResolvedValue(makePreorder())
 
     editor.form.name = '月粒度'
     editor.form.deposit_amount = 100
@@ -79,16 +79,21 @@ describe('usePreorderEditor', () => {
     expect(createPreorder).toHaveBeenLastCalledWith(
       expect.objectContaining({ estimated_month: '2026-08-01', time_granularity: 'month' })
     )
+  })
+
+  it('编辑提交不携带预计时间和时间粒度', async () => {
+    const editor = attachFormRef(usePreorderEditor())
+    vi.mocked(updatePreorder).mockResolvedValue(makePreorder())
 
     editor.openEdit(makePreorder({ time_granularity: 'quarter' }))
     editor.form.name = '季度粒度'
     editor.form.deposit_amount = 200
     editor.form.estimated_month = '2026-Q4'
     expect(await editor.submitForm()).toBe(true)
-    expect(updatePreorder).toHaveBeenLastCalledWith(
-      'p-1',
-      expect.objectContaining({ estimated_month: '2026-10-01', time_granularity: 'quarter' })
-    )
+    const payload = vi.mocked(updatePreorder).mock.calls[0]![1]
+    expect(payload).toMatchObject({ name: '季度粒度', deposit_amount: 200 })
+    expect(payload).not.toHaveProperty('estimated_month')
+    expect(payload).not.toHaveProperty('time_granularity')
   })
 
   it('表单校验失败时 submitForm 返回 false 且不发请求', async () => {

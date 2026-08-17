@@ -43,15 +43,40 @@ export const toMonthStart = (v: string, granularity: 'month' | 'quarter'): strin
   return v + '-01'
 }
 
-export const formatMonth = (row: Preorder): string => {
-  if (!row.estimated_month) return '—'
-  const d = new Date(row.estimated_month + 'T00:00:00')
-  if (Number.isNaN(d.getTime())) return row.estimated_month
-  if (row.time_granularity === 'quarter') {
+/** 按粒度格式化粒度起点日期：'2026-08-01'（month）→ '2026年8月'；'2026-07-01'（quarter）→ '2026年 Q3' */
+export const formatPeriod = (ymd: string, granularity: 'month' | 'quarter'): string => {
+  if (!ymd) return '—'
+  const d = new Date(ymd + 'T00:00:00')
+  if (Number.isNaN(d.getTime())) return ymd
+  if (granularity === 'quarter') {
     const q = Math.floor(d.getMonth() / 3) + 1
     return `${d.getFullYear()}年 Q${q}`
   }
   return d.getFullYear() + '年' + (d.getMonth() + 1) + '月'
+}
+
+export const formatMonth = (row: Preorder): string =>
+  formatPeriod(row.estimated_month, row.time_granularity)
+
+/** 月份偏移：'2026-12' + 2 → '2027-02'（跨年正确；n 为正） */
+export const addMonths = (ym: string, n: number): string => {
+  const parts = ym.split('-').map(Number)
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return ym
+  const total = parts[0] * 12 + (parts[1] - 1) + n
+  return `${Math.floor(total / 12)}-${String((total % 12) + 1).padStart(2, '0')}`
+}
+
+/** 季度偏移：'2026-Q4' + 1 → '2027-Q1'（跨年正确；n 为正） */
+export const addQuarters = (yq: string, n: number): string => {
+  const m = yq.match(/^(\d{4})-Q([1-4])$/i)
+  if (!m) return yq
+  let year = Number(m[1])
+  let quarter = Number(m[2]) + n
+  while (quarter > 4) {
+    quarter -= 4
+    year++
+  }
+  return `${year}-Q${quarter}`
 }
 
 /** 已到补款期（待补款且预计月份不晚于当月） */

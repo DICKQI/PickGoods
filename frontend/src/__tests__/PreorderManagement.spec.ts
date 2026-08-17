@@ -5,6 +5,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import PreorderManagement from '@/views/PreorderManagement.vue'
 import PreorderEditorForm from '@/components/preorder/PreorderEditorForm.vue'
+import PreorderDelayDialog from '@/components/preorder/PreorderDelayDialog.vue'
 import ConvertGoodsForm from '@/components/preorder/ConvertGoodsForm.vue'
 
 // jsdom 未实现 scrollIntoView：高亮定位的异步调用会抛未处理异常污染套件（既有问题）
@@ -50,6 +51,8 @@ vi.mock('@/api/reminder', () => ({
   deletePreorder: vi.fn(),
   markPreorderPaid: vi.fn(),
   cancelPreorder: vi.fn(),
+  delayPreorder: vi.fn(),
+  listPreorderDelays: vi.fn(),
   convertPreorderToGoods: vi.fn(),
   recognizePreorderImage: vi.fn(),
   getNotifications: vi.fn(),
@@ -71,7 +74,9 @@ import {
   cancelPreorder,
   convertPreorderToGoods,
   createPreorder,
+  delayPreorder,
   getPreorderStats,
+  listPreorderDelays,
   listPreorders,
   markPreorderPaid,
   recognizePreorderImage,
@@ -89,6 +94,7 @@ const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder =
   balance_amount: '50.00',
   time_granularity: 'month',
   estimated_month: '2026-08-01',
+  delay_count: 0,
   status: 'pending',
   paid_at: null,
   goods_id: null,
@@ -331,6 +337,8 @@ const getEditor = (wrapper: ReturnType<typeof mount>) =>
   (wrapper.findComponent(PreorderEditorForm).vm as unknown as { editor: any }).editor
 const getConvert = (wrapper: ReturnType<typeof mount>) =>
   (wrapper.findComponent(ConvertGoodsForm).vm as unknown as { convert: any }).convert
+const getDelay = (wrapper: ReturnType<typeof mount>) =>
+  (wrapper.findComponent(PreorderDelayDialog).vm as unknown as { delay: any }).delay
 
 describe('PreorderManagement', () => {
   beforeEach(() => {
@@ -437,6 +445,19 @@ describe('PreorderManagement', () => {
     expect(payload.estimated_month).toBe('2026-09-01')
   })
 
+  it('编辑对话框不显示时间调整控件和 OCR', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.find('.granularity-select').exists()).toBe(false)
+    expect(wrapper.find('.el-date-picker-stub').exists()).toBe(false)
+    expect(wrapper.find('.preorder-ocr-section').exists()).toBe(false)
+  })
+
   it('标记补款需确认后调用接口', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
     vi.mocked(markPreorderPaid).mockResolvedValue(makePreorder('p-1', { status: 'paid' }))
@@ -446,6 +467,112 @@ describe('PreorderManagement', () => {
     await markButton.trigger('click')
     await flushPromises()
     expect(markPreorderPaid).toHaveBeenCalledWith('p-1')
+  })
+
+  // ─── 跳票延期 ───
+
+  it('延期按钮仅待补款行可见，且显示延期次数标签', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([
+        makePreorder('p-pending', { delay_count: 2 }),
+        makePreorder('p-paid', { status: 'paid', paid_at: '2026-07-01T00:00:00Z' }),
+        makePreorder('p-converted', { status: 'converted', goods_id: 'g-1', goods_name: '流萤手办' }),
+      ]),
+    )
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    const text = wrapper.text()
+    // pending 行有「延期」按钮；paid / converted 行没有
+    expect(text).toContain('延期')
+    // 延期次数标签
+    expect(text).toContain('延期×2')
+    // paid / converted 行不出现延期入口（统计一下按钮数量：仅 1 个「延期」文本按钮）
+    expect(wrapper.findAll('button').filter((w) => w.text() === '延期').length).toBe(1)
+  })
+
+  it('打开延期对话框：快捷选项、默认原因与历史加载', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    vi.mocked(listPreorderDelays).mockResolvedValue([
+      {
+        id: 1,
+        from_month: '2026-06-01',
+        to_month: '2026-08-01',
+        from_granularity: 'month',
+        to_granularity: 'month',
+        reason: '厂家跳票',
+        note: '',
+        created_at: '2026-06-05T00:00:00Z',
+      },
+    ])
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text() === '延期')!.trigger('click')
+    await flushPromises()
+
+    expect(listPreorderDelays).toHaveBeenCalledWith('p-1')
+    const delay = getDelay(wrapper)
+    // 月粒度：快捷选项 +1/+2/+3 个月，默认选中第一个（composable 暴露为 ref，需 .value）
+    expect(delay.quickOptions.value.map((o: any) => o.value)).toEqual(['2026-09', '2026-10', '2026-11'])
+    expect(delay.selectedKey.value).toBe('m1')
+    expect(delay.reason.value).toBe('厂家跳票')
+    // 当前时间与延期历史渲染
+    const text = wrapper.text()
+    expect(text).toContain('当前预计补款')
+    expect(text).toContain('2026年8月')
+    expect(text).toContain('2026年6月')
+    expect(text).toContain('2026年8月')
+  })
+
+  it('快捷选项提交调用 delayPreorder，目标归一化为当月1日', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    vi.mocked(listPreorderDelays).mockResolvedValue([])
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text() === '延期')!.trigger('click')
+    await flushPromises()
+
+    const submitButton = wrapper.findAll('button').find((w) => w.text() === '确认延期')!
+    await submitButton.trigger('click')
+    await flushPromises()
+
+    expect(delayPreorder).toHaveBeenCalledWith('p-1', {
+      to_month: '2026-09-01',
+      reason: '厂家跳票',
+      note: null,
+    })
+    // 延期成功后刷新列表与统计
+    expect(listPreorders).toHaveBeenCalledTimes(2)
+  })
+
+  it('自定义时间延期提交（季度粒度）', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(
+      paginated([
+        makePreorder('p-q', {
+          time_granularity: 'quarter',
+          estimated_month: '2026-07-01',
+        }),
+      ]),
+    )
+    vi.mocked(listPreorderDelays).mockResolvedValue([])
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    await wrapper.findAll('button').find((w) => w.text() === '延期')!.trigger('click')
+    await flushPromises()
+
+    const delay = getDelay(wrapper)
+    // 季度粒度：快捷选项为 +1/+2 个季度，默认选中第一个
+    expect(delay.quickOptions.value.map((o: any) => o.value)).toEqual(['2026-Q4', '2027-Q1'])
+    expect(delay.selectedKey.value).toBe('q1')
+    // 切自定义并选 2027 年 Q2
+    delay.selectedKey.value = 'custom'
+    delay.customQuarter.value = '2027-Q2'
+    await wrapper.findAll('button').find((w) => w.text() === '确认延期')!.trigger('click')
+    await flushPromises()
+    expect(delayPreorder).toHaveBeenCalledWith('p-q', {
+      to_month: '2027-04-01',
+      reason: '厂家跳票',
+      note: null,
+    })
   })
 
   it('取消预购需确认后调用接口', async () => {
@@ -790,10 +917,10 @@ describe('PreorderManagement', () => {
     await flushPromises()
     await wrapper.find('.el-upload-trigger').trigger('click')
     await flushPromises()
-    // 关闭对话框 → 打开编辑 p-1（会话切换）→ 展开识别面板，拿到新会话的 upload 实例
+    // 关闭对话框 → 再次打开新增（会话切换）→ 展开识别面板，拿到新会话的 upload 实例
     await wrapper.find('.preorder-editor-cancel').trigger('click')
     await flushPromises()
-    await wrapper.findAll('button').find((w) => w.text() === '编辑')!.trigger('click')
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
     await flushPromises()
     await wrapper.find('.preorder-ocr-toggle').trigger('click')
     await flushPromises()

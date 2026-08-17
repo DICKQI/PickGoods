@@ -44,11 +44,13 @@ vi.mock('@/api/reminder', () => ({
   deletePreorder: vi.fn(),
   markPreorderPaid: vi.fn(),
   cancelPreorder: vi.fn(),
+  delayPreorder: vi.fn(),
+  listPreorderDelays: vi.fn(),
   convertPreorderToGoods: vi.fn(),
   recognizePreorderImage: vi.fn(),
 }))
 
-import { getPreorderStats, listPreorders, markPreorderPaid } from '@/api/reminder'
+import { getPreorderStats, listPreorderDelays, listPreorders, markPreorderPaid } from '@/api/reminder'
 import type { Preorder } from '@/api/types'
 
 const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder => ({
@@ -61,6 +63,7 @@ const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder =
   balance_amount: '50.00',
   time_granularity: 'month',
   estimated_month: '2026-08-01',
+  delay_count: 0,
   status: 'pending',
   paid_at: null,
   goods_id: null,
@@ -126,6 +129,7 @@ const mountPage = async (query: Record<string, string> = {}) => {
         'el-empty': { template: '<section class="el-empty-stub"><slot /></section>' },
         'el-tag': { template: '<span class="el-tag-stub"><slot /></span>' },
         PreorderEditorForm: { template: '<div class="preorder-editor-form-stub" />' },
+        PreorderDelayDialog: { template: '<div class="preorder-delay-form-stub" />' },
         ConvertGoodsForm: { template: '<div class="convert-goods-form-stub" />' },
         Transition: false,
         Teleport: true,
@@ -236,6 +240,30 @@ describe('PreorderManagement 移动端', () => {
     await deleteItem.trigger('click')
     await flushPromises()
     expect(wrapper.text()).toContain('确定删除「流萤手办」？相关通知将一并删除。')
+  })
+
+  it('⋯ 菜单选择跳票延期打开延期底部抽屉', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    vi.mocked(listPreorderDelays).mockResolvedValue([])
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    await wrapper.find('.preorder-mobile-card__more').trigger('click')
+    await flushPromises()
+    const delayItem = wrapper
+      .findAll('.mobile-action-sheet__item')
+      .find((b) => b.text().includes('跳票延期'))!
+    await delayItem.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain('跳票延期')
+    expect(wrapper.find('.preorder-delay-form-stub').exists()).toBe(true)
+  })
+
+  it('延期后的卡片显示延期次数标签', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1', { delay_count: 3 })]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+    expect(wrapper.text()).toContain('延期×3')
   })
 
   it('点击状态胶囊触发筛选重载并携带 status 参数', async () => {

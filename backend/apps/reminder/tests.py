@@ -4,6 +4,7 @@ import datetime
 from decimal import Decimal
 from unittest.mock import patch
 
+from django.core.exceptions import ValidationError
 from django.db import IntegrityError
 from django.test import TestCase
 from django.utils import timezone
@@ -14,7 +15,7 @@ from apps.goods.models import Category, Character, Goods, IP, Theme
 from apps.users.models import Role, User
 
 from .models import Notification, Preorder
-from .services import sync_due_notifications
+from .services import delay_preorder, sync_due_notifications
 
 # 测试用固定“今天”（所有边界用例围绕该日期）
 TODAY = datetime.date(2026, 6, 1)
@@ -132,6 +133,34 @@ class PreorderAPITestCase(TestCase):
         response = self.client_a.delete(f"/api/preorders/{preorder_id}/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
         self.assertEqual(Preorder.objects.count(), 0)
+
+    def test_update_rejects_estimated_time_changes(self):
+        preorder = Preorder.objects.create(
+            user=self.user_a,
+            name="不可改期手办",
+            deposit_amount=Decimal("100.00"),
+            estimated_month=datetime.date(2026, 8, 1),
+        )
+
+        response = self.client_a.patch(
+            f"/api/preorders/{preorder.id}/",
+            {"estimated_month": "2026-09-01"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("estimated_month", response.json())
+
+        response = self.client_a.patch(
+            f"/api/preorders/{preorder.id}/",
+            {"time_granularity": "quarter"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("time_granularity", response.json())
+
+        preorder.refresh_from_db()
+        self.assertEqual(preorder.estimated_month, datetime.date(2026, 8, 1))
+        self.assertEqual(preorder.time_granularity, Preorder.GRANULARITY_MONTH)
 
     def test_delete_cascades_notifications(self):
         preorder = Preorder.objects.create(
@@ -394,6 +423,281 @@ class PreorderStatusFlowTestCase(TestCase):
         self.assertFalse(due.is_stale)  # 补款后保留历史，不标记过期
 
 
+class PreorderDelayTestCase(TestCase):
+    """跳票延期：时间更新、历史记录、提醒重新同步与「已延期」通知。"""
+
+    def setUp(self):
+        self.user_a = make_user("delay_user_a")
+        self.user_b = make_user("delay_user_b")
+        self.client_a = APIClient()
+        self.client_a.force_authenticate(user=self.user_a)
+        self.client_b = APIClient()
+        self.client_b.force_authenticate(user=self.user_b)
+
+    def _create(self, month: str, **overrides) -> Preorder:
+        return Preorder.objects.create(
+            user=self.user_a,
+            name="跳票手办",
+            deposit_amount=Decimal("100.00"),
+            estimated_month=datetime.date.fromisoformat(month),
+            **overrides,
+        )
+
+    @patch("django.utils.timezone.localdate", return_value=TODAY)
+    def test_delay_success_month(self, _mocked):
+        preorder = self._create("2026-08-01")
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-10-15"},  # 任意日期归一化为当月 1 日
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        data = response.json()
+        self.assertEqual(data["estimated_month"], "2026-10-01")
+        self.assertEqual(data["time_granularity"], "month")
+        self.assertEqual(data["delay_count"], 1)
+
+        preorder.refresh_from_db()
+        self.assertEqual(preorder.estimated_month, datetime.date(2026, 10, 1))
+        # 延期历史
+        record = preorder.delay_records.get()
+        self.assertEqual(record.from_month, datetime.date(2026, 8, 1))
+        self.assertEqual(record.to_month, datetime.date(2026, 10, 1))
+        self.assertEqual(record.from_granularity, Preorder.GRANULARITY_MONTH)
+        self.assertEqual(record.to_granularity, Preorder.GRANULARITY_MONTH)
+        self.assertEqual(record.reason, "厂家跳票")  # 默认原因
+        # 「已延期」通知
+        delayed = Notification.objects.get(
+            preorder=preorder, type=Notification.TYPE_DELAYED
+        )
+        self.assertEqual(delayed.title, "《跳票手办》已延期")
+        self.assertIn("由 2026年8月 调整为 2026年10月", delayed.message)
+
+    def test_delay_uses_latest_database_state_instead_of_stale_instance(self):
+        stale_preorder = self._create("2026-08-01")
+        Preorder.objects.filter(pk=stale_preorder.pk).update(
+            estimated_month=datetime.date(2026, 9, 1),
+            delay_count=1,
+        )
+
+        updated = delay_preorder(
+            stale_preorder,
+            to_month=datetime.date(2026, 10, 1),
+        )
+
+        self.assertEqual(updated.estimated_month, datetime.date(2026, 10, 1))
+        self.assertEqual(updated.delay_count, 2)
+        record = updated.delay_records.get()
+        self.assertEqual(record.from_month, datetime.date(2026, 9, 1))
+        self.assertEqual(record.to_month, datetime.date(2026, 10, 1))
+
+    def test_delay_validates_target_against_latest_database_state(self):
+        stale_preorder = self._create("2026-08-01")
+        Preorder.objects.filter(pk=stale_preorder.pk).update(
+            estimated_month=datetime.date(2026, 10, 1),
+            delay_count=1,
+        )
+
+        with self.assertRaises(ValidationError):
+            delay_preorder(
+                stale_preorder,
+                to_month=datetime.date(2026, 9, 1),
+            )
+
+        stale_preorder.refresh_from_db()
+        self.assertEqual(stale_preorder.estimated_month, datetime.date(2026, 10, 1))
+        self.assertEqual(stale_preorder.delay_count, 1)
+        self.assertEqual(stale_preorder.delay_records.count(), 0)
+
+    def test_delay_validates_status_against_latest_database_state(self):
+        stale_preorder = self._create("2026-08-01")
+        Preorder.objects.filter(pk=stale_preorder.pk).update(
+            status=Preorder.STATUS_PAID,
+            paid_at=timezone.now(),
+        )
+
+        with self.assertRaises(ValidationError):
+            delay_preorder(
+                stale_preorder,
+                to_month=datetime.date(2026, 9, 1),
+            )
+
+        stale_preorder.refresh_from_db()
+        self.assertEqual(stale_preorder.status, Preorder.STATUS_PAID)
+        self.assertEqual(stale_preorder.delay_count, 0)
+        self.assertEqual(stale_preorder.delay_records.count(), 0)
+
+    def test_delay_rejects_not_later(self):
+        preorder = self._create("2026-08-01")
+        # 目标等于当前时间（归一化后相等）
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-08-15"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+        # 目标早于当前时间
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-07-01"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # 缺 to_month
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/", {}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        # 无任何写入
+        preorder.refresh_from_db()
+        self.assertEqual(preorder.delay_count, 0)
+        self.assertEqual(preorder.delay_records.count(), 0)
+        self.assertEqual(Notification.objects.count(), 0)
+
+    def test_delay_quarter_normalizes_to_quarter_start(self):
+        preorder = self._create("2026-07-01", time_granularity=Preorder.GRANULARITY_QUARTER)
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-10-15"},  # Q4 内任意日期 → 季度首月 10-01
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        data = response.json()
+        self.assertEqual(data["estimated_month"], "2026-10-01")
+        self.assertEqual(data["time_granularity"], "quarter")
+        record = preorder.delay_records.get()
+        self.assertEqual(record.from_granularity, Preorder.GRANULARITY_QUARTER)
+        self.assertEqual(record.to_granularity, Preorder.GRANULARITY_QUARTER)
+        self.assertEqual(record.to_month, datetime.date(2026, 10, 1))
+
+    def test_delay_rejects_non_pending(self):
+        preorder = self._create(
+            "2026-08-01",
+            status=Preorder.STATUS_PAID,
+            paid_at=timezone.now(),
+        )
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-10-01"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST, response.content)
+
+    def test_delay_owner_isolation(self):
+        preorder = self._create("2026-08-01")
+        # 他人延期 / 查历史均 404
+        response = self.client_b.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-10-01"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+        response = self.client_b.get(f"/api/preorders/{preorder.id}/delays/")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
+
+    @patch("django.utils.timezone.localdate", return_value=TODAY)
+    def test_delay_stales_old_reminders_and_regenerates(self, _mocked):
+        # 已到补款期（今天 2026-06-01，预计 2026-06-01）→ 已有 due 提醒
+        preorder = self._create("2026-06-01")
+        sync_due_notifications(self.user_a)
+        self.assertTrue(
+            Notification.objects.filter(
+                preorder=preorder, type=Notification.TYPE_DUE, is_stale=False
+            ).exists()
+        )
+        # 延期到 2026-07-01：旧 due 过期，新窗口（30 天前 = 06-01 ≤ 今天）立即生成 soon
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-07-01"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        old = Notification.objects.get(preorder=preorder, type=Notification.TYPE_DUE)
+        self.assertTrue(old.is_stale)
+        self.assertTrue(old.is_read)
+        new = Notification.objects.get(preorder=preorder, type=Notification.TYPE_SOON)
+        self.assertFalse(new.is_stale)
+        # 活跃提醒只有 1 条 + 1 条「已延期」
+        self.assertEqual(
+            Notification.objects.filter(
+                preorder=preorder,
+                type__in=(Notification.TYPE_SOON, Notification.TYPE_DUE),
+                is_stale=False,
+            ).count(),
+            1,
+        )
+
+    @patch("django.utils.timezone.localdate", return_value=TODAY)
+    def test_repeated_delay_history_and_delayed_notification(self, _mocked):
+        """连续两次延期：历史累积、前一条「已延期」通知过期（无唯一约束冲突）。"""
+        preorder = self._create("2026-08-01")
+        for to_month in ("2026-09-01", "2026-10-01"):
+            response = self.client_a.post(
+                f"/api/preorders/{preorder.id}/delay/",
+                {"to_month": to_month},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+
+        preorder.refresh_from_db()
+        self.assertEqual(preorder.estimated_month, datetime.date(2026, 10, 1))
+        self.assertEqual(preorder.delay_count, 2)
+        self.assertEqual(preorder.delay_records.count(), 2)
+        # 活跃「已延期」仅 1 条，旧 1 条已过期
+        self.assertEqual(
+            Notification.objects.filter(
+                preorder=preorder, type=Notification.TYPE_DELAYED, is_stale=False
+            ).count(),
+            1,
+        )
+        self.assertEqual(
+            Notification.objects.filter(
+                preorder=preorder, type=Notification.TYPE_DELAYED, is_stale=True
+            ).count(),
+            1,
+        )
+        # 最新的通知文案是第二次延期
+        active = Notification.objects.get(
+            preorder=preorder, type=Notification.TYPE_DELAYED, is_stale=False
+        )
+        self.assertIn("调整为 2026年10月", active.message)
+
+    def test_delay_custom_reason_and_note(self):
+        preorder = self._create("2026-08-01")
+        response = self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-09-01", "reason": "官方公告跳票", "note": "延期到 9 月"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        record = preorder.delay_records.get()
+        self.assertEqual(record.reason, "官方公告跳票")
+        self.assertEqual(record.note, "延期到 9 月")
+
+    def test_delays_endpoint_newest_first(self):
+        preorder = self._create("2026-08-01")
+        self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-09-01", "reason": "第一次"},
+            format="json",
+        )
+        self.client_a.post(
+            f"/api/preorders/{preorder.id}/delay/",
+            {"to_month": "2026-10-01", "reason": "第二次"},
+            format="json",
+        )
+        response = self.client_a.get(f"/api/preorders/{preorder.id}/delays/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(len(data), 2)
+        # 新→旧：最新一次延期在前
+        self.assertEqual(data[0]["to_month"], "2026-10-01")
+        self.assertEqual(data[0]["reason"], "第二次")
+        self.assertEqual(data[1]["to_month"], "2026-09-01")
+        self.assertEqual(data[1]["from_month"], "2026-08-01")
+        self.assertIn("created_at", data[0])
+
+
 class ConvertToGoodsTestCase(TestCase):
     """转正为谷子：字段映射、金额/日期迁移、幂等与校验。"""
 
@@ -611,7 +915,7 @@ class NotificationGenerationTestCase(TestCase):
         )
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
-    def test_month_update_stales_old_and_generates_new(self, _mocked):
+    def test_month_update_is_rejected_and_keeps_existing_reminder(self, _mocked):
         preorder = self._create_preorder("2026-07-01")
         sync_due_notifications(self.user)
         self.assertTrue(
@@ -619,75 +923,70 @@ class NotificationGenerationTestCase(TestCase):
                 preorder=preorder, type=Notification.TYPE_SOON, is_stale=False
             ).exists()
         )
-        # 修改月份为已到补款期
         response = self.client.patch(
             f"/api/preorders/{preorder.id}/",
             {"estimated_month": "2026-05-01"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        # 旧 soon 通知过期，新 due 通知生成，且唯一约束不冲突
-        old = Notification.objects.get(
-            preorder=preorder, type=Notification.TYPE_SOON
-        )
-        self.assertTrue(old.is_stale)
-        self.assertTrue(old.is_read)
-        new = Notification.objects.get(
-            preorder=preorder, type=Notification.TYPE_DUE
-        )
-        self.assertFalse(new.is_stale)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        preorder.refresh_from_db()
+        self.assertEqual(preorder.estimated_month, datetime.date(2026, 7, 1))
         self.assertEqual(
             Notification.objects.filter(
                 preorder=preorder, is_stale=False
             ).count(),
             1,
         )
+        self.assertEqual(
+            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 0
+        )
+        self.assertEqual(
+            Notification.objects.get(preorder=preorder).type,
+            Notification.TYPE_SOON,
+        )
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
-    def test_reschedule_twice_keeps_stale_history(self, _mocked):
-        """连续两次修改月份：过期提醒累积为历史，不触发唯一约束冲突（回归）。"""
+    def test_rejected_reschedule_does_not_create_notification_history(self, _mocked):
         created = self.client.post(
             "/api/preorders/",
             preorder_payload(estimated_month="2026-07-01"),
             format="json",
         )
         preorder_id = created.json()["id"]
-        # 第一次改期：07 → 06（窗口内，旧 soon 过期，生成 due）
         response = self.client.patch(
             f"/api/preorders/{preorder_id}/",
             {"estimated_month": "2026-06-01"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
-        # 第二次改期：06 → 07（旧 due 过期，重新生成 soon）
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response = self.client.patch(
             f"/api/preorders/{preorder_id}/",
-            {"estimated_month": "2026-07-01"},
+            {"estimated_month": "2026-08-01"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         preorder = Preorder.objects.get(id=preorder_id)
         self.assertEqual(
             Notification.objects.filter(preorder=preorder, is_stale=False).count(), 1
         )
         self.assertEqual(
-            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 2
+            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 0
         )
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
-    def test_cancel_after_reschedule_no_integrity_error(self, _mocked):
-        """改期后取消：置过期不应与历史过期记录冲突（回归）。"""
+    def test_cancel_after_rejected_reschedule_stales_original_reminder(self, _mocked):
         created = self.client.post(
             "/api/preorders/",
             preorder_payload(estimated_month="2026-07-01"),
             format="json",
         )
         preorder_id = created.json()["id"]
-        self.client.patch(
+        patch_response = self.client.patch(
             f"/api/preorders/{preorder_id}/",
             {"estimated_month": "2026-06-01"},
             format="json",
         )
+        self.assertEqual(patch_response.status_code, status.HTTP_400_BAD_REQUEST)
         response = self.client.post(f"/api/preorders/{preorder_id}/cancel/")
         self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
         preorder = Preorder.objects.get(id=preorder_id)
@@ -697,7 +996,7 @@ class NotificationGenerationTestCase(TestCase):
                 type__in=(Notification.TYPE_SOON, Notification.TYPE_DUE),
                 is_stale=True,
             ).count(),
-            2,
+            1,
         )
         self.assertEqual(
             Notification.objects.filter(
@@ -796,8 +1095,7 @@ class QuarterGranularityTestCase(TestCase):
         self.assertIn("第二季度", notification.message)
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
-    def test_update_switches_granularity_stales_old(self, _mocked):
-        # 季度 Q3（07-01）→ 改月粒度 2026-06-01：旧季度提醒过期，新月粒度 due 生成
+    def test_update_switches_granularity_is_rejected(self, _mocked):
         preorder = Preorder.objects.create(
             user=self.user,
             name="季度改月",
@@ -811,21 +1109,19 @@ class QuarterGranularityTestCase(TestCase):
             {"estimated_month": "2026-06-01", "time_granularity": "month"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         preorder.refresh_from_db()
-        self.assertEqual(preorder.time_granularity, Preorder.GRANULARITY_MONTH)
-        self.assertEqual(preorder.estimated_month, datetime.date(2026, 6, 1))
-        # 旧季度提醒过期，新月粒度 due 生成
+        self.assertEqual(preorder.time_granularity, Preorder.GRANULARITY_QUARTER)
+        self.assertEqual(preorder.estimated_month, datetime.date(2026, 7, 1))
         self.assertEqual(
-            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 1
+            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 0
         )
         active = Notification.objects.get(preorder=preorder, is_stale=False)
-        self.assertEqual(active.type, Notification.TYPE_DUE)
+        self.assertEqual(active.type, Notification.TYPE_SOON)
 
 
     @patch("django.utils.timezone.localdate", return_value=TODAY)
-    def test_granularity_switch_resyncs_notifications(self, _mocked):
-        """粒度切换（存储日期不变）：旧提醒过期并按新粒度重新生成（回归）。"""
+    def test_granularity_switch_is_rejected_without_resync(self, _mocked):
         preorder = Preorder.objects.create(
             user=self.user,
             name="粒度切换",
@@ -838,23 +1134,20 @@ class QuarterGranularityTestCase(TestCase):
             "2026年7月",
             Notification.objects.get(preorder=preorder).message,
         )
-        # 同一天切为季度粒度（Q3）
         response = self.client.patch(
             f"/api/preorders/{preorder.id}/",
             {"estimated_month": "2026-07-01", "time_granularity": "quarter"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
-        # 旧月粒度提醒过期，新季度提醒生成（文案含第三季度）
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertEqual(
-            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 1
+            Notification.objects.filter(preorder=preorder, is_stale=True).count(), 0
         )
         active = Notification.objects.get(preorder=preorder, is_stale=False)
         self.assertEqual(active.type, Notification.TYPE_SOON)
-        self.assertIn("第三季度", active.message)
+        self.assertIn("2026年7月", active.message)
 
-    def test_patch_granularity_only_normalizes_month(self):
-        """仅改粒度（不含 estimated_month）：实例时间归一化为季度首月（回归）。"""
+    def test_patch_granularity_only_is_rejected(self):
         preorder = Preorder.objects.create(
             user=self.user,
             name="仅改粒度",
@@ -866,11 +1159,10 @@ class QuarterGranularityTestCase(TestCase):
             {"time_granularity": "quarter"},
             format="json",
         )
-        self.assertEqual(response.status_code, status.HTTP_200_OK, response.content)
-        data = response.json()
-        # 8 月属于 Q3 → 归一化为季度首月 7 月 1 日
-        self.assertEqual(data["time_granularity"], "quarter")
-        self.assertEqual(data["estimated_month"], "2026-07-01")
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        preorder.refresh_from_db()
+        self.assertEqual(preorder.time_granularity, Preorder.GRANULARITY_MONTH)
+        self.assertEqual(preorder.estimated_month, datetime.date(2026, 8, 1))
 
 
 class NotificationAPITestCase(TestCase):

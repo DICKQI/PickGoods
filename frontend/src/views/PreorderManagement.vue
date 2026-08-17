@@ -92,11 +92,12 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="预计补款时间" width="150" sortable :sort-by="sortByMonth">
+          <el-table-column label="预计补款时间" width="170" sortable :sort-by="sortByMonth">
             <template #default="{ row }">
               <span class="preorder-month-cell">
                 <span>{{ formatMonth(row) }}</span>
                 <span v-if="isDueNow(row)" class="month-due-tag">{{ row.time_granularity === 'quarter' ? '补款期' : '已到期' }}</span>
+                <span v-if="row.delay_count > 0" class="month-delay-tag" :title="`已延期 ${row.delay_count} 次`">延期×{{ row.delay_count }}</span>
               </span>
             </template>
           </el-table-column>
@@ -105,10 +106,11 @@
               <span class="preorder-status-pill" :class="row.status">{{ statusLabel(row.status) }}</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="240" fixed="right">
+          <el-table-column label="操作" width="290" fixed="right">
             <template #default="{ row }">
               <div class="cell-actions">
                 <el-button v-if="row.status === 'pending'" link type="primary" size="small" class="action-mark" @click="handleMarkPaid(row)">标记补款</el-button>
+                <el-button v-if="row.status === 'pending'" link type="warning" size="small" class="action-delay" @click="openDelay(row)">延期</el-button>
                 <el-button v-if="row.status === 'paid'" link type="primary" size="small" class="action-convert" @click="openConvert(row)">转正为谷子</el-button>
                 <el-button v-if="row.status === 'converted' && row.goods_id" link type="primary" size="small" class="action-goods" @click="goToGoods(row)">查看谷子</el-button>
                 <el-button link type="info" size="small" class="action-edit" @click="openEdit(row)">编辑</el-button>
@@ -221,7 +223,7 @@
             <div class="preorder-editor-heading">
               <span class="preorder-editor-kicker">PREORDER FORM</span>
               <h3>{{ editingTarget ? '编辑预购' : '新增预购' }}</h3>
-              <p>{{ editingTarget ? '修改登记信息；改期后旧提醒自动失效并按新月份重新提醒' : '登记外部平台下单的手办定金' }}</p>
+              <p>{{ editingTarget ? '修改订单信息、金额与备注' : '登记外部平台下单的手办定金' }}</p>
             </div>
             <button type="button" class="preorder-editor-close" aria-label="关闭" @click="formDialogVisible = false">
               <el-icon><Close /></el-icon>
@@ -233,6 +235,38 @@
           :editing-target="editingTarget"
           @close="formDialogVisible = false"
           @saved="handleEditorSaved"
+        />
+      </el-dialog>
+
+      <!-- 跳票延期对话框（同款编辑器式） -->
+      <el-dialog
+        v-if="!isMobile"
+        v-model="delayDialogVisible"
+        title="跳票延期"
+        width="640px"
+        class="custom-dialog preorder-editor-dialog"
+        :show-close="false"
+        :close-on-click-modal="false"
+        align-center
+      >
+        <template #header>
+          <div class="preorder-editor-header">
+            <span class="preorder-editor-icon"><el-icon><Clock /></el-icon></span>
+            <div class="preorder-editor-heading">
+              <span class="preorder-editor-kicker">DELAY PREORDER</span>
+              <h3>跳票延期</h3>
+              <p>厂家跳票时顺延补款时间，旧提醒自动失效并按新时间重新提醒</p>
+            </div>
+            <button type="button" class="preorder-editor-close" aria-label="关闭" @click="delayDialogVisible = false">
+              <el-icon><Close /></el-icon>
+            </button>
+          </div>
+        </template>
+        <PreorderDelayDialog
+          :visible="delayDialogVisible"
+          :target="delayTarget"
+          @close="delayDialogVisible = false"
+          @delayed="handleDelaySettled"
         />
       </el-dialog>
 
@@ -273,13 +307,28 @@
         v-if="isMobile"
         v-model="formDialogVisible"
         :title="editingTarget ? '编辑预购' : '新增预购'"
-        :subtitle="editingTarget ? '修改登记信息；改期后旧提醒自动失效' : '登记外部平台下单的手办定金'"
+        :subtitle="editingTarget ? '修改订单信息、金额与备注' : '登记外部平台下单的手办定金'"
       >
         <PreorderEditorForm
           :visible="formDialogVisible"
           :editing-target="editingTarget"
           @close="formDialogVisible = false"
           @saved="handleEditorSaved"
+        />
+      </BaseBottomSheet>
+
+      <!-- 移动端：跳票延期底部抽屉 -->
+      <BaseBottomSheet
+        v-if="isMobile"
+        v-model="delayDialogVisible"
+        title="跳票延期"
+        subtitle="厂家跳票时顺延补款时间，旧提醒自动失效"
+      >
+        <PreorderDelayDialog
+          :visible="delayDialogVisible"
+          :target="delayTarget"
+          @close="delayDialogVisible = false"
+          @delayed="handleDelaySettled"
         />
       </BaseBottomSheet>
 
@@ -323,7 +372,7 @@
 import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Delete, Edit, Loading, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
+import { Clock, Close, Delete, Edit, Loading, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
 import * as reminderApi from '@/api/reminder'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { usePreorderList } from '@/composables/usePreorderList'
@@ -332,6 +381,7 @@ import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import PreorderEditorForm from '@/components/preorder/PreorderEditorForm.vue'
+import PreorderDelayDialog from '@/components/preorder/PreorderDelayDialog.vue'
 import ConvertGoodsForm from '@/components/preorder/ConvertGoodsForm.vue'
 import PreorderMobileStats from '@/components/preorder/PreorderMobileStats.vue'
 import PreorderMobileFilterBar from '@/components/preorder/PreorderMobileFilterBar.vue'
@@ -526,6 +576,22 @@ const handleEditorSaved = async () => {
   await Promise.all([loadInitial(), loadStats()])
 }
 
+// ─── 跳票延期（表单逻辑在 PreorderDelayDialog / usePreorderDelay） ───
+const delayDialogVisible = ref(false)
+const delayTarget = ref<Preorder | null>(null)
+
+const openDelay = (item: Preorder) => {
+  delayTarget.value = item
+  delayDialogVisible.value = true
+}
+
+const handleDelaySettled = async () => {
+  delayDialogVisible.value = false
+  ElMessage.success('已延期，提醒已按新时间更新')
+  if (isMobile.value) page.value = 1
+  await Promise.all([loadInitial(), loadStats()])
+}
+
 // ─── 状态流转（桌面 ElMessageBox 确认；移动端复用 perform* + 底部确认面板） ───
 const performMarkPaid = async (item: Preorder) => {
   const updated = await reminderApi.markPreorderPaid(item.id)
@@ -607,6 +673,7 @@ const menuActions = computed(() => {
     { key: 'edit', label: '编辑', icon: markRaw(Edit) },
   ]
   if (item.status === 'pending') {
+    actions.push({ key: 'delay', label: '跳票延期', icon: markRaw(Clock), tone: 'primary' })
     actions.push({ key: 'cancel', label: '取消预购', icon: markRaw(Close), tone: 'danger' })
   }
   actions.push({ key: 'delete', label: '删除', icon: markRaw(Delete), tone: 'danger' })
@@ -645,6 +712,8 @@ const handleMenuSelect = (key: string) => {
   if (!item) return
   if (key === 'edit') {
     openEdit(item)
+  } else if (key === 'delay') {
+    openDelay(item)
   } else if (key === 'cancel') {
     requestConfirm({
       title: '取消预购',
@@ -1140,6 +1209,18 @@ onUnmounted(() => {
   font-weight: 700;
 }
 
+/* 延期次数标签：暖橙提醒（厂家跳票痕迹） */
+.month-delay-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(230, 162, 60, 0.14);
+  border: 1px solid rgba(230, 162, 60, 0.28);
+  color: #b88230;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
 /* 状态胶囊 */
 .preorder-status-pill {
   display: inline-flex;
@@ -1209,6 +1290,16 @@ onUnmounted(() => {
 
 .cell-actions .action-cancel:hover {
   color: #c77700;
+  background: rgba(230, 162, 60, 0.12);
+}
+
+/* 跳票延期：暖橙色，与取消区分（金色系延后语义） */
+.cell-actions .action-delay {
+  color: #b88230;
+}
+
+.cell-actions .action-delay:hover {
+  color: #b88230;
   background: rgba(230, 162, 60, 0.12);
 }
 

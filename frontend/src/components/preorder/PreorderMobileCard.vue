@@ -37,6 +37,7 @@
       <div class="preorder-mobile-card__due">
         <el-icon><Calendar /></el-icon>
         <span class="preorder-mobile-card__due-text">{{ formatMonth(item) }}补款</span>
+        <span v-if="item.delay_count > 0" class="preorder-mobile-card__delay-tag" :title="`已延期 ${item.delay_count} 次`">延期×{{ item.delay_count }}</span>
         <span v-if="dueNow" class="preorder-mobile-card__due-tag">
           {{ item.time_granularity === 'quarter' ? '补款期' : '已到期' }}
         </span>
@@ -329,6 +330,16 @@ defineExpose({ closeSwipe })
   border-radius: 999px;
   background: rgba(245, 108, 108, 0.12);
   color: #e5484d;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.preorder-mobile-card__delay-tag {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(230, 162, 60, 0.14);
+  border: 1px solid rgba(230, 162, 60, 0.28);
+  color: #b88230;
   font-size: 11px;
   font-weight: 700;
 }

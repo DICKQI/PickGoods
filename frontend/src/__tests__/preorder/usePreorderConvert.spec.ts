@@ -33,6 +33,7 @@ const makePreorder = (): Preorder => ({
   balance_amount: '700.00',
   time_granularity: 'month',
   estimated_month: '2026-08-01',
+  delay_count: 0,
   status: 'paid',
   paid_at: '2026-08-01T00:00:00Z',
   goods_id: null,

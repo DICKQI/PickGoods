@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import models, transaction
 from django.db.models.functions import Coalesce
 from django.utils import timezone
@@ -16,11 +17,14 @@ from core.permissions import IsOwnerOnly, is_admin
 from .models import Notification, Preorder
 from .serializers import (
     ConvertPreorderToGoodsSerializer,
+    DelayPreorderSerializer,
     NotificationSerializer,
+    PreorderDelayRecordSerializer,
     PreorderSerializer,
     ReadNotificationsSerializer,
 )
 from .services import (
+    delay_preorder,
     mark_preorder_notifications_read,
     mark_preorder_notifications_stale,
     notify_status_change,
@@ -56,7 +60,7 @@ class PreorderViewSet(viewsets.ModelViewSet):
 
     - 状态机：pending → paid（mark-paid，不可逆）；pending → cancelled（cancel）；
       paid → converted（convert-to-goods，终态）；其余流转一律 400。
-    - 创建 / 更新后触发惰性通知同步；月份修改时旧提醒标记为已过期。
+    - 创建后触发惰性通知同步；预计补款时间只能通过 delay action 顺延。
     """
 
     queryset = Preorder.objects.select_related("goods").all()
@@ -140,25 +144,6 @@ class PreorderViewSet(viewsets.ModelViewSet):
         # 登记时若已处于提醒窗口 / 补款期，立即生成通知
         sync_preorder(serializer.instance)
 
-    def update(self, request, *args, **kwargs):
-        partial = kwargs.pop("partial", False)
-        instance = self.get_object()
-        old_month = instance.estimated_month
-        old_granularity = instance.time_granularity
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
-        serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
-        preorder = serializer.instance
-        # 时间或粒度任一变化：旧提醒过期并按新时间/粒度重新同步
-        # （粒度切换即使存储日期不变，提醒窗口与文案也不同）
-        if (preorder.estimated_month, preorder.time_granularity) != (
-            old_month,
-            old_granularity,
-        ):
-            mark_preorder_notifications_stale(preorder)
-            sync_preorder(preorder)
-        return Response(serializer.data)
-
     @action(detail=True, methods=["post"], url_path="mark-paid")
     def mark_paid(self, request, pk=None):
         preorder = self.get_object()
@@ -172,6 +157,42 @@ class PreorderViewSet(viewsets.ModelViewSet):
         preorder.save(update_fields=["status", "paid_at", "updated_at"])
         mark_preorder_notifications_read(preorder)
         return Response(PreorderSerializer(preorder).data)
+
+    @action(detail=True, methods=["post"], url_path="delay")
+    def delay(self, request, pk=None):
+        """跳票延期：顺延预计补款时间并记录延期历史。
+
+        仅 pending 可延期（含已过补款期仍未补款的）；目标时间必须严格晚于
+        当前预计时间；粒度创建后保持不变。旧提醒置过期
+        并按新时间重新生成，同时生成一条「已延期」通知。
+        """
+        preorder = self.get_object()
+        serializer = DelayPreorderSerializer(
+            data=request.data,
+            context={"preorder": preorder},
+        )
+        serializer.is_valid(raise_exception=True)
+        try:
+            updated = delay_preorder(
+                preorder,
+                to_month=serializer.validated_data["to_month"],
+                reason=serializer.validated_data["reason"],
+                note=serializer.validated_data.get("note") or "",
+            )
+        except DjangoValidationError as exc:
+            detail = {
+                field: messages[0] if len(messages) == 1 else messages
+                for field, messages in exc.message_dict.items()
+            }
+            return Response(detail, status=status.HTTP_400_BAD_REQUEST)
+        return Response(PreorderSerializer(updated).data)
+
+    @action(detail=True, methods=["get"], url_path="delays")
+    def delays(self, request, pk=None):
+        """预购延期历史（新→旧，不分页）。"""
+        preorder = self.get_object()
+        records = preorder.delay_records.all()
+        return Response(PreorderDelayRecordSerializer(records, many=True).data)
 
     @action(detail=True, methods=["post"])
     def cancel(self, request, pk=None):
