@@ -1,10 +1,11 @@
 <template>
   <div class="convert-goods-form-root">
-    <div class="convert-tip">
-      <el-icon class="convert-tip-icon"><InfoFilled /></el-icon>
-      <span>金额自动带入（定金 + 尾款），购入日期为补款日；默认保存为草稿，可稍后补充图片等信息。</span>
-    </div>
-    <el-form :ref="setFormRef" :model="convertForm" :rules="convertRules" label-position="top" class="preorder-editor-form">
+    <div class="convert-goods-form-scroll">
+      <div class="convert-tip">
+        <el-icon class="convert-tip-icon"><InfoFilled /></el-icon>
+        <span>金额自动带入（定金 + 尾款），购入日期为补款日；默认保存为草稿，可稍后补充图片等信息。</span>
+      </div>
+      <el-form :ref="setFormRef" :model="convertForm" :rules="convertRules" label-position="top" class="preorder-editor-form">
       <section class="preorder-editor-section">
         <div class="preorder-editor-section-title">
           <h4>谷子信息</h4>
@@ -61,7 +62,8 @@
           </el-form-item>
         </div>
       </section>
-    </el-form>
+      </el-form>
+    </div>
 
     <div class="preorder-editor-form-footer">
       <el-button class="preorder-editor-cancel" @click="$emit('close')">取消</el-button>
@@ -128,6 +130,24 @@ defineExpose({ convert })
 .convert-goods-form-root {
   display: flex;
   flex-direction: column;
+}
+
+.convert-goods-form-scroll {
+  min-height: 0;
+}
+
+@media (min-width: 769px) {
+  .convert-goods-form-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .convert-goods-form-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
 }
 
 .convert-tip {

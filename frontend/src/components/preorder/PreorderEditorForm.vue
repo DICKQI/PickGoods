@@ -1,86 +1,7 @@
 <template>
   <div class="preorder-editor-form-root">
     <el-form :ref="setFormRef" :model="form" :rules="formRules" label-position="top" class="preorder-editor-form">
-      <section class="preorder-editor-section">
-        <div class="preorder-editor-section-title">
-          <h4>基本信息</h4>
-          <p>手办名称与下单渠道</p>
-        </div>
-        <el-form-item label="手办名称" prop="name">
-          <el-input v-model="form.name" placeholder="例如：流萤 1/7 手办" maxlength="200" />
-        </el-form-item>
-        <div class="preorder-editor-grid">
-          <el-form-item label="下单平台">
-            <el-select v-model="form.platform" placeholder="选择或输入平台" filterable allow-create clearable style="width: 100%">
-              <el-option v-for="p in PLATFORM_OPTIONS" :key="p" :label="p" :value="p" />
-            </el-select>
-          </el-form-item>
-          <el-form-item label="店铺名称">
-            <el-input v-model="form.shop_name" placeholder="选填" maxlength="100" />
-          </el-form-item>
-        </div>
-        <el-form-item label="订单号">
-          <el-input v-model="form.order_no" placeholder="选填" maxlength="100" />
-        </el-form-item>
-      </section>
-
-      <section class="preorder-editor-section">
-        <div class="preorder-editor-section-title">
-          <h4>金额与补款</h4>
-          <p>定金必填，尾款未知可留空</p>
-        </div>
-        <div class="preorder-editor-grid">
-          <el-form-item label="定金金额" prop="deposit_amount">
-            <el-input-number v-model="form.deposit_amount" :min="0" :precision="2" :controls="false" placeholder="0.00" style="width: 100%" />
-          </el-form-item>
-          <el-form-item label="尾款金额">
-            <el-input-number v-model="form.balance_amount" :min="0" :precision="2" :controls="false" placeholder="未知可留空" style="width: 100%" />
-          </el-form-item>
-        </div>
-        <div v-if="!editingTarget" class="preorder-editor-grid preorder-time-grid">
-          <el-form-item label="时间粒度">
-            <el-segmented
-              v-model="form.time_granularity"
-              :options="GRANULARITY_OPTIONS"
-              class="granularity-select"
-              @change="handleGranularityChange"
-            />
-          </el-form-item>
-          <el-form-item :label="form.time_granularity === 'quarter' ? '预计补款季度' : '预计补款月份'" prop="estimated_month">
-            <el-date-picker
-              v-if="form.time_granularity === 'month'"
-              v-model="form.estimated_month"
-              type="month"
-              value-format="YYYY-MM"
-              placeholder="选择预计补款月份"
-              style="width: 100%"
-              :clearable="false"
-            />
-            <!-- EP 2.13 无 type="quarter" 面板，季度用下拉选择（契约值 'YYYY-Qn'） -->
-            <el-select
-              v-else
-              v-model="form.estimated_month"
-              placeholder="选择预计补款季度"
-              style="width: 100%"
-              class="quarter-select"
-            >
-              <el-option v-for="opt in quarterOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
-            </el-select>
-          </el-form-item>
-        </div>
-      </section>
-
-      <section class="preorder-editor-section">
-        <div class="preorder-editor-section-title">
-          <h4>备注</h4>
-          <p>选填</p>
-        </div>
-        <el-form-item label="">
-          <el-input v-model="form.notes" type="textarea" :rows="3" placeholder="选填" />
-        </el-form-item>
-      </section>
-
-      <!-- 截图识别（弱化入口：默认收起，置于表单末尾） -->
+      <!-- 截图识别（新增时优先入口：默认收起） -->
       <section v-if="!editingTarget" class="preorder-editor-section preorder-ocr-section">
         <button type="button" class="preorder-ocr-toggle" @click="ocrPanelVisible = !ocrPanelVisible">
           <el-icon><Picture /></el-icon>
@@ -138,6 +59,88 @@
           </div>
         </div>
       </section>
+
+      <div class="preorder-editor-main-grid">
+        <section class="preorder-editor-section preorder-basic-section">
+          <div class="preorder-editor-section-title">
+            <h4>基本信息</h4>
+            <p>手办名称与下单渠道</p>
+          </div>
+          <el-form-item label="手办名称" prop="name">
+            <el-input v-model="form.name" placeholder="例如：流萤 1/7 手办" maxlength="200" />
+          </el-form-item>
+          <div class="preorder-editor-grid">
+            <el-form-item label="下单平台">
+              <el-select v-model="form.platform" placeholder="选择或输入平台" filterable allow-create clearable style="width: 100%">
+                <el-option v-for="p in PLATFORM_OPTIONS" :key="p" :label="p" :value="p" />
+              </el-select>
+            </el-form-item>
+            <el-form-item label="店铺名称">
+              <el-input v-model="form.shop_name" placeholder="选填" maxlength="100" />
+            </el-form-item>
+          </div>
+          <el-form-item label="订单号" class="preorder-last-field">
+            <el-input v-model="form.order_no" placeholder="选填" maxlength="100" />
+          </el-form-item>
+        </section>
+
+        <section class="preorder-editor-section preorder-payment-section">
+          <div class="preorder-editor-section-title">
+            <h4>金额与补款</h4>
+            <p>定金必填，尾款未知可留空</p>
+          </div>
+          <div class="preorder-editor-grid">
+            <el-form-item label="定金金额" prop="deposit_amount">
+              <el-input-number v-model="form.deposit_amount" :min="0" :precision="2" :controls="false" placeholder="0.00" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="尾款金额">
+              <el-input-number v-model="form.balance_amount" :min="0" :precision="2" :controls="false" placeholder="未知可留空" style="width: 100%" />
+            </el-form-item>
+          </div>
+          <div v-if="!editingTarget" class="preorder-editor-grid preorder-time-grid preorder-last-field">
+            <el-form-item label="时间粒度">
+              <el-segmented
+                v-model="form.time_granularity"
+                :options="GRANULARITY_OPTIONS"
+                class="granularity-select"
+                @change="handleGranularityChange"
+              />
+            </el-form-item>
+            <el-form-item :label="form.time_granularity === 'quarter' ? '预计补款季度' : '预计补款月份'" prop="estimated_month">
+              <el-date-picker
+                v-if="form.time_granularity === 'month'"
+                v-model="form.estimated_month"
+                type="month"
+                value-format="YYYY-MM"
+                placeholder="选择预计补款月份"
+                style="width: 100%"
+                :clearable="false"
+              />
+              <!-- EP 2.13 无 type="quarter" 面板，季度用下拉选择（契约值 'YYYY-Qn'） -->
+              <el-select
+                v-else
+                v-model="form.estimated_month"
+                placeholder="选择预计补款季度"
+                style="width: 100%"
+                class="quarter-select"
+              >
+                <el-option v-for="opt in quarterOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+              </el-select>
+            </el-form-item>
+          </div>
+        </section>
+      </div>
+
+      <section class="preorder-editor-section">
+        <div class="preorder-editor-section-title">
+          <h4>备注</h4>
+          <p>选填</p>
+        </div>
+        <el-form-item label="" class="preorder-last-field">
+          <el-input v-model="form.notes" type="textarea" :rows="2" placeholder="选填" />
+        </el-form-item>
+      </section>
+
     </el-form>
 
     <MobileActionSheet
@@ -289,13 +292,27 @@ defineExpose({ editor })
   flex-direction: column;
 }
 
+@media (min-width: 769px) {
+  .preorder-editor-form-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preorder-editor-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
 .preorder-editor-form {
-  padding: 20px 28px 4px;
+  padding: 16px 24px 0;
 }
 
 .preorder-editor-section {
-  margin-bottom: 18px;
-  padding: 18px 20px;
+  margin-bottom: 14px;
+  padding: 16px 18px;
   border: 1px solid rgba(212, 175, 55, 0.14);
   border-radius: 16px;
   background:
@@ -308,7 +325,7 @@ defineExpose({ editor })
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
 }
 
 .preorder-editor-section-title::before {
@@ -340,9 +357,22 @@ defineExpose({ editor })
   gap: 0 16px;
 }
 
+.preorder-editor-main-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 14px;
+}
+
+.preorder-editor-main-grid > .preorder-editor-section {
+  min-width: 0;
+  height: 100%;
+  margin-bottom: 0;
+  box-sizing: border-box;
+}
+
 .preorder-ocr-section {
-  border-top: 1px dashed rgba(212, 175, 55, 0.25);
-  padding-top: 12px;
+  border-top: 1px solid rgba(212, 175, 55, 0.25);
 }
 
 .preorder-ocr-toggle {
@@ -445,11 +475,16 @@ defineExpose({ editor })
 }
 
 .preorder-editor-form :deep(.el-form-item) {
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+}
+
+.preorder-editor-form :deep(.preorder-last-field.el-form-item),
+.preorder-editor-form .preorder-last-field :deep(.el-form-item) {
+  margin-bottom: 0;
 }
 
 .preorder-editor-form :deep(.el-form-item__label) {
-  margin-bottom: 6px;
+  margin-bottom: 5px;
   color: #5f5874;
   font-weight: 800;
   font-size: 13px;
@@ -459,7 +494,7 @@ defineExpose({ editor })
 .preorder-editor-form :deep(.el-input__wrapper),
 .preorder-editor-form :deep(.el-select__wrapper),
 .preorder-editor-form :deep(.el-textarea__inner) {
-  min-height: 44px;
+  min-height: 40px;
   border: 1px solid rgba(212, 175, 55, 0.16);
   border-radius: 12px;
   background: rgba(255, 255, 255, 0.85);
@@ -520,15 +555,15 @@ defineExpose({ editor })
   --el-segmented-item-hover-bg-color: rgba(212, 175, 55, 0.1);
   --el-segmented-item-hover-color: #8a650b;
   width: 100%;
-  height: 44px;
+  height: 40px;
   padding: 2px;
   box-sizing: border-box;
   border-radius: 12px;
 }
 
 .granularity-select :deep(.el-segmented__item) {
-  height: 40px;
-  line-height: 40px;
+  height: 36px;
+  line-height: 36px;
   padding: 0 16px;
   border-radius: 12px;
   font-size: 13px;
@@ -545,9 +580,15 @@ defineExpose({ editor })
   display: flex;
   justify-content: flex-end;
   gap: 12px;
-  padding: 12px 28px 20px;
+  padding: 10px 24px 16px;
   background: rgba(255, 255, 255, 0.92);
   border-top: 1px solid rgba(212, 175, 55, 0.12);
+}
+
+@media (max-width: 900px) {
+  .preorder-editor-main-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 768px) {
@@ -558,6 +599,11 @@ defineExpose({ editor })
   .preorder-editor-section {
     margin-bottom: 14px;
     padding: 14px;
+  }
+
+  .preorder-editor-main-grid {
+    gap: 14px;
+    margin-bottom: 14px;
   }
 
   .preorder-editor-grid {

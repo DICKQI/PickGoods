@@ -166,6 +166,20 @@ defineExpose({ delay })
   flex-direction: column;
 }
 
+@media (min-width: 769px) {
+  .preorder-delay-form-root {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .preorder-delay-form {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+  }
+}
+
 .preorder-delay-form {
   padding: 20px 28px 4px;
 }

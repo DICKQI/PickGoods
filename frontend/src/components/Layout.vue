@@ -505,6 +505,7 @@ watch(isMobile, (mobile) => {
   cursor: pointer;
   user-select: none;
   justify-self: start;
+  white-space: nowrap;
   outline: none;
   -webkit-tap-highlight-color: transparent;
 }
@@ -517,6 +518,7 @@ watch(isMobile, (mobile) => {
 .brand-text {
   font-size: 24px;
   font-weight: bold;
+  white-space: nowrap;
   background: linear-gradient(45deg, var(--primary-gold), var(--primary-gold-light));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -905,6 +907,35 @@ watch(isMobile, (mobile) => {
   }
   to {
     transform: rotate(360deg);
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1100px) {
+  .navbar-content {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 0 12px;
+  }
+
+  .brand-text {
+    font-size: 18px;
+  }
+
+  .nav-menu {
+    min-width: 0;
+  }
+
+  .nav-menu-el {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .nav-menu-el :deep(.el-menu-item) {
+    padding: 0 10px;
+  }
+
+  .nav-actions {
+    gap: 4px;
   }
 }
 

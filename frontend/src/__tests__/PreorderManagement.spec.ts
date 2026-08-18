@@ -445,6 +445,22 @@ describe('PreorderManagement', () => {
     expect(payload.estimated_month).toBe('2026-09-01')
   })
 
+  it('新增对话框将 OCR 入口放在表单顶部', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    await wrapper.findAll('button').find((w) => w.text().includes('新增预购'))!.trigger('click')
+    await flushPromises()
+
+    const sections = wrapper.findAll('.preorder-editor-form > section')
+    expect(sections[0]?.classes()).toContain('preorder-ocr-section')
+    const mainGrid = wrapper.find('.preorder-editor-main-grid')
+    expect(mainGrid.find('.preorder-basic-section').exists()).toBe(true)
+    expect(mainGrid.find('.preorder-payment-section').exists()).toBe(true)
+    expect(wrapper.findComponent(ElDialogStub).props('width')).toBe('920px')
+  })
+
   it('编辑对话框不显示时间调整控件和 OCR', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
     const { wrapper } = await mountPage()

@@ -67,11 +67,11 @@
           :class="{ 'is-switching': switching }"
           :row-class-name="rowClassName"
         >
-          <el-table-column label="手办名称" min-width="200" show-overflow-tooltip>
+          <el-table-column label="手办名称" min-width="200">
             <template #default="{ row }">
               <span class="preorder-name-cell">
                 <span class="preorder-name-tile"><el-icon><ShoppingCart /></el-icon></span>
-                <span class="preorder-name-text">{{ row.name }}</span>
+                <OverflowMarquee class="preorder-name-text" :text="row.name" />
               </span>
             </template>
           </el-table-column>
@@ -92,7 +92,7 @@
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="预计补款时间" width="170" sortable :sort-by="sortByMonth">
+          <el-table-column label="预计补款时间" width="230" sortable :sort-by="sortByMonth">
             <template #default="{ row }">
               <span class="preorder-month-cell">
                 <span>{{ formatMonth(row) }}</span>
@@ -211,8 +211,8 @@
         v-if="!isMobile"
         v-model="formDialogVisible"
         :title="editingTarget ? '编辑预购' : '新增预购'"
-        width="640px"
-        class="custom-dialog preorder-editor-dialog"
+        width="920px"
+        class="custom-dialog preorder-editor-dialog preorder-form-dialog"
         :show-close="false"
         :close-on-click-modal="false"
         align-center
@@ -244,7 +244,7 @@
         v-model="delayDialogVisible"
         title="跳票延期"
         width="640px"
-        class="custom-dialog preorder-editor-dialog"
+        class="custom-dialog preorder-editor-dialog preorder-action-dialog preorder-delay-dialog"
         :show-close="false"
         :close-on-click-modal="false"
         align-center
@@ -276,7 +276,7 @@
         v-model="convertDialogVisible"
         title="转正为谷子"
         width="640px"
-        class="custom-dialog preorder-editor-dialog"
+        class="custom-dialog preorder-editor-dialog preorder-action-dialog preorder-convert-dialog"
         :show-close="false"
         :close-on-click-modal="false"
         align-center
@@ -379,6 +379,7 @@ import { usePreorderList } from '@/composables/usePreorderList'
 import { usePreorderStats } from '@/composables/usePreorderStats'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
+import OverflowMarquee from '@/components/ui/OverflowMarquee.vue'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import PreorderEditorForm from '@/components/preorder/PreorderEditorForm.vue'
 import PreorderDelayDialog from '@/components/preorder/PreorderDelayDialog.vue'
@@ -1131,9 +1132,11 @@ onUnmounted(() => {
 
 /* 首列：金紫渐变图标瓦片 + 名称 */
 .preorder-name-cell {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 11px;
+  width: 100%;
+  min-width: 0;
 }
 
 .preorder-name-tile {
@@ -1151,6 +1154,8 @@ onUnmounted(() => {
 }
 
 .preorder-name-text {
+  flex: 1;
+  min-width: 0;
   color: #243042;
   font-weight: 700;
 }
@@ -1198,6 +1203,12 @@ onUnmounted(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  white-space: nowrap;
+}
+
+.preorder-month-cell > span {
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 .month-due-tag {
@@ -1330,11 +1341,13 @@ onUnmounted(() => {
 }
 
 /* ─── 编辑器式对话框 ─── */
-:global(.preorder-editor-dialog:not(.is-mobile) .el-dialog) {
+:global(.el-dialog.preorder-editor-dialog:not(.is-mobile)) {
   max-width: calc(100vw - 32px);
   max-height: calc(100vh - 72px);
   padding: 0;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
   border: 1px solid rgba(212, 175, 55, 0.22);
   border-radius: 24px;
   background:
@@ -1344,14 +1357,24 @@ onUnmounted(() => {
   box-shadow: 0 30px 80px rgba(41, 34, 24, 0.22), 0 12px 28px rgba(41, 34, 24, 0.1);
 }
 
-:global(.preorder-editor-dialog .el-dialog__header) {
-  display: none;
+:global(.el-dialog.preorder-editor-dialog .el-dialog__header) {
+  display: block;
+  flex: 0 0 auto;
+  padding: 0;
+  margin-right: 0;
 }
 
-:global(.preorder-editor-dialog .el-dialog__body) {
+:global(.el-dialog.preorder-editor-dialog .el-dialog__body) {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
   padding: 0;
-  max-height: calc(100vh - 170px);
-  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+  overflow: hidden;
+}
+
+:global(.preorder-form-dialog .el-dialog__body) {
+  max-height: calc(100vh - 120px);
 }
 
 :global(.preorder-editor-dialog .el-dialog__footer) {
@@ -1438,6 +1461,35 @@ onUnmounted(() => {
   transform: rotate(90deg);
   color: #9a740b;
   border-color: rgba(212, 175, 55, 0.4);
+}
+
+@media (max-height: 820px) and (min-width: 769px) {
+  .preorder-editor-header {
+    gap: 10px;
+    padding: 6px 20px;
+  }
+
+  .preorder-editor-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    font-size: 16px;
+  }
+
+  .preorder-editor-kicker,
+  .preorder-editor-heading p {
+    display: none;
+  }
+
+  .preorder-editor-heading h3 {
+    margin: 0;
+    font-size: 17px;
+  }
+
+  .preorder-editor-close {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 .preorder-editor-form {
