@@ -77,7 +77,7 @@
 | `path_name`| Char(200), 索引         | 冗余完整路径，如：`周边/吧唧/圆形吧唧`                              |
 | `color_tag`| Char(20，可空)          | 颜色标签，用于UI展示的颜色标识，例如：`#FF5733`                    |
 | `order`    | Integer                 | 同级展示顺序，越小越靠前，默认 0                                     |
-| `shape_type`| Char(20，可空)        | 形状类型标记，用于标识该品类的外观形状，如 `round`(圆形) / `rectangle`(矩形)。影响图片分类引擎的建议排序 |
+| `shape_type`| Char(20，可空)        | 形状类型标记：`round`(圆形) / `square`(正方形) / `rectangle`(长方形)。影响图片分类引擎的建议排序 |
 
 #### `Theme` 主题表
 
@@ -1790,7 +1790,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 - **URL**：`POST /api/goods/classify-image/`
 - **说明**：
-  - 上传谷子图片，通过 OpenCV 形状检测自动识别品类形状（圆形/矩形）。
+  - 上传谷子图片，通过 OpenCV 主体轮廓检测自动识别品类形状（圆形/正方形/长方形/未知）。
   - 根据形状类型推荐匹配的品类列表，辅助快速录入。
   - 该接口有独立的速率限制（与列表检索共用 `goods_search` 作用域）。
 
@@ -1818,11 +1818,24 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 ```
 
 **字段说明**：
-- `shape_type`：检测到的形状类型，`"round"`（圆形，如徽章/吧唧）或 `"rectangle"`（矩形，如卡片/亚克力牌）
+- `shape_type`：检测到的形状类型，`"round"`（历史兼容值，表示圆形）、`"square"`（正方形）、`"rectangle"`（长方形）或 `"unknown"`（无法可靠判断）
 - `confidence`：形状检测置信度（0~1）
 - `suggestions`：按相关性评分排序的推荐品类列表（最多12个），包含品类 `id`、`name`、`path_name`、`shape_type`
 
 **无法识别**：
+
+图片格式有效但外轮廓不稳定时，接口返回 `200`，并使用 `unknown`，不会生成品类建议：
+
+```json
+{
+  "shape_type": "unknown",
+  "confidence": 0.42,
+  "suggestions": [],
+  "detail": "图片中没有足够稳定的单一主体轮廓，请手动选择品类"
+}
+```
+
+图片格式非法或解码失败时，仍返回 `422`：
 
 ```json
 {

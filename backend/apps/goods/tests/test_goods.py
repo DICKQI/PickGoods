@@ -7,6 +7,8 @@ from datetime import date, timedelta
 from decimal import Decimal
 import io
 
+import numpy as np
+
 from PIL import Image, ImageDraw
 from django.utils import timezone
 
@@ -1123,6 +1125,11 @@ class GoodsImageClassifierTests(TestCase):
         self.noise_img.save(buf3, format='JPEG')
         self.noise_bytes = buf3.getvalue()
 
+    def _encode(self, image, image_format='PNG'):
+        buf = io.BytesIO()
+        image.save(buf, format=image_format)
+        return buf.getvalue()
+
     def test_classify_round_image(self):
         result = classify_goods_image(self.round_bytes)
         self.assertIsNotNone(result)
@@ -1134,6 +1141,52 @@ class GoodsImageClassifierTests(TestCase):
         self.assertIsNotNone(result)
         self.assertEqual(result["shape_type"], "rectangle")
         self.assertGreater(result["confidence"], 0.5)
+
+    def test_classify_square_image(self):
+        image = Image.new('RGB', (400, 400), color='white')
+        ImageDraw.Draw(image).rectangle([90, 90, 310, 310], fill='black')
+
+        result = classify_goods_image(self._encode(image))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "square")
+        self.assertGreater(result["confidence"], 0.7)
+
+    def test_classify_rotated_rectangle_image(self):
+        image = Image.new('RGBA', (360, 180), color=(0, 0, 0, 0))
+        ImageDraw.Draw(image).rectangle([0, 0, 359, 179], fill='black')
+        image = image.rotate(35, expand=True, resample=Image.Resampling.BICUBIC)
+        canvas = Image.new('RGB', (500, 500), color='white')
+        canvas.paste(image, ((500 - image.width) // 2, (500 - image.height) // 2), image)
+
+        result = classify_goods_image(self._encode(canvas))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "rectangle")
+
+    def test_classify_border_touching_rounded_rectangle(self):
+        image = Image.new('RGB', (500, 400), color='white')
+        ImageDraw.Draw(image).rounded_rectangle(
+            [0, 50, 499, 350], radius=30, fill='black'
+        )
+
+        result = classify_goods_image(self._encode(image, 'JPEG'))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "rectangle")
+
+    def test_classify_round_body_with_irregular_protrusions_as_unknown(self):
+        image = Image.new('RGB', (400, 400), color='white')
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([60, 30, 340, 230], fill=(240, 80, 150))
+        draw.polygon([(60, 120), (0, 60), (40, 150), (0, 220), (80, 190)], fill=(240, 80, 150))
+        draw.polygon([(340, 120), (400, 60), (360, 150), (400, 220), (320, 190)], fill=(240, 80, 150))
+        draw.rectangle([185, 220, 215, 399], fill=(240, 80, 150))
+
+        result = classify_goods_image(self._encode(image, 'JPEG'))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "unknown")
 
     def test_classify_low_contrast_rectangle_image(self):
         img = Image.new('RGB', (200, 200), color=(245, 245, 245))
@@ -1165,7 +1218,36 @@ class GoodsImageClassifierTests(TestCase):
 
     def test_classify_no_clear_shape(self):
         result = classify_goods_image(self.noise_bytes)
-        self.assertIsNone(result)
+        self.assertEqual(result["shape_type"], "unknown")
+
+    def test_classify_random_noise_as_unknown(self):
+        rng = np.random.default_rng(123)
+        image = Image.fromarray(rng.integers(0, 256, (400, 400, 3), dtype=np.uint8), 'RGB')
+
+        result = classify_goods_image(self._encode(image))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "unknown")
+
+    def test_classify_ellipse_as_unknown(self):
+        image = Image.new('RGB', (400, 400), color='white')
+        ImageDraw.Draw(image).ellipse([55, 100, 345, 300], fill='black')
+
+        result = classify_goods_image(self._encode(image))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "unknown")
+
+    def test_classify_multiple_objects_as_unknown(self):
+        image = Image.new('RGB', (400, 400), color='white')
+        draw = ImageDraw.Draw(image)
+        draw.ellipse([35, 135, 155, 255], fill='black')
+        draw.ellipse([245, 135, 365, 255], fill='black')
+
+        result = classify_goods_image(self._encode(image))
+
+        self.assertIsNotNone(result)
+        self.assertEqual(result["shape_type"], "unknown")
 
     def test_classify_unknown_image(self):
         result = classify_goods_image(b"not an image")
@@ -1218,6 +1300,12 @@ class GoodsClassifyAPITests(TestCase):
                 path_name="吧唧/异形吧唧/心形吧唧",
             ),
             path_name="吧唧/异形吧唧/心形吧唧/57×54mm",
+        )
+        self.paper_square = Category.objects.create(
+            name="方卡",
+            parent=Category.objects.create(name="纸制品", path_name="纸制品"),
+            path_name="纸制品/方卡",
+            shape_type="square",
         )
         Category.objects.get_or_create(
             name="小卡", defaults={"shape_type": "rectangle", "path_name": "小卡"}
@@ -1293,7 +1381,24 @@ class GoodsClassifyAPITests(TestCase):
         suggestion_ids = {item["id"] for item in data["suggestions"]}
         self.assertIn(self.polaroid.id, suggestion_ids)
 
-    def test_classify_no_shape_returns_422(self):
+    def test_classify_square_returns_square_suggestions(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        buf = self._create_jpeg(lambda d: d.rectangle([20, 20, 180, 180], fill='black'))
+        image_file = SimpleUploadedFile("square.jpg", buf.read(), content_type="image/jpeg")
+
+        resp = self.client.post(
+            reverse("goods-classify-image"),
+            {"image": image_file},
+            format="multipart",
+        )
+
+        self.assertEqual(resp.status_code, 200, msg=resp.data)
+        self.assertEqual(resp.data["shape_type"], "square")
+        suggestion_ids = {item["id"] for item in resp.data["suggestions"]}
+        self.assertIn(self.paper_square.id, suggestion_ids)
+        self.assertIn(self.square_badge.id, suggestion_ids)
+
+    def test_classify_no_shape_returns_unknown(self):
         from django.core.files.uploadedfile import SimpleUploadedFile
         buf = self._create_jpeg(lambda d: None)
         image_file = SimpleUploadedFile("test.jpg", buf.read(), content_type="image/jpeg")
@@ -1304,7 +1409,10 @@ class GoodsClassifyAPITests(TestCase):
             format="multipart",
         )
 
-        self.assertEqual(resp.status_code, 422, msg=resp.data)
+        self.assertEqual(resp.status_code, 200, msg=resp.data)
+        self.assertEqual(resp.data["shape_type"], "unknown")
+        self.assertEqual(resp.data["suggestions"], [])
+        self.assertIn("单一主体轮廓", resp.data["detail"])
 
     def test_classify_requires_auth(self):
         from django.core.files.uploadedfile import SimpleUploadedFile

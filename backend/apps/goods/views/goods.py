@@ -55,7 +55,11 @@ def _is_draft_status(value):
 
 CATEGORY_SHAPE_KEYWORDS = {
     "round": ("吧唧", "徽章", "马口铁"),
-    "rectangle": ("小卡", "拍立得", "色纸", "镭射票", "透卡", "明信片", "卡片", "纸片"),
+    "square": ("方卡", "正方形", "方形"),
+    "rectangle": (
+        "小卡", "拍立得", "色纸", "镭射票", "透卡", "明信片", "卡片", "纸片",
+        "仿胶片卡", "纸夹相卡", "光栅卡", "书签", "邮票",
+    ),
 }
 
 CATEGORY_SHAPE_EXCLUDE_KEYWORDS = {
@@ -77,6 +81,13 @@ CATEGORY_SHAPE_EXCLUDE_KEYWORDS = {
     ),
     "rectangle": ("吧唧", "徽章", "马口铁", "圆形", "异形"),
 }
+
+
+def _normalize_shape_type(shape_type):
+    """将内部 circle 别名兼容为历史 Category.shape_type=round。"""
+    if shape_type == "circle":
+        return "round"
+    return shape_type
 
 
 def _category_shape_text(category):
@@ -107,6 +118,9 @@ def _collect_descendant_category_ids(children_by_parent, root_ids):
 
 
 def _build_category_shape_suggestions(shape_type, limit=12):
+    shape_type = _normalize_shape_type(shape_type)
+    if shape_type not in {"round", "square", "rectangle"}:
+        return []
     categories = list(Category.objects.all().order_by("order", "id"))
     children_by_parent = {}
     for category in categories:
@@ -1487,11 +1501,14 @@ class GoodsViewSet(viewsets.ModelViewSet):
         confidence = result["confidence"]
         suggestions = _build_category_shape_suggestions(shape_type)
 
-        return Response({
+        response_data = {
             "shape_type": shape_type,
             "confidence": confidence,
             "suggestions": suggestions,
-        })
+        }
+        if shape_type == "unknown":
+            response_data["detail"] = "图片中没有足够稳定的单一主体轮廓，请手动选择品类"
+        return Response(response_data)
 
     def _order_by_ids(self, qs, id_list):
         """

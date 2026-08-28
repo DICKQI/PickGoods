@@ -325,6 +325,17 @@
                 <el-form-item label="同级排序" prop="order" class="category-order-field">
                   <el-input-number v-model="formData.order" :min="0" :max="9999" :step="1" style="width: 100%" />
                 </el-form-item>
+
+                <el-form-item label="图片形状" prop="shape_type">
+                  <el-select v-model="formData.shape_type" clearable placeholder="不指定" style="width: 100%">
+                    <el-option
+                      v-for="option in shapeTypeOptions"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    />
+                  </el-select>
+                </el-form-item>
               </div>
             </section>
           </el-form>
@@ -429,8 +440,14 @@ const formData = ref({
   name: '',
   parent: null as number | null,
   color_tag: '',
+  shape_type: null as 'round' | 'square' | 'rectangle' | null,
   order: 0,
 })
+const shapeTypeOptions = [
+  { value: 'round' as const, label: '圆形' },
+  { value: 'square' as const, label: '正方形' },
+  { value: 'rectangle' as const, label: '长方形' },
+]
 const formRules: FormRules = {
   name: [{ required: true, message: '名称不能为空', trigger: 'blur' }],
   order: [{ type: 'number', message: '排序需为数字', trigger: 'change' }],
@@ -793,7 +810,7 @@ const handleAdd = () => {
   isEdit.value = false
   isParentLocked.value = false
   editingId.value = null
-  formData.value = { name: '', parent: null, color_tag: '', order: 0 }
+  formData.value = { name: '', parent: null, color_tag: '', shape_type: null, order: 0 }
   dialogVisible.value = true
 }
 
@@ -801,7 +818,7 @@ const handleAddSub = (row: Category) => {
   isEdit.value = false
   isParentLocked.value = true
   editingId.value = null
-  formData.value = { name: '', parent: row.id, color_tag: '', order: 0 }
+  formData.value = { name: '', parent: row.id, color_tag: '', shape_type: null, order: 0 }
   dialogVisible.value = true
 }
 
@@ -813,6 +830,7 @@ const handleEdit = (row: Category) => {
     name: row.name,
     parent: row.parent,
     color_tag: row.color_tag || '',
+    shape_type: row.shape_type || null,
     order: row.order ?? 0
   }
   dialogVisible.value = true
@@ -888,6 +906,7 @@ const handleSubmit = async () => {
         name: formData.value.name.trim(),
         parent: formData.value.parent ?? null,
         color_tag: formData.value.color_tag?.trim() || null,
+        shape_type: formData.value.shape_type || null,
         order: formData.value.order ?? 0,
       }
       if (isEdit.value && editingId.value) {

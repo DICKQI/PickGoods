@@ -45,6 +45,7 @@ CHARACTER_SPECS = [
 
 CATEGORY_SPECS = [
     ("吧唧", "round"),
+    ("方卡", "square"),
     ("异形吧唧", None),
     ("金属徽章", "round"),
     ("亚克力立牌", None),

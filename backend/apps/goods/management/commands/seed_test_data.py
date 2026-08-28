@@ -43,8 +43,9 @@ CHARACTER_SPECS = [
 ]
 
 # (name, shape_type) —— 扁平品类，补充现有树形品类
-# shape_type: round（圆形吧唧类）/ rectangle（方形卡片类）/ None
+# shape_type: round（圆形）/ square（正方形）/ rectangle（长方形）/ None
 CATEGORY_SPECS = [
+    ("方卡", "square"),
     ("拍立得", "rectangle"),
     ("小卡", "rectangle"),
     ("镭射票", "rectangle"),

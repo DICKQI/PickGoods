@@ -372,6 +372,11 @@ describe('GoodsForm mobile create wizard', () => {
     expect(goodsFormSource).toContain('当前填写内容将恢复为进入页面时的状态')
   })
 
+  it('shows the classifier detail when the image cannot be decoded', () => {
+    expect(goodsFormSource).toContain('classifyResult?.shape_type === null && classifyResult.detail')
+    expect(goodsFormSource).toContain('{{ classifyResult.detail }}')
+  })
+
   it('loads craft options and applies the selected craft to notes', async () => {
     const wrapper = await mountGoodsForm({
       width: 1440,

@@ -183,12 +183,19 @@ class Category(models.Model):
         verbose_name="颜色标签",
         help_text="用于UI展示的颜色标识，例如：#FF5733",
     )
+    SHAPE_TYPE_CHOICES = (
+        ("round", "圆形"),
+        ("square", "正方形"),
+        ("rectangle", "长方形"),
+    )
+
     shape_type = models.CharField(
         max_length=20,
         null=True,
         blank=True,
+        choices=SHAPE_TYPE_CHOICES,
         verbose_name="形状类型",
-        help_text="用于图片自动分类：round（圆形吧唧类）/ rectangle（方形卡片类）",
+        help_text="用于图片自动分类：round（圆形）/ square（正方形）/ rectangle（长方形）",
     )
     order = models.IntegerField(
         default=0,

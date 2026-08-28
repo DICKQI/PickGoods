@@ -77,8 +77,21 @@
                   <span class="color-dot" v-if="selectedCategory.color_tag" :style="{ backgroundColor: selectedCategory.color_tag || '#a3a3a3' }"></span>
                   <span class="chip-text">{{ selectedCategory.path_name || selectedCategory.name }}</span>
                 </div>
-                <div v-if="!selectedCategory && classifyResult?.suggestions?.length && classifyResult.shape_type" class="classify-suggestions">
-                  <span class="classify-suggestions__label">疑似品类：</span>
+                <div v-if="classifying" class="classify-status classify-status--loading">
+                  <el-icon class="is-loading"><Loading /></el-icon>
+                  <span>正在识别图片形状...</span>
+                </div>
+                <div v-else-if="classifyError" class="classify-status classify-status--error">
+                  {{ classifyError }}
+                </div>
+                <div v-else-if="classifyResult?.shape_type === 'unknown'" class="classify-status">
+                  {{ classifyResult.detail || '图片形状暂时无法可靠判断，请手动选择品类' }}
+                </div>
+                <div v-else-if="classifyResult?.shape_type === null && classifyResult.detail" class="classify-status classify-status--error">
+                  {{ classifyResult.detail }}
+                </div>
+                <div v-else-if="!selectedCategory && classifyResult?.suggestions?.length && classifyResult.shape_type" class="classify-suggestions">
+                  <span class="classify-suggestions__label">{{ formatClassifyShape(classifyResult.shape_type) }}，疑似品类：</span>
                   <el-tag
                     v-for="sug in classifyResult.suggestions"
                     :key="sug.id"
@@ -960,7 +973,14 @@ const applySelectedThemeImages = async () => {
 }
 
 const imageClassifier = useImageClassifier()
-const { classifyResult, dismissSuggestions, runClassification } = imageClassifier
+const { classifying, classifyResult, classifyError, dismissSuggestions, runClassification } = imageClassifier
+
+const formatClassifyShape = (shapeType: 'round' | 'square' | 'rectangle' | 'unknown' | null) => ({
+  round: '圆形',
+  square: '正方形',
+  rectangle: '长方形',
+  unknown: '未知形状',
+}[shapeType || 'unknown'])
 
 const getThemeDescriptionFromNotes = () => {
   const notes = formData.value.notes?.trim() ?? ''
@@ -2494,6 +2514,19 @@ onUnmounted(() => {
 .ocr-upload-trigger .is-loading { animation: rotating 1.2s linear infinite; }
 @keyframes rotating { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .ocr-upload-hint { margin: 6px 0 0; font-size: 12px; color: #a8abb2; }
+
+.classify-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+}
+
+.classify-status--error {
+  color: var(--el-color-danger);
+}
 
 .classify-suggestions {
   display: flex;

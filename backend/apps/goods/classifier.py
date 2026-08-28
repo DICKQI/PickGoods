@@ -1,180 +1,346 @@
 """
-谷子品类图片分类器：利用 OpenCV 形状检测区分圆形吧唧 vs 矩形卡片。
+谷子主图形状分类器。
+
+分类只判断商品主体的几何外轮廓，不根据图片内容中的装饰图案判断形状。
+对无法稳定提取单一主体的图片返回 ``unknown``，避免把艺术内容误认为圆形。
 """
 import io
 import logging
+import math
+from dataclasses import dataclass
 from typing import Optional
 
 import cv2
 import numpy as np
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 logger = logging.getLogger(__name__)
 
-_CIRCLE_MIN_RADIUS_RATIO = 0.15
-_CIRCLE_MAX_RADIUS_RATIO = 0.48
-_CIRCLE_DP = 1.2
-_CIRCLE_MIN_DIST_RATIO = 0.5
-_CIRCLE_PARAM1 = 80
-_CIRCLE_PARAM2 = 35
+SHAPE_TYPES = ("round", "square", "rectangle", "unknown")
 
-_CONTOUR_MIN_AREA_RATIO = 0.02
-_RECT_EPSILON_RATIO = 0.03
-_RECTANGULARITY_THRESHOLD = 0.80
-_RECTANGLE_DOMINANT_CONFIDENCE = 0.95
-
-_MAX_SIDE = 512
-_BLUR_KERNEL = (5, 5)
-_CANNY_LOW = 40
-_CANNY_HIGH = 120
+_MAX_SIDE = 640
+_MAX_PIXELS = 20_000_000
+_MIN_CANDIDATE_AREA_RATIO = 0.025
+_MAX_CANDIDATE_AREA_RATIO = 0.92
+_MIN_RECTANGULARITY = 0.68
+_MIN_ACCEPTED_SCORE = 0.62
+_MIN_SCORE_MARGIN = 0.10
+_MORPH_KERNEL = (5, 5)
 
 
-def _pick_stronger_detection(*detections: tuple[int, float]) -> tuple[int, float]:
-    """在多种预处理结果中选择更可靠的一组检测结果。"""
-    return max(detections, key=lambda item: (item[1], item[0]))
+@dataclass(frozen=True)
+class _ShapeCandidate:
+    contour: np.ndarray
+    area_ratio: float
+    aspect_ratio: float
+    rectangularity: float
+    circularity: float
+    convexity: float
+    hull_rectangularity: float
+    hull_circularity: float
+    center_distance: float
+    center_x_ratio: float
+    center_y_ratio: float
+    touches_border: bool
 
 
-def _preprocess(image_bytes: bytes) -> Optional[np.ndarray]:
-    """将图片字节转换为 OpenCV BGR 格式灰度图，缩放并去噪。"""
+def _preprocess(image_bytes: bytes) -> Optional[tuple[np.ndarray, Optional[np.ndarray]]]:
+    """解码图片，修正 EXIF 方向并保留有意义的 alpha 通道。"""
     try:
-        with Image.open(io.BytesIO(image_bytes)) as img:
-            img.load()
-            if img.mode != 'RGB':
-                img = img.convert('RGB')
-            width, height = img.size
+        with Image.open(io.BytesIO(image_bytes)) as source:
+            if source.width * source.height > _MAX_PIXELS:
+                logger.info("图片像素数超过分类上限: %s", source.size)
+                return None
+            source.load()
+
+            image = ImageOps.exif_transpose(source)
+            alpha = None
+            if "A" in image.getbands():
+                alpha = np.asarray(image.getchannel("A"), dtype=np.uint8)
+                # 全透明/全不透明 alpha 没有额外的主体信息。
+                if int(alpha.min()) == 255 or int(alpha.max()) == 0:
+                    alpha = None
+
+            rgb = image.convert("RGB")
+            width, height = rgb.size
             long_side = max(width, height)
             if long_side > _MAX_SIDE:
                 scale = _MAX_SIDE / long_side
-                width = max(1, int(width * scale))
-                height = max(1, int(height * scale))
-                img = img.resize((width, height), Image.Resampling.LANCZOS)
-            arr = np.array(img)
-            bgr = arr[:, :, ::-1].copy()
-    except (UnidentifiedImageError, OSError, Exception) as e:
-        logger.debug(f"图片解码失败: {e}")
+                width = max(1, int(round(width * scale)))
+                height = max(1, int(round(height * scale)))
+                rgb = rgb.resize((width, height), Image.Resampling.LANCZOS)
+                if alpha is not None:
+                    alpha = cv2.resize(alpha, (width, height), interpolation=cv2.INTER_AREA)
+
+            arr = np.asarray(rgb)
+            bgr = cv2.cvtColor(arr, cv2.COLOR_RGB2BGR)
+            return bgr, alpha
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
+        logger.debug("图片解码失败: %s", exc)
         return None
-    return bgr
 
 
-def _prepare_gray_variants(gray: np.ndarray) -> list[np.ndarray]:
-    """生成原始灰度和增强对比度灰度，兼顾普通图与低对比图。"""
-    blurred = cv2.GaussianBlur(gray, _BLUR_KERNEL, 0)
+def _gray_variants(gray: np.ndarray) -> list[np.ndarray]:
+    """提供轻度去噪和对比度增强版本，避免依赖单一阈值。"""
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
     equalized = cv2.equalizeHist(gray)
-    enhanced = cv2.GaussianBlur(equalized, _BLUR_KERNEL, 0)
+    enhanced = cv2.GaussianBlur(equalized, (5, 5), 0)
     return [blurred, enhanced]
 
 
-def _detect_circles(gray: np.ndarray) -> tuple[int, float]:
-    """检测图中圆形。返回 (圆数量, 平均置信度)。"""
-    height, width = gray.shape[:2]
-    short_side = min(height, width)
-    min_radius = int(short_side * _CIRCLE_MIN_RADIUS_RATIO)
-    max_radius = int(short_side * _CIRCLE_MAX_RADIUS_RATIO)
-    min_dist = int(short_side * _CIRCLE_MIN_DIST_RATIO)
+def _close_mask(mask: np.ndarray) -> np.ndarray:
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, _MORPH_KERNEL)
+    return cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
 
-    if min_radius < 10:
-        min_radius = 10
-    if max_radius <= min_radius:
-        return 0, 0.0
 
-    circles = cv2.HoughCircles(
-        gray,
-        cv2.HOUGH_GRADIENT,
-        dp=_CIRCLE_DP,
-        minDist=min_dist,
-        param1=_CIRCLE_PARAM1,
-        param2=_CIRCLE_PARAM2,
-        minRadius=min_radius,
-        maxRadius=max_radius,
+def _candidate_from_contour(
+    contour: np.ndarray,
+    image_shape: tuple[int, int],
+) -> Optional[_ShapeCandidate]:
+    height, width = image_shape
+    image_area = float(height * width)
+    area = float(cv2.contourArea(contour))
+    area_ratio = area / image_area if image_area else 0.0
+    if not (_MIN_CANDIDATE_AREA_RATIO <= area_ratio <= _MAX_CANDIDATE_AREA_RATIO):
+        return None
+
+    perimeter = float(cv2.arcLength(contour, True))
+    if perimeter <= 0:
+        return None
+
+    rect = cv2.minAreaRect(contour)
+    rect_width, rect_height = rect[1]
+    short_side, long_side = sorted((float(rect_width), float(rect_height)))
+    if short_side <= 1:
+        return None
+    aspect_ratio = long_side / short_side
+    rotated_rect_area = short_side * long_side
+    rectangularity = area / rotated_rect_area if rotated_rect_area else 0.0
+    if rectangularity < _MIN_RECTANGULARITY:
+        return None
+
+    hull = cv2.convexHull(contour)
+    hull_area = float(cv2.contourArea(hull))
+    convexity = area / hull_area if hull_area else 0.0
+    circularity = float(4.0 * math.pi * area / (perimeter * perimeter))
+    hull_perimeter = float(cv2.arcLength(hull, True))
+    hull_rectangularity = hull_area / rotated_rect_area if rotated_rect_area else 0.0
+    hull_circularity = (
+        float(4.0 * math.pi * hull_area / (hull_perimeter * hull_perimeter))
+        if hull_perimeter > 0
+        else 0.0
     )
 
-    if circles is None or len(circles) == 0:
-        return 0, 0.0
+    moments = cv2.moments(contour)
+    if moments["m00"]:
+        cx = moments["m10"] / moments["m00"]
+        cy = moments["m01"] / moments["m00"]
+    else:
+        cx, cy = width / 2.0, height / 2.0
+    diagonal = math.hypot(width, height)
+    center_distance = math.hypot(cx - width / 2.0, cy - height / 2.0) / diagonal
 
-    circles = np.uint16(np.around(circles[0]))
-    count = len(circles)
-    avg_conf = min(1.0, count * 0.4 + 0.1)
-    return count, avg_conf
+    x, y, w, h = cv2.boundingRect(contour)
+    touches_border = x <= 1 or y <= 1 or x + w >= width - 1 or y + h >= height - 1
+    return _ShapeCandidate(
+        contour=contour,
+        area_ratio=area_ratio,
+        aspect_ratio=aspect_ratio,
+        rectangularity=rectangularity,
+        circularity=min(1.0, circularity),
+        convexity=min(1.0, convexity),
+        hull_rectangularity=min(1.0, hull_rectangularity),
+        hull_circularity=min(1.0, hull_circularity),
+        center_distance=center_distance,
+        center_x_ratio=cx / width if width else 0.5,
+        center_y_ratio=cy / height if height else 0.5,
+        touches_border=touches_border,
+    )
 
 
-def _detect_rectangles(gray: np.ndarray) -> tuple[int, float]:
-    """检测图中矩形。返回 (矩形数量, 平均置信度)。"""
-    height, width = gray.shape[:2]
-    img_area = height * width
-    min_area = img_area * _CONTOUR_MIN_AREA_RATIO
+def _find_candidates(mask: np.ndarray) -> list[_ShapeCandidate]:
+    mask = _close_mask(mask)
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    candidates = []
+    for contour in contours:
+        candidate = _candidate_from_contour(contour, mask.shape[:2])
+        if candidate is not None:
+            candidates.append(candidate)
+    candidates.sort(key=lambda item: (item.area_ratio, -item.center_distance), reverse=True)
+    return candidates[:8]
 
-    edged = cv2.Canny(gray, _CANNY_LOW, _CANNY_HIGH)
-    contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    rect_count = 0
-    confidences = []
+def _build_masks(bgr: np.ndarray, alpha: Optional[np.ndarray]) -> list[np.ndarray]:
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    masks: list[np.ndarray] = []
 
-    for cnt in contours:
-        area = cv2.contourArea(cnt)
-        if area < min_area:
+    if alpha is not None:
+        masks.append(np.where(alpha >= 32, 255, 0).astype(np.uint8))
+
+    for variant in _gray_variants(gray):
+        edges = cv2.Canny(variant, 40, 120)
+        masks.append(edges)
+        _, threshold = cv2.threshold(variant, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        masks.extend((threshold, cv2.bitwise_not(threshold)))
+
+    # 彩色商品与近似白底的灰度差异很小时，饱和度边界通常更稳定。
+    hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
+    saturation = cv2.GaussianBlur(hsv[:, :, 1], (5, 5), 0)
+    _, saturation_mask = cv2.threshold(saturation, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    masks.append(saturation_mask)
+    return masks
+
+
+def _select_candidates(bgr: np.ndarray, alpha: Optional[np.ndarray]) -> list[_ShapeCandidate]:
+    all_candidates = [candidate for mask in _build_masks(bgr, alpha) for candidate in _find_candidates(mask)]
+    if not all_candidates:
+        return []
+
+    # 多个掩码得到同一主体时只保留几何最稳定的候选；内部图案通常面积更小或不居中。
+    def stability_score(item: _ShapeCandidate) -> float:
+        # 边缘掩码通常比二值掩码更贴近真实外轮廓；面积最大的掩码可能只是整张
+        # 艺术图的背景区域，因此不能单纯按面积选择。
+        geometry = max(item.circularity, item.rectangularity)
+        area_quality = 1.0 if 0.06 <= item.area_ratio <= 0.82 else 0.75
+        return (
+            0.45 * geometry
+            + 0.25 * item.convexity
+            + 0.20 * area_quality
+            + 0.10 * max(0.0, 1.0 - item.center_distance / 0.45)
+        )
+
+    all_candidates.sort(key=stability_score, reverse=True)
+    selected: list[_ShapeCandidate] = []
+    for candidate in all_candidates:
+        if any(
+            abs(candidate.area_ratio - other.area_ratio) < 0.12
+            and abs(candidate.aspect_ratio - other.aspect_ratio) < 0.25
+            and math.hypot(
+                candidate.center_x_ratio - other.center_x_ratio,
+                candidate.center_y_ratio - other.center_y_ratio,
+            ) < 0.12
+            for other in selected
+        ):
             continue
+        selected.append(candidate)
+        if len(selected) == 4:
+            break
+    return selected
 
-        perimeter = cv2.arcLength(cnt, True)
-        if perimeter == 0:
-            continue
 
-        approx = cv2.approxPolyDP(cnt, _RECT_EPSILON_RATIO * perimeter, True)
-        vertices = len(approx)
+def _quality(candidate: _ShapeCandidate) -> float:
+    center_quality = max(0.0, 1.0 - candidate.center_distance / 0.45)
+    border_quality = 0.72 if candidate.touches_border else 1.0
+    area_quality = 1.0 if 0.06 <= candidate.area_ratio <= 0.82 else 0.75
+    return max(0.0, min(1.0, center_quality * border_quality * area_quality * candidate.convexity))
 
-        if vertices == 4:
-            x, y, w, h = cv2.boundingRect(cnt)
-            aspect_ratio = float(w) / float(h) if h > 0 else 0
-            rect_area_ratio = area / (w * h) if w * h > 0 else 0
 
-            if rect_area_ratio >= _RECTANGULARITY_THRESHOLD and 0.25 <= aspect_ratio <= 4.0:
-                rect_count += 1
-                confidences.append(min(1.0, rect_area_ratio))
+def _shape_scores(candidate: _ShapeCandidate) -> dict[str, float]:
+    quality = _quality(candidate)
+    aspect = candidate.aspect_ratio
+    square_aspect = max(0.0, 1.0 - abs(aspect - 1.0) / 0.22)
+    rectangle_aspect = max(0.0, min(1.0, (aspect - 1.0) / 0.75))
+    rectangle_quality = max(0.0, min(1.0, (candidate.rectangularity - 0.68) / 0.25))
+    circle_aspect = max(0.0, 1.0 - abs(aspect - 1.0) / 0.35)
+    circle_roundness = max(0.0, min(1.0, (candidate.circularity - 0.68) / 0.25))
 
-    avg_conf = float(np.mean(confidences)) if confidences else 0.0
-    return rect_count, avg_conf
+    return {
+        "round": quality * (0.60 * circle_roundness + 0.25 * circle_aspect + 0.15 * candidate.convexity),
+        "square": quality * (0.55 * square_aspect + 0.35 * rectangle_quality + 0.10 * (1.0 - circle_roundness)),
+        "rectangle": quality * (0.55 * rectangle_aspect + 0.35 * rectangle_quality + 0.10 * (1.0 - square_aspect)),
+    }
+
+
+def _border_frame_support(candidate: _ShapeCandidate, label: str) -> float:
+    """评估贴边主体是否仍保留稳定的方形/长方形凸包。"""
+    if not candidate.touches_border or candidate.center_distance > 0.12:
+        return 0.0
+
+    area_support = 1.0 if candidate.area_ratio <= 0.90 else 0.5
+    if label == "rectangle":
+        if candidate.hull_rectangularity < 0.88 or candidate.hull_circularity > 0.92:
+            return 0.0
+        aspect_support = max(0.0, min(1.0, (candidate.aspect_ratio - 1.20) / 0.45))
+        hull_support = max(0.0, min(1.0, (candidate.hull_rectangularity - 0.88) / 0.12))
+        non_round_support = max(0.0, min(1.0, (0.92 - candidate.hull_circularity) / 0.18))
+        return area_support * (
+            0.40 * hull_support
+            + 0.30 * aspect_support
+            + 0.20 * non_round_support
+            + 0.10 * candidate.convexity
+        )
+
+    if label == "square":
+        if candidate.hull_rectangularity < 0.84 or candidate.hull_circularity > 0.96:
+            return 0.0
+        aspect_support = max(0.0, 1.0 - abs(candidate.aspect_ratio - 1.0) / 0.18)
+        hull_support = max(0.0, min(1.0, (candidate.hull_rectangularity - 0.84) / 0.12))
+        non_round_support = max(0.0, min(1.0, (0.96 - candidate.hull_circularity) / 0.18))
+        return area_support * (
+            0.40 * aspect_support
+            + 0.30 * hull_support
+            + 0.20 * non_round_support
+            + 0.10 * candidate.convexity
+        )
+
+    return 0.0
+
+
+def _classify_candidates(candidates: list[_ShapeCandidate]) -> Optional[dict]:
+    if not candidates:
+        return {"shape_type": "unknown", "confidence": 0.0}
+
+    scored_candidates = []
+    for candidate in candidates:
+        scores = _shape_scores(candidate)
+        label, score = max(scores.items(), key=lambda item: item[1])
+        ranked = sorted(scores.values(), reverse=True)
+        margin = ranked[0] - ranked[1]
+        scored_candidates.append((label, score, margin, candidate))
+
+    # 只接受几何特征一致的主体，避免某个掩码的偶然边缘覆盖大多数结果。
+    label_counts: dict[str, int] = {}
+    for label, _, _, _ in scored_candidates:
+        label_counts[label] = label_counts.get(label, 0) + 1
+    label, count = max(label_counts.items(), key=lambda item: item[1])
+    matching = [item for item in scored_candidates if item[0] == label]
+    best = max(matching, key=lambda item: (item[1], item[2], item[3].area_ratio))
+    _, score, margin, candidate = best
+    border_support = _border_frame_support(candidate, label)
+
+    if count == 1 and len(scored_candidates) > 1:
+        return {"shape_type": "unknown", "confidence": round(min(score, 0.59), 2)}
+    if score < _MIN_ACCEPTED_SCORE and border_support < 0.48:
+        return {"shape_type": "unknown", "confidence": round(min(score, 0.59), 2)}
+    if margin < _MIN_SCORE_MARGIN:
+        return {"shape_type": "unknown", "confidence": round(min(score, 0.59), 2)}
+
+    # 椭圆/圆角异形的圆度通常不足以支持 round；长宽比也不能单独把它当 rectangle。
+    if label == "round" and (candidate.circularity < 0.76 or candidate.aspect_ratio > 1.20):
+        return {"shape_type": "unknown", "confidence": round(min(score, 0.59), 2)}
+    if (
+        label in {"square", "rectangle"}
+        and candidate.rectangularity < 0.74
+        and border_support < 0.48
+    ):
+        return {"shape_type": "unknown", "confidence": round(min(score, 0.59), 2)}
+
+    score = max(score, 0.65 + 0.15 * border_support)
+    confidence = min(0.98, 0.55 + 0.35 * score + 0.10 * min(1.0, margin / 0.35))
+    return {"shape_type": label, "confidence": round(float(confidence), 2)}
 
 
 def classify_goods_image(image_bytes: bytes) -> Optional[dict]:
     """
     对谷子主图进行形状分类。
 
-    参数:
-        image_bytes: 图片二进制数据
-
-    返回:
-        None — 无法识别或图片格式错误
-        或
-        {
-            "shape_type": "round" | "rectangle",
-            "confidence": 0.0 ~ 1.0,
-        }
+    返回 ``None`` 仅表示图片无法解码；可解码但没有稳定几何主体时返回
+    ``{"shape_type": "unknown", "confidence": 0.0}``。
+    ``round`` 是历史兼容值，表示圆形。
     """
-    bgr = _preprocess(image_bytes)
-    if bgr is None:
+    prepared = _preprocess(image_bytes)
+    if prepared is None:
         return None
-
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    gray_variants = _prepare_gray_variants(gray)
-    circle_count, circle_conf = _pick_stronger_detection(
-        *(_detect_circles(variant) for variant in gray_variants)
-    )
-    rect_count, rect_conf = _pick_stronger_detection(
-        *(_detect_rectangles(variant) for variant in gray_variants)
-    )
-
-    if circle_count > 0 and rect_count > 0:
-        # 色纸/卡片内经常有人物头发、装饰圆弧等圆形内容；强矩形外框应优先代表商品外形。
-        if rect_conf >= _RECTANGLE_DOMINANT_CONFIDENCE:
-            return {"shape_type": "rectangle", "confidence": round(float(rect_conf), 2)}
-        if circle_conf >= rect_conf:
-            return {"shape_type": "round", "confidence": round(float(circle_conf), 2)}
-        else:
-            return {"shape_type": "rectangle", "confidence": round(float(rect_conf), 2)}
-
-    if circle_count > 0:
-        return {"shape_type": "round", "confidence": round(float(circle_conf), 2)}
-
-    if rect_count > 0:
-        return {"shape_type": "rectangle", "confidence": round(float(rect_conf), 2)}
-
-    return None
+    bgr, alpha = prepared
+    candidates = _select_candidates(bgr, alpha)
+    return _classify_candidates(candidates)

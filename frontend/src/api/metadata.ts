@@ -124,17 +124,35 @@ export function getCategoryDetail(id: number) {
 }
 
 // 创建品类
-export function createCategory(data: { name: string; parent?: number | null; color_tag?: string | null; order?: number }) {
+export function createCategory(data: {
+  name: string
+  parent?: number | null
+  color_tag?: string | null
+  shape_type?: 'round' | 'square' | 'rectangle' | null
+  order?: number
+}) {
   return request.post<Category>('/api/categories/', data)
 }
 
 // 更新品类
-export function updateCategory(id: number, data: { name: string; parent?: number | null; color_tag?: string | null; order?: number }) {
+export function updateCategory(id: number, data: {
+  name: string
+  parent?: number | null
+  color_tag?: string | null
+  shape_type?: 'round' | 'square' | 'rectangle' | null
+  order?: number
+}) {
   return request.put<Category>(`/api/categories/${id}/`, data)
 }
 
 // 部分更新品类
-export function patchCategory(id: number, data: Partial<{ name: string; parent?: number | null; color_tag?: string | null; order?: number }>) {
+export function patchCategory(id: number, data: Partial<{
+  name: string
+  parent?: number | null
+  color_tag?: string | null
+  shape_type?: 'round' | 'square' | 'rectangle' | null
+  order?: number
+}>) {
   return request.patch<Category>(`/api/categories/${id}/`, data)
 }
 

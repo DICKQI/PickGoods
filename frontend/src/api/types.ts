@@ -115,7 +115,7 @@ export interface Category {
   parent: number | null
   path_name: string
   color_tag?: string | null
-  shape_type?: 'round' | 'rectangle' | null
+  shape_type?: 'round' | 'square' | 'rectangle' | null
   order: number
   /** 该品类及其子品类下的非草稿谷子持有件数 */
   goods_count?: number
@@ -576,12 +576,12 @@ export interface ClassifySuggestion {
   id: number
   name: string
   path_name: string
-  shape_type?: 'round' | 'rectangle' | null
+  shape_type?: 'round' | 'square' | 'rectangle' | null
 }
 
 /** 图片品类分类结果 */
 export interface ClassifyResult {
-  shape_type: 'round' | 'rectangle' | null
+  shape_type: 'round' | 'square' | 'rectangle' | 'unknown' | null
   confidence: number
   suggestions: ClassifySuggestion[]
   detail?: string

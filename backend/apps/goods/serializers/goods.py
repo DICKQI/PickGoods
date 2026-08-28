@@ -396,7 +396,10 @@ class GoodsImageClassifyRequestSerializer(serializers.Serializer):
 class GoodsImageClassifyResponseSerializer(serializers.Serializer):
     """图片分类响应序列化器"""
 
-    shape_type = serializers.ChoiceField(choices=["round", "rectangle"], allow_null=True)
+    shape_type = serializers.ChoiceField(
+        choices=["round", "square", "rectangle", "unknown"],
+        allow_null=True,
+    )
     confidence = serializers.FloatField()
     suggestions = serializers.ListField(child=serializers.DictField())
     detail = serializers.CharField(required=False)

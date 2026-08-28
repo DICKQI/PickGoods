@@ -67,6 +67,13 @@ describe('CategoryManagement mobile layout', () => {
     expect(viewSource).toContain('max-width: calc(100vw - 48px);')
   })
 
+  it('exposes shape metadata in the category editor for image suggestions', () => {
+    expect(viewSource).toContain('label="图片形状"')
+    expect(viewSource).toContain('v-model="formData.shape_type"')
+    expect(viewSource).toContain("{ value: 'square'")
+    expect(viewSource).toContain('shape_type: formData.value.shape_type || null')
+  })
+
   it('disables body scroll locking for the mobile category sheet to prevent background resize jitter', () => {
     expect(viewSource).toContain('<el-dialog\n      v-model="dialogVisible"')
     expect(viewSource).toContain(':lock-scroll="!isMobile"')
