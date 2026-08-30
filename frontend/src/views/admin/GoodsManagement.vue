@@ -45,6 +45,7 @@
           @change="handleSearch"
         >
           <el-option label="在馆" value="in_cabinet" />
+          <el-option label="意向入手" value="intended" />
           <el-option label="出街中" value="outdoor" />
           <el-option label="已售出" value="sold" />
         </el-select>
@@ -96,7 +97,7 @@
             </el-table-column>
             <el-table-column prop="quantity" label="数量" width="80" align="center">
               <template #default="{ row }">
-                {{ row.quantity }}
+                {{ row.user?.account_type === 'club' ? '—' : row.quantity }}
               </template>
             </el-table-column>
             <el-table-column prop="user_id" label="归属用户" width="150">
@@ -164,6 +165,7 @@ const total = ref(0)
 
 const getStatusType = (status: string) => {
   const map: Record<string, any> = {
+    intended: 'warning',
     in_cabinet: 'success',
     outdoor: 'warning',
     sold: 'info',
@@ -173,6 +175,7 @@ const getStatusType = (status: string) => {
 
 const getStatusLabel = (status: string) => {
   const map: Record<string, string> = {
+    intended: '意向入手',
     in_cabinet: '在馆',
     outdoor: '出街中',
     sold: '已售出',

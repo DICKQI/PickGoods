@@ -479,6 +479,7 @@
               @change="() => fetchUnassignedGoods(1)"
             >
               <el-checkbox-button data-test="unassigned-status-draft" label="draft">草稿</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-intended" label="intended">意向入手</el-checkbox-button>
               <el-checkbox-button data-test="unassigned-status-in-cabinet" label="in_cabinet">在柜</el-checkbox-button>
               <el-checkbox-button data-test="unassigned-status-outdoor" label="outdoor">外带</el-checkbox-button>
               <el-checkbox-button data-test="unassigned-status-sold" label="sold">已出</el-checkbox-button>
@@ -959,6 +960,7 @@ const scopeOptions = [
 
 const goodsStatusOptions: Array<{ label: string; value: GoodsStatus }> = [
   { label: '草稿', value: 'draft' },
+  { label: '意向入手', value: 'intended' },
   { label: '在柜', value: 'in_cabinet' },
   { label: '外带', value: 'outdoor' },
   { label: '已出', value: 'sold' },
@@ -966,6 +968,7 @@ const goodsStatusOptions: Array<{ label: string; value: GoodsStatus }> = [
 
 const statusLabelMap: Record<GoodsStatus, string> = {
   draft: '草稿',
+  intended: '意向入手',
   in_cabinet: '在柜',
   outdoor: '外带',
   sold: '已出',

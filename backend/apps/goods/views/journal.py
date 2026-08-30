@@ -13,7 +13,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
-from core.permissions import IsOwnerOnly, is_admin
+from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 from ..models import JournalBook, JournalPage, JournalPageVersion
 from ..serializers.journal import (
     JournalBookDetailSerializer,
@@ -89,7 +89,7 @@ def create_page_version(page):
 
 class JournalBookViewSet(viewsets.ModelViewSet):
     queryset = JournalBook.objects.all().prefetch_related("pages")
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
     pagination_class = JournalBookPagination
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
@@ -204,7 +204,7 @@ class JournalBookViewSet(viewsets.ModelViewSet):
 class JournalPageViewSet(viewsets.ModelViewSet):
     queryset = JournalPage.objects.select_related("book", "book__user")
     serializer_class = JournalPageSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_queryset(self):
@@ -347,7 +347,7 @@ class PublicJournalPageViewSet(viewsets.ReadOnlyModelViewSet):
 class JournalPageVersionViewSet(viewsets.ModelViewSet):
     queryset = JournalPageVersion.objects.select_related("page", "page__book", "page__book__user")
     serializer_class = JournalPageVersionSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
     http_method_names = ["get", "delete", "post", "head", "options"]
 
     def get_queryset(self):

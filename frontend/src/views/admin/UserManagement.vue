@@ -48,6 +48,20 @@
                 </el-tag>
               </template>
             </el-table-column>
+            <el-table-column label="账号类型" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="row.account_type === 'club' ? 'warning' : 'info'" effect="plain" size="small">{{ row.account_type === 'club' ? '社团' : '吃谷人' }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="审批" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.approval_status === 'pending'" type="warning" size="small">待审批</el-tag>
+                <el-tag v-else type="success" effect="plain" size="small">已审批</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="申请理由" min-width="180" show-overflow-tooltip>
+              <template #default="{ row }">{{ row.application_reason || '—' }}</template>
+            </el-table-column>
             <el-table-column prop="is_active" label="状态" width="100" align="center">
               <template #default="{ row }">
                 <el-tag
@@ -64,9 +78,11 @@
                 {{ formatDateTime(row.created_at) }}
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="180" align="right" fixed="right">
+            <el-table-column label="操作" width="220" align="right" fixed="right">
               <template #default="{ row }">
                 <div class="admin-action-inline">
+                  <el-button v-if="row.approval_status === 'pending'" link type="success" title="批准" @click="handleApprove(row)"><el-icon :size="16"><CircleCheck /></el-icon></el-button>
+                  <el-button v-if="row.approval_status === 'pending'" link type="danger" title="拒绝并删除" @click="handleReject(row)"><el-icon :size="16"><Delete /></el-icon></el-button>
                   <el-button link type="primary" @click="handleEdit(row)" title="编辑">
                     <el-icon :size="16"><Edit /></el-icon>
                   </el-button>
@@ -163,13 +179,15 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Plus, Search, User, Edit, CircleClose, CircleCheck } from '@element-plus/icons-vue'
+import { Plus, Search, User, Edit, CircleClose, CircleCheck, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import {
   getAdminUsers,
   createAdminUser,
   updateAdminUser,
+  approveAdminUser,
+  rejectAdminUser,
   getAdminRoles,
   type AdminUser,
   type AdminRole,
@@ -285,6 +303,24 @@ const handleToggleActive = async (row: AdminUser) => {
     })
     await updateAdminUser(row.id, { is_active: !row.is_active })
     ElMessage.success(`已${action}`)
+    fetchUsers()
+  } catch {}
+}
+
+const handleApprove = async (row: AdminUser) => {
+  try {
+    await ElMessageBox.confirm(`批准社团「${row.club_name || row.username}」的申请吗？`, '审批申请', { confirmButtonText: '批准', cancelButtonText: '取消', type: 'info' })
+    await approveAdminUser(row.id)
+    ElMessage.success('社团账号已批准')
+    fetchUsers()
+  } catch {}
+}
+
+const handleReject = async (row: AdminUser) => {
+  try {
+    await ElMessageBox.confirm('拒绝后账号及社团资料会被直接删除，无法恢复。', '拒绝申请', { confirmButtonText: '拒绝并删除', cancelButtonText: '取消', type: 'warning' })
+    await rejectAdminUser(row.id)
+    ElMessage.success('申请已拒绝并删除')
     fetchUsers()
   } catch {}
 }

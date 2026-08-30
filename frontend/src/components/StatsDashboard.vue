@@ -495,6 +495,7 @@ const goToCharacterStats = () => {
 }
 
 const statusLabelMap: Record<string, string> = {
+  intended: '意向入手',
   in_cabinet: '在馆',
   outdoor: '出街中',
   sold: '已售出',

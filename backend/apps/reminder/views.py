@@ -12,7 +12,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.permissions import IsOwnerOnly, is_admin
+from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 
 from .models import Notification, Preorder
 from .serializers import (
@@ -65,7 +65,7 @@ class PreorderViewSet(viewsets.ModelViewSet):
 
     queryset = Preorder.objects.select_related("goods").all()
     serializer_class = PreorderSerializer
-    permission_classes = [IsAuthenticated, IsOwnerOnly]
+    permission_classes = [IsAuthenticated, IsCollectorAccount, IsOwnerOnly]
     pagination_class = ReminderPagination
     filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
     filterset_fields = ("status",)
@@ -245,7 +245,7 @@ class NotificationViewSet(viewsets.GenericViewSet):
     """
 
     serializer_class = NotificationSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsCollectorAccount]
     pagination_class = NotificationPagination
 
     def get_queryset(self):
