@@ -108,6 +108,24 @@ class AdminUserViewSet(
             AdminUserSerializer(user, context=self.get_serializer_context()).data
         )
 
+    @action(detail=True, methods=["post"])
+    def approve(self, request, pk=None):
+        user = self.get_object()
+        if user.account_type != User.ACCOUNT_TYPE_CLUB or user.approval_status != User.APPROVAL_PENDING:
+            return Response({"detail": "仅审批中的社团账号可以批准"}, status=status.HTTP_400_BAD_REQUEST)
+        user.approval_status = User.APPROVAL_APPROVED
+        user.is_active = True
+        user.save(update_fields=["approval_status", "is_active", "updated_at"])
+        return Response(AdminUserSerializer(user, context=self.get_serializer_context()).data)
+
+    @action(detail=True, methods=["post"])
+    def reject(self, request, pk=None):
+        user = self.get_object()
+        if user.account_type != User.ACCOUNT_TYPE_CLUB or user.approval_status != User.APPROVAL_PENDING:
+            return Response({"detail": "仅审批中的社团账号可以拒绝"}, status=status.HTTP_400_BAD_REQUEST)
+        user.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 
 @extend_schema_view(
     list=extend_schema(

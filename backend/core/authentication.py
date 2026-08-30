@@ -45,6 +45,11 @@ class JWTAuthentication(BaseAuthentication):
         except Exception:
             raise AuthenticationFailed("User not found.")
 
+        # Pending club accounts must never use a token, including tokens issued
+        # before an admin changed is_active or tokens created by legacy code.
+        if getattr(user, "approval_status", None) == User.APPROVAL_PENDING:
+            raise AuthenticationFailed("Account pending approval.")
+
         if not getattr(user, "is_active", True):
             raise AuthenticationFailed("User inactive.")
 
