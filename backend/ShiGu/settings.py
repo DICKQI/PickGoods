@@ -104,10 +104,12 @@ WSGI_APPLICATION = 'ShiGu.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+database_path = os.getenv("PICKGOODS_DB_PATH", str(BASE_DIR / "db.sqlite3"))
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
-        'NAME': BASE_DIR / 'db.sqlite3',
+        'NAME': database_path,
     }
 }
 
