@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '@/api/auth'
-import type { UserInfo } from '@/api/types'
+import type { AuthTokenResponse, RegistrationPending, UserInfo } from '@/api/types'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -12,6 +12,8 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isAuthenticated = computed(() => !!token.value)
   const isAdmin = computed(() => user.value?.role?.trim().toLowerCase() === 'admin')
+  const isClub = computed(() => !isAdmin.value && user.value?.account_type === 'club')
+  const isCollector = computed(() => isAdmin.value || user.value?.account_type === 'collector')
 
   function setToken(value: string | null) {
     token.value = value
@@ -56,10 +58,31 @@ export const useAuthStore = defineStore('auth', () => {
   async function registerAndLogin(username: string, password: string) {
     loading.value = true
     try {
-      const data = await authApi.register({ username, password })
+      const data = await authApi.register({ username, password, account_type: 'collector' }) as AuthTokenResponse
       setToken(data.access_token)
       const me = await authApi.getCurrentUser()
       user.value = me
+    } finally {
+      loading.value = false
+    }
+  }
+
+  async function registerAccount(data: {
+    username: string
+    password: string
+    account_type: 'collector' | 'club'
+    application_reason?: string
+    club_profile?: Record<string, unknown>
+  }): Promise<RegistrationPending | null> {
+    loading.value = true
+    try {
+      const result = await authApi.register(data)
+      if (typeof (result as unknown as { access_token?: unknown }).access_token === 'string') {
+        setToken((result as { access_token: string }).access_token)
+        user.value = await authApi.getCurrentUser()
+        return null
+      }
+      return result as RegistrationPending
     } finally {
       loading.value = false
     }
@@ -110,9 +133,12 @@ export const useAuthStore = defineStore('auth', () => {
     initialized,
     isAuthenticated,
     isAdmin,
+    isClub,
+    isCollector,
     initFromStorage,
     login,
     registerAndLogin,
+    registerAccount,
     fetchCurrentUser,
     logout,
     setToken,

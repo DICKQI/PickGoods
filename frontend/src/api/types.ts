@@ -15,6 +15,58 @@ export interface UserInfo {
   username: string
   /** 角色名称：User / Admin 等 */
   role: 'User' | 'Admin' | string
+  account_type: 'collector' | 'club' | string
+  approval_status: 'pending' | 'approved' | string
+  club?: { id: number; name: string; avatar?: string | null } | null
+}
+
+export interface RegistrationPending {
+  code: 'account_pending' | string
+  detail: string
+  approval_status: 'pending' | string
+}
+
+export interface ClubStoreLink {
+  label: string
+  url: string
+}
+
+/** 社团目录列表中的轻量谷子预览。 */
+export interface ClubPreviewGoods {
+  id: string
+  name: string
+  preview_photo: string | null
+  public_price: string | null
+  is_official: boolean
+}
+
+export interface Club {
+  id: number
+  name: string
+  avatar: string | null
+  description: string
+  announcement: string
+  contact_name: string
+  contact_phone: string
+  contact_email: string
+  taobao_url: string | null
+  xiaohongshu_url: string | null
+  weidian_url: string | null
+  store_links: ClubStoreLink[]
+  address: string
+  business_hours: string
+  goods_count: number
+  /** 目录页返回的最新谷子预览；详情和管理接口可能不返回。 */
+  preview_goods?: ClubPreviewGoods[]
+  created_at: string
+  updated_at: string
+}
+
+export interface ClubPopularityItem {
+  goods_id: string
+  goods_name: string
+  intended_user_count: number
+  acquired_user_count: number
 }
 
 // 位置节点
@@ -37,6 +89,7 @@ export interface StorageNode {
 
 export interface LocationStatusDistribution {
   draft?: number
+  intended?: number
   in_cabinet?: number
   outdoor?: number
   sold?: number
@@ -177,7 +230,7 @@ export interface Theme {
 }
 
 // 谷子状态
-export type GoodsStatus = 'draft' | 'in_cabinet' | 'outdoor' | 'sold'
+export type GoodsStatus = 'draft' | 'intended' | 'in_cabinet' | 'outdoor' | 'sold'
 
 // 补充图片
 export interface GuziImage {
@@ -207,6 +260,7 @@ export interface GoodsListItem {
   user?: {
     id: number
     username: string
+    account_type?: 'collector' | 'club' | string
   } | null
   user_id?: number | null
 }
@@ -222,6 +276,71 @@ export interface GoodsDetail extends GoodsListItem {
   updated_at: string
   additional_photos: GuziImage[]
 }
+
+export type ClubPublicationStatus = 'draft' | 'listed' | 'unlisted'
+
+export interface ClubCatalogImage {
+  id: number
+  image: string
+  label?: string | null
+}
+
+export interface ClubCatalogItem {
+  id: string
+  name: string
+  description: string
+  ip: IP
+  characters: Character[]
+  category: Category
+  theme?: Theme | null
+  main_photo?: string | null
+  additional_photos: ClubCatalogImage[]
+  public_price?: string | null
+  is_official: boolean
+  publication_status: ClubPublicationStatus
+  order: number
+  created_at: string
+  updated_at: string
+}
+
+/** 公开社团目录条目；不包含社团内部发布状态和排序/审计字段。 */
+export type ClubCatalogPublicItem = Omit<ClubCatalogItem, 'publication_status' | 'order' | 'created_at' | 'updated_at'>
+
+export interface ClubCatalogInput {
+  name: string
+  description?: string
+  ip_id: number
+  category_id: number
+  character_ids: number[]
+  theme_id?: number | null
+  public_price?: string | null
+  is_official?: boolean
+  publication_status: ClubPublicationStatus
+  main_photo?: File | null
+}
+
+export interface ClubImportTemplate {
+  source_item_id: string
+  source: ClubCatalogPublicItem
+  defaults: {
+    name: string
+    ip_id: number
+    category_id: number
+    character_ids: number[]
+    theme_id: number | null
+    theme_name?: string | null
+    price: string | null
+    purchase_date: string | null
+    notes: string
+    quantity: number
+    is_official: boolean
+    status: GoodsStatus
+  }
+  existing: { goods_id: string; quantity: number } | null
+}
+
+export type ClubGoodsListItem = ClubCatalogPublicItem
+export type ClubGoodsDetail = ClubCatalogPublicItem
 
 export interface GoodsCreateResponse extends GoodsDetail {
   merged?: boolean
@@ -1042,6 +1161,10 @@ export interface AdminUser {
   is_active: boolean
   created_at: string
   updated_at: string
+  account_type: 'collector' | 'club' | string
+  approval_status: 'pending' | 'approved' | string
+  club_name?: string | null
+  application_reason?: string | null
 }
 
 // ==================== BGM 自动同步：审计 ====================

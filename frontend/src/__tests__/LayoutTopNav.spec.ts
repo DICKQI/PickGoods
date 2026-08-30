@@ -3,6 +3,8 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import Layout from '@/components/Layout.vue'
+import { useAuthStore } from '@/stores/auth'
+import { useNotificationStore } from '@/stores/notification'
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -76,6 +78,7 @@ const mountLayout = async ({
           props: ['index'],
           template: '<button :data-index="index"><slot /></button>',
         },
+        NotificationCenter: { template: '<div data-test="notification-center" />' },
         MobileBottomNav: true,
         RouterView: { template: '<div />' },
         Transition: false,
@@ -123,5 +126,52 @@ describe('Layout top navigation', () => {
     const wrapper = await mountMobileLayout('/login')
 
     expect(wrapper.find('.app-version').exists()).toBe(true)
+  })
+
+  it('does not render or poll notifications for a club account', async () => {
+    const wrapper = await mountDesktopLayout()
+    const authStore = useAuthStore()
+    const notificationStore = useNotificationStore()
+    const startPolling = vi.spyOn(notificationStore, 'startPolling').mockImplementation(() => {})
+    vi.spyOn(notificationStore, 'stopPolling').mockImplementation(() => {})
+
+    authStore.setToken('club-token')
+    authStore.user = {
+      id: 1,
+      username: 'club-user',
+      role: 'User',
+      account_type: 'club',
+      approval_status: 'approved',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="notification-center"]').exists()).toBe(false)
+    expect(startPolling).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('renders and polls notifications for a collector account after profile hydration', async () => {
+    const wrapper = await mountDesktopLayout()
+    const authStore = useAuthStore()
+    const notificationStore = useNotificationStore()
+    const startPolling = vi.spyOn(notificationStore, 'startPolling').mockImplementation(() => {})
+
+    authStore.setToken('collector-token')
+    // Token 到达与用户资料到达可能不是同一个 tick，轮询条件必须跟随角色变化。
+    await wrapper.vm.$nextTick()
+    expect(startPolling).not.toHaveBeenCalled()
+
+    authStore.user = {
+      id: 2,
+      username: 'collector-user',
+      role: 'User',
+      account_type: 'collector',
+      approval_status: 'approved',
+    }
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="notification-center"]').exists()).toBe(true)
+    expect(startPolling).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
   })
 })

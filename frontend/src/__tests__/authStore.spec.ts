@@ -131,6 +131,38 @@ describe('useAuthStore', () => {
     expect(store.isAdmin).toBe(true)
   })
 
+  it('根据账号类型区分社团与吃谷人，管理员始终保留吃谷人工作区', () => {
+    const store = useAuthStore()
+    store.user = { id: 1, username: 'club', role: 'User', account_type: 'club' } as any
+    expect(store.isClub).toBe(true)
+    expect(store.isCollector).toBe(false)
+
+    store.user = { id: 2, username: 'admin', role: 'Admin', account_type: 'club' } as any
+    expect(store.isClub).toBe(false)
+    expect(store.isCollector).toBe(true)
+  })
+
+  it('社团注册待审批时不写入 token', async () => {
+    vi.mocked(authApi.register).mockResolvedValue({
+      code: 'account_pending',
+      detail: '社团账号申请已提交，请等待管理员审批',
+      approval_status: 'pending',
+    })
+
+    const store = useAuthStore()
+    const result = await store.registerAccount({
+      username: 'pending-club',
+      password: 'pending-pass',
+      account_type: 'club',
+      application_reason: '申请理由',
+      club_profile: { name: '待审批社团' },
+    })
+
+    expect(result?.code).toBe('account_pending')
+    expect(store.token).toBeNull()
+    expect(store.user).toBeNull()
+  })
+
   it('fetchCurrentUser 成功时更新 user', async () => {
     vi.mocked(authApi.getCurrentUser).mockResolvedValue({ id: 9, username: 'fresh', role: 'User' } as any)
     const store = useAuthStore()

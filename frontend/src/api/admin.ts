@@ -50,6 +50,14 @@ export function updateAdminUser(id: number, data: UpdateAdminUserData) {
   return request.patch<AdminUser>(`/api/admin/users/${id}/`, data)
 }
 
+export function approveAdminUser(id: number) {
+  return request.post<AdminUser>(`/api/admin/users/${id}/approve/`)
+}
+
+export function rejectAdminUser(id: number) {
+  return request.post(`/api/admin/users/${id}/reject/`)
+}
+
 export function getAdminRoles() {
   return request.get<AdminRole[]>('/api/admin/roles/')
 }

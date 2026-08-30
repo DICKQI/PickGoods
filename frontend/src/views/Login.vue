@@ -4,8 +4,8 @@
     <div class="bg-shape shape-1"></div>
     <div class="bg-shape shape-2"></div>
 
-    <div class="login-card-wrapper">
-      <el-card class="login-card" :body-style="{ padding: '0' }">
+    <div ref="cardWrapperRef" class="login-card-wrapper">
+      <el-card :class="['login-card', cardStateClass, { 'is-resizing': cardResizing }]" :style="cardStyle" :body-style="{ padding: '0' }">
         <div class="login-content">
           <div class="card-header">
             <div class="logo-container">
@@ -15,110 +15,150 @@
             <p class="login-subtitle">欢迎回到拾谷</p>
           </div>
 
-          <!-- Custom Tabs Header -->
-          <div class="custom-tabs">
-            <div
-              class="tab-item"
-              :class="{ active: mode === 'login' }"
-              @click="switchMode('login')"
-            >
-              登录
-            </div>
-            <div
-              class="tab-item"
-              :class="{ active: mode === 'register' }"
-              @click="switchMode('register')"
-            >
-              注册
-            </div>
-            <!-- Animated Bottom Bar -->
-            <div class="tab-bar" :style="tabBarStyle"></div>
-          </div>
-
-          <!-- Single Adaptive Form -->
-          <el-form
-            ref="formRef"
-            :model="formData"
-            :rules="currentRules"
-            label-position="top"
-            class="login-form"
-            @submit.prevent="handleSubmit"
-            size="large"
-            hide-required-asterisk
-          >
-            <el-form-item prop="username">
-              <el-input
-                v-model="formData.username"
-                placeholder="用户名"
-                clearable
-                :prefix-icon="User"
-                maxlength="150"
-              />
-            </el-form-item>
-
-            <el-form-item prop="password">
-              <el-input
-                v-model="formData.password"
-                type="password"
-                :placeholder="mode === 'register' ? '密码（至少 6 位）' : '密码'"
-                show-password
-                clearable
-                :prefix-icon="Lock"
-                @keyup.enter="handleEnterKey"
-              />
-            </el-form-item>
-
-            <!-- Animated Confirm Password Field -->
-            <transition
-              name="expand"
-              @enter="enter"
-              @after-enter="afterEnter"
-              @leave="leave"
-            >
-              <div v-if="mode === 'register'" class="expand-wrapper">
-                <el-form-item prop="confirmPassword" class="confirm-password-item">
-                  <el-input
-                    v-model="formData.confirmPassword"
-                    type="password"
-                    placeholder="确认密码"
-                    show-password
-                    clearable
-                    :prefix-icon="Lock"
-                    @keyup.enter="handleSubmit"
-                  />
-                </el-form-item>
+          <div class="auth-workspace">
+            <!-- Custom Tabs Header -->
+            <div class="custom-tabs">
+              <div
+                class="tab-item"
+                :class="{ active: mode === 'login' }"
+                @click="switchMode('login')"
+              >
+                登录
               </div>
+              <div
+                class="tab-item"
+                :class="{ active: mode === 'register' }"
+                @click="switchMode('register')"
+              >
+                注册
+              </div>
+              <!-- Animated Bottom Bar -->
+              <div class="tab-bar" :style="tabBarStyle"></div>
+            </div>
+
+            <transition name="auth-panel" mode="out-in" @after-enter="handlePanelAfterEnter">
+              <!-- Registration starts with an identity choice. The actual form is shown only after a choice. -->
+              <section v-if="mode === 'register' && !formData.accountType" key="identity" class="identity-step" aria-labelledby="identity-step-title">
+                <div class="identity-step__heading">
+                  <span class="form-kicker">注册第一步</span>
+                  <h3 id="identity-step-title">你是什么身份？</h3>
+                  <p>选择后，我们会为你准备对应的注册表单</p>
+                </div>
+                <el-radio-group v-model="formData.accountType" class="identity-options" aria-label="选择账号身份">
+                  <el-radio-button value="collector" class="identity-option">
+                    <span class="identity-option__icon"><el-icon><User /></el-icon></span>
+                    <span class="identity-option__copy"><strong>吃谷人</strong><small>记录和管理自己的谷子</small></span>
+                  </el-radio-button>
+                  <el-radio-button value="club" class="identity-option">
+                    <span class="identity-option__icon"><el-icon><Shop /></el-icon></span>
+                    <span class="identity-option__copy"><strong>社团</strong><small>发布社团谷子，申请后开通</small></span>
+                  </el-radio-button>
+                </el-radio-group>
+              </section>
+
+              <!-- Login form and the selected registration form share validation/submission logic. -->
+              <el-form
+                v-else
+                :key="`form-${mode}-${formData.accountType || 'none'}`"
+                ref="formRef"
+                :model="formData"
+                :rules="currentRules"
+                label-position="top"
+                :class="['login-form', { 'login-form--club': mode === 'register' && formData.accountType === 'club' }]"
+                @submit.prevent="handleSubmit"
+                size="large"
+                hide-required-asterisk
+              >
+                <div v-if="mode === 'register'" class="selected-identity">
+                  <div>
+                    <span class="form-kicker">注册身份</span>
+                    <strong>{{ formData.accountType === 'club' ? '社团' : '吃谷人' }}</strong>
+                  </div>
+                  <el-button text type="primary" class="change-identity-btn" @click="changeIdentity">重新选择</el-button>
+                </div>
+
+                <template v-if="mode === 'register' && formData.accountType === 'club'">
+                  <div class="register-sections">
+                    <section class="register-form-section">
+                      <div class="register-form-section__heading">
+                        <span class="form-kicker">基础信息</span>
+                        <p>用于登录社团工作区</p>
+                      </div>
+                      <el-form-item label="登录用户名" prop="username">
+                        <el-input v-model="formData.username" placeholder="请输入用户名" clearable :prefix-icon="User" maxlength="150" />
+                      </el-form-item>
+                      <div class="register-field-grid">
+                        <el-form-item label="登录密码" prop="password">
+                          <el-input v-model="formData.password" type="password" placeholder="至少 6 位" show-password clearable :prefix-icon="Lock" />
+                        </el-form-item>
+                        <el-form-item label="确认密码" prop="confirmPassword">
+                          <el-input v-model="formData.confirmPassword" type="password" placeholder="再次输入密码" show-password clearable :prefix-icon="Lock" @keyup.enter="handleSubmit" />
+                        </el-form-item>
+                      </div>
+                    </section>
+
+                    <section class="register-form-section register-form-section--application">
+                      <div class="register-form-section__heading">
+                        <span class="form-kicker">社团申请</span>
+                        <p>管理员审批通过后即可发布社团谷子</p>
+                      </div>
+                      <el-form-item label="社团名称" prop="clubName">
+                        <el-input v-model="formData.clubName" placeholder="请输入社团名称" maxlength="200" show-word-limit />
+                      </el-form-item>
+                      <el-form-item label="申请理由" prop="applicationReason">
+                        <el-input v-model="formData.applicationReason" type="textarea" :rows="4" placeholder="请介绍社团以及申请入驻的理由" maxlength="1000" show-word-limit />
+                      </el-form-item>
+                    </section>
+                  </div>
+                </template>
+
+                <template v-else>
+                  <el-form-item prop="username">
+                    <el-input v-model="formData.username" placeholder="用户名" clearable :prefix-icon="User" maxlength="150" />
+                  </el-form-item>
+                  <el-form-item prop="password">
+                    <el-input v-model="formData.password" type="password" :placeholder="mode === 'register' ? '密码（至少 6 位）' : '密码'" show-password clearable :prefix-icon="Lock" @keyup.enter="handleEnterKey" />
+                  </el-form-item>
+                  <el-form-item v-if="mode === 'register'" prop="confirmPassword" class="confirm-password-item">
+                    <el-input v-model="formData.confirmPassword" type="password" placeholder="确认密码" show-password clearable :prefix-icon="Lock" @keyup.enter="handleSubmit" />
+                  </el-form-item>
+                </template>
+
+                <div class="form-actions">
+                  <el-button type="primary" class="submit-btn" :loading="authStore.loading" @click="handleSubmit" round>
+                    <span class="btn-text">{{ mode === 'login' ? '登 录' : (formData.accountType === 'club' ? '提交社团申请' : '注册并自动登录') }}</span>
+                  </el-button>
+                </div>
+              </el-form>
             </transition>
 
-            <div class="form-actions">
-              <el-button
-                type="primary"
-                class="submit-btn"
-                :loading="authStore.loading"
-                @click="handleSubmit"
-                round
-              >
-                <span class="btn-text">{{ mode === 'login' ? '登 录' : '注册并自动登录' }}</span>
-              </el-button>
+            <transition name="fade">
+              <el-alert
+                v-if="errorMessage"
+                :title="errorMessage"
+                type="error"
+                show-icon
+                closable
+                class="error-alert"
+              />
+            </transition>
+            <transition name="fade">
+              <el-alert
+                v-if="infoMessage"
+                :title="infoMessage"
+                type="success"
+                show-icon
+                closable
+                class="error-alert"
+              />
+            </transition>
+
+            <div class="footer-links">
+              <router-link to="/settings" class="link">
+                <el-icon class="link-icon"><Tools /></el-icon>
+                <span>服务器设置</span>
+              </router-link>
             </div>
-          </el-form>
-
-          <transition name="fade">
-            <el-alert
-              v-if="errorMessage"
-              :title="errorMessage"
-              type="error"
-              show-icon
-              closable
-              class="error-alert"
-            />
-          </transition>
-
-          <div class="footer-links">
-            <router-link to="/settings" class="link">
-              <el-icon class="link-icon"><Tools /></el-icon>
-              <span>服务器设置</span>
-            </router-link>
           </div>
         </div>
       </el-card>
@@ -127,9 +167,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { User, Lock, Tools } from '@element-plus/icons-vue'
+import { User, Lock, Tools, Shop } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -141,13 +181,23 @@ const authStore = useAuthStore()
 // State
 const mode = ref<'login' | 'register'>('login')
 const errorMessage = ref('')
+const infoMessage = ref('')
 const formRef = ref<FormInstance>()
+const cardWrapperRef = ref<HTMLElement>()
+const cardResizing = ref(false)
+const cardHeight = ref<number | null>(null)
+let cardResizeTimer: ReturnType<typeof setTimeout> | undefined
+let cardHeightTimer: ReturnType<typeof setTimeout> | undefined
+let cardHeightFrame: number | undefined
 
 // Data
 const formData = reactive({
   username: '',
   password: '',
   confirmPassword: '',
+  accountType: '' as '' | 'collector' | 'club',
+  clubName: '',
+  applicationReason: '',
 })
 
 // Validation
@@ -174,6 +224,15 @@ const registerRules: FormRules = {
     { required: true, message: '请再次输入密码', trigger: 'blur' },
     { validator: validateConfirmPassword, trigger: 'blur' },
   ],
+  accountType: [{ required: true, message: '请选择账号类型', trigger: 'change' }],
+  clubName: [{ validator: (_rule: any, value: string, callback: (err?: Error) => void) => {
+    if (mode.value === 'register' && formData.accountType === 'club' && !value.trim()) callback(new Error('请输入社团名称'))
+    else callback()
+  }, trigger: 'blur' }],
+  applicationReason: [{ validator: (_rule: any, value: string, callback: (err?: Error) => void) => {
+    if (mode.value === 'register' && formData.accountType === 'club' && !value.trim()) callback(new Error('请填写申请理由'))
+    else callback()
+  }, trigger: 'blur' }],
 }
 
 const currentRules = computed(() => mode.value === 'login' ? loginRules : registerRules)
@@ -185,17 +244,94 @@ const tabBarStyle = computed(() => {
   }
 })
 
+const cardStateClass = computed(() => {
+  if (mode.value === 'login') return 'login-card--login'
+  if (!formData.accountType) return 'login-card--identity'
+  return formData.accountType === 'club' ? 'login-card--club' : 'login-card--collector'
+})
+
+const cardStyle = computed(() => {
+  if (cardHeight.value === null) return undefined
+  return { height: `${cardHeight.value}px` }
+})
+
+function getCardElement(): HTMLElement | null | undefined {
+  return cardWrapperRef.value?.querySelector<HTMLElement>('.login-card')
+}
+
+function readCardHeight(): number | undefined {
+  const card = getCardElement()
+  if (!card) return undefined
+  return Math.ceil(card.getBoundingClientRect().height)
+}
+
+function readNaturalCardHeight(): number | undefined {
+  const card = getCardElement()
+  if (!card) return undefined
+  const inlineHeight = card.style.height
+  card.style.height = 'auto'
+  const naturalHeight = Math.ceil(card.getBoundingClientRect().height)
+  card.style.height = inlineHeight
+  return naturalHeight
+}
+
+function handlePanelAfterEnter() {
+  const targetHeight = readNaturalCardHeight()
+  if (!targetHeight) return
+  if (cardHeightFrame !== undefined) cancelAnimationFrame(cardHeightFrame)
+  cardHeightFrame = requestAnimationFrame(() => {
+    cardHeightFrame = undefined
+    cardHeight.value = targetHeight
+    if (cardHeightTimer) clearTimeout(cardHeightTimer)
+    cardHeightTimer = setTimeout(() => {
+      cardHeight.value = null
+    }, 340)
+  })
+}
+
+function triggerCardResize() {
+  const currentHeight = readCardHeight()
+  if (currentHeight) cardHeight.value = currentHeight
+  if (cardHeightTimer) clearTimeout(cardHeightTimer)
+  if (cardHeightFrame !== undefined) {
+    cancelAnimationFrame(cardHeightFrame)
+    cardHeightFrame = undefined
+  }
+
+  cardResizing.value = false
+  nextTick(() => {
+    cardResizing.value = true
+    if (cardResizeTimer) clearTimeout(cardResizeTimer)
+    cardResizeTimer = setTimeout(() => {
+      cardResizing.value = false
+    }, 420)
+  })
+}
+
+watch([mode, () => formData.accountType], triggerCardResize)
+
 // Actions
 function switchMode(newMode: 'login' | 'register') {
   if (mode.value === newMode) return
   mode.value = newMode
+  if (newMode === 'register') {
+    formData.accountType = ''
+  }
   errorMessage.value = ''
+  infoMessage.value = ''
 
   // Clear validation state when switching, but keep input values (UX choice)
   // except confirmPassword which is hidden/shown
   nextTick(() => {
     formRef.value?.clearValidate()
   })
+}
+
+function changeIdentity() {
+  formData.accountType = ''
+  errorMessage.value = ''
+  infoMessage.value = ''
+  nextTick(() => formRef.value?.clearValidate())
 }
 
 function getRedirectPath(): string {
@@ -208,6 +344,8 @@ function getRedirectPath(): string {
 
 async function handleSubmit() {
   errorMessage.value = ''
+  infoMessage.value = ''
+  if (mode.value === 'register' && !formData.accountType) return
   await formRef.value?.validate(async (valid) => {
     if (!valid) return
     try {
@@ -215,7 +353,21 @@ async function handleSubmit() {
         await authStore.login(formData.username.trim(), formData.password)
         ElMessage.success('登录成功')
       } else {
-        await authStore.registerAndLogin(formData.username.trim(), formData.password)
+        const accountType = formData.accountType as 'collector' | 'club'
+        const pending = await authStore.registerAccount({
+          username: formData.username.trim(),
+          password: formData.password,
+          account_type: accountType,
+          application_reason: formData.applicationReason.trim(),
+          club_profile: { name: formData.clubName.trim() },
+        })
+        if (pending) {
+          ElMessage.success('社团申请已提交，请等待管理员审批')
+          mode.value = 'login'
+          formData.accountType = ''
+          infoMessage.value = '申请已提交，审批通过后即可登录'
+          return
+        }
         ElMessage.success('注册成功，已自动登录')
       }
       await router.push(getRedirectPath())
@@ -233,39 +385,14 @@ function handleEnterKey() {
   // If register, do nothing (let user tab to confirm password)
 }
 
-// Animation Hooks for Height Transition
-const enter = (el: Element) => {
-  const element = el as HTMLElement
-  element.style.height = '0'
-  element.style.opacity = '0'
-  // Force reflow
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  element.offsetHeight
-
-  element.style.height = element.scrollHeight + 'px'
-  element.style.opacity = '1'
-}
-
-const afterEnter = (el: Element) => {
-  const element = el as HTMLElement
-  element.style.height = 'auto'
-  element.style.overflow = 'visible' // Allow tooltips etc if needed
-}
-
-const leave = (el: Element) => {
-  const element = el as HTMLElement
-  element.style.height = element.scrollHeight + 'px'
-  element.style.overflow = 'hidden'
-  // Force reflow
-  // eslint-disable-next-line @typescript-eslint/no-unused-expressions
-  element.offsetHeight
-
-  element.style.height = '0'
-  element.style.opacity = '0'
-}
-
 onMounted(() => {
   errorMessage.value = ''
+})
+
+onBeforeUnmount(() => {
+  if (cardResizeTimer) clearTimeout(cardResizeTimer)
+  if (cardHeightTimer) clearTimeout(cardHeightTimer)
+  if (cardHeightFrame !== undefined) cancelAnimationFrame(cardHeightFrame)
 })
 </script>
 
@@ -286,12 +413,12 @@ onMounted(() => {
   height: 100dvh;
   width: 100vw;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   padding: 20px;
   background-color: #FFFFFF; /* PM 1.2 BG */
   position: relative;
-  overflow: hidden;
+  overflow-y: auto;
   box-sizing: border-box;
 }
 
@@ -323,18 +450,57 @@ onMounted(() => {
 /* Card Wrapper */
 .login-card-wrapper {
   width: 100%;
-  max-width: 400px;
+  max-width: 800px;
+  margin: auto;
   z-index: 1;
 }
 
 .login-card {
+  width: 100%;
+  max-width: 400px;
+  min-height: 360px;
+  margin: 0 auto;
   border-radius: 12px;
   border: 1px solid #D4AF37; /* PM 1.2: 1px 香槟金细边框 */
   background: rgba(255, 255, 255, 0.95);
   backdrop-filter: blur(10px);
   box-shadow: 0 4px 24px rgba(212, 175, 55, 0.15); /* Subtle gold shadow */
   overflow: hidden; /* Important for height animation */
-  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1); /* Global transition for wrapper */
+  transform-origin: center;
+  transition: width var(--transition-normal, 0.3s ease), max-width var(--transition-normal, 0.3s ease), height var(--transition-normal, 0.3s ease), min-height var(--transition-normal, 0.3s ease), transform var(--transition-normal, 0.3s ease), box-shadow var(--transition-normal, 0.3s ease);
+}
+
+.login-card--login {
+  min-height: 360px;
+}
+
+.login-card--identity {
+  min-height: 410px;
+}
+
+.login-card--collector {
+  min-height: 430px;
+}
+
+.login-card--club {
+  max-width: 760px;
+  min-height: 540px;
+}
+
+.login-card.is-resizing {
+  animation: card-resize-pulse 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+@keyframes card-resize-pulse {
+  0% {
+    transform: scale(0.988);
+  }
+  55% {
+    transform: scale(1.006);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 .login-card:hover {
@@ -342,13 +508,24 @@ onMounted(() => {
 }
 
 .login-content {
-  padding: 40px 32px;
+  display: flex;
+  flex-direction: column;
+  min-height: inherit;
+  padding: 40px 48px;
 }
 
 /* Header */
 .card-header {
+  align-self: auto;
   text-align: center;
   margin-bottom: 24px;
+}
+
+.auth-workspace {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
 }
 
 .logo-container {
@@ -421,9 +598,271 @@ onMounted(() => {
   transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.auth-panel-enter-active,
+.auth-panel-leave-active {
+  transition: opacity var(--transition-fast, 0.2s ease), transform var(--transition-normal, 0.3s ease);
+}
+
+.auth-panel-enter-from {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.auth-panel-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+/* Registration identity step */
+.identity-step {
+  margin-top: 8px;
+}
+
+.identity-step__heading {
+  margin-bottom: 18px;
+  text-align: center;
+}
+
+.form-kicker {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--primary-gold-dark, #B8941F);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  line-height: 1.4;
+}
+
+.identity-step__heading h3 {
+  margin: 0;
+  color: var(--text-dark, #333333);
+  font-size: 22px;
+  line-height: 1.35;
+}
+
+.identity-step__heading p {
+  margin: 7px 0 0;
+  color: var(--text-light, #888888);
+  font-size: 13px;
+}
+
+.identity-options {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 12px;
+}
+
+.identity-options :deep(.el-radio-button) {
+  flex: none;
+  width: 100%;
+  margin: 0;
+}
+
+.identity-options :deep(.el-radio-button__inner) {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 1px solid rgba(212, 175, 55, 0.18) !important;
+  border-radius: var(--card-radius-sm, 12px) !important;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: var(--shadow-sm, 0 2px 10px rgba(0, 0, 0, 0.05)) !important;
+  color: var(--text-regular, #606266);
+  text-align: left;
+  transition: var(--transition-fast, 0.2s ease);
+}
+
+.identity-options :deep(.el-radio-button__inner:hover) {
+  border-color: rgba(162, 155, 254, 0.55) !important;
+  background: rgba(246, 244, 255, 0.9);
+}
+
+.identity-options :deep(.el-radio-button.is-active .el-radio-button__inner) {
+  border-color: var(--accent-purple, #A29BFE) !important;
+  background: var(--accent-purple-soft, #F6F4FF);
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.2), var(--shadow-purple-soft, 0 8px 18px rgba(142, 125, 255, 0.24)) !important;
+  color: var(--accent-purple-dark, #9980FA);
+}
+
+.identity-option__icon {
+  display: grid;
+  flex: 0 0 40px;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--primary-gold-dark, #B8941F);
+  font-size: 20px;
+}
+
+.identity-options :deep(.is-active .identity-option__icon) {
+  background: rgba(162, 155, 254, 0.16);
+  color: var(--accent-purple-dark, #9980FA);
+}
+
+.identity-option__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.identity-option__copy strong {
+  color: var(--text-dark, #333333);
+  font-size: 15px;
+  line-height: 1.3;
+}
+
+.identity-option__copy small {
+  overflow: hidden;
+  color: var(--text-light, #888888);
+  font-size: 12px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* Form */
 .login-form {
   margin-top: 10px;
+}
+
+.login-form--club {
+  margin-top: 0;
+}
+
+.selected-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(162, 155, 254, 0.18);
+  border-radius: var(--card-radius-sm, 12px);
+  background: rgba(246, 244, 255, 0.7);
+}
+
+.selected-identity .form-kicker {
+  margin-bottom: 2px;
+  color: var(--text-light, #888888);
+  letter-spacing: 0;
+}
+
+.selected-identity strong {
+  color: var(--accent-purple-dark, #9980FA);
+  font-size: 14px;
+}
+
+.change-identity-btn {
+  flex: 0 0 auto;
+  min-height: 32px;
+  padding: 5px 8px;
+  border-radius: var(--button-radius, 8px);
+}
+
+.register-sections {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-items: stretch;
+}
+
+.register-form-section {
+  height: 100%;
+  margin-bottom: 0;
+  padding: 16px;
+  border: 1px solid rgba(212, 175, 55, 0.14);
+  border-radius: var(--card-radius-sm, 12px);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
+    radial-gradient(circle at top right, rgba(162, 155, 254, 0.11), transparent 38%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 28px -24px rgba(17, 24, 39, 0.5);
+}
+
+.register-form-section:last-of-type {
+  margin-bottom: 0;
+}
+
+.register-form-section__heading {
+  margin-bottom: 12px;
+}
+
+.register-form-section__heading .form-kicker {
+  margin-bottom: 2px;
+  color: var(--text-dark, #333333);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+
+.register-form-section__heading p {
+  margin: 0;
+  color: var(--text-light, #888888);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.login-form--club .register-form-section :deep(.el-form-item) {
+  margin-bottom: 14px;
+}
+
+.login-form--club .register-form-section :deep(.el-form-item:last-child) {
+  margin-bottom: 0;
+}
+
+.login-form--club .register-form-section :deep(.el-form-item__label) {
+  margin-bottom: 6px;
+  color: #5f5874;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.login-form--club .register-form-section :deep(.el-input__wrapper) {
+  min-height: 42px;
+  border: 1px solid rgba(212, 175, 55, 0.1);
+  border-radius: var(--button-radius, 8px);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 8px 24px rgba(142, 125, 255, 0.06);
+}
+
+.login-form--club .register-form-section :deep(.el-input__wrapper:hover) {
+  border-color: rgba(142, 125, 255, 0.24);
+}
+
+.login-form--club .register-form-section :deep(.el-input__wrapper.is-focus) {
+  border-color: rgba(142, 125, 255, 0.48);
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.2), 0 12px 28px rgba(142, 125, 255, 0.1);
+  background: rgba(255, 255, 255, 0.96);
+}
+
+.login-form :deep(.el-form-item__error) {
+  position: static;
+  margin-top: 5px;
+  padding-top: 0;
+  line-height: 1.35;
+}
+
+.login-form--club .register-form-section--application :deep(.el-textarea__inner) {
+  height: 94px !important;
+  min-height: 94px !important;
+  max-height: 94px !important;
+  resize: none;
+  overflow-y: auto;
+}
+
+.register-field-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: start;
+}
+
+.login-form--club .register-field-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
 .login-form :deep(.el-input__wrapper) {
@@ -537,7 +976,8 @@ onMounted(() => {
 
 /* Footer */
 .footer-links {
-  margin-top: 32px;
+  margin-top: auto;
+  padding-top: 24px;
   text-align: center;
 }
 
@@ -572,6 +1012,57 @@ onMounted(() => {
   opacity: 0;
 }
 
+@media (max-width: 768px) {
+  .login-container {
+    overflow-y: auto;
+  }
+
+  .login-card-wrapper {
+    max-width: 520px;
+    margin: 16px 0;
+  }
+
+  .login-card,
+  .login-card--login,
+  .login-card--identity,
+  .login-card--collector,
+  .login-card--club {
+    max-width: 100%;
+    min-height: auto;
+  }
+
+  .login-content {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    padding: 36px 32px;
+  }
+
+  .card-header {
+    align-self: auto;
+    text-align: center;
+    margin-bottom: 24px;
+  }
+
+  .logo-container {
+    justify-content: center;
+  }
+
+  .identity-options,
+  .register-sections {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+  }
+
+  .identity-options :deep(.el-radio-button) {
+    flex: none;
+  }
+
+  .footer-links {
+    text-align: center;
+  }
+}
+
 /* Mobile Optimizations */
 @media (max-width: 480px) {
   .login-container {
@@ -584,24 +1075,41 @@ onMounted(() => {
   }
 
   .login-card-wrapper {
-    height: 100%;
+    height: auto;
+    min-height: 100%;
     max-width: none;
   }
 
   .login-card {
-    height: 100%;
+    height: auto;
+    min-height: 100vh;
     border-radius: 0;
     border: none;
     box-shadow: none;
     background: transparent;
+    overflow: visible;
   }
 
   .login-content {
     padding: 32px 24px;
-    height: 100%;
+    min-height: 100vh;
+    height: auto;
     display: flex;
     flex-direction: column;
     justify-content: center;
+  }
+
+  .login-form--club {
+    margin-top: 0;
+  }
+
+  .register-field-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+
+  .identity-option__copy small {
+    white-space: normal;
   }
 
   .card-header {

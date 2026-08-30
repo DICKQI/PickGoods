@@ -25,7 +25,34 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '云展柜',
       requiresAuth: true,
+      requiresCollector: true,
     },
+  },
+  {
+    path: '/clubs',
+    name: 'ClubDirectory',
+    component: () => import('@/views/ClubDirectory.vue'),
+    meta: { title: '社团' },
+  },
+  {
+    path: '/clubs/:id',
+    name: 'ClubDetail',
+    component: () => import('@/views/ClubDetail.vue'),
+    meta: { title: '社团详情' },
+  },
+  {
+    path: '/club',
+    name: 'ClubWorkspace',
+    component: () => import('@/views/club/ClubWorkspace.vue'),
+    meta: { title: '社团工作台', requiresAuth: true, requiresClub: true },
+    redirect: '/club/goods',
+    children: [
+      { path: 'profile', name: 'ClubProfile', component: () => import('@/views/club/ClubProfile.vue'), meta: { title: '社团资料', requiresAuth: true, requiresClub: true } },
+      { path: 'goods', name: 'ClubGoods', component: () => import('@/views/club/ClubGoods.vue'), meta: { title: '社团谷子', requiresAuth: true, requiresClub: true } },
+      { path: 'goods/new', name: 'ClubGoodsNew', component: () => import('@/views/club/ClubGoodsEditor.vue'), meta: { title: '新增社团谷子', requiresAuth: true, requiresClub: true } },
+      { path: 'goods/:id/edit', name: 'ClubGoodsEdit', component: () => import('@/views/club/ClubGoodsEditor.vue'), meta: { title: '编辑社团谷子', requiresAuth: true, requiresClub: true } },
+      { path: 'popularity', name: 'ClubPopularity', component: () => import('@/views/club/ClubPopularity.vue'), meta: { title: '人气统计', requiresAuth: true, requiresClub: true } },
+    ],
   },
   {
     path: '/location',
@@ -34,6 +61,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '位置',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -43,6 +71,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: 'IP与角色',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -52,6 +81,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '角色厨力统计',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   // 兼容旧路径，重定向到新路径
@@ -70,6 +100,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '品类',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -79,6 +110,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '主题',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -88,6 +120,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '新增谷子',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -97,6 +130,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '草稿箱',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -106,6 +140,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '编辑谷子',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -115,6 +150,7 @@ const routes: RouteRecordRaw[] = [
     meta: {
       title: '预购',
       requiresAuth: true,
+      requiresCollector: true,
     },
   },
   {
@@ -220,10 +256,20 @@ export async function authGuard(to: RouteLocationNormalized, _from: RouteLocatio
 
   const requiresAuth = to.meta.requiresAuth === true
   const requiresAdmin = to.meta.requiresAdmin === true
+  const requiresClub = to.meta.requiresClub === true
+  const requiresCollector = to.meta.requiresCollector === true
   const isPublic = to.meta.public === true
 
   if (requiresAuth && !authStore.isAuthenticated) {
     next({ name: 'Login', query: { redirect: to.fullPath } })
+    return
+  }
+  if (requiresClub && !authStore.isClub) {
+    next(authStore.isAuthenticated ? '/showcase' : { name: 'Login', query: { redirect: to.fullPath } })
+    return
+  }
+  if (requiresCollector && !authStore.isCollector) {
+    next(authStore.isAuthenticated ? '/club/goods' : { name: 'Login', query: { redirect: to.fullPath } })
     return
   }
   if (isPublic && authStore.isAuthenticated && to.name === 'Login') {
