@@ -1,6 +1,7 @@
 import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia } from 'pinia'
 import GoodsForm from '@/views/GoodsForm.vue'
 import { classifyGoodsImage, createGoods, getGoodsDetail, updateGoods } from '@/api/goods'
 import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
@@ -13,6 +14,7 @@ import { resolve } from 'node:path'
 const pushMock = vi.fn()
 const backMock = vi.fn()
 let routeParams: Record<string, string | undefined> = {}
+let routeQuery: Record<string, string | undefined> = {}
 const goodsFormSource = readFileSync(resolve(process.cwd(), 'src/views/GoodsForm.vue'), 'utf8')
 
 vi.mock('vue-router', () => ({
@@ -22,6 +24,7 @@ vi.mock('vue-router', () => ({
   }),
   useRoute: () => ({
     params: routeParams,
+    query: routeQuery,
   }),
 }))
 
@@ -227,6 +230,7 @@ const mountGoodsForm = async ({
   params?: Record<string, string | undefined>
 }) => {
   routeParams = params
+  routeQuery = {}
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
   Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: maxTouchPoints })
@@ -240,6 +244,7 @@ const mountGoodsForm = async ({
 
   const wrapper = mount(GoodsForm, {
     global: {
+      plugins: [createPinia()],
       stubs: {
         ElForm: ElFormStub,
         ElFormItem: ElFormItemStub,
@@ -290,6 +295,7 @@ const mountGoodsForm = async ({
         ElIcon: passthroughStub('ElIcon', 'i'),
         ElTag: passthroughStub('ElTag', 'span'),
         ImageCropper: true,
+        ClubImportDialog: true,
         OcrBatchImportDialog: true,
         OcrFillDialog: true,
       },
@@ -673,9 +679,10 @@ describe('GoodsForm mobile create wizard', () => {
 
     const actionFooter = wrapper.get('.form-section--images .desktop-action-footer')
     const actionButtons = actionFooter.findAll('.sticky-btn--secondary')
-    expect(actionButtons).toHaveLength(4)
+    expect(actionButtons).toHaveLength(5)
+    expect(actionFooter.text()).toContain('从社团导入')
 
-    await actionButtons[3]!.trigger('click')
+    await actionFooter.get('.desktop-action-btn--draft').trigger('click')
     await nextTick()
     await Promise.resolve()
 

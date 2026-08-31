@@ -36,7 +36,12 @@ export function getMyFavoriteClubs(params?: { page?: number; page_size?: number 
   return request.get<PaginatedResponse<ClubFavoriteItem>>('/api/clubs/me/favorites/', { params })
 }
 
-export function getClubGoods(id: number, params?: { page?: number; page_size?: number; search?: string }) {
+export function getClubGoods(id: number, params?: {
+  page?: number
+  page_size?: number
+  search?: string
+  imported?: 'all' | 'imported' | 'unimported'
+}) {
   return request.get<PaginatedResponse<ClubCatalogPublicItem>>(`/api/clubs/${id}/goods/`, { params })
 }
 

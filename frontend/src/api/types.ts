@@ -319,6 +319,10 @@ export interface ClubCatalogItem {
   main_photo?: string | null
   additional_photos: ClubCatalogImage[]
   public_price?: string | null
+  /** 当前登录吃谷人的导入状态；未登录时为未导入默认值。 */
+  is_imported?: boolean
+  imported_quantity?: number | null
+  imported_goods_id?: string | null
   /** 社团目录统一为同人；字段只为兼容管理接口和旧数据保留。 */
   readonly is_official: boolean
   publication_status: ClubPublicationStatus

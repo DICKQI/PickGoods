@@ -2,7 +2,9 @@ from datetime import timedelta
 from io import BytesIO
 from uuid import uuid4
 
+from django.db import connection
 from django.test import TestCase
+from django.test.utils import CaptureQueriesContext
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from PIL import Image
@@ -187,6 +189,69 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(detail.status_code, status.HTTP_200_OK)
         self.assertNotIn("quantity", detail.json())
         self.assertNotIn("is_official", detail.json())
+
+    def test_collector_can_filter_public_goods_by_import_status_without_leaking_between_users(self):
+        personal = Goods.objects.create(
+            user=self.collector,
+            name="我的社团徽章",
+            ip=self.ip,
+            category=self.category,
+            quantity=3,
+            status="intended",
+        )
+        ClubGoodsOrigin.objects.create(
+            collector=self.collector,
+            source_item=self.source,
+            personal_goods=personal,
+            first_source_snapshot={},
+        )
+
+        anonymous = self.client.get(f"/api/clubs/{self.club.id}/goods/")
+        self.assertEqual(anonymous.status_code, status.HTTP_200_OK)
+        anonymous_item = anonymous.json()["results"][0]
+        self.assertFalse(anonymous_item["is_imported"])
+        self.assertIsNone(anonymous_item["imported_quantity"])
+        self.assertIsNone(anonymous_item["imported_goods_id"])
+
+        self.client.force_authenticate(user=self.collector)
+        all_response = self.client.get(f"/api/clubs/{self.club.id}/goods/")
+        self.assertEqual(all_response.status_code, status.HTTP_200_OK)
+        item = all_response.json()["results"][0]
+        self.assertTrue(item["is_imported"])
+        self.assertEqual(item["imported_quantity"], 3)
+        self.assertEqual(item["imported_goods_id"], str(personal.id))
+
+        imported = self.client.get(f"/api/clubs/{self.club.id}/goods/?imported=imported")
+        self.assertEqual([entry["id"] for entry in imported.json()["results"]], [str(self.source.id)])
+        unimported = self.client.get(f"/api/clubs/{self.club.id}/goods/?imported=unimported")
+        self.assertEqual(unimported.json()["results"], [])
+
+        self.client.force_authenticate(user=self.other_collector)
+        other_view = self.client.get(f"/api/clubs/{self.club.id}/goods/")
+        other_item = other_view.json()["results"][0]
+        self.assertFalse(other_item["is_imported"])
+        self.assertIsNone(other_item["imported_quantity"])
+        self.assertIsNone(other_item["imported_goods_id"])
+
+    def test_public_goods_import_annotations_do_not_query_once_per_item(self):
+        for index in range(39):
+            ClubCatalogItem.objects.create(
+                club=self.club,
+                name=f"批量谷子 {index}",
+                description="",
+                ip=self.ip,
+                category=self.category,
+                publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+            )
+
+        self.client.force_authenticate(user=self.collector)
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(f"/api/clubs/{self.club.id}/goods/?page_size=40")
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(len(response.json()["results"]), 40)
+        # Pagination, annotations, and prefetches should stay bounded as the page grows.
+        self.assertLess(len(queries), 20)
 
     def test_public_directory_includes_latest_limited_previews_with_photo_fallback(self):
         now = timezone.now()

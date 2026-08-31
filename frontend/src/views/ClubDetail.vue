@@ -250,7 +250,14 @@
       :close-on-click-modal="false"
     >
       <div class="import-dialog__intro">
-        <span class="import-dialog__icon"><el-icon><Plus /></el-icon></span>
+        <el-image
+          v-if="selected?.main_photo"
+          :src="selected.main_photo"
+          :alt="`${selected.name || '社团谷子'}图片`"
+          fit="cover"
+          class="import-dialog__image"
+        />
+        <span v-else class="import-dialog__icon"><el-icon><Plus /></el-icon></span>
         <div>
           <strong>{{ selected?.name || '社团谷子' }}</strong>
           <p>将打开个人库存表单，社团公开信息会作为可编辑的初始值。</p>
@@ -1323,6 +1330,22 @@ onMounted(() => {
   border-radius: var(--button-radius);
   background: var(--accent-purple-soft);
   color: var(--accent-purple-dark);
+}
+
+.import-dialog__image {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  overflow: hidden;
+  border: 1px solid rgba(162, 155, 254, 0.28);
+  border-radius: var(--button-radius);
+  background: var(--accent-purple-soft);
+}
+
+.import-dialog__image :deep(.el-image__inner) {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .import-dialog__intro strong {

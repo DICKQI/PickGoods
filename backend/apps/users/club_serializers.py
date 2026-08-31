@@ -1,3 +1,4 @@
+from uuid import UUID
 from urllib.parse import urlparse
 
 from django.db.models import Q
@@ -379,12 +380,31 @@ class ClubCatalogPublicSerializer(serializers.ModelSerializer):
     category = CategorySimpleSerializer(read_only=True)
     theme = ThemeSimpleSerializer(read_only=True)
     additional_photos = ClubCatalogImageSerializer(many=True, read_only=True)
+    is_imported = serializers.SerializerMethodField()
+    imported_quantity = serializers.SerializerMethodField()
+    imported_goods_id = serializers.SerializerMethodField()
+
+    def get_is_imported(self, obj):
+        return bool(getattr(obj, "collector_imported", False))
+
+    def get_imported_quantity(self, obj):
+        quantity = getattr(obj, "collector_imported_quantity", None)
+        return int(quantity) if quantity is not None else None
+
+    def get_imported_goods_id(self, obj):
+        goods_id = getattr(obj, "collector_imported_goods_id", None)
+        if not goods_id:
+            return None
+        try:
+            return str(UUID(str(goods_id)))
+        except (ValueError, AttributeError, TypeError):
+            return str(goods_id)
 
     class Meta:
         model = ClubCatalogItem
         fields = (
             "id", "name", "description", "ip", "characters", "category", "theme", "main_photo",
-            "additional_photos", "public_price",
+            "additional_photos", "public_price", "is_imported", "imported_quantity", "imported_goods_id",
         )
         read_only_fields = fields
 

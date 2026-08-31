@@ -8,7 +8,7 @@
           <span class="create-wizard-heading__count">{{ wizardProgressText }}</span>
         </div>
       </div>
-      <el-button v-if="!isEditMode" class="goods-form-import-btn" plain @click="openClubImport"><el-icon><Shop /></el-icon>从社团导入</el-button>
+      <el-button v-if="!isEditMode && isMobile" class="goods-form-import-btn" plain @click="openClubImport"><el-icon><Shop /></el-icon>从社团导入</el-button>
       <div v-if="isMobile" class="goods-form-header-actions">
         <el-button text type="primary" class="header-drafts-btn" @click="goDrafts">草稿箱</el-button>
         <el-dropdown trigger="click" @command="handleMobileMoreCommand">
@@ -349,6 +349,7 @@
             <el-button :icon="Close" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="handleCancel">取消</el-button>
             <el-button :icon="Refresh" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="handleReset">重置</el-button>
             <el-button :icon="FolderOpened" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="goDrafts">草稿箱</el-button>
+            <el-button v-if="!isEditMode" :icon="Shop" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--minor" @click="openClubImport">从社团导入</el-button>
           </div>
           <div class="desktop-action-footer__primary">
             <el-button :icon="DocumentChecked" class="sticky-btn sticky-btn--secondary desktop-action-btn desktop-action-btn--draft" @click="submitByMode('draft')" :loading="submitting">保存草稿</el-button>
@@ -539,7 +540,15 @@
     <!-- 图片预览 -->
     <el-image-viewer v-if="previewVisible" :url-list="[previewImage]" @close="previewVisible = false" />
 
-    <el-dialog v-model="clubImportVisible" title="从社团导入谷子" width="min(92vw, 520px)" :close-on-click-modal="false">
+    <ClubImportDialog
+      v-if="!isMobile"
+      v-model="clubImportVisible"
+      @update:model-value="handleClubImportVisibility"
+      @process="handleClubImportProcess"
+      @edit="handleClubImportEdit"
+    />
+
+    <el-dialog v-else v-model="clubImportVisible" title="从社团导入谷子" width="min(92vw, 520px)" :close-on-click-modal="false">
       <el-form label-position="top">
         <el-form-item label="社团"><el-select v-model="clubImportClubId" filterable remote reserve-keyword placeholder="搜索并选择社团" style="width: 100%" :remote-method="searchClubImportClubs" :loading="clubImportClubLoading" @change="loadClubImportGoods"><el-option v-for="club in clubImportClubs" :key="club.id" :label="club.name" :value="club.id" /></el-select></el-form-item>
         <el-form-item label="谷子"><el-select v-model="clubImportGoodsId" filterable remote reserve-keyword placeholder="搜索社团谷子" style="width: 100%" :disabled="!clubImportClubId" :remote-method="searchClubImportGoods" :loading="clubImportGoodsLoading"><el-option v-for="item in clubImportGoods" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
@@ -579,6 +588,7 @@ import type { GoodsCraft, GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResul
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
 import OcrFillDialog from '@/views/goods-form/components/OcrFillDialog.vue'
+import ClubImportDialog from '@/views/goods-form/components/ClubImportDialog.vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFormMetadata'
 import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
@@ -589,10 +599,12 @@ import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getCurrentBaseURL } from '@/utils/request'
 import { getClubs, getClubGoods, getClubGoodsImportTemplate, importClubGoods } from '@/api/clubs'
 import type { Club, ClubGoodsListItem, ClubImportTemplate } from '@/api/types'
+import { useClubImportQueueStore, type ClubImportQueueItem } from '@/stores/clubImportQueue'
 import type { TreeNode } from '@/utils/tree'
 const router = useRouter()
 const route = useRoute()
 const locationStore = useLocationStore()
+const clubImportQueue = useClubImportQueueStore()
 const { isMobile } = useResponsiveDevice()
 
 const formRef = ref<FormInstance>()
@@ -652,6 +664,41 @@ const clubImportGoodsLoading = ref(false)
 const clubImportGoodsId = ref<string | null>(null)
 const clubImportStatus = ref<'intended' | 'in_cabinet' | 'outdoor' | 'sold'>('intended')
 
+function queryValue(value: unknown) {
+  if (Array.isArray(value)) return value[0] ? String(value[0]) : null
+  return value ? String(value) : null
+}
+
+function currentClubImportQueueId() {
+  return queryValue(route.query.club_import_queue)
+}
+
+const handleClubImportVisibility = (visible: boolean) => {
+  clubImportVisible.value = visible
+  if (!visible && currentClubImportQueueId() && clubImportQueue.isComplete) {
+    clubImportQueue.clear()
+    void router.replace({ name: 'GoodsNew' })
+  }
+}
+
+const handleClubImportProcess = async (queueId: string, item: ClubImportQueueItem) => {
+  clubImportVisible.value = false
+  clubImportQueue.markProcessing(item.goodsId)
+  await router.push({
+    name: 'GoodsNew',
+    query: {
+      club_import_queue: queueId,
+      club_id: String(item.clubId),
+      club_goods_id: item.goodsId,
+    },
+  })
+}
+
+const handleClubImportEdit = (goodsId: string) => {
+  clubImportVisible.value = false
+  void router.push({ name: 'GoodsEdit', params: { id: goodsId } })
+}
+
 const openClubImport = async () => {
   clubImportVisible.value = true
   if (clubImportClubs.value.length > 0) return
@@ -707,6 +754,7 @@ const applyClubImportTemplate = (template: ClubImportTemplate) => {
     is_official: template.defaults.is_official,
     main_photo: template.source.main_photo || '',
   }
+  additionalPhotos.resetNewPhotos()
   mainPhotoFile.value = null
   mainPhotoList.value = template.source.main_photo
     ? [{ name: '社团来源主图', url: template.source.main_photo, status: 'success' } as UploadFile]
@@ -1142,6 +1190,31 @@ const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft'
     ElMessage.success('创建成功')
   }
   rememberSubmittedLocation(result.location ?? formData.value.location ?? null)
+  const queueId = currentClubImportQueueId()
+  if (queueId && sourceClubGoodsId.value && clubImportQueue.queueId === queueId) {
+    clubImportQueue.markCompleted(
+      sourceClubGoodsId.value,
+      result.id,
+      result.merged ? '已合并到已有库存' : (mode === 'draft' ? '草稿已保存' : '已创建个人库存'),
+    )
+    const nextItem = clubImportQueue.nextPending()
+    if (nextItem) {
+      ElMessage.info(`已完成 1 项，继续处理：${nextItem.name}`)
+      await router.push({
+        name: 'GoodsNew',
+        query: {
+          club_import_queue: queueId,
+          club_id: String(nextItem.clubId),
+          club_goods_id: nextItem.goodsId,
+        },
+      })
+    } else {
+      resetForNewGoods()
+      ElMessage.success('本次社团导入队列已完成')
+      await router.push({ name: 'GoodsNew', query: { club_import_queue: queueId } })
+    }
+    return
+  }
   router.push({ name: 'CloudShowcase' })
 }
 
@@ -1558,7 +1631,16 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
         })
         await onCreateOrMergeSuccess(result, mode, submitData.theme_id ?? null)
       } catch (confirmError: any) {
-        if (confirmError?.message) ElMessage.error(confirmError.response?.data?.detail || confirmError.message)
+        const wasCancelled = confirmError === 'cancel' || confirmError?.message === 'cancel'
+        if (wasCancelled) {
+          const queueId = currentClubImportQueueId()
+          if (queueId && clubImportQueue.queueId === queueId) clubImportQueue.markPending(sourceClubGoodsId.value, '用户取消重复导入')
+          ElMessage.info('已保留为待处理，可稍后继续导入')
+        } else if (confirmError?.message) {
+          const queueId = currentClubImportQueueId()
+          if (queueId && clubImportQueue.queueId === queueId) clubImportQueue.markFailed(sourceClubGoodsId.value, confirmError.response?.data?.detail || confirmError.message)
+          ElMessage.error(confirmError.response?.data?.detail || confirmError.message)
+        }
       }
     } else if (mode === 'publish' && err.response?.status === 409) {
       const data = err.response?.data
@@ -1593,6 +1675,36 @@ const confirmResetGoodsForm = () => {
   if (useCreateWizard.value) currentWizardStepIndex.value = 0
 }
 
+const resetForNewGoods = () => {
+  formData.value = {
+    name: '',
+    ip: undefined,
+    characters: [],
+    category: undefined,
+    theme: undefined,
+    status: 'in_cabinet',
+    location: undefined,
+    quantity: 1,
+    price: undefined,
+    purchase_date: '',
+    is_official: false,
+    notes: DEFAULT_NOTES_TEMPLATE,
+    main_photo: '',
+  }
+  sourceClubGoodsId.value = null
+  mainPhotoFile.value = null
+  mainPhotoList.value = []
+  additionalPhotos.resetNewPhotos()
+  setExistingPhotos([])
+  hasUserEditedGoodsName.value = false
+  lastAutoGeneratedName.value = ''
+  isOfficialTouched.value = false
+  activeThemeTemplatePayload.value = null
+  selectedThemeImageIds.value = []
+  appliedThemeImageIds.value = new Set()
+  if (useCreateWizard.value) currentWizardStepIndex.value = 0
+}
+
 const handleCancel = () => {
   leaveConfirmVisible.value = true
 }
@@ -1603,6 +1715,12 @@ const stayOnGoodsForm = () => {
 
 const confirmLeaveGoodsForm = () => {
   leaveConfirmVisible.value = false
+  const queueId = currentClubImportQueueId()
+  if (queueId && sourceClubGoodsId.value && clubImportQueue.queueId === queueId) {
+    clubImportQueue.markPending(sourceClubGoodsId.value)
+    void router.push({ name: 'GoodsNew', query: { club_import_queue: queueId } })
+    return
+  }
   router.back()
 }
 
@@ -1612,6 +1730,43 @@ const handleMobileMoreCommand = (command: string) => {
 }
 
 const goDrafts = () => router.push({ name: 'GoodsDrafts' })
+
+let lastRouteClubImportKey = ''
+let routeClubImportRequestSequence = 0
+
+const syncClubImportRoute = async () => {
+  if (route.params.id) return
+  const queueId = currentClubImportQueueId()
+  if (queueId) clubImportQueue.hydrate(queueId)
+  const clubIdValue = queryValue(route.query.club_id)
+  const goodsIdValue = queryValue(route.query.club_goods_id)
+  if (!clubIdValue || !goodsIdValue) {
+    if (queueId && !isMobile.value) clubImportVisible.value = true
+    return
+  }
+  const clubId = Number(clubIdValue)
+  if (!Number.isInteger(clubId) || clubId <= 0) return
+  const importKey = `${queueId || 'single'}:${clubId}:${goodsIdValue}`
+  if (importKey === lastRouteClubImportKey) return
+  lastRouteClubImportKey = importKey
+  const sequence = ++routeClubImportRequestSequence
+  resetForNewGoods()
+  try {
+    await loadClubImportTemplate(clubId, goodsIdValue)
+    if (sequence !== routeClubImportRequestSequence) return
+    ElMessage.success('已填充社团条目，可继续编辑后保存')
+  } catch (error: any) {
+    if (sequence !== routeClubImportRequestSequence) return
+    const detail = error?.response?.data?.detail || error?.message || '导入模板加载失败'
+    ElMessage.error(detail)
+    if (queueId) clubImportQueue.markFailed(goodsIdValue, detail)
+  }
+}
+
+watch(
+  () => [route.params.id, route.query.club_import_queue, route.query.club_id, route.query.club_goods_id],
+  () => { void syncClubImportRoute() },
+)
 
 // ── Lifecycle ──
 
@@ -1624,19 +1779,7 @@ onMounted(async () => {
   void loadGoodsCrafts()
   await locationStore.fetchNodes()
 
-  const routeQuery = route.query || {}
-  if (!route.params.id && routeQuery.club_id && routeQuery.club_goods_id) {
-    const clubId = Number(routeQuery.club_id)
-    const goodsId = String(routeQuery.club_goods_id)
-    if (Number.isInteger(clubId) && clubId > 0 && goodsId) {
-      try {
-        await loadClubImportTemplate(clubId, goodsId)
-        ElMessage.success('已填充社团条目，可继续编辑后保存')
-      } catch (error: any) {
-        ElMessage.error(error?.response?.data?.detail || error?.message || '导入模板加载失败')
-      }
-    }
-  }
+  await syncClubImportRoute()
 
   if (!route.params.id && !formData.value.notes) {
     formData.value.notes = DEFAULT_NOTES_TEMPLATE
@@ -1734,10 +1877,10 @@ onUnmounted(() => {
 .goods-form--desktop-workbench .desktop-action-footer__minor,
 .goods-form--desktop-workbench .desktop-action-footer__primary {
   display: grid;
-  gap: 8px;
+  gap: 10px;
 }
 .goods-form--desktop-workbench .desktop-action-footer__minor {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 .goods-form--desktop-workbench .desktop-action-footer__primary {
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1750,11 +1893,12 @@ onUnmounted(() => {
 }
 .goods-form--desktop-workbench .desktop-action-btn--minor {
   min-height: 32px;
-  padding-right: 8px;
-  padding-left: 8px;
+  padding-right: 12px;
+  padding-left: 12px;
   color: #606266;
   background: rgba(255,255,255,0.58);
   border-color: #e5e7ef;
+  font-size: 13px;
 }
 .goods-form--desktop-workbench .desktop-action-btn--minor:hover,
 .goods-form--desktop-workbench .desktop-action-btn--minor:focus {

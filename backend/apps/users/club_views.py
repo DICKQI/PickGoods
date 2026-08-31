@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import Count, Min, Prefetch, Q
+from django.db.models import BooleanField, Count, Exists, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, UUIDField, Value
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -14,12 +14,14 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.goods.models import (
+    Character,
     ClubCatalogItem,
     ClubCatalogImage,
     ClubGoodsImportEvent,
     ClubGoodsOrigin,
     Goods,
     GuziImage,
+    IP,
     Theme,
     ThemeImage,
     ThemeTemplate,
@@ -233,12 +235,49 @@ class ClubViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=["get"], url_path="goods")
     def goods(self, request, pk=None):
         club = get_object_or_404(self.get_queryset(), pk=pk)
+        public_ip_queryset = IP.objects.annotate(
+            character_count=Count("characters", distinct=True),
+        ).prefetch_related("keywords")
+        public_character_queryset = Character.objects.prefetch_related(
+            Prefetch("ip", queryset=public_ip_queryset),
+        )
         queryset = ClubCatalogItem.objects.filter(
             club=club,
             publication_status=ClubCatalogItem.PUBLICATION_LISTED,
-        ).select_related("club", "ip", "category", "theme").prefetch_related(
-            "characters__ip", "additional_photos"
+        ).select_related("club", "category", "theme").prefetch_related(
+            Prefetch("ip", queryset=public_ip_queryset),
+            Prefetch("characters", queryset=public_character_queryset),
+            "additional_photos",
         )
+        if request.user.is_authenticated and (
+            getattr(request.user, "account_type", None) == User.ACCOUNT_TYPE_COLLECTOR
+            or is_admin(request.user)
+        ):
+            import_origin_queryset = ClubGoodsOrigin.objects.filter(
+                collector=request.user,
+                source_item=OuterRef("pk"),
+                personal_goods__isnull=False,
+            )
+            queryset = queryset.annotate(
+                collector_imported=Exists(import_origin_queryset),
+                collector_imported_quantity=Subquery(
+                    import_origin_queryset.values("personal_goods__quantity")[:1]
+                ),
+                collector_imported_goods_id=Subquery(
+                    import_origin_queryset.values("personal_goods_id")[:1]
+                ),
+            )
+        else:
+            queryset = queryset.annotate(
+                collector_imported=Value(False, output_field=BooleanField()),
+                collector_imported_quantity=Value(None, output_field=IntegerField()),
+                collector_imported_goods_id=Value(None, output_field=UUIDField()),
+            )
+        imported_filter = (request.query_params.get("imported") or "").strip().lower()
+        if imported_filter == "imported":
+            queryset = queryset.filter(collector_imported=True)
+        elif imported_filter == "unimported":
+            queryset = queryset.filter(collector_imported=False)
         keyword = (request.query_params.get("search") or "").strip()
         if keyword:
             queryset = queryset.filter(
