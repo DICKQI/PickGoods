@@ -4,7 +4,10 @@ import type {
   ClubCatalogInput,
   ClubCatalogItem,
   ClubCatalogPublicItem,
+  ClubBatchDeleteResponse,
+  ClubBatchUnlistResponse,
   ClubImportTemplate,
+  ClubFavoriteItem,
   ClubPopularityItem,
   GoodsCreateResponse,
   GoodsStatus,
@@ -17,6 +20,18 @@ export function getClubs(params?: { page?: number; page_size?: number; search?: 
 
 export function getClub(id: number) {
   return request.get<Club>(`/api/clubs/${id}/`)
+}
+
+export function favoriteClub(id: number) {
+  return request.put<Club>(`/api/clubs/${id}/favorite/`)
+}
+
+export function unfavoriteClub(id: number) {
+  return request.delete<Club>(`/api/clubs/${id}/favorite/`)
+}
+
+export function getMyFavoriteClubs(params?: { page?: number; page_size?: number }) {
+  return request.get<PaginatedResponse<ClubFavoriteItem>>('/api/clubs/me/favorites/', { params })
 }
 
 export function getClubGoods(id: number, params?: { page?: number; page_size?: number; search?: string }) {
@@ -49,6 +64,22 @@ export function updateClubGoods(id: string, data: Partial<ClubCatalogInput>) {
 
 export function deleteClubGoods(id: string) {
   return request.delete(`/api/clubs/me/goods/${id}/`)
+}
+
+export function batchDeleteClubGoods(goodsIds: string[]) {
+  return request.post<ClubBatchDeleteResponse>(
+    '/api/clubs/me/goods/batch-delete/',
+    { goods_ids: goodsIds },
+    { suppressGlobalError: true },
+  )
+}
+
+export function batchUnlistClubGoods(goodsIds: string[]) {
+  return request.post<ClubBatchUnlistResponse>(
+    '/api/clubs/me/goods/batch-unlist/',
+    { goods_ids: goodsIds },
+    { suppressGlobalError: true },
+  )
 }
 
 export function uploadClubGoodsMainPhoto(id: string, file: File) {

@@ -37,7 +37,6 @@ export interface ClubPreviewGoods {
   name: string
   preview_photo: string | null
   public_price: string | null
-  is_official: boolean
 }
 
 export interface Club {
@@ -60,6 +59,15 @@ export interface Club {
   preview_goods?: ClubPreviewGoods[]
   created_at: string
   updated_at: string
+  favorite_count?: number
+  is_favorited?: boolean
+}
+
+export interface ClubFavoriteItem {
+  club: Club
+  favorite_count: number
+  is_favorited: boolean
+  favorited_at: string
 }
 
 export interface ClubPopularityItem {
@@ -296,15 +304,16 @@ export interface ClubCatalogItem {
   main_photo?: string | null
   additional_photos: ClubCatalogImage[]
   public_price?: string | null
-  is_official: boolean
+  /** 社团目录统一为同人；字段只为兼容管理接口和旧数据保留。 */
+  readonly is_official: boolean
   publication_status: ClubPublicationStatus
   order: number
   created_at: string
   updated_at: string
 }
 
-/** 公开社团目录条目；不包含社团内部发布状态和排序/审计字段。 */
-export type ClubCatalogPublicItem = Omit<ClubCatalogItem, 'publication_status' | 'order' | 'created_at' | 'updated_at'>
+/** 公开社团目录条目；不包含社团内部发布状态、排序/审计和官谷语义字段。 */
+export type ClubCatalogPublicItem = Omit<ClubCatalogItem, 'publication_status' | 'order' | 'created_at' | 'updated_at' | 'is_official'>
 
 export interface ClubCatalogInput {
   name: string
@@ -314,9 +323,18 @@ export interface ClubCatalogInput {
   character_ids: number[]
   theme_id?: number | null
   public_price?: string | null
-  is_official?: boolean
   publication_status: ClubPublicationStatus
   main_photo?: File | null
+}
+
+export interface ClubBatchDeleteResponse {
+  deleted_count: number
+  deleted_ids: string[]
+}
+
+export interface ClubBatchUnlistResponse {
+  updated_count: number
+  updated_ids: string[]
 }
 
 export interface ClubImportTemplate {
