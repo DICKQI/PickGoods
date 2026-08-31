@@ -343,7 +343,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
         .select_related("ip", "category", "location", "theme", "user")
         .prefetch_related("characters__ip", "additional_photos")
     )
-    permission_classes = [IsOwnerOnly]
+    # IsOwnerOnly only checks object ownership; keep the endpoint explicitly
+    # authenticated so anonymous creates/lists cannot reach model operations.
+    permission_classes = [IsAuthenticated, IsOwnerOnly]
 
     # 列表接口瘦身：只返回必要字段；详情接口使用完整序列化器
     def get_serializer_class(self):
@@ -392,6 +394,8 @@ class GoodsViewSet(viewsets.ModelViewSet):
         )
         user = getattr(self.request, "user", None)
         if not user or not getattr(user, "id", None):
+            return qs.none()
+        if getattr(user, "account_type", None) == "club" and not is_admin(user):
             return qs.none()
         if is_admin(user):
             return qs
@@ -515,6 +519,8 @@ class GoodsViewSet(viewsets.ModelViewSet):
         request=GoodsDetailSerializer,
     )
     def create(self, request, *args, **kwargs):
+        if getattr(request.user, "account_type", None) == "club" and not is_admin(request.user):
+            return Response({"detail": "社团条目请使用社团目录接口"}, status=status.HTTP_403_FORBIDDEN)
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         validated = serializer.validated_data
@@ -522,6 +528,10 @@ class GoodsViewSet(viewsets.ModelViewSet):
         merge_target_id = validated.get("merge_target_id")
         is_draft = _is_draft_status(validated.get("status"))
         self._create_owner = self._resolve_goods_owner(request, validated)
+        if getattr(self._create_owner, "account_type", None) == "club":
+            # Publishing the same-looking club entry creates another entry;
+            # club goods never merge by increasing a quantity counter.
+            merge_strategy = "new"
 
         if is_draft:
             self.perform_create(serializer)

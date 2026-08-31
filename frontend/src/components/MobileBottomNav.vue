@@ -18,10 +18,12 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Collection, Box, Star } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Collection, Box, Star, Shop, User } from '@element-plus/icons-vue'
+import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const route = useRoute()
+const authStore = useAuthStore()
 
 interface NavItem {
   path: string
@@ -29,7 +31,7 @@ interface NavItem {
   icon: any
 }
 
-const navItems: NavItem[] = [
+const collectorNavItems: NavItem[] = [
   {
     path: '/showcase',
     label: '云展柜',
@@ -57,6 +59,13 @@ const navItems: NavItem[] = [
   }
 ]
 
+const navItems = computed<NavItem[]>(() => authStore.isClub ? [
+  { path: '/club/goods', label: '社团谷子', icon: Shop },
+  { path: '/club/popularity', label: '人气', icon: Grid },
+  { path: '/club/profile', label: '资料', icon: User },
+  { path: '/clubs', label: '社团', icon: Shop },
+] : collectorNavItems)
+
 const isCharacterStatsFromShowcase = computed(() => {
   const returnTo = route.query.returnTo
   return typeof returnTo === 'string' && returnTo.startsWith('/showcase')
@@ -79,6 +88,10 @@ const isActive = (path: string): boolean => {
   if (path === '/theme') {
     return currentPath.startsWith('/theme')
   }
+  if (path === '/club/goods') return currentPath.startsWith('/club/goods')
+  if (path === '/club/popularity') return currentPath.startsWith('/club/popularity')
+  if (path === '/club/profile') return currentPath.startsWith('/club/profile')
+  if (path === '/clubs') return currentPath.startsWith('/clubs')
   return false
 }
 

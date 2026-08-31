@@ -329,6 +329,7 @@ const statusText = computed(() => {
   if (!detail.value) return ''
   const map: Record<string, string> = {
     draft: '草稿',
+    intended: '意向入手',
     in_cabinet: '在馆',
     outdoor: '出街中',
     sold: '已售出',
@@ -340,6 +341,7 @@ const statusTagType = computed(() => {
   if (!detail.value) return ''
   const map: Record<string, string> = {
     draft: 'info',
+    intended: 'warning',
     in_cabinet: 'success',
     outdoor: 'warning',
     sold: 'info',

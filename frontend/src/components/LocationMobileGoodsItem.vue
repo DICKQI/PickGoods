@@ -66,6 +66,7 @@ const emit = defineEmits<{
 
 const statusLabelMap: Record<GoodsStatus, string> = {
   draft: '草稿',
+  intended: '意向',
   in_cabinet: '在柜',
   outdoor: '外带',
   sold: '已出',

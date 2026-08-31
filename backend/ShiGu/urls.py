@@ -50,6 +50,13 @@ from apps.location.views import (
     StorageNodeTreeView,
 )
 from apps.users import views as user_views
+from apps.users.club_views import (
+    ClubCatalogManagementViewSet,
+    ClubGoodsImportTemplateView,
+    ClubGoodsImportView,
+    ClubViewSet,
+    PublicClubGoodsDetailView,
+)
 
 router = DefaultRouter()
 router.register("goods", GoodsViewSet, basename="goods")
@@ -70,6 +77,25 @@ urlpatterns = [
     path("api/auth/login/", user_views.login, name="auth-login"),
     path("api/auth/me/", user_views.me, name="auth-me"),
     path("api/auth/logout/", user_views.logout, name="auth-logout"),
+    path("api/clubs/", ClubViewSet.as_view({"get": "list"}), name="clubs-list"),
+    path("api/clubs/me/", ClubViewSet.as_view({"get": "me", "patch": "me"}), name="club-me"),
+    path("api/clubs/me/avatar/", ClubViewSet.as_view({"post": "avatar"}), name="club-avatar"),
+    path("api/clubs/me/popularity/", ClubViewSet.as_view({"get": "popularity"}), name="club-popularity"),
+    path("api/clubs/<int:pk>/", ClubViewSet.as_view({"get": "retrieve"}), name="club-detail"),
+    path("api/clubs/<int:pk>/favorite/", ClubViewSet.as_view({"put": "favorite", "delete": "favorite"}), name="club-favorite"),
+    path("api/clubs/me/favorites/", ClubViewSet.as_view({"get": "favorites"}), name="club-favorites"),
+    path("api/clubs/<int:pk>/goods/", ClubViewSet.as_view({"get": "goods"}), name="club-goods"),
+    path("api/clubs/<int:pk>/goods/<uuid:goods_id>/", PublicClubGoodsDetailView.as_view(), name="club-goods-detail"),
+    path("api/clubs/me/goods/", ClubCatalogManagementViewSet.as_view({"get": "list", "post": "create"}), name="club-my-goods"),
+    path("api/clubs/me/goods/batch-delete/", ClubCatalogManagementViewSet.as_view({"post": "batch_delete"}), name="club-my-goods-batch-delete"),
+    path("api/clubs/me/goods/batch-unlist/", ClubCatalogManagementViewSet.as_view({"post": "batch_unlist"}), name="club-my-goods-batch-unlist"),
+    path("api/clubs/me/goods/reorder/", ClubCatalogManagementViewSet.as_view({"post": "reorder"}), name="club-my-goods-reorder"),
+    path("api/clubs/me/goods/<uuid:pk>/", ClubCatalogManagementViewSet.as_view({"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}), name="club-my-goods-detail"),
+    path("api/clubs/me/goods/<uuid:pk>/upload-main-photo/", ClubCatalogManagementViewSet.as_view({"post": "upload_main_photo"}), name="club-my-goods-main-photo"),
+    path("api/clubs/me/goods/<uuid:pk>/upload-additional-photos/", ClubCatalogManagementViewSet.as_view({"post": "upload_additional_photos"}), name="club-my-goods-additional-photos"),
+    path("api/clubs/me/goods/<uuid:pk>/additional-photos/<int:photo_id>/", ClubCatalogManagementViewSet.as_view({"delete": "delete_additional_photo"}), name="club-my-goods-additional-photo-detail"),
+    path("api/clubs/<int:pk>/goods/<uuid:goods_id>/import-template/", ClubGoodsImportTemplateView.as_view(), name="club-goods-import-template"),
+    path("api/clubs/goods/<uuid:goods_id>/import/", ClubGoodsImportView.as_view({"post": "import_goods"}), name="club-goods-import"),
     # 后台管理（REST，仅管理员 JWT）
     path("api/admin/", include("apps.admin_api.urls")),
     # 展柜独立接口

@@ -1,6 +1,7 @@
 from .bgm_sync import BGMSyncJob, BGMSyncJobItem, BGMSyncSettings
 from .catalog import Category, Character, GoodsCraft, IP, IPKeyword
 from .goods import Goods, GuziImage
+from .club_catalog import ClubCatalogImage, ClubCatalogItem, ClubGoodsImportEvent, ClubGoodsOrigin
 from .journal import (
     JournalBook,
     JournalPage,
@@ -17,6 +18,10 @@ __all__ = [
     "Category",
     "Character",
     "Goods",
+    "ClubCatalogItem",
+    "ClubCatalogImage",
+    "ClubGoodsOrigin",
+    "ClubGoodsImportEvent",
     "GoodsCraft",
     "GuziImage",
     "IP",

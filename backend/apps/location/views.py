@@ -11,7 +11,7 @@ from apps.goods.serializers import GoodsListSerializer
 from .models import StorageNode
 from .serializers import StorageNodeSerializer, StorageNodeTreeSerializer
 from .services import get_descendant_ids, make_path_name, refresh_descendant_paths
-from core.permissions import IsOwnerOnly, is_admin
+from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 
 
 class LocationGoodsPagination(PageNumberPagination):
@@ -40,7 +40,7 @@ class StorageNodeListCreateView(generics.ListCreateAPIView):
 
     queryset = StorageNode.objects.all().order_by("order", "id")
     serializer_class = StorageNodeSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -66,7 +66,7 @@ class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
 
     queryset = StorageNode.objects.all()
     serializer_class = StorageNodeSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
 
     def get_queryset(self):
         """优化查询，预加载父节点和子节点"""
@@ -112,7 +112,7 @@ class StorageNodeTreeView(generics.ListAPIView):
 
     queryset = StorageNode.objects.all().order_by("path_name", "order")
     serializer_class = StorageNodeTreeSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -167,7 +167,7 @@ class StorageNodeGoodsView(generics.ListAPIView):
     """
 
     serializer_class = GoodsListSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
     pagination_class = LocationGoodsPagination
 
     def get_queryset(self):
@@ -205,7 +205,7 @@ class StorageNodeGoodsView(generics.ListAPIView):
 
 
 class StorageNodeSummaryView(APIView):
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
 
     def get_node(self, pk):
         qs = StorageNode.objects.all()
@@ -254,7 +254,7 @@ class StorageNodeSummaryView(APIView):
 
 
 class StorageNodeMoveView(APIView):
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
 
     @transaction.atomic
     def post(self, request, pk):
@@ -295,7 +295,7 @@ class StorageNodeMoveView(APIView):
 
 
 class LocationMoveGoodsView(APIView):
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
 
     @transaction.atomic
     def post(self, request):
@@ -326,7 +326,7 @@ class LocationMoveGoodsView(APIView):
 
 class LocationUnassignedGoodsView(generics.ListAPIView):
     serializer_class = GoodsListSerializer
-    permission_classes = [IsOwnerOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOnly]
     pagination_class = LocationGoodsPagination
 
     def get_queryset(self):

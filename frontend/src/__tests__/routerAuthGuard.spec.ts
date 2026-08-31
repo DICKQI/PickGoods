@@ -82,4 +82,28 @@ describe('auth guard and wiring', () => {
     )
     expect(next).toHaveBeenCalledWith({ name: 'Login', query: { redirect: '/showcase' } })
   })
+
+  it('行为：社团账号不能进入吃谷人工作区，吃谷人不能进入社团工作区', async () => {
+    const store = useAuthStore()
+    await store.initFromStorage()
+    store.setToken('club-token')
+    store.user = { id: 1, username: 'club', role: 'User', account_type: 'club' } as any
+
+    const clubNext = vi.fn()
+    await authGuard(
+      { meta: { requiresAuth: true, requiresCollector: true }, fullPath: '/location', name: 'Location' } as any,
+      {} as any,
+      clubNext as any,
+    )
+    expect(clubNext).toHaveBeenCalledWith('/club/goods')
+
+    store.user = { id: 2, username: 'collector', role: 'User', account_type: 'collector' } as any
+    const collectorNext = vi.fn()
+    await authGuard(
+      { meta: { requiresAuth: true, requiresClub: true }, fullPath: '/club', name: 'ClubWorkspace' } as any,
+      {} as any,
+      collectorNext as any,
+    )
+    expect(collectorNext).toHaveBeenCalledWith('/showcase')
+  })
 })

@@ -43,13 +43,26 @@ class Command(BaseCommand):
             changed = True
             admin_user.is_active = True
             changed = True
+            if admin_user.account_type != User.ACCOUNT_TYPE_COLLECTOR:
+                admin_user.account_type = User.ACCOUNT_TYPE_COLLECTOR
+                changed = True
+            if admin_user.approval_status != User.APPROVAL_APPROVED:
+                admin_user.approval_status = User.APPROVAL_APPROVED
+                changed = True
             if changed:
                 admin_user.save()
             self.stdout.write(self.style.SUCCESS(f"Admin user ensured: id=1 username={admin_user.username}"))
             return
 
         # If id=1 is free, create admin user then force pk=1
-        admin_user = User(id=1, username=admin_username, role=admin_role, is_active=True)
+        admin_user = User(
+            id=1,
+            username=admin_username,
+            role=admin_role,
+            is_active=True,
+            account_type=User.ACCOUNT_TYPE_COLLECTOR,
+            approval_status=User.APPROVAL_APPROVED,
+        )
         admin_user.set_password(admin_password)
         admin_user.save(force_insert=True)
         self.stdout.write(self.style.SUCCESS(f"Admin user created: id=1 username={admin_user.username}"))

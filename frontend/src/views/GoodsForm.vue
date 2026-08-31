@@ -8,6 +8,7 @@
           <span class="create-wizard-heading__count">{{ wizardProgressText }}</span>
         </div>
       </div>
+      <el-button v-if="!isEditMode" class="goods-form-import-btn" plain @click="openClubImport"><el-icon><Shop /></el-icon>从社团导入</el-button>
       <div v-if="isMobile" class="goods-form-header-actions">
         <el-button text type="primary" class="header-drafts-btn" @click="goDrafts">草稿箱</el-button>
         <el-dropdown trigger="click" @command="handleMobileMoreCommand">
@@ -120,6 +121,7 @@
               <el-form-item label="状态" prop="status" class="is-required">
                 <el-radio-group v-model="formData.status" class="status-segmented">
                   <el-radio-button label="draft">草稿</el-radio-button>
+                  <el-radio-button label="intended">意向入手</el-radio-button>
                   <el-radio-button label="in_cabinet">在馆</el-radio-button>
                   <el-radio-button label="outdoor">出街中</el-radio-button>
                   <el-radio-button label="sold">已售出</el-radio-button>
@@ -173,7 +175,7 @@
             <span class="form-section-header-bar" aria-hidden="true"></span>
             <div class="form-section-header-body">
               <h3 class="form-section-title"><span class="form-section-title-text">数量与购入</span></h3>
-              <p class="form-section-subtitle form-section-header-copy">记录数量、价格与购买时间</p>
+              <p class="form-section-subtitle form-section-header-copy">记录个人库存数量、价格与购买时间</p>
             </div>
           </div>
           <el-row :gutter="20" class="meta-field-grid">
@@ -536,6 +538,15 @@
 
     <!-- 图片预览 -->
     <el-image-viewer v-if="previewVisible" :url-list="[previewImage]" @close="previewVisible = false" />
+
+    <el-dialog v-model="clubImportVisible" title="从社团导入谷子" width="min(92vw, 520px)" :close-on-click-modal="false">
+      <el-form label-position="top">
+        <el-form-item label="社团"><el-select v-model="clubImportClubId" filterable remote reserve-keyword placeholder="搜索并选择社团" style="width: 100%" :remote-method="searchClubImportClubs" :loading="clubImportClubLoading" @change="loadClubImportGoods"><el-option v-for="club in clubImportClubs" :key="club.id" :label="club.name" :value="club.id" /></el-select></el-form-item>
+        <el-form-item label="谷子"><el-select v-model="clubImportGoodsId" filterable remote reserve-keyword placeholder="搜索社团谷子" style="width: 100%" :disabled="!clubImportClubId" :remote-method="searchClubImportGoods" :loading="clubImportGoodsLoading"><el-option v-for="item in clubImportGoods" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
+        <el-form-item label="加入后的状态"><el-radio-group v-model="clubImportStatus"><el-radio-button label="intended">意向入手</el-radio-button><el-radio-button label="in_cabinet">在馆</el-radio-button><el-radio-button label="outdoor">出街中</el-radio-button><el-radio-button label="sold">已售出</el-radio-button></el-radio-group></el-form-item>
+      </el-form>
+      <template #footer><el-button @click="clubImportVisible = false">取消</el-button><el-button type="primary" :loading="clubImporting" :disabled="!clubImportGoodsId" @click="submitClubImport">导入并编辑</el-button></template>
+    </el-dialog>
   </div>
 </template>
 
@@ -550,6 +561,7 @@ import {
   Camera as CameraIcon,
   Edit,
   MoreFilled,
+  Shop,
   Loading,
   Close,
   Refresh,
@@ -575,6 +587,8 @@ import { useImageClassifier } from '@/views/goods-form/composables/useImageClass
 import { applyCraftToNotes } from '@/views/goods-form/craftNotes'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { getCurrentBaseURL } from '@/utils/request'
+import { getClubs, getClubGoods, getClubGoodsImportTemplate, importClubGoods } from '@/api/clubs'
+import type { Club, ClubGoodsListItem, ClubImportTemplate } from '@/api/types'
 import type { TreeNode } from '@/utils/tree'
 const router = useRouter()
 const route = useRoute()
@@ -587,6 +601,7 @@ const leaveConfirmVisible = ref(false)
 const resetConfirmVisible = ref(false)
 const isEditMode = computed(() => Boolean(route.params.id))
 const formTitle = computed(() => (route.params.id ? '编辑谷子' : '新增谷子'))
+const sourceClubGoodsId = ref<string | null>(null)
 
 type CreateWizardStepKey = 'basic' | 'meta' | 'images' | 'notes'
 
@@ -626,6 +641,101 @@ const formData = ref({
   notes: '',
   main_photo: '',
 })
+
+const clubImportVisible = ref(false)
+const clubImporting = ref(false)
+const clubImportClubs = ref<Club[]>([])
+const clubImportClubLoading = ref(false)
+const clubImportClubId = ref<number | null>(null)
+const clubImportGoods = ref<ClubGoodsListItem[]>([])
+const clubImportGoodsLoading = ref(false)
+const clubImportGoodsId = ref<string | null>(null)
+const clubImportStatus = ref<'intended' | 'in_cabinet' | 'outdoor' | 'sold'>('intended')
+
+const openClubImport = async () => {
+  clubImportVisible.value = true
+  if (clubImportClubs.value.length > 0) return
+  await searchClubImportClubs('')
+}
+
+const searchClubImportClubs = async (keyword: string) => {
+  clubImportClubLoading.value = true
+  try {
+    clubImportClubs.value = (await getClubs({ page_size: 100, search: keyword.trim() || undefined })).results
+  } catch {} finally {
+    clubImportClubLoading.value = false
+  }
+}
+
+const fetchClubImportGoods = async (keyword = '') => {
+  clubImportGoodsLoading.value = true
+  try {
+    if (!clubImportClubId.value) return
+    clubImportGoods.value = (await getClubGoods(clubImportClubId.value, { page_size: 100, search: keyword.trim() || undefined })).results
+  } catch {} finally {
+    clubImportGoodsLoading.value = false
+  }
+}
+
+const loadClubImportGoods = async () => {
+  clubImportGoodsId.value = null
+  clubImportGoods.value = []
+  await fetchClubImportGoods()
+}
+
+const searchClubImportGoods = async (keyword: string) => {
+  await fetchClubImportGoods(keyword)
+}
+
+const applyClubImportTemplate = (template: ClubImportTemplate) => {
+  sourceClubGoodsId.value = template.source_item_id
+  formData.value = {
+    ...formData.value,
+    name: template.defaults.name,
+    ip: template.defaults.ip_id,
+    characters: template.defaults.character_ids,
+    category: template.defaults.category_id,
+    // Theme records are user-scoped. Use the source name as a pending personal
+    // theme so ensureThemeCreated() reuses/creates a collector-owned record
+    // instead of submitting the club's private theme id.
+    theme: template.defaults.theme_name ?? template.source.theme?.name ?? null,
+    status: clubImportStatus.value || template.defaults.status,
+    quantity: template.defaults.quantity,
+    price: template.defaults.price ? Number(template.defaults.price) : undefined,
+    purchase_date: template.defaults.purchase_date || '',
+    notes: template.defaults.notes,
+    is_official: template.defaults.is_official,
+    main_photo: template.source.main_photo || '',
+  }
+  mainPhotoFile.value = null
+  mainPhotoList.value = template.source.main_photo
+    ? [{ name: '社团来源主图', url: template.source.main_photo, status: 'success' } as UploadFile]
+    : []
+  setExistingPhotos(template.source.additional_photos)
+  if (template.existing) {
+    ElMessage.info(`已有同来源库存 ${template.existing.quantity} 件，提交时可确认增加数量`)
+  }
+}
+
+const loadClubImportTemplate = async (clubId: number, goodsId: string) => {
+  const template = await getClubGoodsImportTemplate(clubId, goodsId)
+  applyClubImportTemplate(template)
+}
+
+const submitClubImport = async () => {
+  if (!clubImportGoodsId.value) return
+  clubImporting.value = true
+  try {
+    if (!clubImportClubId.value) return
+    await loadClubImportTemplate(clubImportClubId.value, clubImportGoodsId.value)
+    clubImportVisible.value = false
+    ElMessage.success('已填充社团条目，可继续编辑后保存')
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || error?.message || '导入模板加载失败')
+  } finally {
+    clubImporting.value = false
+  }
+}
 
 const goodsCraftOptions = ref<GoodsCraft[]>([])
 const selectedGoodsCraftId = ref<number | null>(null)
@@ -1411,11 +1521,46 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
       router.push({ name: 'CloudShowcase' })
     } else {
       const createPayload: GoodsInput = mode === 'publish' ? { ...submitData, merge_strategy: 'auto' } : submitData
-      const result = await createGoods(createPayload)
+      const result = sourceClubGoodsId.value
+        ? await importClubGoods(sourceClubGoodsId.value, {
+          status: submitData.status as GoodsStatus,
+          quantity: submitData.quantity,
+          name: submitData.name,
+          ip_id: submitData.ip_id,
+          category_id: submitData.category_id,
+          character_ids: submitData.character_ids,
+          theme_id: submitData.theme_id,
+          price: submitData.price ?? null,
+          purchase_date: submitData.purchase_date ?? null,
+          notes: submitData.notes ?? null,
+          is_official: submitData.is_official,
+        })
+        : await createGoods(createPayload)
       await onCreateOrMergeSuccess(result, mode, createPayload.theme_id ?? null)
     }
   } catch (err: any) {
-    if (mode === 'publish' && err.response?.status === 409) {
+    if (sourceClubGoodsId.value && err.response?.status === 409 && err.response?.data?.code === 'club_goods_already_imported' && submitData) {
+      try {
+        await ElMessageBox.confirm('谷仓内已有同一个社团的同一个，是否将数量加 1？', '重复导入', { type: 'warning', confirmButtonText: '数量 +1', cancelButtonText: '取消' })
+        const result = await importClubGoods(sourceClubGoodsId.value, {
+          status: submitData.status as GoodsStatus,
+          quantity: submitData.quantity,
+          name: submitData.name,
+          ip_id: submitData.ip_id,
+          category_id: submitData.category_id,
+          character_ids: submitData.character_ids,
+          theme_id: submitData.theme_id,
+          price: submitData.price ?? null,
+          purchase_date: submitData.purchase_date ?? null,
+          notes: submitData.notes ?? null,
+          is_official: submitData.is_official,
+          confirm_duplicate: true,
+        })
+        await onCreateOrMergeSuccess(result, mode, submitData.theme_id ?? null)
+      } catch (confirmError: any) {
+        if (confirmError?.message) ElMessage.error(confirmError.response?.data?.detail || confirmError.message)
+      }
+    } else if (mode === 'publish' && err.response?.status === 409) {
       const data = err.response?.data
       if (data?.code === 'goods_duplicate' && Array.isArray(data?.candidates) && submitData) {
         openDuplicateDialog(data.candidates, { ...submitData })
@@ -1443,6 +1588,7 @@ const cancelResetGoodsForm = () => {
 const confirmResetGoodsForm = () => {
   resetConfirmVisible.value = false
   formRef.value?.resetFields()
+  sourceClubGoodsId.value = null
   dismissSuggestions()
   if (useCreateWizard.value) currentWizardStepIndex.value = 0
 }
@@ -1478,6 +1624,20 @@ onMounted(async () => {
   void loadGoodsCrafts()
   await locationStore.fetchNodes()
 
+  const routeQuery = route.query || {}
+  if (!route.params.id && routeQuery.club_id && routeQuery.club_goods_id) {
+    const clubId = Number(routeQuery.club_id)
+    const goodsId = String(routeQuery.club_goods_id)
+    if (Number.isInteger(clubId) && clubId > 0 && goodsId) {
+      try {
+        await loadClubImportTemplate(clubId, goodsId)
+        ElMessage.success('已填充社团条目，可继续编辑后保存')
+      } catch (error: any) {
+        ElMessage.error(error?.response?.data?.detail || error?.message || '导入模板加载失败')
+      }
+    }
+  }
+
   if (!route.params.id && !formData.value.notes) {
     formData.value.notes = DEFAULT_NOTES_TEMPLATE
   }
@@ -1493,7 +1653,7 @@ onMounted(async () => {
         theme: data.theme?.id || null,
         status: data.status as GoodsStatus,
         location: data.location || undefined,
-        quantity: data.quantity,
+        quantity: data.quantity ?? 1,
         price: data.price ? parseFloat(data.price) : undefined,
         purchase_date: data.purchase_date || '',
         is_official: data.is_official,

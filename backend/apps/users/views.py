@@ -37,6 +37,11 @@ def register(request):
 
     secret = getattr(settings, "JWT_SECRET", settings.SECRET_KEY)
     ttl = int(getattr(settings, "JWT_ACCESS_TTL_SECONDS", 7 * 24 * 3600))
+    if user.account_type == User.ACCOUNT_TYPE_CLUB:
+        return Response(
+            {"code": "account_pending", "detail": "社团账号申请已提交，请等待管理员审批", "approval_status": user.approval_status},
+            status=status.HTTP_202_ACCEPTED,
+        )
     data = build_token_response(user=user, secret=secret, ttl_seconds=ttl)
     return Response(data, status=status.HTTP_201_CREATED)
 
@@ -67,6 +72,11 @@ def login(request):
         user = User.objects.select_related("role").get(username=username)
     except User.DoesNotExist:
         return Response({"detail": "用户名或密码错误"}, status=status.HTTP_400_BAD_REQUEST)
+
+    # 审批状态与启用状态是两个独立的门槛。即使管理员误将待审批账号
+    # 设为 active，待审批社团仍不能获取令牌。
+    if user.approval_status == User.APPROVAL_PENDING:
+        return Response({"code": "account_pending", "detail": "社团账号正在审批中"}, status=status.HTTP_403_FORBIDDEN)
 
     if not user.is_active:
         return Response({"detail": "账号已停用"}, status=status.HTTP_403_FORBIDDEN)
@@ -100,7 +110,16 @@ def me(request):
         "id": user.id,
         "username": getattr(user, "username", ""),
         "role": getattr(getattr(user, "role", None), "name", None),
+        "account_type": user.account_type,
+        "approval_status": user.approval_status,
+        "club": None,
     }
+    club = getattr(user, "club_profile", None)
+    if club is not None:
+        avatar = club.avatar.url if club.avatar else None
+        if avatar and request:
+            avatar = request.build_absolute_uri(avatar)
+        payload["club"] = {"id": club.id, "name": club.name, "avatar": avatar}
     return Response(UserMeSerializer(payload).data, status=status.HTTP_200_OK)
 
 

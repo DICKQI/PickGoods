@@ -15,6 +15,17 @@
             @select="handleMenuSelect"
             class="nav-menu-el"
           >
+            <el-menu-item index="/clubs">
+              <el-icon><Shop /></el-icon>
+              <span>社团</span>
+            </el-menu-item>
+            <template v-if="authStore.isClub">
+              <el-menu-item index="/club/goods">
+                <el-icon><Shop /></el-icon>
+                <span>社团工作台</span>
+              </el-menu-item>
+            </template>
+            <template v-else>
             <el-menu-item index="/showcase">
               <el-icon><Grid /></el-icon>
               <span>云展柜</span>
@@ -39,6 +50,7 @@
               <el-icon><ShoppingCart /></el-icon>
               <span>预购</span>
             </el-menu-item>
+            </template>
           </el-menu>
         </div>
         <!-- 登录/用户与设置 -->
@@ -48,8 +60,19 @@
               <span>登录</span>
             </el-button>
           </template>
-          <!-- 通知中心（仅登录态显示） -->
-          <NotificationCenter v-if="authStore.isAuthenticated" />
+          <!-- 通知中心只属于吃谷人/管理员；社团账号没有预购通知权限。 -->
+          <NotificationCenter v-if="canUseNotifications" />
+          <el-button
+            v-if="authStore.isAuthenticated"
+            text
+            class="profile-btn"
+            :class="{ 'profile-active': route.path.startsWith('/profile') }"
+            title="个人"
+            aria-label="个人"
+            @click="goToProfile"
+          >
+            <el-icon><User /></el-icon>
+          </el-button>
           <el-button
             text
             class="github-btn"
@@ -228,7 +251,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart, Shop, User } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { Capacitor } from '@capacitor/core'
@@ -243,6 +266,8 @@ const guziStore = useGuziStore()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 const { isMobile } = useResponsiveDevice()
+
+const canUseNotifications = computed(() => authStore.isAuthenticated && authStore.isCollector)
 
 const refreshLoading = ref(false)
 const mobileActionOpen = ref(false)
@@ -277,6 +302,9 @@ const activeMenu = computed(() => {
   if (currentPath.startsWith('/category')) return '/category'
   if (currentPath.startsWith('/theme')) return '/theme'
   if (currentPath.startsWith('/preorders')) return '/preorders'
+  if (currentPath.startsWith('/clubs')) return '/clubs'
+  if (currentPath.startsWith('/club')) return '/club/goods'
+  if (currentPath.startsWith('/profile')) return ''
   return '/showcase'
 })
 
@@ -290,6 +318,10 @@ const goHome = () => {
 
 const goToSettings = () => {
   router.push('/settings')
+}
+
+const goToProfile = () => {
+  router.push('/profile/account')
 }
 
 const goToLogin = () => {
@@ -439,9 +471,9 @@ onUnmounted(() => {
 
 // 登录态变化时启停未读通知轮询（60s）
 watch(
-  () => authStore.isAuthenticated,
-  (authenticated) => {
-    if (authenticated) {
+  canUseNotifications,
+  (canUse) => {
+    if (canUse) {
       notificationStore.startPolling()
     } else {
       notificationStore.stopPolling()
@@ -568,6 +600,20 @@ watch(isMobile, (mobile) => {
   transition: color 0.2s ease;
   outline: none;
   -webkit-tap-highlight-color: transparent;
+}
+
+.profile-btn {
+  font-size: 20px;
+  color: var(--text-dark);
+  padding: 6px;
+  transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.profile-btn:hover,
+.profile-btn:focus-visible,
+.profile-btn.profile-active {
+  color: var(--primary-gold);
+  background: rgba(212, 175, 55, 0.1);
 }
 
 .settings-btn:hover {

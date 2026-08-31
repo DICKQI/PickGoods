@@ -9,6 +9,24 @@ def is_admin(user) -> bool:
     return str(role_name).lower() == "admin"
 
 
+def is_club(user) -> bool:
+    return getattr(user, "account_type", None) == "club" and not is_admin(user)
+
+
+def is_collector(user) -> bool:
+    return is_admin(user) or getattr(user, "account_type", None) == "collector"
+
+
+class IsCollectorAccount(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        return bool(getattr(request.user, "is_authenticated", False)) and is_collector(request.user)
+
+
+class IsClubAccount(BasePermission):
+    def has_permission(self, request, view) -> bool:
+        return bool(getattr(request.user, "is_authenticated", False)) and is_club(request.user)
+
+
 class IsAdmin(BasePermission):
     """
     所有 HTTP 方法均要求当前用户为管理员（与 IsAdminOrReadOnly 不同）。

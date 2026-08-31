@@ -16,6 +16,8 @@ class AdminUserSerializer(serializers.ModelSerializer):
     """列表 / 详情：不含密码。"""
 
     role = AdminRoleSerializer(read_only=True)
+    club_name = serializers.SerializerMethodField()
+    application_reason = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -26,8 +28,20 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "is_active",
             "created_at",
             "updated_at",
+            "account_type",
+            "approval_status",
+            "club_name",
+            "application_reason",
         )
         read_only_fields = fields
+
+    def get_club_name(self, obj):
+        club = getattr(obj, "club_profile", None)
+        return club.name if club else None
+
+    def get_application_reason(self, obj):
+        club = getattr(obj, "club_profile", None)
+        return club.application_reason if club else None
 
 
 class AdminUserCreateSerializer(serializers.ModelSerializer):

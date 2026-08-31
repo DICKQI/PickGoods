@@ -49,6 +49,11 @@ export function updateGoods(id: string, data: GoodsInput) {
   return request.put<GoodsDetail>(`/api/goods/${id}/`, data)
 }
 
+/** 局部更新谷子字段（社团工作区发布/下架等轻量编辑使用） */
+export function patchGoods(id: string, data: Partial<GoodsInput>) {
+  return request.patch<GoodsDetail>(`/api/goods/${id}/`, data)
+}
+
 // 上传或更新主图
 export function uploadMainPhoto(id: string, file: File) {
   const formData = new FormData()

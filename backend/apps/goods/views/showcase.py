@@ -21,7 +21,7 @@ from ..serializers.showcase import (
     ShowcaseListSerializer,
 )
 from ..utils import compress_image
-from core.permissions import IsOwnerOrPublicReadOnly, is_admin
+from core.permissions import IsCollectorAccount, IsOwnerOrPublicReadOnly, is_admin
 
 
 class ShowcasePagination(PageNumberPagination):
@@ -52,7 +52,7 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
     queryset = Showcase.objects.all().prefetch_related(
         "showcase_goods__goods__ip", "showcase_goods__goods__characters"
     )
-    permission_classes = [IsOwnerOrPublicReadOnly]
+    permission_classes = [IsCollectorAccount, IsOwnerOrPublicReadOnly]
 
     # 稀疏排序步长
     ORDER_STEP = 1000
@@ -127,7 +127,7 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
 
         return Response({"results": data})
 
-    @action(detail=False, methods=["get"], url_path="private", permission_classes=[IsAuthenticated])
+    @action(detail=False, methods=["get"], url_path="private", permission_classes=[IsAuthenticated, IsCollectorAccount])
     def private_list(self, request):
         """获取私有展柜列表（我的展柜）"""
         queryset = self.filter_queryset(self.get_queryset())

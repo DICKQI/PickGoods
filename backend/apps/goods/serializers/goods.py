@@ -121,6 +121,7 @@ class GoodsListSerializer(serializers.ModelSerializer):
         return {
             "id": user.id,
             "username": getattr(user, "username", None),
+            "account_type": getattr(user, "account_type", None),
         }
 
     def get_location_path(self, obj):
@@ -229,6 +230,7 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
             "additional_photos",
             "order",  # 自定义排序值
         )
+        read_only_fields = ("user",)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -256,6 +258,7 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
         return {
             "id": user.id,
             "username": getattr(user, "username", None),
+            "account_type": getattr(user, "account_type", None),
         }
 
     def get_location_path(self, obj):
@@ -269,6 +272,7 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
         """
         current_status = getattr(self.instance, "status", None) if self.instance else None
         incoming_status = attrs.get("status", current_status)
+        request = self.context.get("request")
         is_draft = _is_draft_status(incoming_status)
 
         required_fields = {

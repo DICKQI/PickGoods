@@ -156,6 +156,7 @@
             @change="handleStatusChange"
           >
             <el-checkbox-button class="status-chip status-chip--in-cabinet" label="in_cabinet">在馆</el-checkbox-button>
+            <el-checkbox-button class="status-chip status-chip--intended" label="intended">意向入手</el-checkbox-button>
             <el-checkbox-button class="status-chip status-chip--outdoor" label="outdoor">出街中</el-checkbox-button>
             <el-checkbox-button class="status-chip status-chip--sold" label="sold">已售出</el-checkbox-button>
           </el-checkbox-group>

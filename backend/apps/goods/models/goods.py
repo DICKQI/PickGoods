@@ -95,6 +95,7 @@ class Goods(models.Model):
 
     STATUS_CHOICES = (
         ("draft", "草稿"),
+        ("intended", "意向入手"),
         ("in_cabinet", "在馆"),
         ("outdoor", "出街中"),
         ("sold", "已售出"),
@@ -105,7 +106,6 @@ class Goods(models.Model):
         default="in_cabinet",
         verbose_name="状态",
     )
-
     notes = models.TextField(
         null=True,
         blank=True,

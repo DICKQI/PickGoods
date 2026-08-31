@@ -38,6 +38,7 @@
         @update:model-value="$emit('update:selectedStatuses', $event)"
       >
         <el-checkbox-button label="in_cabinet">在馆</el-checkbox-button>
+        <el-checkbox-button label="intended">意向入手</el-checkbox-button>
         <el-checkbox-button label="outdoor">出街中</el-checkbox-button>
         <el-checkbox-button label="sold">已售出</el-checkbox-button>
       </el-checkbox-group>
