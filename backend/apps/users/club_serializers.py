@@ -1,6 +1,7 @@
 from urllib.parse import urlparse
 
 from django.db.models import Q
+from django.utils import timezone
 from rest_framework import serializers
 
 from apps.goods.models import (
@@ -240,6 +241,12 @@ class ClubPopularitySerializer(serializers.Serializer):
     goods_name = serializers.CharField()
     intended_user_count = serializers.IntegerField()
     acquired_user_count = serializers.IntegerField()
+    publication_status = serializers.ChoiceField(choices=ClubCatalogItem.PUBLICATION_STATUS_CHOICES, required=False)
+
+
+class ClubPopularityResponseSerializer(serializers.Serializer):
+    items = ClubPopularitySerializer(many=True)
+    summary = serializers.DictField()
 
 
 class ClubCatalogImageSerializer(serializers.ModelSerializer):
@@ -271,9 +278,13 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
         fields = (
             "id", "club", "name", "description", "ip", "ip_id", "characters", "character_ids",
             "category", "category_id", "theme", "theme_id", "main_photo", "additional_photos",
-            "public_price", "is_official", "publication_status", "order", "created_at", "updated_at",
+            "public_price", "is_official", "publication_status", "publish_at", "publish_failed_at",
+            "publish_error", "order", "created_at", "updated_at",
         )
-        read_only_fields = ("id", "club", "created_at", "updated_at", "additional_photos")
+        read_only_fields = (
+            "id", "club", "created_at", "updated_at", "additional_photos",
+            "publish_failed_at", "publish_error",
+        )
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -287,6 +298,12 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
             getattr(self.instance, "publication_status", ClubCatalogItem.PUBLICATION_DRAFT),
         )
         characters = attrs.get("characters")
+        publish_at_provided = "publish_at" in attrs
+        publish_at = attrs.get("publish_at", getattr(self.instance, "publish_at", None))
+        if publish_at_provided and publish_at is not None and publication_status != ClubCatalogItem.PUBLICATION_DRAFT:
+            raise serializers.ValidationError({"publish_at": "只有草稿可以设置定时上架"})
+        if publish_at_provided and publish_at is not None and publish_at <= timezone.now():
+            raise serializers.ValidationError({"publish_at": "定时上架时间必须晚于当前时间"})
         if publication_status == ClubCatalogItem.PUBLICATION_LISTED:
             if self.instance is None and not characters:
                 raise serializers.ValidationError({"character_ids": "上架时至少选择一个角色"})
@@ -299,6 +316,8 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         characters = validated_data.pop("characters", [])
         validated_data["is_official"] = False
+        validated_data["publish_failed_at"] = None
+        validated_data["publish_error"] = None
         main_photo = validated_data.get("main_photo")
         if main_photo:
             compressed = compress_image(main_photo, max_size_kb=300)
@@ -311,6 +330,14 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
     def update(self, instance, validated_data):
         characters = validated_data.pop("characters", None)
         validated_data["is_official"] = False
+        next_status = validated_data.get("publication_status", instance.publication_status)
+        if next_status != ClubCatalogItem.PUBLICATION_DRAFT:
+            validated_data["publish_at"] = None
+            validated_data["publish_failed_at"] = None
+            validated_data["publish_error"] = None
+        elif "publish_at" in validated_data:
+            validated_data["publish_failed_at"] = None
+            validated_data["publish_error"] = None
         main_photo = validated_data.get("main_photo")
         if main_photo:
             compressed = compress_image(main_photo, max_size_kb=300)
@@ -334,6 +361,15 @@ class ClubCatalogBatchRequestSerializer(serializers.Serializer):
     def validate_goods_ids(self, value):
         if len(value) != len(set(value)):
             raise serializers.ValidationError("批量操作中不能包含重复谷子")
+        return value
+
+
+class ClubCatalogReorderSerializer(serializers.Serializer):
+    goods_ids = serializers.ListField(child=serializers.UUIDField(), allow_empty=True)
+
+    def validate_goods_ids(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("排序列表中不能包含重复谷子")
         return value
 
 
@@ -384,9 +420,11 @@ __all__ = [
     "ClubRegistrationSerializer",
     "ClubAvatarUploadSerializer",
     "ClubPopularitySerializer",
+    "ClubPopularityResponseSerializer",
     "ClubCatalogImageSerializer",
     "ClubCatalogItemSerializer",
     "ClubCatalogBatchRequestSerializer",
+    "ClubCatalogReorderSerializer",
     "ClubCatalogPublicSerializer",
     "ClubImportSerializer",
     "ClubImportTemplateSerializer",

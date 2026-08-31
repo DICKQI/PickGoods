@@ -183,6 +183,14 @@ async function load() {
 }
 
 async function save() {
+  if (!form.name.trim()) {
+    ElMessage.error('请输入社团名称')
+    return
+  }
+  if (form.contact_email && !/^\S+@\S+\.\S+$/.test(form.contact_email.trim())) {
+    ElMessage.error('请输入有效的联系邮箱')
+    return
+  }
   saving.value = true
   try {
     const updated = await updateMyClub({

@@ -45,6 +45,22 @@ class ClubCatalogItem(models.Model):
         db_index=True,
         verbose_name="发布状态",
     )
+    publish_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="定时上架时间",
+    )
+    publish_failed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="定时上架失败时间",
+    )
+    publish_error = models.TextField(
+        null=True,
+        blank=True,
+        verbose_name="定时上架失败原因",
+    )
     order = models.BigIntegerField(default=0, db_index=True, verbose_name="排序值")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")

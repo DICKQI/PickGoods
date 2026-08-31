@@ -89,6 +89,7 @@ urlpatterns = [
     path("api/clubs/me/goods/", ClubCatalogManagementViewSet.as_view({"get": "list", "post": "create"}), name="club-my-goods"),
     path("api/clubs/me/goods/batch-delete/", ClubCatalogManagementViewSet.as_view({"post": "batch_delete"}), name="club-my-goods-batch-delete"),
     path("api/clubs/me/goods/batch-unlist/", ClubCatalogManagementViewSet.as_view({"post": "batch_unlist"}), name="club-my-goods-batch-unlist"),
+    path("api/clubs/me/goods/reorder/", ClubCatalogManagementViewSet.as_view({"post": "reorder"}), name="club-my-goods-reorder"),
     path("api/clubs/me/goods/<uuid:pk>/", ClubCatalogManagementViewSet.as_view({"get": "retrieve", "put": "update", "patch": "partial_update", "delete": "destroy"}), name="club-my-goods-detail"),
     path("api/clubs/me/goods/<uuid:pk>/upload-main-photo/", ClubCatalogManagementViewSet.as_view({"post": "upload_main_photo"}), name="club-my-goods-main-photo"),
     path("api/clubs/me/goods/<uuid:pk>/upload-additional-photos/", ClubCatalogManagementViewSet.as_view({"post": "upload_additional_photos"}), name="club-my-goods-additional-photos"),

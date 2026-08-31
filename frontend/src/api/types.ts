@@ -75,6 +75,21 @@ export interface ClubPopularityItem {
   goods_name: string
   intended_user_count: number
   acquired_user_count: number
+  publication_status?: ClubPublicationStatus
+}
+
+export interface ClubPopularitySummary {
+  total: number
+  listed: number
+  draft: number
+  unlisted: number
+  intended_user_count: number
+  acquired_user_count: number
+}
+
+export interface ClubPopularityResponse {
+  items: ClubPopularityItem[]
+  summary: ClubPopularitySummary
 }
 
 // 位置节点
@@ -307,6 +322,9 @@ export interface ClubCatalogItem {
   /** 社团目录统一为同人；字段只为兼容管理接口和旧数据保留。 */
   readonly is_official: boolean
   publication_status: ClubPublicationStatus
+  publish_at?: string | null
+  publish_failed_at?: string | null
+  publish_error?: string | null
   order: number
   created_at: string
   updated_at: string
@@ -325,6 +343,18 @@ export interface ClubCatalogInput {
   public_price?: string | null
   publication_status: ClubPublicationStatus
   main_photo?: File | null
+  publish_at?: string | null
+}
+
+export interface ClubCatalogSummary {
+  total: number
+  listed: number
+  draft: number
+  unlisted: number
+}
+
+export interface ClubCatalogListResponse extends PaginatedResponse<ClubCatalogItem> {
+  summary?: ClubCatalogSummary
 }
 
 export interface ClubBatchDeleteResponse {

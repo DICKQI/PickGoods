@@ -3,12 +3,14 @@ import type {
   Club,
   ClubCatalogInput,
   ClubCatalogItem,
+  ClubCatalogListResponse,
   ClubCatalogPublicItem,
   ClubBatchDeleteResponse,
   ClubBatchUnlistResponse,
   ClubImportTemplate,
   ClubFavoriteItem,
   ClubPopularityItem,
+  ClubPopularityResponse,
   GoodsCreateResponse,
   GoodsStatus,
   PaginatedResponse,
@@ -42,8 +44,8 @@ export function getClubGoodsDetail(clubId: number, goodsId: string) {
   return request.get<ClubCatalogPublicItem>(`/api/clubs/${clubId}/goods/${goodsId}/`)
 }
 
-export function getMyClubGoods(params?: { page?: number; page_size?: number; search?: string }) {
-  return request.get<PaginatedResponse<ClubCatalogItem>>('/api/clubs/me/goods/', { params })
+export function getMyClubGoods(params?: { page?: number; page_size?: number; search?: string; status?: string; sort?: string }) {
+  return request.get<ClubCatalogListResponse>('/api/clubs/me/goods/', { params })
 }
 
 export function getMyClubGoodsDetail(id: string) {
@@ -80,6 +82,10 @@ export function batchUnlistClubGoods(goodsIds: string[]) {
     { goods_ids: goodsIds },
     { suppressGlobalError: true },
   )
+}
+
+export function reorderClubGoods(goodsIds: string[]) {
+  return request.post<{ updated_count: number; goods_ids: string[] }>('/api/clubs/me/goods/reorder/', { goods_ids: goodsIds })
 }
 
 export function uploadClubGoodsMainPhoto(id: string, file: File) {
@@ -135,6 +141,6 @@ export function uploadMyClubAvatar(file: File) {
   return request.post<Club>('/api/clubs/me/avatar/', form)
 }
 
-export function getMyClubPopularity() {
-  return request.get<ClubPopularityItem[]>('/api/clubs/me/popularity/')
+export function getMyClubPopularity(params?: { status?: string; search?: string; sort?: string }) {
+  return request.get<ClubPopularityResponse | ClubPopularityItem[]>('/api/clubs/me/popularity/', { params })
 }

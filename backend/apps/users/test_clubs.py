@@ -20,6 +20,7 @@ from apps.goods.models import (
     IP,
     Theme,
 )
+from apps.goods.club_scheduler import publish_scheduled_club_goods
 
 from .models import Club, ClubFavorite, Role, User
 
@@ -588,7 +589,69 @@ class ClubFeatureAPITestCase(TestCase):
         self.client.force_authenticate(self.club_user)
         response = self.client.get("/api/clubs/me/popularity/")
         self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.assertEqual(response.json()[0]["intended_user_count"], 1)
+        self.assertEqual(response.json()["items"][0]["intended_user_count"], 1)
+        self.assertEqual(response.json()["summary"]["intended_user_count"], 1)
+
+    def test_catalog_schedule_requires_future_draft_and_is_cleared_on_manual_publish(self):
+        self.client.force_authenticate(self.club_user)
+        draft = ClubCatalogItem.objects.create(
+            club=self.club, name="定时谷子", description="", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        future = timezone.now() + timedelta(hours=2)
+        scheduled = self.client.patch(
+            f"/api/clubs/me/goods/{draft.id}/", {"publish_at": future.isoformat()}, format="json"
+        )
+        self.assertEqual(scheduled.status_code, status.HTTP_200_OK)
+        self.assertIsNotNone(scheduled.json()["publish_at"])
+        draft.publish_failed_at = timezone.now()
+        draft.publish_error = "旧失败信息"
+        draft.save(update_fields=["publish_failed_at", "publish_error", "updated_at"])
+        manual = self.client.patch(
+            f"/api/clubs/me/goods/{draft.id}/", {"publication_status": "listed", "character_ids": [self.character.id]}, format="json"
+        )
+        self.assertEqual(manual.status_code, status.HTTP_200_OK)
+        self.assertIsNone(manual.json()["publish_at"])
+        self.assertIsNone(manual.json()["publish_failed_at"])
+        self.assertIsNone(manual.json()["publish_error"])
+
+        invalid = self.client.patch(
+            f"/api/clubs/me/goods/{draft.id}/", {"publication_status": "listed", "publish_at": future.isoformat()}, format="json"
+        )
+        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_scheduled_publish_is_one_shot_and_failed_items_are_recorded(self):
+        good = ClubCatalogItem.objects.create(
+            club=self.club, name="到期谷子", description="", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT, publish_at=timezone.now() - timedelta(minutes=1),
+        )
+        good.characters.add(self.character)
+        failed = ClubCatalogItem.objects.create(
+            club=self.club, name="缺角色谷子", description="", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT, publish_at=timezone.now() - timedelta(minutes=1),
+        )
+        self.assertEqual(publish_scheduled_club_goods(), 1)
+        good.refresh_from_db(); failed.refresh_from_db()
+        self.assertEqual(good.publication_status, ClubCatalogItem.PUBLICATION_LISTED)
+        self.assertIsNone(good.publish_at)
+        self.assertIsNone(failed.publish_at)
+        self.assertIn("角色", failed.publish_error or "")
+        self.assertEqual(publish_scheduled_club_goods(), 0)
+
+    def test_catalog_list_summary_filters_and_reorder(self):
+        self.client.force_authenticate(self.club_user)
+        draft = ClubCatalogItem.objects.create(
+            club=self.club, name="草稿列表", description="", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        response = self.client.get("/api/clubs/me/goods/?status=draft")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["summary"]["draft"], 1)
+        self.assertEqual(response.json()["results"][0]["id"], str(draft.id))
+        reorder = self.client.post("/api/clubs/me/goods/reorder/", {"goods_ids": [str(draft.id), str(self.source.id)]}, format="json")
+        self.assertEqual(reorder.status_code, status.HTTP_200_OK)
+        draft.refresh_from_db(); self.source.refresh_from_db()
+        self.assertLess(draft.order, self.source.order)
 
     def test_source_delete_keeps_personal_goods_and_origin_history(self):
         self.client.force_authenticate(self.collector)

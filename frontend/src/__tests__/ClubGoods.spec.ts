@@ -59,6 +59,42 @@ const ElImageStub = defineComponent({
   template: '<img :src="src" />',
 })
 
+const ElInputStub = defineComponent({
+  name: 'ElInput',
+  inheritAttrs: false,
+  props: { modelValue: { type: String, default: '' }, clearable: Boolean },
+  emits: ['update:modelValue', 'input', 'clear', 'keyup'],
+  methods: {
+    handleInput(event: Event) {
+      const value = (event.target as HTMLInputElement).value
+      this.$emit('update:modelValue', value)
+      this.$emit('input', value)
+    },
+  },
+  template: '<div class="el-input-stub"><span class="prefix"><slot name="prefix" /></span><input :value="modelValue" v-bind="$attrs" @input="handleInput" @keyup="$emit(\'keyup\', $event)" /></div>',
+})
+
+const ElSelectStub = defineComponent({
+  name: 'ElSelect',
+  inheritAttrs: false,
+  props: { modelValue: { type: String, default: '' } },
+  emits: ['update:modelValue', 'change'],
+  methods: {
+    handleChange(event: Event) {
+      const value = (event.target as HTMLSelectElement).value
+      this.$emit('update:modelValue', value)
+      this.$emit('change', value)
+    },
+  },
+  template: '<select class="el-select-stub" :value="modelValue" v-bind="$attrs" @change="handleChange"><slot /></select>',
+})
+
+const ElOptionStub = defineComponent({
+  name: 'ElOption',
+  props: { label: { type: String, required: true }, value: { type: String, required: true } },
+  template: '<option :value="value">{{ label }}</option>',
+})
+
 const item = (id: string, publication_status: ClubCatalogItem['publication_status']): ClubCatalogItem => ({
   id,
   name: `谷子 ${id}`,
@@ -98,8 +134,10 @@ async function mountPage(results: ClubCatalogItem[] = goods) {
         ElEmpty: passthrough('ElEmpty'),
         ElIcon: passthrough('ElIcon', 'span'),
         ElImage: ElImageStub,
-        ElInput: passthrough('ElInput', 'input'),
+        ElInput: ElInputStub,
         ElPagination: passthrough('ElPagination'),
+        ElSelect: ElSelectStub,
+        ElOption: ElOptionStub,
         ElTag: passthrough('ElTag'),
       },
     },
@@ -132,6 +170,61 @@ describe('ClubGoods 批量操作', () => {
     expect(wrapper.text()).not.toContain('曾经入手')
   })
 
+  it('桌面目录按谷子、发布信息、人气和操作分栏', async () => {
+    const pricedGoods = { ...listedGoods, public_price: '39.00' }
+    const wrapper = await mountPage([pricedGoods])
+
+    const header = wrapper.get('[data-test="catalog-column-header"]')
+    expect(header.text()).toContain('谷子')
+    expect(header.text()).toContain('价格与状态')
+    expect(header.text()).toContain('人气')
+    expect(header.text()).toContain('操作')
+    expect(wrapper.get('.goods-row__identity').text()).toContain('测试 IP · 徽章')
+    expect(wrapper.get('.goods-row__publication').text()).toContain('¥39.00')
+    expect(wrapper.get('.goods-row__publication').text()).toContain('已上架')
+    expect(wrapper.get('.popularity-meta').text()).toContain('意向入手 0 人')
+  })
+
+  it('状态和排序使用统一下拉组件并将选择同步到列表查询', async () => {
+    const wrapper = await mountPage()
+    const selects = wrapper.findAll('.el-select-stub')
+
+    expect(selects).toHaveLength(2)
+    expect(selects[0]!.attributes('popper-class')).toBe('catalog-filter-popper')
+    expect(selects[1]!.attributes('popper-class')).toBe('catalog-filter-popper')
+
+    await selects[0]!.setValue('listed')
+    await flushPromises()
+    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed' }))
+
+    await selects[1]!.setValue('name')
+    await flushPromises()
+    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed', sort: 'name' }))
+  })
+
+  it('搜索输入使用防抖自动查询，回车立即查询且移除独立搜索按钮', async () => {
+    vi.useFakeTimers()
+    const wrapper = await mountPage()
+    const input = wrapper.get('.el-input-stub input')
+    expect(wrapper.find('[aria-label="搜索社团谷子"]').exists()).toBe(false)
+
+    await input.setValue('流')
+    await input.setValue('流萤')
+    expect(vi.mocked(clubApi.getMyClubGoods)).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(349)
+    await flushPromises()
+    expect(vi.mocked(clubApi.getMyClubGoods)).toHaveBeenCalledTimes(1)
+    vi.advanceTimersByTime(1)
+    await flushPromises()
+    expect(vi.mocked(clubApi.getMyClubGoods)).toHaveBeenLastCalledWith(expect.objectContaining({ search: '流萤' }))
+
+    await input.setValue('星')
+    await input.trigger('keyup', { key: 'Enter' })
+    await flushPromises()
+    expect(vi.mocked(clubApi.getMyClubGoods)).toHaveBeenLastCalledWith(expect.objectContaining({ search: '星' }))
+    vi.useRealTimers()
+  })
+
   it('删除和下架模式分别只允许对应状态，并且切换时清空选择', async () => {
     const wrapper = await mountPage()
     const vm = wrapper.vm as unknown as {
@@ -152,6 +245,28 @@ describe('ClubGoods 批量操作', () => {
     await nextTick()
     expect(selectionInputs()[0]?.disabled).toBe(true)
     expect(selectionInputs()[1]?.disabled).toBe(false)
+  })
+
+  it('批量模式可点击整行切换选择，行内按钮不会连带切换', async () => {
+    const wrapper = await mountPage()
+    const vm = wrapper.vm as unknown as { selectedGoodsIds: string[] }
+
+    await wrapper.get('[data-test="start-batch-delete"]').trigger('click')
+    const rows = wrapper.findAll('.goods-row')
+
+    await rows[0]!.trigger('click')
+    expect(vm.selectedGoodsIds).toEqual(['draft'])
+    expect(rows[0]!.classes()).toContain('is-selected')
+
+    await rows[0]!.get('.row-actions button').trigger('click')
+    expect(vm.selectedGoodsIds).toEqual(['draft'])
+
+    await rows[0]!.trigger('click')
+    expect(vm.selectedGoodsIds).toEqual([])
+
+    await rows[1]!.trigger('click')
+    expect(vm.selectedGoodsIds).toEqual([])
+    expect(rows[1]!.classes()).toContain('is-selection-disabled')
   })
 
   it('确认后分别调用批量删除和批量下架接口', async () => {

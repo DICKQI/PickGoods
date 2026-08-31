@@ -16,8 +16,9 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-# 每 5 分钟检查一次是否到达 next_run_at
-_TICK_MINUTES = 5
+# BGM 保持原有频率；社团定时上架使用更细的检查窗口。
+_BGM_TICK_MINUTES = 5
+_CLUB_TICK_MINUTES = 1
 
 _scheduler = None
 _scheduler_lock = threading.Lock()
@@ -34,6 +35,15 @@ def _bgm_tick() -> None:
         run_auto_sync(trigger="scheduled")
     except Exception:  # noqa: BLE001
         logger.exception("[BGMScheduler] tick failed")
+
+
+def _club_publish_tick() -> None:
+    try:
+        from .club_scheduler import publish_scheduled_club_goods
+
+        publish_scheduled_club_goods()
+    except Exception:  # noqa: BLE001
+        logger.exception("[ClubScheduler] scheduled publication tick failed")
 
 
 def _should_start() -> bool:
@@ -91,8 +101,16 @@ def start_scheduler() -> None:
         scheduler = BackgroundScheduler(timezone="UTC")
         scheduler.add_job(
             _bgm_tick,
-            trigger=IntervalTrigger(minutes=_TICK_MINUTES),
+            trigger=IntervalTrigger(minutes=_BGM_TICK_MINUTES),
             id="bgm_sync_tick",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            _club_publish_tick,
+            trigger=IntervalTrigger(minutes=_CLUB_TICK_MINUTES),
+            id="club_catalog_publish_tick",
             replace_existing=True,
             max_instances=1,
             coalesce=True,
@@ -100,5 +118,7 @@ def start_scheduler() -> None:
         scheduler.start()
         _scheduler = scheduler
         logger.info(
-            "[BGMScheduler] started, tick every %d minutes", _TICK_MINUTES
+            "[BGMScheduler] started, BGM tick every %d minutes; club publication tick every %d minutes",
+            _BGM_TICK_MINUTES,
+            _CLUB_TICK_MINUTES,
         )

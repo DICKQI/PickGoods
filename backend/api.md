@@ -5234,7 +5234,19 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 
 1. `unread-count` 轮询或预购写操作（创建 / 更新 / 标记补款 / 取消 / 转正 / 跳票延期）时，扫描该用户 `pending` 预购；
 2. 按窗口规则 `get_or_create(user, preorder, type, is_stale=False)` 幂等生成；
-3. 取消 / 延期时，旧 `preorder_soon` / `preorder_due` 置为 `is_stale=True, is_read=True`；延期后按新时间重新生成。
+   3. 取消 / 延期时，旧 `preorder_soon` / `preorder_due` 置为 `is_stale=True, is_read=True`；延期后按新时间重新生成。
+
+### 9.7 社团工作台接口
+
+社团目录管理接口使用 `/api/clubs/me/goods/`。目录条目仍使用 `draft`、`listed`、`unlisted` 三态，并额外返回 `publish_at`、`publish_failed_at`、`publish_error`。`publish_at` 只接受草稿的未来时间，前端按北京时间输入，后端统一以 UTC 存储。
+
+| 方法 / 路径 | 说明 |
+| ---------- | ---- |
+| `GET /api/clubs/me/goods/?status=&search=&sort=` | 社团目录分页列表，响应含 `summary`（总数、三态数量）；`sort` 支持 `order`、`name`、`created` |
+| `POST /api/clubs/me/goods/reorder/` | `{goods_ids: [uuid...]}`，事务内更新公开顺序 |
+| `GET /api/clubs/me/popularity/?status=&search=&sort=` | 返回 `{items, summary}`；按去重吃谷人统计意向入手 / 已入手人数，`sort` 支持 `order`、`name`、`intended`、`acquired` |
+
+定时上架由 APScheduler 每分钟检查一次。到期草稿在行锁事务内原子切换为 `listed`；缺少角色或执行异常时保留 `draft`，写入 `publish_failed_at` / `publish_error` 并清除 `publish_at`，不会自动重试。手动上架、下架和取消计划会清除 `publish_at` 及旧失败元数据。
 
 
 

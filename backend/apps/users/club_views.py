@@ -31,6 +31,7 @@ from core.permissions import IsClubAccount, IsCollectorAccount, is_admin
 from .club_serializers import (
     ClubAvatarUploadSerializer,
     ClubCatalogBatchRequestSerializer,
+    ClubCatalogReorderSerializer,
     ClubCatalogImageSerializer,
     ClubCatalogItemSerializer,
     ClubCatalogPublicSerializer,
@@ -39,6 +40,7 @@ from .club_serializers import (
     ClubImportTemplateSerializer,
     ClubFavoriteSerializer,
     ClubPopularitySerializer,
+    ClubPopularityResponseSerializer,
     ClubPublicDetailSerializer,
     ClubSerializer,
 )
@@ -251,7 +253,7 @@ class ClubViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["get"], url_path="me/popularity")
     def popularity(self, request):
         club = get_object_or_404(Club, user=request.user)
-        items = ClubCatalogItem.objects.filter(club=club).annotate(
+        queryset = ClubCatalogItem.objects.filter(club=club).annotate(
             intended_user_count=Count(
                 "goods_origins__collector",
                 filter=(
@@ -270,7 +272,26 @@ class ClubViewSet(viewsets.GenericViewSet):
                 ),
                 distinct=True,
             ),
-        ).order_by("order", "-created_at")
+        )
+        status_filter = (request.query_params.get("status") or "").strip()
+        if status_filter in {choice[0] for choice in ClubCatalogItem.PUBLICATION_STATUS_CHOICES}:
+            queryset = queryset.filter(publication_status=status_filter)
+        keyword = (request.query_params.get("search") or "").strip()
+        if keyword:
+            queryset = queryset.filter(
+                Q(name__icontains=keyword)
+                | Q(ip__name__icontains=keyword)
+                | Q(category__name__icontains=keyword)
+            ).distinct()
+        sort = request.query_params.get("sort", "order")
+        sort_map = {
+            "order": ("order", "-created_at"),
+            "name": ("name", "id"),
+            "intended": ("-intended_user_count", "order", "-created_at"),
+            "acquired": ("-acquired_user_count", "order", "-created_at"),
+        }
+        queryset = queryset.order_by(*sort_map.get(sort, sort_map["order"]))
+        items = list(queryset)
         data = ClubPopularitySerializer([
             {
                 "goods_id": item.id,
@@ -280,7 +301,18 @@ class ClubViewSet(viewsets.GenericViewSet):
             }
             for item in items
         ], many=True).data
-        return Response(data)
+        summary = {
+            "total": len(items),
+            "listed": sum(item.publication_status == ClubCatalogItem.PUBLICATION_LISTED for item in items),
+            "draft": sum(item.publication_status == ClubCatalogItem.PUBLICATION_DRAFT for item in items),
+            "unlisted": sum(item.publication_status == ClubCatalogItem.PUBLICATION_UNLISTED for item in items),
+            "intended_user_count": sum(item.intended_user_count for item in items),
+            "acquired_user_count": sum(item.acquired_user_count for item in items),
+        }
+        # Keep the response explicit for API clients while exposing status on each row.
+        for payload, item in zip(data, items):
+            payload["publication_status"] = item.publication_status
+        return Response(ClubPopularityResponseSerializer({"items": data, "summary": summary}).data)
 
 
 class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
@@ -311,9 +343,27 @@ class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
                 | Q(ip__name__icontains=keyword)
                 | Q(category__name__icontains=keyword)
             ).distinct()
+        summary = {
+            "total": queryset.count(),
+            "listed": queryset.filter(publication_status=ClubCatalogItem.PUBLICATION_LISTED).count(),
+            "draft": queryset.filter(publication_status=ClubCatalogItem.PUBLICATION_DRAFT).count(),
+            "unlisted": queryset.filter(publication_status=ClubCatalogItem.PUBLICATION_UNLISTED).count(),
+        }
+        status_filter = (request.query_params.get("status") or "").strip()
+        if status_filter in {choice[0] for choice in ClubCatalogItem.PUBLICATION_STATUS_CHOICES}:
+            queryset = queryset.filter(publication_status=status_filter)
+        sort = request.query_params.get("sort", "order")
+        sort_map = {
+            "order": ("order", "-created_at"),
+            "name": ("name", "id"),
+            "created": ("-created_at", "id"),
+        }
+        queryset = queryset.order_by(*sort_map.get(sort, sort_map["order"]))
         page = self.paginate_queryset(queryset)
         serializer = self.get_serializer(page, many=True)
-        return self.get_paginated_response(serializer.data)
+        response = self.get_paginated_response(serializer.data)
+        response.data["summary"] = summary
+        return response
 
     def perform_create(self, serializer):
         club = self._club()
@@ -378,9 +428,32 @@ class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
             now = timezone.now()
             for item in items:
                 item.publication_status = ClubCatalogItem.PUBLICATION_UNLISTED
+                item.publish_at = None
+                item.publish_failed_at = None
+                item.publish_error = None
                 item.updated_at = now
-            ClubCatalogItem.objects.bulk_update(items, ["publication_status", "updated_at"])
+            ClubCatalogItem.objects.bulk_update(
+                items, ["publication_status", "publish_at", "publish_failed_at", "publish_error", "updated_at"]
+            )
         return Response({"updated_count": len(updated_ids), "updated_ids": updated_ids})
+
+    @action(detail=False, methods=["post"], url_path="reorder")
+    def reorder(self, request):
+        serializer = ClubCatalogReorderSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        goods_ids = serializer.validated_data["goods_ids"]
+        with transaction.atomic():
+            items = list(self.get_queryset().select_for_update().filter(id__in=goods_ids))
+            item_by_id = {item.id: item for item in items}
+            if len(items) != len(goods_ids):
+                invalid_ids = [str(goods_id) for goods_id in goods_ids if goods_id not in item_by_id]
+                return Response({"detail": "排序列表包含不存在或不属于本社团的谷子", "invalid_ids": invalid_ids}, status=status.HTTP_400_BAD_REQUEST)
+            now = timezone.now()
+            for index, goods_id in enumerate(goods_ids):
+                item_by_id[goods_id].order = index * 1000
+                item_by_id[goods_id].updated_at = now
+            ClubCatalogItem.objects.bulk_update(items, ["order", "updated_at"])
+        return Response({"updated_count": len(goods_ids), "goods_ids": [str(goods_id) for goods_id in goods_ids]})
 
     @action(detail=True, methods=["post"], url_path="upload-main-photo", parser_classes=[MultiPartParser, FormParser])
     def upload_main_photo(self, request, pk=None):
