@@ -55,7 +55,6 @@
         <el-col :xs="24" :sm="12"><el-form-item label="主图"><el-upload v-model:file-list="mainPhotoList" list-type="picture-card" :auto-upload="false" :limit="1" accept="image/*" :on-change="handleMainPhotoChange" :on-exceed="handleMainPhotoExceed" :on-remove="handleMainPhotoRemove"><el-icon><Plus /></el-icon></el-upload></el-form-item></el-col>
         <el-col :xs="24" :sm="12"><el-form-item label="附加图片"><el-upload v-model:file-list="additionalPhotoList" list-type="picture-card" :auto-upload="false" multiple accept="image/*" :on-change="handleAdditionalPhotoChange" :on-remove="handleAdditionalPhotoRemove"><el-icon><Plus /></el-icon></el-upload></el-form-item></el-col>
       </el-row>
-      <el-checkbox v-model="form.is_official">官谷</el-checkbox>
     </el-form>
   </section>
 </template>
@@ -87,7 +86,7 @@ const characters = ref<{ id: number; name: string }[]>([])
 const form = reactive({
   name: '', description: '', ip_id: undefined as number | undefined, category_id: undefined as number | undefined,
   character_ids: [] as number[], theme_id: null as number | null, public_price: '',
-  is_official: false, publication_status: 'draft' as ClubPublicationStatus,
+  publication_status: 'draft' as ClubPublicationStatus,
 })
 const mainPhotoFile = ref<File | null>(null)
 const mainPhotoList = ref<UploadFile[]>([])
@@ -119,7 +118,7 @@ async function load() {
     Object.assign(form, {
       name: item.name, description: item.description || '', ip_id: item.ip.id, category_id: item.category.id,
       character_ids: item.characters.map(character => character.id), theme_id: item.theme?.id ?? null,
-      public_price: item.public_price || '', is_official: item.is_official, publication_status: item.publication_status,
+      public_price: item.public_price || '', publication_status: item.publication_status,
     })
     characters.value = await metadata.fetchIPCharacters(item.ip.id)
     if (item.main_photo) mainPhotoList.value = [{ name: '主图', url: item.main_photo, status: 'success', uid: -1 }]
@@ -152,7 +151,7 @@ async function save(publicationStatus: ClubPublicationStatus) {
     const data: ClubCatalogInput = {
       name: form.name, description: form.description, ip_id: form.ip_id!, category_id: form.category_id!,
       character_ids: form.character_ids, theme_id: form.theme_id, public_price: form.public_price || null,
-      is_official: form.is_official, publication_status: publicationStatus, main_photo: mainPhotoFile.value,
+      publication_status: publicationStatus, main_photo: mainPhotoFile.value,
     }
     const item = isEdit.value ? await updateClubGoods(String(route.params.id), data) : await createClubGoods(data)
     const id = String(item.id)
@@ -176,6 +175,5 @@ onUnmounted(() => { const url = mainPhotoList.value[0]?.url; if (url?.startsWith
 .editor-actions { display: flex; gap: 8px; }
 .editor-form { max-width: 820px; }
 .media-row :deep(.el-upload-list--picture-card), .media-row :deep(.el-upload--picture-card) { --el-upload-picture-card-size: 96px; }
-.editor-form > :deep(.el-checkbox) { margin-right: 18px; }
 @media (max-width: 768px) { .editor-page { padding: 16px; } .editor-header { align-items: stretch; flex-direction: column; } .editor-actions { width: 100%; } .editor-actions .el-button { flex: 1; } }
 </style>

@@ -22,6 +22,8 @@ vi.mock('@/api/clubs', () => ({
   getClub: vi.fn(),
   getClubGoods: vi.fn(),
   getClubGoodsDetail: vi.fn(),
+  favoriteClub: vi.fn(),
+  unfavoriteClub: vi.fn(),
 }))
 
 vi.mock('element-plus', () => ({
@@ -84,6 +86,9 @@ const goods: ClubCatalogItem = {
 const goodsDetail: ClubCatalogItem = {
   ...goods,
   description: '限定款，公开说明。',
+  theme: { id: 9, name: '流光主题', description: '主题说明', created_at: '2026-08-29T00:00:00Z' },
+  main_photo: 'https://cdn.example.com/main.jpg',
+  additional_photos: [{ id: 7, image: 'https://cdn.example.com/detail.jpg', label: '细节图' }],
 }
 
 const passthroughStub = (name: string, tag = 'div') => defineComponent({
@@ -245,7 +250,8 @@ describe('ClubDetail 社团对外页', () => {
     expect(wrapper.get('.store-link').attributes('rel')).toBe('noreferrer')
     expect(wrapper.get('.store-link').attributes('aria-label')).toContain('在新窗口打开')
     expect(wrapper.get('.goods-card').text()).toContain('流萤镭射票')
-    expect(wrapper.get('.goods-card').text()).toContain('官谷')
+    expect(wrapper.get('.goods-card').text()).not.toContain('官谷')
+    expect(wrapper.get('.goods-card').text()).not.toContain('同人')
     expect(wrapper.find('.goods-card__quantity').exists()).toBe(false)
   })
 
@@ -289,6 +295,14 @@ describe('ClubDetail 社团对外页', () => {
     expect(source).toMatch(/\.announcement\s*\{[\s\S]*?width:\s*fit-content;/)
     expect(source).toMatch(/\.announcement\s*\{[\s\S]*?max-width:\s*100%;/)
     expect(source).not.toContain('.club-hero__count { margin-left:')
+  })
+
+  it('卡片和弹窗的加入谷仓按钮共享紧凑尺寸', () => {
+    expect(source).toMatch(/class="import-button club-import-button brand-add-btn"/)
+    expect(source).toMatch(/class="dialog-primary-button club-import-button brand-add-btn"/)
+    expect(source).toMatch(/\.club-import-button\s*\{[\s\S]*?width:\s*96px;/)
+    expect(source).toMatch(/\.club-import-button\s*\{[\s\S]*?--brand-add-min-height:\s*34px;[\s\S]*?--brand-add-font-size:\s*12px;/)
+    expect(source).not.toMatch(/\.dialog-primary-button\s*\{[\s\S]*?--brand-add-min-height:\s*38px;/)
   })
 
   it('Hero 不重复展示统计，公开谷子数量突出显示在目录标题旁', () => {
@@ -373,6 +387,17 @@ describe('ClubDetail 社团对外页', () => {
     await flushPromises()
     expect(clubApi.getClubGoodsDetail).toHaveBeenCalledWith(1, 'goods-1')
     expect(wrapper.get('.goods-detail-dialog__notes').text()).toContain('公开说明')
+    expect(wrapper.get('.goods-detail-dialog').text()).toContain('流光主题')
+    expect(wrapper.get('.goods-detail-dialog').text()).toContain('纸制品/镭射票')
+    expect(wrapper.get('.goods-detail-dialog').text()).toContain('发布社团')
+    expect(wrapper.get('.goods-detail-dialog').text()).toContain('星光社团')
+    expect(wrapper.get('.goods-detail-dialog').text()).not.toContain('由 星光社团 公开展示')
+    expect(wrapper.findAll('.goods-detail-dialog__photo-button')).toHaveLength(2)
+    await wrapper.findAll('.goods-detail-dialog__photo-button')[1]!.trigger('click')
+    expect((wrapper.vm as unknown as { activeDetailImage: string }).activeDetailImage).toBe('https://cdn.example.com/detail.jpg')
+    expect(wrapper.findAll('.goods-detail-dialog__photo-button')[1]!.find('img').attributes('preview-src-list')).toBeUndefined()
+    expect(wrapper.get('.goods-detail-dialog').text()).not.toContain('官谷')
+    expect(wrapper.get('.goods-detail-dialog').text()).not.toContain('同人')
     expect(wrapper.get('.detail-dialog').text()).not.toContain('公开数量')
   })
 
@@ -403,11 +428,32 @@ describe('ClubDetail 社团对外页', () => {
     expect(pushMock).toHaveBeenCalledWith({ name: 'Login', query: { redirect: '/clubs/1' } })
   })
 
+  it('吃谷人可收藏社团并即时更新人数，重复点击由 loading 防抖', async () => {
+    vi.mocked(clubApi.getClub).mockResolvedValue({ ...club, favorite_count: 2, is_favorited: false })
+    vi.mocked(clubApi.favoriteClub).mockResolvedValue({ ...club, favorite_count: 3, is_favorited: true })
+    const wrapper = await mountPage({ authenticated: true })
+
+    await wrapper.get('.favorite-button').trigger('click')
+    await flushPromises()
+
+    expect(clubApi.favoriteClub).toHaveBeenCalledWith(1)
+    expect(wrapper.get('.favorite-count').text()).toContain('3')
+    expect(wrapper.get('.favorite-button').text()).toContain('已收藏')
+    expect(wrapper.get('.favorite-button').attributes('aria-pressed')).toBe('true')
+  })
+
   it('社团账号可浏览公开页但不显示导入操作', async () => {
     const wrapper = await mountPage({ authenticated: true, clubAccount: true })
 
     expect(wrapper.get('.goods-card').text()).toContain('流萤镭射票')
     expect(wrapper.find('.import-button').exists()).toBe(false)
+    expect(wrapper.find('.favorite-button').exists()).toBe(false)
+  })
+
+  it('未登录收藏社团时跳转登录并保留当前社团地址', async () => {
+    const wrapper = await mountPage()
+    await wrapper.get('.favorite-button').trigger('click')
+    expect(pushMock).toHaveBeenCalledWith({ name: 'Login', query: { redirect: '/clubs/1' } })
   })
 
   it('从公开页导入时进入个人库存编辑表单', async () => {

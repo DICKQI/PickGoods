@@ -162,6 +162,27 @@ const routes: RouteRecordRaw[] = [
     },
   },
   {
+    path: '/profile',
+    name: 'ProfileWorkspace',
+    component: () => import('@/views/ProfileWorkspace.vue'),
+    meta: { title: '个人中心', requiresAuth: true },
+    redirect: '/profile/account',
+    children: [
+      {
+        path: 'account',
+        name: 'ProfileAccount',
+        component: () => import('@/views/profile/ProfileAccount.vue'),
+        meta: { title: '账号信息', requiresAuth: true },
+      },
+      {
+        path: 'clubs',
+        name: 'ProfileClubs',
+        component: () => import('@/views/profile/ProfileClubs.vue'),
+        meta: { title: '我的社团', requiresAuth: true, requiresCollector: true },
+      },
+    ],
+  },
+  {
     path: '/admin',
     name: 'AdminDashboard',
     component: () => import('@/views/admin/AdminDashboard.vue'),

@@ -47,6 +47,22 @@
             <span>{{ club.announcement }}</span>
           </p>
         </div>
+
+        <div class="club-hero__favorite">
+          <span class="favorite-count"><el-icon><StarFilled /></el-icon><strong>{{ club.favorite_count ?? 0 }}</strong><span>人收藏</span></span>
+          <el-button
+            v-if="!authStore.isClub"
+            type="primary"
+            plain
+            class="favorite-button"
+            :loading="favoriteLoading"
+            :aria-pressed="club.is_favorited ? 'true' : 'false'"
+            @click="toggleFavorite"
+          >
+            <el-icon><StarFilled /></el-icon>
+            <span>{{ club.is_favorited ? '已收藏' : '收藏社团' }}</span>
+          </el-button>
+        </div>
       </section>
 
       <section class="detail-layout">
@@ -178,9 +194,6 @@
                 <div v-else class="goods-card__image goods-card__image--placeholder" aria-label="暂无图片">
                   <el-icon><Picture /></el-icon>
                 </div>
-                <div class="goods-card__badges">
-                  <span class="goods-card__kind">{{ item.is_official ? '官谷' : '同人' }}</span>
-                </div>
               </div>
 
               <div class="goods-card__body">
@@ -196,7 +209,7 @@
                     v-if="!authStore.isClub"
                     type="primary"
                     size="small"
-                    class="import-button brand-add-btn"
+                    class="import-button club-import-button brand-add-btn"
                     @click.stop="importGoods(item)"
                   >
                     <span class="brand-add-btn__content">
@@ -246,7 +259,7 @@
 
       <template #footer>
         <el-button @click="importVisible = false">取消</el-button>
-        <el-button type="primary" class="dialog-primary-button brand-add-btn" @click="confirmImport">
+        <el-button type="primary" class="dialog-primary-button club-import-button brand-add-btn" @click="confirmImport">
           <span class="brand-add-btn__content"><el-icon><Plus /></el-icon><span>确认加入</span></span>
         </el-button>
       </template>
@@ -260,57 +273,85 @@
     >
       <div v-loading="detailLoading" class="goods-detail-dialog">
         <template v-if="selectedDetail">
-          <div class="goods-detail-dialog__media">
-            <el-image
-              v-if="selectedDetail.main_photo"
-              :src="selectedDetail.main_photo"
-              :alt="`${selectedDetail.name}图片`"
-              fit="contain"
-              class="goods-detail-dialog__image"
-              :preview-src-list="detailPhotoUrls"
-            />
-            <div v-else class="goods-detail-dialog__placeholder" aria-label="暂无图片">
-              <el-icon><Picture /></el-icon>
+          <div class="goods-detail-dialog__visual">
+            <div class="goods-detail-dialog__media">
+              <el-image
+                v-if="activeDetailImage"
+                :src="activeDetailImage"
+                :alt="`${selectedDetail.name}图片`"
+                fit="contain"
+                class="goods-detail-dialog__image"
+                :preview-src-list="detailPhotoUrls"
+                :initial-index="Math.max(0, detailPhotoUrls.indexOf(activeDetailImage))"
+              />
+              <div v-else class="goods-detail-dialog__placeholder" aria-label="暂无图片">
+                <el-icon><Picture /></el-icon>
+                <span>暂无图片</span>
+              </div>
+            </div>
+            <div v-if="detailPhotoUrls.length" class="goods-detail-dialog__photos" aria-label="图片预览">
+              <button
+                v-for="(photoUrl, index) in detailPhotoUrls"
+                :key="photoUrl"
+                type="button"
+                class="goods-detail-dialog__photo-button"
+                :class="{ 'is-active': photoUrl === activeDetailImage }"
+                :aria-label="`${selectedDetail.name}图片 ${index + 1}`"
+                @click="selectDetailImage(photoUrl)"
+              >
+                <el-image
+                  :src="photoUrl"
+                  :alt="`${selectedDetail.name}图片 ${index + 1}`"
+                  fit="cover"
+                  class="goods-detail-dialog__photo"
+                />
+              </button>
             </div>
           </div>
           <div class="goods-detail-dialog__content">
+            <div class="goods-detail-dialog__headline">
+              <span class="goods-detail-dialog__eyebrow">公开目录条目</span>
+            </div>
             <div class="goods-detail-dialog__tags">
               <el-tag type="success" effect="plain">已上架</el-tag>
-              <el-tag effect="plain">{{ selectedDetail.is_official ? '官谷' : '同人' }}</el-tag>
+              <el-tag effect="plain" type="info">社团公开</el-tag>
             </div>
             <dl>
-              <dt>IP / 品类</dt>
-              <dd>{{ selectedDetail.ip?.name || '—' }} · {{ selectedDetail.category?.name || '—' }}</dd>
+              <dt>IP作品</dt>
+              <dd>{{ selectedDetail.ip?.name || '—' }}</dd>
+              <dt>品类</dt>
+              <dd :title="selectedDetail.category?.path_name || selectedDetail.category?.name">
+                {{ selectedDetail.category?.path_name || selectedDetail.category?.name || '—' }}
+              </dd>
+              <template v-if="selectedDetail.theme">
+                <dt>主题</dt>
+                <dd :title="selectedDetail.theme.name">{{ selectedDetail.theme.name }}</dd>
+              </template>
               <template v-if="selectedDetail.characters?.length">
                 <dt>角色</dt>
-                <dd>{{ selectedDetail.characters.map(character => character.name).join('、') }}</dd>
+                <dd class="goods-detail-dialog__character-list">
+                  <span v-for="character in selectedDetail.characters" :key="character.id" class="goods-detail-dialog__character">
+                    {{ character.name }}
+                  </span>
+                </dd>
               </template>
               <template v-if="selectedDetail.public_price !== null && selectedDetail.public_price !== undefined">
-                <dt>价格</dt>
-                <dd>¥{{ selectedDetail.public_price }}</dd>
+                <dt>公开价格</dt>
+                <dd class="goods-detail-dialog__price">¥{{ selectedDetail.public_price }}</dd>
               </template>
+              <dt>发布社团</dt>
+              <dd>{{ club?.name || '—' }}</dd>
             </dl>
             <div v-if="selectedDetail.description" class="goods-detail-dialog__notes">
               <span>公开说明</span>
               <p>{{ selectedDetail.description }}</p>
-            </div>
-            <div v-if="selectedDetail.additional_photos?.length" class="goods-detail-dialog__photos" aria-label="更多图片">
-              <el-image
-                v-for="photo in selectedDetail.additional_photos"
-                :key="photo.id"
-                :src="photo.image"
-                :alt="photo.label || `${selectedDetail.name}附加图片`"
-                fit="cover"
-                :preview-src-list="detailPhotoUrls"
-                :initial-index="detailPhotoUrls.indexOf(photo.image)"
-              />
             </div>
           </div>
         </template>
       </div>
       <template #footer>
         <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button v-if="selectedDetail && !authStore.isClub" type="primary" class="dialog-primary-button brand-add-btn" @click="importGoods(selectedDetail)">
+        <el-button v-if="selectedDetail && !authStore.isClub" type="primary" class="dialog-primary-button club-import-button brand-add-btn" @click="importGoods(selectedDetail)">
           <span class="brand-add-btn__content"><el-icon><Plus /></el-icon><span>加入谷仓</span></span>
         </el-button>
       </template>
@@ -335,10 +376,11 @@ import {
   Refresh,
   Search,
   Shop,
+  StarFilled,
   User,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { getClub, getClubGoods, getClubGoodsDetail } from '@/api/clubs'
+import { favoriteClub, getClub, getClubGoods, getClubGoodsDetail, unfavoriteClub } from '@/api/clubs'
 import { useAuthStore } from '@/stores/auth'
 import type { Club, ClubGoodsDetail, ClubGoodsListItem } from '@/api/types'
 
@@ -361,6 +403,8 @@ const selected = ref<ClubGoodsListItem | null>(null)
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const selectedDetail = ref<ClubGoodsDetail | null>(null)
+const selectedDetailImage = ref<string | null>(null)
+const favoriteLoading = ref(false)
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
 const platformLinkDefinitions: Array<{ key: PlatformKey; label: string; logo: string }> = [
@@ -384,6 +428,11 @@ const detailPhotoUrls = computed(() => {
     ...selectedDetail.value.additional_photos.map(photo => photo.image),
   ]
 })
+const activeDetailImage = computed(() => selectedDetailImage.value || detailPhotoUrls.value[0] || null)
+
+function selectDetailImage(url: string) {
+  selectedDetailImage.value = url
+}
 
 function currentClubId() {
   const id = Number(route.params.id)
@@ -392,6 +441,24 @@ function currentClubId() {
 
 function goodsAriaLabel(item: ClubGoodsListItem) {
   return `${item.name}，查看详情`
+}
+
+async function toggleFavorite() {
+  if (!club.value || favoriteLoading.value) return
+  if (!authStore.isAuthenticated) {
+    router.push({ name: 'Login', query: { redirect: route.fullPath } })
+    return
+  }
+  favoriteLoading.value = true
+  const wasFavorited = Boolean(club.value.is_favorited)
+  try {
+    const result = wasFavorited ? await unfavoriteClub(club.value.id) : await favoriteClub(club.value.id)
+    club.value = { ...club.value, ...result, is_favorited: !wasFavorited }
+  } catch (error: any) {
+    ElMessage.error(error?.response?.data?.detail || error?.message || '收藏操作失败')
+  } finally {
+    favoriteLoading.value = false
+  }
 }
 
 async function loadGoods() {
@@ -459,10 +526,13 @@ async function openGoodsDetail(item: ClubGoodsListItem) {
   detailVisible.value = true
   detailLoading.value = true
   selectedDetail.value = null
+  selectedDetailImage.value = null
+  favoriteLoading.value = false
   try {
     const result = await getClubGoodsDetail(clubId, item.id)
     if (sequence !== detailRequestSequence) return
     selectedDetail.value = result
+    selectedDetailImage.value = result.main_photo || result.additional_photos[0]?.image || null
   } catch (error: any) {
     if (sequence !== detailRequestSequence) return
     detailVisible.value = false
@@ -502,6 +572,7 @@ watch(() => route.params.id, () => {
   detailVisible.value = false
   selected.value = null
   selectedDetail.value = null
+  selectedDetailImage.value = null
   void loadClub()
 })
 
@@ -541,7 +612,7 @@ onMounted(() => {
 .club-hero {
   position: relative;
   display: grid;
-  grid-template-columns: 96px minmax(0, 1fr);
+  grid-template-columns: 96px minmax(0, 1fr) auto;
   align-items: center;
   gap: 20px;
   overflow: hidden;
@@ -589,6 +660,41 @@ onMounted(() => {
 
 .club-hero__copy {
   min-width: 0;
+}
+
+.club-hero__favorite {
+  display: grid;
+  min-width: 118px;
+  justify-items: end;
+  gap: 10px;
+  align-self: center;
+}
+
+.favorite-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: var(--text-light);
+  font-size: var(--font-caption);
+  white-space: nowrap;
+}
+
+.favorite-count .el-icon { color: var(--primary-gold-dark); }
+.favorite-count strong { color: var(--text-dark); font-size: 20px; line-height: 1; }
+
+.favorite-button {
+  min-height: 34px;
+  margin: 0;
+  border-radius: var(--button-radius);
+  border-color: rgba(162, 155, 254, 0.45);
+  color: var(--accent-purple-dark);
+}
+
+.favorite-button:hover,
+.favorite-button:focus-visible {
+  border-color: var(--accent-purple);
+  color: var(--accent-purple-dark);
+  background: rgba(162, 155, 254, 0.1);
 }
 
 .club-hero__eyebrow,
@@ -986,33 +1092,6 @@ onMounted(() => {
   font-size: 32px;
 }
 
-.goods-card__badges {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  left: 10px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  pointer-events: none;
-}
-
-.goods-card__kind {
-  display: inline-flex;
-  min-height: 24px;
-  align-items: center;
-  padding: 3px 8px;
-  border: 1px solid rgba(255, 255, 255, 0.56);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 4px 10px rgba(31, 41, 55, 0.12);
-  backdrop-filter: blur(8px);
-  color: var(--text-regular);
-  font-size: 11px;
-  font-weight: 700;
-}
-
 .goods-card__body {
   display: flex;
   min-width: 0;
@@ -1070,13 +1149,17 @@ onMounted(() => {
   border-top: 1px solid rgba(212, 175, 55, 0.14);
 }
 
-.import-button {
+.club-import-button {
+  width: 96px;
   --brand-add-radius: var(--button-radius);
   --brand-add-padding-y: 7px;
   --brand-add-padding-x: 11px;
   --brand-add-min-height: 34px;
   --brand-add-font-size: 12px;
   --brand-add-gap: 5px;
+}
+
+.import-button {
   position: relative;
   z-index: 2;
   flex: none;
@@ -1342,18 +1425,21 @@ onMounted(() => {
 }
 
 .dialog-primary-button {
-  --brand-add-radius: var(--button-radius);
-  --brand-add-padding-y: 9px;
-  --brand-add-padding-x: 16px;
-  --brand-add-min-height: 38px;
-  --brand-add-font-size: 13px;
+  flex: none;
 }
 
 .goods-detail-dialog {
   display: grid;
-  grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
   gap: 24px;
   min-height: 220px;
+}
+
+.goods-detail-dialog__visual {
+  display: grid;
+  align-content: start;
+  gap: 12px;
+  min-width: 0;
 }
 
 .goods-detail-dialog__media {
@@ -1378,13 +1464,31 @@ onMounted(() => {
   width: 100%;
   height: 100%;
   place-items: center;
+  align-content: center;
+  gap: 7px;
   color: var(--text-light);
   font-size: 36px;
+}
+
+.goods-detail-dialog__placeholder span {
+  font-size: var(--font-caption);
 }
 
 .goods-detail-dialog__content {
   min-width: 0;
   padding-top: 2px;
+}
+
+.goods-detail-dialog__headline {
+  margin-bottom: 16px;
+}
+
+.goods-detail-dialog__eyebrow {
+  display: block;
+  margin-bottom: 5px;
+  color: var(--primary-gold-dark);
+  font-size: var(--font-small);
+  font-weight: 700;
 }
 
 .goods-detail-dialog__tags {
@@ -1412,6 +1516,30 @@ onMounted(() => {
   margin: 0;
   color: var(--text-regular);
   overflow-wrap: anywhere;
+}
+
+.goods-detail-dialog__character-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.goods-detail-dialog__character {
+  display: inline-flex;
+  min-width: 0;
+  align-items: center;
+  padding: 3px 8px;
+  border: 1px solid rgba(162, 155, 254, 0.3);
+  border-radius: var(--button-radius);
+  background: rgba(246, 244, 255, 0.7);
+  color: var(--accent-purple-dark);
+  font-size: var(--font-small);
+  line-height: 1.35;
+}
+
+.goods-detail-dialog__price {
+  color: var(--accent-purple-dark) !important;
+  font-weight: 700;
 }
 
 .goods-detail-dialog__notes {
@@ -1444,18 +1572,40 @@ onMounted(() => {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-top: 22px;
-  padding-top: 16px;
-  border-top: 1px solid rgba(212, 175, 55, 0.14);
+  min-width: 0;
 }
 
-.goods-detail-dialog__photos .el-image {
+.goods-detail-dialog__photo-button {
+  display: block;
   width: 64px;
   height: 64px;
+  padding: 0;
   overflow: hidden;
   border: 1px solid rgba(212, 175, 55, 0.18);
   border-radius: var(--button-radius);
+  outline: none;
   background: var(--secondary-gray);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
+}
+
+.goods-detail-dialog__photo-button:hover,
+.goods-detail-dialog__photo-button:focus-visible {
+  border-color: var(--accent-purple);
+  box-shadow: 0 0 0 3px rgba(162, 155, 254, 0.18);
+  transform: translateY(-1px);
+}
+
+.goods-detail-dialog__photo-button.is-active {
+  border-color: var(--primary-gold-dark);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2);
+}
+
+.goods-detail-dialog__photo-button .el-image,
+.goods-detail-dialog__photo-button :deep(.el-image__inner) {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 @media (max-width: 1024px) {
@@ -1488,7 +1638,7 @@ onMounted(() => {
   }
 
   .club-hero {
-    grid-template-columns: 72px minmax(0, 1fr);
+    grid-template-columns: 72px minmax(0, 1fr) auto;
     gap: 12px;
     padding: 18px;
   }
@@ -1499,6 +1649,10 @@ onMounted(() => {
     border-radius: 18px;
     font-size: 26px;
   }
+
+  .club-hero__favorite { min-width: 92px; }
+  .favorite-button span { display: none; }
+  .favorite-button { width: 36px; padding: 0; }
 
   .club-hero h1 {
     font-size: 22px;
@@ -1531,6 +1685,10 @@ onMounted(() => {
 }
 
 @media (max-width: 600px) {
+  .club-hero { grid-template-columns: 72px minmax(0, 1fr); }
+  .club-hero__favorite { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
+  .favorite-button span { display: inline; }
+  .favorite-button { width: auto; padding: 0 12px; }
   .goods-detail-dialog {
     grid-template-columns: 1fr;
     gap: 18px;
@@ -1539,6 +1697,10 @@ onMounted(() => {
   .goods-detail-dialog__media {
     width: min(100%, 300px);
     justify-self: center;
+  }
+
+  .goods-detail-dialog__photos {
+    justify-content: center;
   }
 }
 
@@ -1596,7 +1758,7 @@ onMounted(() => {
     gap: 5px;
   }
 
-  .import-button {
+  .club-import-button {
     --brand-add-padding-x: 8px;
     --brand-add-font-size: 11px;
   }
@@ -1629,6 +1791,11 @@ onMounted(() => {
   .store-link:hover,
   .search-button:hover,
   .status-option:active {
+    transform: none;
+  }
+
+  .goods-detail-dialog__photo-button:hover,
+  .goods-detail-dialog__photo-button:focus-visible {
     transform: none;
   }
 }

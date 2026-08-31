@@ -2,7 +2,9 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createPinia, setActivePinia } from 'pinia'
 import ClubProfile from '@/views/club/ClubProfile.vue'
+import { useAuthStore } from '@/stores/auth'
 import type { Club } from '@/api/types'
 
 vi.mock('element-plus', () => ({
@@ -55,6 +57,7 @@ const InputStub = {
 const passthrough = (tag = 'div') => ({ template: `<${tag}><slot /></${tag}>` })
 
 async function mountPage() {
+  setActivePinia(createPinia())
   vi.mocked(clubApi.getMyClub).mockResolvedValue(club)
   vi.mocked(clubApi.updateMyClub).mockResolvedValue(club)
   const wrapper = mount(ClubProfile, {
@@ -106,5 +109,40 @@ describe('ClubProfile 平台入口', () => {
       weidian_url: null,
       store_links: [{ label: '官方网店', url: 'https://example.com/shop' }],
     }))
+  })
+
+  it('保存后同步工作区标题使用的社团摘要', async () => {
+    const wrapper = await mountPage()
+    const authStore = useAuthStore()
+    authStore.user = {
+      id: 1,
+      username: 'club-user',
+      role: 'User',
+      account_type: 'club',
+      approval_status: 'approved',
+      club: { id: 1, name: club.name, avatar: club.avatar },
+    }
+    const updatedClub = { ...club, name: '星河社团' }
+    vi.mocked(clubApi.updateMyClub).mockResolvedValueOnce(updatedClub)
+
+    await (wrapper.vm as unknown as { save: () => Promise<void> }).save()
+
+    expect(authStore.user?.club).toEqual({ id: 1, name: '星河社团', avatar: null })
+  })
+
+  it('头像上传提供图片类型和大小校验，并在成功后刷新资料', async () => {
+    const wrapper = await mountPage()
+    vi.mocked(clubApi.uploadMyClubAvatar).mockResolvedValue({ ...club, avatar: '/media/avatar.png' })
+    const vm = wrapper.vm as unknown as { uploadAvatar: (file: File) => Promise<boolean>; form: Club }
+
+    await vm.uploadAvatar(new File(['image'], 'avatar.png', { type: 'image/png' }))
+    expect(clubApi.uploadMyClubAvatar).toHaveBeenCalledWith(expect.any(File))
+    expect(vm.form.avatar).toBe('/media/avatar.png')
+
+    vi.mocked(clubApi.uploadMyClubAvatar).mockClear()
+    await vm.uploadAvatar(new File(['text'], 'avatar.txt', { type: 'text/plain' }))
+    expect(clubApi.uploadMyClubAvatar).not.toHaveBeenCalled()
+    expect(source).toContain('accept="image/*"')
+    expect(source).toContain('MAX_AVATAR_SIZE')
   })
 })

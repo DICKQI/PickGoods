@@ -20,8 +20,8 @@
         <div class="avatar-field__copy">
           <strong>社团头像</strong>
           <span>建议上传清晰的方形图片，审批通过后即可更新。</span>
-          <el-upload :show-file-list="false" :before-upload="uploadAvatar">
-            <el-button plain class="outline-button">
+          <el-upload accept="image/*" :show-file-list="false" :before-upload="uploadAvatar" :disabled="avatarUploading">
+            <el-button plain class="outline-button" :loading="avatarUploading" :disabled="avatarUploading">
               <el-icon><Upload /></el-icon>
               上传头像
             </el-button>
@@ -107,6 +107,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Check, Upload } from '@element-plus/icons-vue'
 import { getMyClub, updateMyClub, uploadMyClubAvatar } from '@/api/clubs'
+import { useAuthStore } from '@/stores/auth'
 import type { Club } from '@/api/types'
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
@@ -119,6 +120,9 @@ const platforms: Array<{ key: PlatformKey; label: string; host: string; logo: st
 
 const loading = ref(false)
 const saving = ref(false)
+const avatarUploading = ref(false)
+const MAX_AVATAR_SIZE = 5 * 1024 * 1024
+const authStore = useAuthStore()
 const form = reactive<Club>({
   id: 0,
   name: '',
@@ -145,6 +149,18 @@ function hydrate(data: Club) {
   storeLinksText.value = (data.store_links || []).map(item => `${item.label} | ${item.url}`).join('\n')
 }
 
+function syncWorkspaceClub(data: Club) {
+  if (!authStore.user) return
+  authStore.user = {
+    ...authStore.user,
+    club: {
+      id: data.id,
+      name: data.name,
+      avatar: data.avatar,
+    },
+  }
+}
+
 function parseStoreLinks() {
   return storeLinksText.value
     .split('\n')
@@ -169,7 +185,7 @@ async function load() {
 async function save() {
   saving.value = true
   try {
-    hydrate(await updateMyClub({
+    const updated = await updateMyClub({
       name: form.name,
       description: form.description,
       announcement: form.announcement,
@@ -182,7 +198,9 @@ async function save() {
       store_links: parseStoreLinks(),
       address: form.address,
       business_hours: form.business_hours,
-    }))
+    })
+    hydrate(updated)
+    syncWorkspaceClub(updated)
     ElMessage.success('社团资料已保存')
   } finally {
     saving.value = false
@@ -190,11 +208,24 @@ async function save() {
 }
 
 async function uploadAvatar(file: File) {
+  if (!file.type.startsWith('image/')) {
+    ElMessage.error('请选择图片文件')
+    return false
+  }
+  if (file.size > MAX_AVATAR_SIZE) {
+    ElMessage.error('头像文件不能超过 5MB')
+    return false
+  }
+  avatarUploading.value = true
   try {
-    hydrate(await uploadMyClubAvatar(file))
+    const updated = await uploadMyClubAvatar(file)
+    hydrate(updated)
+    syncWorkspaceClub(updated)
     ElMessage.success('头像已更新')
   } catch {
     // request interceptor already shows the failure message
+  } finally {
+    avatarUploading.value = false
   }
   return false
 }

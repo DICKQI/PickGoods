@@ -40,7 +40,6 @@
               <span class="club-identity__description">{{ club.description || '这个社团还没有填写简介。' }}</span>
               <span class="club-identity__meta">
                 <span>{{ club.goods_count }} 件上架谷子</span>
-                <span v-if="club.announcement" class="club-announcement"><el-icon><Bell /></el-icon>有新公告</span>
               </span>
             </span>
           </button>
@@ -75,10 +74,6 @@
                 <span>{{ link.label }}</span>
               </a>
             </div>
-            <el-button class="enter-club-button" type="primary" aria-label="进入社团" @click="openClub(club.id)">
-              <span>进入社团</span>
-              <el-icon><ArrowRight /></el-icon>
-            </el-button>
           </div>
         </header>
 
@@ -101,7 +96,6 @@
               <span v-else class="preview-item__placeholder" aria-label="暂无图片">
                 <el-icon><Picture /></el-icon>
               </span>
-              <span v-if="item.is_official" class="official-badge">官谷</span>
             </span>
             <span class="preview-item__body">
               <span class="preview-item__name" :title="item.name">{{ item.name }}</span>
@@ -128,7 +122,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Bell, Link, Picture, Search, Shop } from '@element-plus/icons-vue'
+import { ArrowRight, Link, Picture, Search, Shop } from '@element-plus/icons-vue'
 import { getClubs } from '@/api/clubs'
 import type { Club } from '@/api/types'
 
@@ -301,7 +295,6 @@ onMounted(load)
 
 .club-identity:focus-visible,
 .preview-item:focus-visible,
-.enter-club-button:focus-visible,
 .platform-link:focus-visible,
 .custom-link:focus-visible {
   outline: 2px solid var(--accent-purple);
@@ -383,13 +376,6 @@ onMounted(load)
   font-size: var(--font-small);
 }
 
-.club-announcement {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
-  color: var(--accent-purple-dark);
-}
-
 .club-shop__actions {
   display: flex;
   flex: none;
@@ -445,11 +431,6 @@ onMounted(load)
 .custom-link:hover {
   color: var(--primary-gold-dark);
   transform: translateY(-1px);
-}
-
-.enter-club-button {
-  min-height: 36px;
-  border-radius: var(--button-radius);
 }
 
 .preview-grid {
@@ -508,20 +489,6 @@ onMounted(load)
   place-items: center;
   color: var(--text-lighter);
   font-size: 28px;
-}
-
-.official-badge {
-  position: absolute;
-  top: 8px;
-  left: 8px;
-  min-height: 21px;
-  padding: 3px 6px;
-  border-radius: 4px;
-  background: rgba(51, 51, 51, 0.78);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1.3;
 }
 
 .preview-item__body {
@@ -645,15 +612,6 @@ onMounted(load)
     gap: 0;
   }
 
-  .enter-club-button {
-    padding-right: 9px;
-    padding-left: 9px;
-  }
-
-  .enter-club-button span {
-    display: none;
-  }
-
   .preview-grid {
     gap: 10px;
   }
@@ -693,13 +651,6 @@ onMounted(load)
 
   .club-identity__meta {
     gap: 5px;
-  }
-
-  .club-announcement {
-    max-width: 74px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   .preview-grid {

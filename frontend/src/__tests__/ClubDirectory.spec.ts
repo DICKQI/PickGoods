@@ -50,8 +50,8 @@ const ElEmptyStub = defineComponent({
 })
 
 const previewGoods: ClubPreviewGoods[] = [
-  { id: 'goods-1', name: '星轨徽章', preview_photo: 'https://cdn.example.com/hero.jpg', public_price: '88.00', is_official: true },
-  { id: 'goods-2', name: '流光色纸', preview_photo: null, public_price: null, is_official: false },
+  { id: 'goods-1', name: '星轨徽章', preview_photo: 'https://cdn.example.com/hero.jpg', public_price: '88.00' },
+  { id: 'goods-2', name: '流光色纸', preview_photo: null, public_price: null },
 ]
 
 const club: Club = {
@@ -105,7 +105,7 @@ describe('ClubDirectory 社团目录', () => {
     pushMock.mockReset()
   })
 
-  it('展示最新预览、价格、官谷标记、占位图和平台入口', async () => {
+  it('展示最新预览、价格、占位图和平台入口', async () => {
     const wrapper = await mountPage()
 
     expect(wrapper.get('.club-identity__title h2').text()).toBe('星光社团')
@@ -113,20 +113,21 @@ describe('ClubDirectory 社团目录', () => {
     expect(wrapper.find('.preview-item__media img').attributes('alt')).toBe('星轨徽章图片')
     expect(wrapper.findAll('.preview-item')).toHaveLength(2)
     expect(wrapper.find('.preview-item__price').text()).toBe('￥88.00')
-    expect(wrapper.findAll('.official-badge')).toHaveLength(1)
+    expect(wrapper.find('.official-badge').exists()).toBe(false)
     expect(wrapper.find('.preview-item__placeholder')).toBeTruthy()
     expect(wrapper.find('a[aria-label^="淘宝"]').attributes('href')).toBe('https://shop.taobao.com/star')
     expect(wrapper.find('a[aria-label="自建店铺（在新窗口打开）"]').exists()).toBe(true)
+    expect(wrapper.find('.enter-club-button').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('有新公告')
   })
 
-  it('点击社团身份、预览和进入按钮都会打开详情', async () => {
+  it('点击社团身份和预览都会打开详情', async () => {
     const wrapper = await mountPage()
 
     await wrapper.get('.club-identity').trigger('click')
     await wrapper.get('.preview-item').trigger('click')
-    await wrapper.get('.enter-club-button').trigger('click')
 
-    expect(pushMock).toHaveBeenCalledTimes(3)
+    expect(pushMock).toHaveBeenCalledTimes(2)
     expect(pushMock).toHaveBeenLastCalledWith({ name: 'ClubDetail', params: { id: 1 } })
   })
 
