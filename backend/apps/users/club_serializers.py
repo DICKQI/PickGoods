@@ -1,5 +1,6 @@
 from urllib.parse import urlparse
 
+from django.db.models import Q
 from rest_framework import serializers
 
 from apps.goods.models import (
@@ -17,7 +18,7 @@ from apps.goods.serializers.ip import IPSimpleSerializer
 from apps.goods.serializers.theme import ThemeSimpleSerializer
 from apps.goods.utils import compress_image
 
-from .models import Club, User
+from .models import Club, ClubFavorite, User
 
 
 def normalize_store_links(value):
@@ -113,7 +114,7 @@ class ClubDirectoryPreviewSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = ClubCatalogItem
-        fields = ("id", "name", "preview_photo", "public_price", "is_official")
+        fields = ("id", "name", "preview_photo", "public_price")
         read_only_fields = fields
 
     def get_preview_photo(self, obj):
@@ -144,8 +145,94 @@ class ClubDirectorySerializer(ClubSerializer):
         return ClubDirectoryPreviewSerializer(items, many=True, context=self.context).data
 
 
+class ClubPublicDetailSerializer(ClubSerializer):
+    """社团详情页资料，附带有效收藏人数和当前用户收藏状态。"""
+
+    favorite_count = serializers.SerializerMethodField()
+    is_favorited = serializers.SerializerMethodField()
+
+    class Meta(ClubSerializer.Meta):
+        fields = ClubSerializer.Meta.fields + ("favorite_count", "is_favorited")
+        read_only_fields = ClubSerializer.Meta.read_only_fields + ("favorite_count", "is_favorited")
+
+    def _valid_favorite_users(self):
+        return User.objects.filter(
+            is_active=True,
+            approval_status=User.APPROVAL_APPROVED,
+        ).filter(
+            Q(account_type=User.ACCOUNT_TYPE_COLLECTOR)
+            | Q(role__name__iexact="Admin")
+        )
+
+    def get_favorite_count(self, obj):
+        return ClubFavorite.objects.filter(club=obj, user__in=self._valid_favorite_users()).count()
+
+    def get_is_favorited(self, obj):
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if not user or not getattr(user, "is_authenticated", False):
+            return False
+        role_name = getattr(getattr(user, "role", None), "name", "")
+        if not getattr(user, "is_active", False) or user.approval_status != User.APPROVAL_APPROVED:
+            return False
+        if user.account_type != User.ACCOUNT_TYPE_COLLECTOR and str(role_name).lower() != "admin":
+            return False
+        return ClubFavorite.objects.filter(club=obj, user=user).exists()
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        role_name = getattr(getattr(user, "role", None), "name", "")
+        can_view_status = bool(
+            user
+            and getattr(user, "is_authenticated", False)
+            and getattr(user, "is_active", False)
+            and user.approval_status == User.APPROVAL_APPROVED
+            and (user.account_type == User.ACCOUNT_TYPE_COLLECTOR or str(role_name).lower() == "admin")
+        )
+        if not can_view_status:
+            data.pop("is_favorited", None)
+        return data
+
+
+class ClubFavoriteSerializer(serializers.ModelSerializer):
+    # 收藏列表外层已经返回人数和当前状态，嵌套社团资料保持目录字段形状。
+    club = ClubSerializer(read_only=True)
+    favorite_count = serializers.SerializerMethodField()
+    is_favorited = serializers.SerializerMethodField()
+    favorited_at = serializers.DateTimeField(source="created_at", read_only=True)
+
+    class Meta:
+        model = ClubFavorite
+        fields = ("club", "favorite_count", "is_favorited", "favorited_at")
+        read_only_fields = fields
+
+    def get_favorite_count(self, obj):
+        valid_users = User.objects.filter(
+            is_active=True,
+            approval_status=User.APPROVAL_APPROVED,
+        ).filter(Q(account_type=User.ACCOUNT_TYPE_COLLECTOR) | Q(role__name__iexact="Admin"))
+        return ClubFavorite.objects.filter(club=obj.club, user__in=valid_users).count()
+
+    def get_is_favorited(self, obj):
+        return True
+
+
 class ClubRegistrationSerializer(serializers.Serializer):
     name = serializers.CharField(max_length=200)
+
+
+class ClubAvatarUploadSerializer(serializers.Serializer):
+    """社团头像上传校验；头像仅在社团工作区维护。"""
+
+    avatar = serializers.ImageField()
+
+    def validate_avatar(self, value):
+        max_size = 5 * 1024 * 1024
+        if value.size > max_size:
+            raise serializers.ValidationError("头像文件不能超过 5MB")
+        return value
 
 
 class ClubPopularitySerializer(serializers.Serializer):
@@ -163,6 +250,8 @@ class ClubCatalogImageSerializer(serializers.ModelSerializer):
 
 
 class ClubCatalogItemSerializer(serializers.ModelSerializer):
+    # 兼容旧客户端的只读字段；社团目录不再允许设置官谷/同人。
+    is_official = serializers.BooleanField(read_only=True)
     ip = IPSimpleSerializer(read_only=True)
     ip_id = serializers.PrimaryKeyRelatedField(queryset=IP.objects.all(), source="ip", write_only=True)
     characters = CharacterSimpleSerializer(many=True, read_only=True)
@@ -209,6 +298,7 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         characters = validated_data.pop("characters", [])
+        validated_data["is_official"] = False
         main_photo = validated_data.get("main_photo")
         if main_photo:
             compressed = compress_image(main_photo, max_size_kb=300)
@@ -220,6 +310,7 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         characters = validated_data.pop("characters", None)
+        validated_data["is_official"] = False
         main_photo = validated_data.get("main_photo")
         if main_photo:
             compressed = compress_image(main_photo, max_size_kb=300)
@@ -229,6 +320,21 @@ class ClubCatalogItemSerializer(serializers.ModelSerializer):
         if characters is not None:
             instance.characters.set(characters)
         return instance
+
+
+class ClubCatalogBatchRequestSerializer(serializers.Serializer):
+    """批量处理社团谷子时的 ID 列表。"""
+
+    goods_ids = serializers.ListField(
+        child=serializers.UUIDField(),
+        allow_empty=False,
+        required=True,
+    )
+
+    def validate_goods_ids(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("批量操作中不能包含重复谷子")
+        return value
 
 
 class ClubCatalogPublicSerializer(serializers.ModelSerializer):
@@ -242,7 +348,7 @@ class ClubCatalogPublicSerializer(serializers.ModelSerializer):
         model = ClubCatalogItem
         fields = (
             "id", "name", "description", "ip", "characters", "category", "theme", "main_photo",
-            "additional_photos", "public_price", "is_official",
+            "additional_photos", "public_price",
         )
         read_only_fields = fields
 
@@ -273,10 +379,14 @@ __all__ = [
     "ClubSerializer",
     "ClubDirectoryPreviewSerializer",
     "ClubDirectorySerializer",
+    "ClubPublicDetailSerializer",
+    "ClubFavoriteSerializer",
     "ClubRegistrationSerializer",
+    "ClubAvatarUploadSerializer",
     "ClubPopularitySerializer",
     "ClubCatalogImageSerializer",
     "ClubCatalogItemSerializer",
+    "ClubCatalogBatchRequestSerializer",
     "ClubCatalogPublicSerializer",
     "ClubImportSerializer",
     "ClubImportTemplateSerializer",

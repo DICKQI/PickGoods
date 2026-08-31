@@ -36,7 +36,8 @@ class ClubCatalogItem(models.Model):
     public_price = models.DecimalField(
         max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="公开价格"
     )
-    is_official = models.BooleanField(default=True, verbose_name="是否官谷")
+    # 社团目录目前统一为同人谷子；保留字段仅用于兼容旧数据和个人导入快照。
+    is_official = models.BooleanField(default=False, verbose_name="是否官谷")
     publication_status = models.CharField(
         max_length=20,
         choices=PUBLICATION_STATUS_CHOICES,

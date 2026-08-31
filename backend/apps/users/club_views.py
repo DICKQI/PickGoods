@@ -26,19 +26,23 @@ from apps.goods.models import (
 )
 from apps.goods.serializers.goods import GoodsDetailSerializer
 from apps.goods.utils import compress_image
-from core.permissions import IsClubAccount, is_admin
+from core.permissions import IsClubAccount, IsCollectorAccount, is_admin
 
 from .club_serializers import (
+    ClubAvatarUploadSerializer,
+    ClubCatalogBatchRequestSerializer,
     ClubCatalogImageSerializer,
     ClubCatalogItemSerializer,
     ClubCatalogPublicSerializer,
     ClubDirectorySerializer,
     ClubImportSerializer,
     ClubImportTemplateSerializer,
+    ClubFavoriteSerializer,
     ClubPopularitySerializer,
+    ClubPublicDetailSerializer,
     ClubSerializer,
 )
-from .models import Club, User
+from .models import Club, ClubFavorite, User
 
 
 class ClubPagination(PageNumberPagination):
@@ -139,6 +143,8 @@ class ClubViewSet(viewsets.GenericViewSet):
             return [AllowAny()]
         if self.action in ("me", "avatar", "popularity"):
             return [IsAuthenticated(), IsClubAccount()]
+        if self.action in ("favorite", "favorites"):
+            return [IsAuthenticated(), IsCollectorAccount()]
         return [IsAuthenticated()]
 
     def list(self, request):
@@ -178,7 +184,29 @@ class ClubViewSet(viewsets.GenericViewSet):
 
     def retrieve(self, request, pk=None):
         club = get_object_or_404(self.get_queryset(), pk=pk)
-        return Response(ClubSerializer(club, context={"request": request}).data)
+        return Response(ClubPublicDetailSerializer(club, context={"request": request}).data)
+
+    @action(detail=True, methods=["put", "delete"], url_path="favorite")
+    def favorite(self, request, pk=None):
+        club = get_object_or_404(self.get_queryset(), pk=pk)
+        if request.method.lower() == "put":
+            _, created = ClubFavorite.objects.get_or_create(user=request.user, club=club)
+            payload = ClubPublicDetailSerializer(club, context={"request": request}).data
+            return Response(payload, status=status.HTTP_201_CREATED if created else status.HTTP_200_OK)
+        ClubFavorite.objects.filter(user=request.user, club=club).delete()
+        return Response(ClubPublicDetailSerializer(club, context={"request": request}).data)
+
+    @action(detail=False, methods=["get"], url_path="me/favorites")
+    def favorites(self, request):
+        queryset = ClubFavorite.objects.filter(
+            user=request.user,
+            club__user__account_type=User.ACCOUNT_TYPE_CLUB,
+            club__user__approval_status=User.APPROVAL_APPROVED,
+            club__user__is_active=True,
+        ).select_related("club", "club__user").order_by("-created_at", "-id")
+        page = self.paginate_queryset(queryset)
+        serializer = ClubFavoriteSerializer(page, many=True, context={"request": request})
+        return self.get_paginated_response(serializer.data)
 
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):
@@ -192,10 +220,11 @@ class ClubViewSet(viewsets.GenericViewSet):
     @action(detail=False, methods=["post"], url_path="me/avatar", parser_classes=[MultiPartParser, FormParser])
     def avatar(self, request):
         club = get_object_or_404(Club, user=request.user)
-        image = request.FILES.get("avatar")
-        if not image:
-            return Response({"detail": "请提供 avatar 文件"}, status=status.HTTP_400_BAD_REQUEST)
-        club.avatar = image
+        serializer = ClubAvatarUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        image = serializer.validated_data["avatar"]
+        compressed = compress_image(image, max_size_kb=300)
+        club.avatar = compressed or image
         club.save(update_fields=["avatar", "updated_at"])
         return Response(ClubSerializer(club, context={"request": request}).data)
 
@@ -291,6 +320,68 @@ class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
         min_order = ClubCatalogItem.objects.filter(club=club).aggregate(min_order=Min("order"))["min_order"]
         serializer.save(club=club, order=(min_order or 0) - 1000)
 
+    def _validate_batch_items(self, request, allowed_statuses, operation_label):
+        serializer = ClubCatalogBatchRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        goods_ids = serializer.validated_data["goods_ids"]
+        items = list(
+            self.get_queryset()
+            .select_for_update()
+            .filter(id__in=goods_ids)
+        )
+        item_by_id = {item.id: item for item in items}
+        invalid_ids = [str(goods_id) for goods_id in goods_ids if goods_id not in item_by_id]
+        invalid_ids.extend(
+            str(goods_id)
+            for goods_id in goods_ids
+            if goods_id in item_by_id and item_by_id[goods_id].publication_status not in allowed_statuses
+        )
+        if invalid_ids:
+            return None, Response(
+                {
+                    "code": "club_goods_batch_invalid",
+                    "detail": f"所选谷子中包含不存在、非本社团或不符合{operation_label}要求的条目",
+                    "invalid_ids": invalid_ids,
+                },
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        return items, None
+
+    @action(detail=False, methods=["post"], url_path="batch-delete")
+    def batch_delete(self, request):
+        with transaction.atomic():
+            items, error = self._validate_batch_items(
+                request,
+                {
+                    ClubCatalogItem.PUBLICATION_DRAFT,
+                    ClubCatalogItem.PUBLICATION_UNLISTED,
+                },
+                "批量删除",
+            )
+            if error is not None:
+                return error
+            deleted_ids = [str(item.id) for item in items]
+            ClubCatalogItem.objects.filter(id__in=[item.id for item in items]).delete()
+        return Response({"deleted_count": len(deleted_ids), "deleted_ids": deleted_ids})
+
+    @action(detail=False, methods=["post"], url_path="batch-unlist")
+    def batch_unlist(self, request):
+        with transaction.atomic():
+            items, error = self._validate_batch_items(
+                request,
+                {ClubCatalogItem.PUBLICATION_LISTED},
+                "批量下架",
+            )
+            if error is not None:
+                return error
+            updated_ids = [str(item.id) for item in items]
+            now = timezone.now()
+            for item in items:
+                item.publication_status = ClubCatalogItem.PUBLICATION_UNLISTED
+                item.updated_at = now
+            ClubCatalogItem.objects.bulk_update(items, ["publication_status", "updated_at"])
+        return Response({"updated_count": len(updated_ids), "updated_ids": updated_ids})
+
     @action(detail=True, methods=["post"], url_path="upload-main-photo", parser_classes=[MultiPartParser, FormParser])
     def upload_main_photo(self, request, pk=None):
         item = self.get_object()
@@ -343,8 +434,9 @@ class ClubGoodsImportTemplateView(APIView):
             publication_status=ClubCatalogItem.PUBLICATION_LISTED,
         )
         existing_origin = ClubGoodsOrigin.objects.filter(
-            collector=request.user, source_item=source, personal_goods__isnull=False
+            collector=request.user, source_item=source
         ).select_related("personal_goods").first()
+        existing_goods = existing_origin.personal_goods if existing_origin else None
         payload = {
             "source_item_id": source.id,
             "source": source,
@@ -361,13 +453,13 @@ class ClubGoodsImportTemplateView(APIView):
                 "purchase_date": None,
                 "notes": "",
                 "quantity": 1,
-                "is_official": source.is_official,
+                "is_official": False,
                 "status": "intended",
             },
             "existing": {
-                "goods_id": str(existing_origin.personal_goods_id),
-                "quantity": existing_origin.personal_goods.quantity,
-            } if existing_origin else None,
+                "goods_id": str(existing_goods.id),
+                "quantity": existing_goods.quantity,
+            } if existing_goods else None,
         }
         return Response(ClubImportTemplateSerializer(payload, context={"request": request}).data)
 
@@ -439,7 +531,7 @@ class ClubGoodsImportView(viewsets.ViewSet):
                     quantity=values.get("quantity", 1),
                     price=values.get("price", source.public_price),
                     purchase_date=values.get("purchase_date"),
-                    is_official=values.get("is_official", source.is_official),
+                    is_official=False,
                     status=values["status"],
                     notes=values.get("notes") or "",
                     order=(Goods.objects.filter(user=target_user).aggregate(min_order=Min("order"))["min_order"] or 0) - 1000,

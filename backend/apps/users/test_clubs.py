@@ -1,7 +1,11 @@
 from datetime import timedelta
+from io import BytesIO
+from uuid import uuid4
 
 from django.test import TestCase
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -17,7 +21,7 @@ from apps.goods.models import (
     Theme,
 )
 
-from .models import Club, Role, User
+from .models import Club, ClubFavorite, Role, User
 
 
 class ClubFeatureAPITestCase(TestCase):
@@ -181,6 +185,7 @@ class ClubFeatureAPITestCase(TestCase):
         detail = self.client.get(f"/api/clubs/{self.club.id}/goods/{self.source.id}/")
         self.assertEqual(detail.status_code, status.HTTP_200_OK)
         self.assertNotIn("quantity", detail.json())
+        self.assertNotIn("is_official", detail.json())
 
     def test_public_directory_includes_latest_limited_previews_with_photo_fallback(self):
         now = timezone.now()
@@ -224,10 +229,77 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertTrue(previews[1]["preview_photo"].endswith("/media/club_catalog/extra/fallback.jpg"))
         self.assertIsNone(previews[2]["preview_photo"])
         self.assertEqual(previews[0]["public_price"], "1.00")
-        self.assertTrue(previews[0]["is_official"])
         for preview in previews:
-            for private_field in ("quantity", "location", "purchase_date", "notes", "status", "description"):
+            for private_field in ("quantity", "location", "purchase_date", "notes", "status", "description", "is_official"):
                 self.assertNotIn(private_field, preview)
+
+    def test_club_catalog_is_always_fanmade_and_import_does_not_copy_official_flag(self):
+        self.assertFalse(self.source.is_official)
+        self.client.force_authenticate(self.club_user)
+        created = self.client.post(
+            "/api/clubs/me/goods/",
+            {
+                "name": "强制同人条目",
+                "ip_id": self.ip.id,
+                "category_id": self.category.id,
+                "character_ids": [self.character.id],
+                "is_official": True,
+                "publication_status": "listed",
+            },
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(created.json()["is_official"])
+        item = ClubCatalogItem.objects.get(name="强制同人条目")
+        self.assertFalse(item.is_official)
+
+        updated = self.client.patch(
+            f"/api/clubs/me/goods/{item.id}/",
+            {"is_official": True},
+            format="json",
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        item.refresh_from_db()
+        self.assertFalse(item.is_official)
+
+        self.client.force_authenticate(self.collector)
+        imported = self.client.post(
+            f"/api/clubs/goods/{self.source.id}/import/",
+            {"status": "intended", "is_official": True},
+            format="json",
+        )
+        self.assertEqual(imported.status_code, status.HTTP_201_CREATED)
+        self.assertFalse(imported.json()["is_official"])
+        self.assertFalse(Goods.objects.get(user=self.collector).is_official)
+
+    def test_club_avatar_upload_validates_and_returns_public_url(self):
+        self.client.force_authenticate(self.club_user)
+        image_data = BytesIO()
+        Image.new("RGB", (32, 32), color="#d4af37").save(image_data, format="PNG")
+        image_data.seek(0)
+        response = self.client.post(
+            "/api/clubs/me/avatar/",
+            {"avatar": SimpleUploadedFile("avatar.png", image_data.read(), content_type="image/png")},
+            format="multipart",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("/media/clubs/avatars/avatar", response.json()["avatar"])
+
+        invalid = self.client.post(
+            "/api/clubs/me/avatar/",
+            {"avatar": SimpleUploadedFile("avatar.txt", b"not-an-image", content_type="text/plain")},
+            format="multipart",
+        )
+        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
+
+        large_data = BytesIO()
+        Image.new("RGB", (2500, 2500), color="white").save(large_data, format="BMP")
+        large = self.client.post(
+            "/api/clubs/me/avatar/",
+            {"avatar": SimpleUploadedFile("large.bmp", large_data.getvalue(), content_type="image/bmp")},
+            format="multipart",
+        )
+        self.assertEqual(large.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_club_catalog_crud_is_separate_from_personal_goods(self):
         self.client.force_authenticate(self.club_user)
@@ -253,6 +325,159 @@ class ClubFeatureAPITestCase(TestCase):
         updated = self.client.patch(f"/api/clubs/me/goods/{catalog.id}/", {"publication_status": "unlisted"}, format="json")
         self.assertEqual(updated.status_code, status.HTTP_200_OK)
         self.assertEqual(updated.json()["publication_status"], "unlisted")
+
+    def test_batch_delete_removes_only_draft_and_unlisted_and_preserves_imported_goods(self):
+        draft = ClubCatalogItem.objects.create(
+            club=self.club, name="待删除草稿", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        unlisted = ClubCatalogItem.objects.create(
+            club=self.club, name="待删除下架", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+        for item in (draft, unlisted):
+            item.characters.add(self.character)
+        image = ClubCatalogImage.objects.create(
+            item=unlisted,
+            image=SimpleUploadedFile("catalog.png", b"catalog-image", content_type="image/png"),
+            label="展示图",
+        )
+        image_id = image.id
+
+        self.client.force_authenticate(self.collector)
+        imported = self.client.post(
+            f"/api/clubs/goods/{unlisted.id}/import/", {"status": "intended"}, format="json"
+        )
+        self.assertEqual(imported.status_code, status.HTTP_201_CREATED)
+        imported_goods = Goods.objects.get(user=self.collector)
+        origin = ClubGoodsOrigin.objects.get(collector=self.collector, source_item=unlisted)
+
+        self.client.force_authenticate(self.club_user)
+        unlisted.publication_status = ClubCatalogItem.PUBLICATION_UNLISTED
+        unlisted.save(update_fields=["publication_status", "updated_at"])
+        response = self.client.post(
+            "/api/clubs/me/goods/batch-delete/", {"goods_ids": [str(draft.id), str(unlisted.id)]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["deleted_count"], 2)
+        self.assertFalse(ClubCatalogItem.objects.filter(id__in=[draft.id, unlisted.id]).exists())
+        self.assertFalse(ClubCatalogImage.objects.filter(id=image_id).exists())
+        imported_goods.refresh_from_db()
+        origin.refresh_from_db()
+        self.assertTrue(Goods.objects.filter(id=imported_goods.id).exists())
+        self.assertIsNone(origin.source_item_id)
+
+    def test_batch_delete_rejects_listed_item_atomically(self):
+        draft = ClubCatalogItem.objects.create(
+            club=self.club, name="不可部分删除", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        draft.characters.add(self.character)
+        self.client.force_authenticate(self.club_user)
+
+        response = self.client.post(
+            "/api/clubs/me/goods/batch-delete/", {"goods_ids": [str(draft.id), str(self.source.id)]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertTrue(ClubCatalogItem.objects.filter(id=draft.id).exists())
+        self.assertTrue(ClubCatalogItem.objects.filter(id=self.source.id).exists())
+
+    def test_batch_delete_rejects_other_club_and_missing_ids_atomically(self):
+        draft = ClubCatalogItem.objects.create(
+            club=self.club, name="跨社团删除", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        other_user = User.objects.create(
+            username="batch-other-club", role=self.user_role,
+            account_type=User.ACCOUNT_TYPE_CLUB, approval_status=User.APPROVAL_APPROVED,
+        )
+        other_club = Club.objects.create(user=other_user, name="其他社团", application_reason="测试申请")
+        other_item = ClubCatalogItem.objects.create(
+            club=other_club, name="其他社团谷子", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        self.client.force_authenticate(self.club_user)
+
+        for invalid_id in (str(other_item.id), str(uuid4())):
+            response = self.client.post(
+                "/api/clubs/me/goods/batch-delete/",
+                {"goods_ids": [str(draft.id), invalid_id]},
+                format="json",
+            )
+            self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+            self.assertTrue(ClubCatalogItem.objects.filter(id=draft.id).exists())
+            self.assertTrue(ClubCatalogItem.objects.filter(id=other_item.id).exists())
+
+    def test_batch_unlist_rejects_non_listed_item_atomically(self):
+        unlisted = ClubCatalogItem.objects.create(
+            club=self.club, name="已下架条目", ip=self.ip, category=self.category,
+            publication_status=ClubCatalogItem.PUBLICATION_UNLISTED,
+        )
+        self.client.force_authenticate(self.club_user)
+
+        response = self.client.post(
+            "/api/clubs/me/goods/batch-unlist/",
+            {"goods_ids": [str(self.source.id), str(unlisted.id)]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.source.refresh_from_db()
+        unlisted.refresh_from_db()
+        self.assertEqual(self.source.publication_status, ClubCatalogItem.PUBLICATION_LISTED)
+        self.assertEqual(unlisted.publication_status, ClubCatalogItem.PUBLICATION_UNLISTED)
+
+    def test_batch_unlist_updates_only_listed_items_atomically(self):
+        listed = ClubCatalogItem.objects.create(
+            club=self.club, name="批量下架条目", description="保留说明", ip=self.ip, category=self.category,
+            public_price="99.00", publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+        listed.characters.add(self.character)
+        original = {
+            "name": listed.name,
+            "description": listed.description,
+            "public_price": str(listed.public_price),
+            "character_ids": list(listed.characters.values_list("id", flat=True)),
+        }
+        self.client.force_authenticate(self.club_user)
+
+        response = self.client.post(
+            "/api/clubs/me/goods/batch-unlist/", {"goods_ids": [str(self.source.id), str(listed.id)]}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["updated_count"], 2)
+        self.source.refresh_from_db()
+        listed.refresh_from_db()
+        self.assertEqual(self.source.publication_status, ClubCatalogItem.PUBLICATION_UNLISTED)
+        self.assertEqual(listed.publication_status, ClubCatalogItem.PUBLICATION_UNLISTED)
+        self.assertEqual(listed.name, original["name"])
+        self.assertEqual(listed.description, original["description"])
+        self.assertEqual(str(listed.public_price), original["public_price"])
+        self.assertEqual(list(listed.characters.values_list("id", flat=True)), original["character_ids"])
+
+    def test_batch_actions_reject_invalid_payload_and_non_club_accounts(self):
+        self.client.force_authenticate(self.club_user)
+        empty = self.client.post("/api/clubs/me/goods/batch-delete/", {"goods_ids": []}, format="json")
+        duplicate = self.client.post(
+            "/api/clubs/me/goods/batch-delete/", {"goods_ids": [str(self.source.id), str(self.source.id)]}, format="json"
+        )
+        malformed = self.client.post("/api/clubs/me/goods/batch-unlist/", {"goods_ids": ["bad-id"]}, format="json")
+        self.assertEqual(empty.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(duplicate.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(malformed.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(self.collector)
+        self.assertEqual(
+            self.client.post(
+                "/api/clubs/me/goods/batch-delete/", {"goods_ids": [str(self.source.id)]}, format="json"
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
+        self.assertEqual(
+            self.client.post(
+                "/api/clubs/me/goods/batch-unlist/", {"goods_ids": [str(self.source.id)]}, format="json"
+            ).status_code,
+            status.HTTP_403_FORBIDDEN,
+        )
 
     def test_import_template_and_personal_snapshot_are_independent(self):
         self.client.force_authenticate(self.collector)
@@ -330,6 +555,25 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(goods.status, "intended")
         self.assertEqual(ClubGoodsImportEvent.objects.filter(origin=origin, operation="merged").count(), 1)
 
+    def test_import_reuses_orphaned_origin_after_personal_goods_deletion(self):
+        self.client.force_authenticate(self.collector)
+        first = self.client.post(f"/api/clubs/goods/{self.source.id}/import/", {"status": "intended"}, format="json")
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        origin = ClubGoodsOrigin.objects.get(collector=self.collector, source_item=self.source)
+        origin.personal_goods.delete()
+        origin.refresh_from_db()
+        self.assertIsNone(origin.personal_goods_id)
+
+        template = self.client.get(f"/api/clubs/{self.club.id}/goods/{self.source.id}/import-template/")
+        self.assertEqual(template.status_code, status.HTTP_200_OK)
+        self.assertIsNone(template.json()["existing"])
+
+        second = self.client.post(f"/api/clubs/goods/{self.source.id}/import/", {"status": "intended"}, format="json")
+        self.assertEqual(second.status_code, status.HTTP_201_CREATED)
+        origin.refresh_from_db()
+        self.assertIsNotNone(origin.personal_goods_id)
+        self.assertEqual(Goods.objects.filter(user=self.collector).count(), 1)
+
     def test_popularity_counts_unique_collectors_and_ignores_admin(self):
         origin = ClubGoodsOrigin.objects.create(collector=self.collector, source_item=self.source)
         goods = Goods.objects.create(user=self.collector, name="收藏", ip=self.ip, category=self.category, status="intended")
@@ -361,3 +605,73 @@ class ClubFeatureAPITestCase(TestCase):
         self.client.force_authenticate(self.club_user)
         self.assertEqual(self.client.get("/api/location/nodes/").status_code, status.HTTP_403_FORBIDDEN)
         self.assertEqual(self.client.get("/api/showcases/private/").status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_club_favorite_lifecycle_permissions_and_detail_visibility(self):
+        anonymous = self.client.get(f"/api/clubs/{self.club.id}/")
+        self.assertEqual(anonymous.status_code, status.HTTP_200_OK)
+        self.assertEqual(anonymous.json()["favorite_count"], 0)
+        self.assertNotIn("is_favorited", anonymous.json())
+        self.assertNotIn("favorite_count", self.client.get("/api/clubs/").json()["results"][0])
+
+        self.client.force_authenticate(self.collector)
+        first = self.client.put(f"/api/clubs/{self.club.id}/favorite/")
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertTrue(first.json()["is_favorited"])
+        self.assertEqual(first.json()["favorite_count"], 1)
+        repeat = self.client.put(f"/api/clubs/{self.club.id}/favorite/")
+        self.assertEqual(repeat.status_code, status.HTTP_200_OK)
+        self.assertEqual(ClubFavorite.objects.filter(user=self.collector, club=self.club).count(), 1)
+
+        detail = self.client.get(f"/api/clubs/{self.club.id}/")
+        self.assertTrue(detail.json()["is_favorited"])
+        self.assertEqual(detail.json()["favorite_count"], 1)
+
+        self.client.force_authenticate(self.club_user)
+        forbidden = self.client.put(f"/api/clubs/{self.club.id}/favorite/")
+        self.assertEqual(forbidden.status_code, status.HTTP_403_FORBIDDEN)
+        club_detail = self.client.get(f"/api/clubs/{self.club.id}/")
+        self.assertNotIn("is_favorited", club_detail.json())
+
+        admin = User.objects.create(username="favorite-admin", role=self.admin_role)
+        self.client.force_authenticate(admin)
+        admin_favorite = self.client.put(f"/api/clubs/{self.club.id}/favorite/")
+        self.assertEqual(admin_favorite.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(admin_favorite.json()["favorite_count"], 2)
+
+        self.client.force_authenticate(self.collector)
+        removed = self.client.delete(f"/api/clubs/{self.club.id}/favorite/")
+        self.assertEqual(removed.status_code, status.HTTP_200_OK)
+        self.assertFalse(removed.json()["is_favorited"])
+        self.assertEqual(removed.json()["favorite_count"], 1)
+
+    def test_favorite_list_is_recent_and_invalid_users_are_cleaned(self):
+        second_user = self.other_collector
+        second_club_user = User.objects.create(
+            username="second-club-owner", role=self.user_role, account_type=User.ACCOUNT_TYPE_CLUB,
+            approval_status=User.APPROVAL_APPROVED,
+        )
+        second_club = Club.objects.create(user=second_club_user, name="第二社团", application_reason="测试申请")
+        ClubFavorite.objects.create(user=self.collector, club=self.club)
+        newer = ClubFavorite.objects.create(user=second_user, club=second_club)
+
+        self.client.force_authenticate(second_user)
+        response = self.client.get("/api/clubs/me/favorites/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["results"][0]["club"]["name"], "第二社团")
+        self.assertTrue(response.json()["results"][0]["favorited_at"])
+
+        second_user.is_active = False
+        second_user.save(update_fields=["is_active", "updated_at"])
+        self.assertFalse(ClubFavorite.objects.filter(pk=newer.pk).exists())
+
+    def test_saving_valid_club_does_not_clear_favorites(self):
+        favorite = ClubFavorite.objects.create(user=self.collector, club=self.club)
+
+        self.club_user.username = "club-owner-renamed"
+        self.club_user.save(update_fields=["username", "updated_at"])
+
+        self.assertTrue(ClubFavorite.objects.filter(pk=favorite.pk).exists())
+
+        self.club_user.is_active = False
+        self.club_user.save(update_fields=["is_active", "updated_at"])
+        self.assertFalse(ClubFavorite.objects.filter(pk=favorite.pk).exists())

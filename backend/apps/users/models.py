@@ -111,6 +111,39 @@ class Club(models.Model):
         return self.name
 
 
+class ClubFavorite(models.Model):
+    """吃谷人对公开社团的私有收藏书签。"""
+
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name="club_favorites",
+        verbose_name="收藏用户",
+    )
+    club = models.ForeignKey(
+        Club,
+        on_delete=models.CASCADE,
+        related_name="favorite_users",
+        verbose_name="社团",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="收藏时间")
+
+    class Meta:
+        verbose_name = "社团收藏"
+        verbose_name_plural = "社团收藏"
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["user", "club"], name="unique_user_club_favorite"),
+        ]
+        indexes = [
+            models.Index(fields=["user", "-created_at"]),
+            models.Index(fields=["club", "-created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.user.username} 收藏 {self.club.name}"
+
+
 class Permission(models.Model):
     """
     预留：细粒度权限表。当前版本主要按 Role + policy 控制。
