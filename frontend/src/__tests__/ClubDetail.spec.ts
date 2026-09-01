@@ -38,6 +38,7 @@ vi.mock('element-plus', () => ({
 import * as clubApi from '@/api/clubs'
 
 const source = readFileSync(resolve(process.cwd(), 'src/views/ClubDetail.vue'), 'utf8')
+const detailDrawerSource = readFileSync(resolve(process.cwd(), 'src/components/club/ClubGoodsDetailDrawer.vue'), 'utf8')
 
 const club: Club = {
   id: 1,
@@ -321,12 +322,22 @@ describe('ClubDetail 社团对外页', () => {
     expect(source).not.toContain('.club-hero__count { margin-left:')
   })
 
-  it('卡片和弹窗的加入谷仓按钮共享紧凑尺寸', () => {
+  it('卡片和详情抽屉分别使用适合所在场景的加入谷仓按钮', () => {
     expect(source).toMatch(/class="import-button club-import-button brand-add-btn"/)
-    expect(source).toMatch(/class="dialog-primary-button club-import-button brand-add-btn"/)
     expect(source).toMatch(/\.club-import-button\s*\{[\s\S]*?width:\s*96px;/)
     expect(source).toMatch(/\.club-import-button\s*\{[\s\S]*?--brand-add-min-height:\s*34px;[\s\S]*?--brand-add-font-size:\s*12px;/)
-    expect(source).not.toMatch(/\.dialog-primary-button\s*\{[\s\S]*?--brand-add-min-height:\s*38px;/)
+    expect(detailDrawerSource).toMatch(/class="detail-action__import brand-add-btn"/)
+    expect(detailDrawerSource).toMatch(/\.detail-action__import\s*\{[\s\S]*?width:\s*112px;[\s\S]*?--brand-add-min-height:\s*38px;/)
+    expect(detailDrawerSource).toContain('class="detail-inline-action desktop-inline-action"')
+    expect(detailDrawerSource).not.toContain('class="detail-action-bar"')
+    expect(detailDrawerSource).toMatch(/\.desktop-profile-area\s*\{[\s\S]*?align-self:\s*stretch;/)
+    expect(detailDrawerSource).toMatch(/\.desktop-inline-action\s*\{[\s\S]*?margin-top:\s*auto;/)
+  })
+
+  it('列表与详情金额统一使用金色主题变量', () => {
+    expect(source).toMatch(/\.goods-card__price\s*\{[\s\S]*?color:\s*var\(--primary-gold-dark\);/)
+    expect(detailDrawerSource).toMatch(/\.detail-price-card strong\.is-price\s*\{[\s\S]*?color:\s*var\(--primary-gold-dark,\s*#b8941f\);/)
+    expect(detailDrawerSource).not.toContain('var(--accent-purple-dark) !important')
   })
 
   it('Hero 不重复展示统计，公开谷子数量突出显示在目录标题旁', () => {
@@ -582,19 +593,21 @@ describe('ClubDetail 社团对外页', () => {
     await trigger.trigger('click')
     await flushPromises()
     expect(clubApi.getClubGoodsDetail).toHaveBeenCalledWith(1, 'goods-1')
-    expect(wrapper.get('.goods-detail-dialog__notes').text()).toContain('公开说明')
-    expect(wrapper.get('.goods-detail-dialog').text()).toContain('流光主题')
-    expect(wrapper.get('.goods-detail-dialog').text()).toContain('纸制品/镭射票')
-    expect(wrapper.get('.goods-detail-dialog').text()).toContain('发布社团')
-    expect(wrapper.get('.goods-detail-dialog').text()).toContain('星光社团')
-    expect(wrapper.get('.goods-detail-dialog').text()).not.toContain('由 星光社团 公开展示')
-    expect(wrapper.findAll('.goods-detail-dialog__photo-button')).toHaveLength(2)
-    await wrapper.findAll('.goods-detail-dialog__photo-button')[1]!.trigger('click')
-    expect((wrapper.vm as unknown as { activeDetailImage: string }).activeDetailImage).toBe('https://cdn.example.com/detail.jpg')
-    expect(wrapper.findAll('.goods-detail-dialog__photo-button')[1]!.find('img').attributes('preview-src-list')).toBeUndefined()
-    expect(wrapper.get('.goods-detail-dialog').text()).not.toContain('官谷')
-    expect(wrapper.get('.goods-detail-dialog').text()).not.toContain('同人')
-    expect(wrapper.get('.detail-dialog').text()).not.toContain('公开数量')
+    const drawer = wrapper.get('.club-goods-detail-drawer')
+    expect(drawer.attributes('direction')).toBe('rtl')
+    expect(drawer.attributes('size')).toBe('clamp(720px, 48vw, 880px)')
+    expect(drawer.get('.detail-notes-card').text()).toContain('公开说明')
+    expect(drawer.text()).toContain('流光主题')
+    expect(drawer.text()).toContain('镭射票')
+    expect(drawer.text()).toContain('发布社团')
+    expect(drawer.text()).toContain('星光社团')
+    expect(drawer.text()).not.toContain('由 星光社团 公开展示')
+    expect(drawer.findAll('.detail-thumbnail')).toHaveLength(1)
+    expect(drawer.get('.detail-thumbnail img').attributes('initial-index')).toBe('1')
+    expect(drawer.get('.detail-price-card strong').classes()).toContain('is-price')
+    expect(drawer.text()).not.toContain('官谷')
+    expect(drawer.text()).not.toContain('同人')
+    expect(drawer.text()).not.toContain('公开数量')
   })
 
   it('快速打开不同谷子时只展示最新详情', async () => {
@@ -613,7 +626,7 @@ describe('ClubDetail 社团对外页', () => {
     first.resolve(goodsDetail)
     await flushPromises()
 
-    expect(wrapper.get('.dialog-stub[aria-label="最新打开的谷子"]').text()).toContain('最新打开的谷子')
+    expect(wrapper.get('.dialog-stub[aria-label="最新打开的谷子详情"]').text()).toContain('最新打开的谷子')
     expect((wrapper.vm as unknown as { selectedDetail: ClubCatalogItem }).selectedDetail.id).toBe('goods-2')
   })
 
@@ -644,6 +657,20 @@ describe('ClubDetail 社团对外页', () => {
     expect(wrapper.get('.goods-card').text()).toContain('流萤镭射票')
     expect(wrapper.find('.import-button').exists()).toBe(false)
     expect(wrapper.find('.favorite-button').exists()).toBe(false)
+    await wrapper.get('.goods-card__detail-trigger').trigger('click')
+    await flushPromises()
+    expect(wrapper.find('.detail-action__import').exists()).toBe(false)
+  })
+
+  it('从详情抽屉加入谷仓时沿用公开页导入确认流程', async () => {
+    const wrapper = await mountPage({ authenticated: true })
+
+    await wrapper.get('.goods-card__detail-trigger').trigger('click')
+    await flushPromises()
+    await wrapper.get('.detail-action__import').trigger('click')
+
+    expect(wrapper.find('.club-goods-detail-drawer').exists()).toBe(false)
+    expect(wrapper.get('.import-dialog').text()).toContain('流萤镭射票')
   })
 
   it('未登录收藏社团时跳转登录并保留当前社团地址', async () => {

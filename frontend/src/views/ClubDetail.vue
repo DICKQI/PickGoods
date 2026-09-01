@@ -419,97 +419,15 @@
       </template>
     </el-dialog>
 
-    <el-dialog
-      v-model="detailVisible"
-      :title="selectedDetail?.name || '谷子详情'"
-      width="min(720px, 92vw)"
-      class="club-dialog detail-dialog"
-    >
-      <div v-loading="detailLoading" class="goods-detail-dialog">
-        <template v-if="selectedDetail">
-          <div class="goods-detail-dialog__visual">
-            <div class="goods-detail-dialog__media">
-              <el-image
-                v-if="activeDetailImage"
-                :src="activeDetailImage"
-                :alt="`${selectedDetail.name}图片`"
-                fit="contain"
-                class="goods-detail-dialog__image"
-                :preview-src-list="detailPhotoUrls"
-                :initial-index="Math.max(0, detailPhotoUrls.indexOf(activeDetailImage))"
-              />
-              <div v-else class="goods-detail-dialog__placeholder" aria-label="暂无图片">
-                <el-icon><Picture /></el-icon>
-                <span>暂无图片</span>
-              </div>
-            </div>
-            <div v-if="detailPhotoUrls.length" class="goods-detail-dialog__photos" aria-label="图片预览">
-              <button
-                v-for="(photoUrl, index) in detailPhotoUrls"
-                :key="photoUrl"
-                type="button"
-                class="goods-detail-dialog__photo-button"
-                :class="{ 'is-active': photoUrl === activeDetailImage }"
-                :aria-label="`${selectedDetail.name}图片 ${index + 1}`"
-                @click="selectDetailImage(photoUrl)"
-              >
-                <el-image
-                  :src="photoUrl"
-                  :alt="`${selectedDetail.name}图片 ${index + 1}`"
-                  fit="cover"
-                  class="goods-detail-dialog__photo"
-                />
-              </button>
-            </div>
-          </div>
-          <div class="goods-detail-dialog__content">
-            <div class="goods-detail-dialog__headline">
-              <span class="goods-detail-dialog__eyebrow">公开目录条目</span>
-            </div>
-            <div class="goods-detail-dialog__tags">
-              <el-tag type="success" effect="plain">已上架</el-tag>
-              <el-tag effect="plain" type="info">社团公开</el-tag>
-            </div>
-            <dl>
-              <dt>IP作品</dt>
-              <dd>{{ selectedDetail.ip?.name || '—' }}</dd>
-              <dt>品类</dt>
-              <dd :title="selectedDetail.category?.path_name || selectedDetail.category?.name">
-                {{ selectedDetail.category?.path_name || selectedDetail.category?.name || '—' }}
-              </dd>
-              <template v-if="selectedDetail.theme">
-                <dt>主题</dt>
-                <dd :title="selectedDetail.theme.name">{{ selectedDetail.theme.name }}</dd>
-              </template>
-              <template v-if="selectedDetail.characters?.length">
-                <dt>角色</dt>
-                <dd class="goods-detail-dialog__character-list">
-                  <span v-for="character in selectedDetail.characters" :key="character.id" class="goods-detail-dialog__character">
-                    {{ character.name }}
-                  </span>
-                </dd>
-              </template>
-              <template v-if="selectedDetail.public_price !== null && selectedDetail.public_price !== undefined">
-                <dt>公开价格</dt>
-                <dd class="goods-detail-dialog__price">¥{{ selectedDetail.public_price }}</dd>
-              </template>
-              <dt>发布社团</dt>
-              <dd>{{ club?.name || '—' }}</dd>
-            </dl>
-            <div v-if="selectedDetail.description" class="goods-detail-dialog__notes">
-              <span>公开说明</span>
-              <p>{{ selectedDetail.description }}</p>
-            </div>
-          </div>
-        </template>
-      </div>
-      <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-        <el-button v-if="selectedDetail && !authStore.isClub" type="primary" class="dialog-primary-button club-import-button brand-add-btn" @click="importGoods(selectedDetail)">
-          <span class="brand-add-btn__content"><el-icon><Plus /></el-icon><span>加入谷仓</span></span>
-        </el-button>
-      </template>
-    </el-dialog>
+    <ClubGoodsDetailDrawer
+      :model-value="detailVisible"
+      :loading="detailLoading"
+      :detail="selectedDetail"
+      :club-name="club?.name || ''"
+      :can-import="!authStore.isClub"
+      @update:model-value="setDetailVisible"
+      @import="importGoods"
+    />
   </div>
 </template>
 
@@ -548,6 +466,7 @@ import {
 } from '@/api/clubs'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useAuthStore } from '@/stores/auth'
+import ClubGoodsDetailDrawer from '@/components/club/ClubGoodsDetailDrawer.vue'
 import ClubPublicGoodsFilterPanel from '@/views/club/ClubPublicGoodsFilterPanel.vue'
 import {
   clubGoodsFilterCount,
@@ -599,7 +518,6 @@ const selected = ref<ClubGoodsListItem | null>(null)
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const selectedDetail = ref<ClubGoodsDetail | null>(null)
-const selectedDetailImage = ref<string | null>(null)
 const favoriteLoading = ref(false)
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
@@ -624,14 +542,6 @@ const hasGoodsFilters = computed(() => Boolean(filters.value.search.trim()) || a
 const platformLinks = computed(() => platformLinkDefinitions
   .map(platform => ({ ...platform, url: club.value?.[platform.key]?.trim() || null }))
   .filter((platform): platform is typeof platform & { url: string } => Boolean(platform.url)))
-const detailPhotoUrls = computed(() => {
-  if (!selectedDetail.value) return []
-  return [
-    ...(selectedDetail.value.main_photo ? [selectedDetail.value.main_photo] : []),
-    ...selectedDetail.value.additional_photos.map(photo => photo.image),
-  ]
-})
-const activeDetailImage = computed(() => selectedDetailImage.value || detailPhotoUrls.value[0] || null)
 const activeFilterChips = computed(() => {
   const value = filters.value
   const chips: Array<{ key: string; label: string }> = []
@@ -655,10 +565,6 @@ const activeFilterChips = computed(() => {
   }
   return chips
 })
-
-function selectDetailImage(url: string) {
-  selectedDetailImage.value = url
-}
 
 function currentClubId() {
   const id = Number(route.params.id)
@@ -952,13 +858,11 @@ async function openGoodsDetail(item: ClubGoodsListItem) {
   detailVisible.value = true
   detailLoading.value = true
   selectedDetail.value = null
-  selectedDetailImage.value = null
   favoriteLoading.value = false
   try {
     const result = await getClubGoodsDetail(clubId, item.id)
     if (sequence !== detailRequestSequence) return
     selectedDetail.value = result
-    selectedDetailImage.value = result.main_photo || result.additional_photos[0]?.image || null
   } catch (error: any) {
     if (sequence !== detailRequestSequence) return
     detailVisible.value = false
@@ -968,8 +872,15 @@ async function openGoodsDetail(item: ClubGoodsListItem) {
   }
 }
 
+function setDetailVisible(value: boolean) {
+  detailVisible.value = value
+  if (value) return
+  detailRequestSequence += 1
+  detailLoading.value = false
+}
+
 function importGoods(item: ClubGoodsListItem | ClubGoodsDetail) {
-  detailVisible.value = false
+  setDetailVisible(false)
   selected.value = item
   if (!authStore.isAuthenticated) {
     router.push({ name: 'Login', query: { redirect: route.fullPath } })
@@ -1001,7 +912,6 @@ watch(() => route.params.id, () => {
   detailVisible.value = false
   selected.value = null
   selectedDetail.value = null
-  selectedDetailImage.value = null
   void loadClub()
 })
 
@@ -1802,7 +1712,7 @@ onUnmounted(() => {
 
 .goods-card__price {
   flex: none;
-  color: #9a6e10;
+  color: var(--primary-gold-dark);
   font-size: var(--font-caption);
 }
 
@@ -2112,186 +2022,6 @@ onUnmounted(() => {
   flex: none;
 }
 
-.goods-detail-dialog {
-  display: grid;
-  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr);
-  gap: 24px;
-  min-height: 220px;
-}
-
-.goods-detail-dialog__visual {
-  display: grid;
-  align-content: start;
-  gap: 12px;
-  min-width: 0;
-}
-
-.goods-detail-dialog__media {
-  display: grid;
-  aspect-ratio: 1;
-  min-width: 0;
-  place-items: center;
-  overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.16);
-  border-radius: var(--card-radius-sm);
-  background: var(--secondary-gray);
-}
-
-.goods-detail-dialog__image,
-.goods-detail-dialog__media :deep(.el-image__inner) {
-  width: 100%;
-  height: 100%;
-}
-
-.goods-detail-dialog__placeholder {
-  display: grid;
-  width: 100%;
-  height: 100%;
-  place-items: center;
-  align-content: center;
-  gap: 7px;
-  color: var(--text-light);
-  font-size: 36px;
-}
-
-.goods-detail-dialog__placeholder span {
-  font-size: var(--font-caption);
-}
-
-.goods-detail-dialog__content {
-  min-width: 0;
-  padding-top: 2px;
-}
-
-.goods-detail-dialog__headline {
-  margin-bottom: 16px;
-}
-
-.goods-detail-dialog__eyebrow {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--primary-gold-dark);
-  font-size: var(--font-small);
-  font-weight: 700;
-}
-
-.goods-detail-dialog__tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 20px;
-}
-
-.goods-detail-dialog dl {
-  display: grid;
-  grid-template-columns: 80px minmax(0, 1fr);
-  gap: 11px 10px;
-  margin: 0;
-  font-size: var(--font-body);
-  line-height: 1.5;
-}
-
-.goods-detail-dialog dt {
-  color: var(--text-light);
-}
-
-.goods-detail-dialog dd {
-  min-width: 0;
-  margin: 0;
-  color: var(--text-regular);
-  overflow-wrap: anywhere;
-}
-
-.goods-detail-dialog__character-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-
-.goods-detail-dialog__character {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  padding: 3px 8px;
-  border: 1px solid rgba(162, 155, 254, 0.3);
-  border-radius: var(--button-radius);
-  background: rgba(246, 244, 255, 0.7);
-  color: var(--accent-purple-dark);
-  font-size: var(--font-small);
-  line-height: 1.35;
-}
-
-.goods-detail-dialog__price {
-  color: var(--accent-purple-dark) !important;
-  font-weight: 700;
-}
-
-.goods-detail-dialog__notes {
-  margin-top: 20px;
-  padding: 12px 14px;
-  border: 1px solid rgba(212, 175, 55, 0.16);
-  border-left: 3px solid var(--primary-gold);
-  border-radius: var(--button-radius);
-  background: rgba(255, 252, 240, 0.62);
-}
-
-.goods-detail-dialog__notes span {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--primary-gold-dark);
-  font-size: var(--font-small);
-  font-weight: 700;
-}
-
-.goods-detail-dialog__notes p {
-  margin: 0;
-  color: var(--text-regular);
-  font-size: var(--font-caption);
-  line-height: 1.65;
-  overflow-wrap: anywhere;
-  white-space: pre-wrap;
-}
-
-.goods-detail-dialog__photos {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  min-width: 0;
-}
-
-.goods-detail-dialog__photo-button {
-  display: block;
-  width: 64px;
-  height: 64px;
-  padding: 0;
-  overflow: hidden;
-  border: 1px solid rgba(212, 175, 55, 0.18);
-  border-radius: var(--button-radius);
-  outline: none;
-  background: var(--secondary-gray);
-  cursor: pointer;
-  transition: border-color var(--transition-fast), box-shadow var(--transition-fast), transform var(--transition-fast);
-}
-
-.goods-detail-dialog__photo-button:hover,
-.goods-detail-dialog__photo-button:focus-visible {
-  border-color: var(--accent-purple);
-  box-shadow: 0 0 0 3px rgba(162, 155, 254, 0.18);
-  transform: translateY(-1px);
-}
-
-.goods-detail-dialog__photo-button.is-active {
-  border-color: var(--primary-gold-dark);
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.2);
-}
-
-.goods-detail-dialog__photo-button .el-image,
-.goods-detail-dialog__photo-button :deep(.el-image__inner) {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
 :global(.mobile-filter-drawer.el-drawer) {
   overflow: hidden;
   border-radius: 12px 12px 0 0;
@@ -2459,19 +2189,6 @@ onUnmounted(() => {
   .club-hero__favorite { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
   .favorite-button span { display: inline; }
   .favorite-button { width: auto; padding: 0 12px; }
-  .goods-detail-dialog {
-    grid-template-columns: 1fr;
-    gap: 18px;
-  }
-
-  .goods-detail-dialog__media {
-    width: min(100%, 300px);
-    justify-self: center;
-  }
-
-  .goods-detail-dialog__photos {
-    justify-content: center;
-  }
 }
 
 @media (max-width: 480px) {
@@ -2588,9 +2305,5 @@ onUnmounted(() => {
     transform: none;
   }
 
-  .goods-detail-dialog__photo-button:hover,
-  .goods-detail-dialog__photo-button:focus-visible {
-    transform: none;
-  }
 }
 </style>
