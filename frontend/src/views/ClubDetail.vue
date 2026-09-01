@@ -137,7 +137,6 @@
                 <h2 id="goods-title">社团谷子</h2>
                 <span class="section-heading__count">共 {{ total }} 款</span>
               </div>
-              <p>浏览社团正在公开展示的谷子。</p>
             </div>
 
             <div class="goods-toolbar" role="search" aria-label="搜索和筛选社团谷子">
@@ -1392,10 +1391,10 @@ onUnmounted(() => {
 .section-heading {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(430px, 620px);
-  align-items: end;
-  gap: 20px;
-  margin-bottom: 20px;
-  padding-bottom: 18px;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
   border-bottom: 1px solid rgba(212, 175, 55, 0.16);
 }
 
@@ -1422,13 +1421,6 @@ onUnmounted(() => {
   font-weight: 700;
   line-height: 1.2;
   white-space: nowrap;
-}
-
-.section-heading__title p {
-  margin: 5px 0 0;
-  color: var(--text-light);
-  font-size: var(--font-caption);
-  line-height: 1.45;
 }
 
 .goods-toolbar {
@@ -1464,27 +1456,31 @@ onUnmounted(() => {
 }
 
 .goods-sort-button {
+  --sort-accent: var(--primary-gold-dark);
+  --sort-accent-soft: #fff9eb;
   min-height: 36px;
   margin: 0;
   padding: 0 11px;
   border-radius: var(--button-radius);
-  border-color: rgba(212, 175, 55, 0.22);
+  border-color: rgba(100, 116, 139, 0.28);
   color: var(--text-regular);
-  background: rgba(255, 255, 255, 0.78);
+  background: rgba(248, 250, 252, 0.9);
   white-space: nowrap;
   transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.goods-sort-button:hover {
-  border-color: rgba(212, 175, 55, 0.54);
-  color: var(--accent-purple-dark);
+.goods-sort-button:hover,
+.goods-sort-button:focus-visible {
+  border-color: rgba(184, 148, 31, 0.58);
+  color: var(--sort-accent);
+  background: var(--sort-accent-soft);
 }
 
 .goods-sort-button.is-active {
-  border-color: var(--primary-gold);
-  color: var(--accent-purple-dark);
-  background: rgba(255, 251, 235, 0.96);
-  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+  border-color: var(--sort-accent);
+  color: var(--sort-accent);
+  background: var(--sort-accent-soft);
+  box-shadow: 0 0 0 2px rgba(184, 148, 31, 0.12);
 }
 
 .goods-sort-button--direction {
@@ -2383,6 +2379,16 @@ onUnmounted(() => {
 
   .goods-search {
     flex-basis: 180px;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1140px) {
+  .section-heading {
+    grid-template-columns: 1fr;
+  }
+
+  .goods-toolbar {
+    margin-top: 12px;
   }
 }
 

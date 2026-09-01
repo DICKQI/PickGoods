@@ -4,7 +4,6 @@
       <div class="directory-heading">
         <p class="directory-kicker"><span class="directory-kicker__mark" aria-hidden="true"></span> PICKGOODS COMMUNITY</p>
         <h1>社团目录</h1>
-        <p class="directory-subtitle">看见每个社团正在上新的画风与谷子。</p>
       </div>
 
       <form class="directory-search" role="search" aria-label="搜索社团" @submit.prevent="handleSearch">
@@ -191,11 +190,11 @@ onMounted(load)
 
 .directory-header {
   display: flex;
-  align-items: end;
+  align-items: center;
   justify-content: space-between;
   gap: 28px;
-  margin-bottom: 20px;
-  padding-bottom: 24px;
+  margin-bottom: 16px;
+  padding-bottom: 18px;
   border-bottom: 1px solid rgba(212, 175, 55, 0.32);
 }
 
@@ -226,12 +225,6 @@ onMounted(load)
   color: var(--text-dark);
   font-size: 34px;
   line-height: 1.2;
-}
-
-.directory-subtitle {
-  margin: 9px 0 0;
-  color: var(--text-regular);
-  font-size: var(--font-body);
 }
 
 .directory-search {
@@ -635,10 +628,6 @@ onMounted(load)
 @media (max-width: 480px) {
   .directory-heading h1 {
     font-size: 27px;
-  }
-
-  .directory-subtitle {
-    font-size: var(--font-caption);
   }
 
   .club-identity__title h2 {
