@@ -126,7 +126,6 @@
 
                 <el-form-item
                   v-if="mode === 'register' && captchaEnabled !== false"
-                  label="图形验证码"
                   prop="captchaCode"
                   class="captcha-form-item"
                 >
@@ -144,6 +143,7 @@
                     </button>
                     <el-input
                       v-model="formData.captchaCode"
+                      aria-label="图形验证码"
                       placeholder="输入图片中的字符"
                       maxlength="32"
                       clearable
@@ -587,7 +587,7 @@ onBeforeUnmount(() => {
 /* Card Wrapper */
 .login-card-wrapper {
   width: 100%;
-  max-width: 800px;
+  max-width: 900px;
   margin: auto;
   z-index: 1;
 }
@@ -620,8 +620,13 @@ onBeforeUnmount(() => {
 }
 
 .login-card--club {
-  max-width: 760px;
+  max-width: 860px;
   min-height: 540px;
+}
+
+.login-card--club .login-content {
+  padding-right: 36px;
+  padding-left: 36px;
 }
 
 .login-card.is-resizing {
@@ -799,6 +804,7 @@ onBeforeUnmount(() => {
 .identity-options :deep(.el-radio-button__inner) {
   display: flex;
   align-items: center;
+  gap: 12px;
   width: 100%;
   min-height: 76px;
   padding: 14px 16px;
@@ -908,7 +914,6 @@ onBeforeUnmount(() => {
 }
 
 .register-form-section {
-  height: 100%;
   margin-bottom: 0;
   padding: 16px;
   border: 1px solid rgba(212, 175, 55, 0.14);
@@ -980,6 +985,17 @@ onBeforeUnmount(() => {
   margin-top: 5px;
   padding-top: 0;
   line-height: 1.35;
+}
+
+.captcha-form-item {
+  position: relative;
+  margin-bottom: 0;
+}
+
+.captcha-form-item :deep(.el-form-item__error) {
+  position: absolute;
+  top: 100%;
+  left: 0;
 }
 
 .login-form--club .register-form-section--application :deep(.el-textarea__inner) {
