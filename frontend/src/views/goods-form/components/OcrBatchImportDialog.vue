@@ -16,7 +16,7 @@
       <div class="ocr-batch-toolbar">
         <div>
           <strong>识别到 {{ rows.length }} 个候选谷子</strong>
-          <span class="toolbar-subtitle">勾选需要导入的条目，确认前可以逐条修改。</span>
+          <span class="toolbar-subtitle">勾选想带回家的条目吧~ 确认前还可以逐条修改哦</span>
         </div>
         <el-button size="small" @click="addBlankRow">新增空白条目</el-button>
       </div>

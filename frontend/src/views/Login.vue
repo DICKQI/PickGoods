@@ -42,16 +42,16 @@
                 <div class="identity-step__heading">
                   <span class="form-kicker">注册第一步</span>
                   <h3 id="identity-step-title">你是什么身份？</h3>
-                  <p>选择后，我们会为你准备对应的注册表单</p>
+                  <p>选好身份后，就为你准备对应的注册表单啦~</p>
                 </div>
                 <el-radio-group v-model="formData.accountType" class="identity-options" aria-label="选择账号身份">
                   <el-radio-button value="collector" class="identity-option">
                     <span class="identity-option__icon"><el-icon><User /></el-icon></span>
-                    <span class="identity-option__copy"><strong>吃谷人</strong><small>记录和管理自己的谷子</small></span>
+                    <span class="identity-option__copy"><strong>吃谷人</strong><small>把喜欢的谷子好好收藏起来吧~</small></span>
                   </el-radio-button>
                   <el-radio-button value="club" class="identity-option">
                     <span class="identity-option__icon"><el-icon><Shop /></el-icon></span>
-                    <span class="identity-option__copy"><strong>社团</strong><small>发布社团谷子，申请后开通</small></span>
+                    <span class="identity-option__copy"><strong>社团</strong><small>申请开通后，就能发布社团谷子啦~</small></span>
                   </el-radio-button>
                 </el-radio-group>
               </section>
@@ -82,7 +82,7 @@
                     <section class="register-form-section">
                       <div class="register-form-section__heading">
                         <span class="form-kicker">基础信息</span>
-                        <p>用于登录社团工作区</p>
+                        <p>这是进入社团工作区的通行证哦~</p>
                       </div>
                       <el-form-item label="登录用户名" prop="username">
                         <el-input v-model="formData.username" placeholder="请输入用户名" clearable :prefix-icon="User" maxlength="150" />
@@ -100,7 +100,7 @@
                     <section class="register-form-section register-form-section--application">
                       <div class="register-form-section__heading">
                         <span class="form-kicker">社团申请</span>
-                        <p>管理员审批通过后即可发布社团谷子</p>
+                        <p>管理员审批通过后，就能发布社团谷子啦~</p>
                       </div>
                       <el-form-item label="社团名称" prop="clubName">
                         <el-input v-model="formData.clubName" placeholder="请输入社团名称" maxlength="200" show-word-limit />

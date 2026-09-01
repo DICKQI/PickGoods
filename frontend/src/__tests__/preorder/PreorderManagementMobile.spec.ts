@@ -166,7 +166,7 @@ describe('PreorderManagement 移动端', () => {
     await flushPromises()
     await wrapper.find('.preorder-mobile-fab').trigger('click')
     await flushPromises()
-    expect(wrapper.text()).toContain('登记外部平台下单的手办定金')
+    expect(wrapper.text()).toContain('把外部平台下单的手办定金记下来吧~')
     expect(wrapper.find('.preorder-editor-form-stub').exists()).toBe(true)
   })
 

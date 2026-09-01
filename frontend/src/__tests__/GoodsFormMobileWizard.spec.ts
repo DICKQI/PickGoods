@@ -375,7 +375,7 @@ describe('GoodsForm mobile create wizard', () => {
     expect(goodsFormSource).toContain('goods-reset-sheet-enter')
     expect(goodsFormSource).toContain('goods-reset-sheet-leave')
     expect(goodsFormSource).toContain('重置表单？')
-    expect(goodsFormSource).toContain('当前填写内容将恢复为进入页面时的状态')
+    expect(goodsFormSource).toContain('现在填写的内容会恢复到刚进入页面时的状态哦~')
   })
 
   it('shows the classifier detail when the image cannot be decoded', () => {
@@ -449,7 +449,7 @@ describe('GoodsForm mobile create wizard', () => {
     expect(backMock).not.toHaveBeenCalled()
     expect(wrapper.find('.goods-leave-dialog').exists()).toBe(true)
     expect(wrapper.text()).toContain('离开编辑？')
-    expect(wrapper.text()).toContain('当前填写的谷子信息还没有保存')
+    expect(wrapper.text()).toContain('现在填写的谷子信息还没有保存哦~')
   })
 
   it('keeps the user on the goods form when choosing to stay', async () => {
@@ -548,7 +548,7 @@ describe('GoodsForm mobile create wizard', () => {
     expect(wrapper.text()).toContain('下一步')
     expect(wrapper.find('.form-section--basic').isVisible()).toBe(true)
     expect(wrapper.find('.form-section--basic .form-section-title-text').text()).toBe('基础信息')
-    expect(wrapper.find('.form-section--basic .form-section-header-copy').text()).toContain('IP、角色与品类等核心信息')
+    expect(wrapper.find('.form-section--basic .form-section-header-copy').text()).toContain('IP、角色与品类，都来认识一下吧~')
     expect(wrapper.find('.form-section--meta').isVisible()).toBe(false)
     expect(wrapper.find('.form-section--images').isVisible()).toBe(false)
     expect(wrapper.find('.form-section--notes').isVisible()).toBe(false)
@@ -578,7 +578,7 @@ describe('GoodsForm mobile create wizard', () => {
     const header = wrapper.get('.form-section--basic .form-section-header')
     expect(header.classes()).toContain('form-section-header--stacked')
     expect(header.find('.form-section-title-text').text()).toBe('基础信息')
-    expect(header.find('.form-section-subtitle').text()).toBe('IP、角色与品类等核心信息')
+    expect(header.find('.form-section-subtitle').text()).toBe('IP、角色与品类，都来认识一下吧~')
   })
 
   it('keeps mobile edit mode as the full single-page form', async () => {

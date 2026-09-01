@@ -13,7 +13,7 @@
         <div>
           <span class="club-import-kicker">PUBLIC CATALOG</span>
           <h2>从社团导入谷子</h2>
-          <p>{{ queueMode ? '继续处理本次导入队列，完成后可返回继续浏览。' : '按社团浏览公开谷子，支持搜索、筛选和跨页选择。' }}</p>
+          <p>{{ queueMode ? '继续处理这次的导入队列吧~ 完成后还能回来接着逛哦' : '按社团逛逛公开谷子吧~ 搜索、筛选和跨页选择都支持哦' }}</p>
         </div>
         <div v-if="!queueMode" class="club-import-summary">
           <strong>{{ selectedCount }}</strong>
@@ -30,7 +30,7 @@
       <div class="club-import-results__toolbar">
         <div>
           <strong>本次导入队列</strong>
-          <span>已完成的条目不会重复处理，待处理和失败条目可以继续。</span>
+          <span>已经完成的条目不会重复处理~ 待处理和失败的条目还可以继续哦</span>
         </div>
         <el-button text type="primary" @click="queueMode = false">继续浏览社团</el-button>
       </div>
@@ -65,7 +65,7 @@
       </div>
       <el-empty v-if="queueStore.items.length === 0" description="暂无导入队列" />
       <div class="club-import-results__footer">
-        <span v-if="queueStore.isComplete">本次队列已处理完成，可以继续浏览其他社团。</span>
+        <span v-if="queueStore.isComplete">这次的队列已经全部处理好啦~ 可以继续去其他社团逛逛哦</span>
         <span v-else>还有 {{ queueStore.unresolvedItems.length }} 项待处理。</span>
         <el-button @click="emit('update:modelValue', false)">关闭</el-button>
       </div>
@@ -195,7 +195,7 @@
           <div v-if="!selectedClubId && !goodsLoading" class="club-import-goods-placeholder">
             <el-icon><Shop /></el-icon>
             <strong>先选择左侧社团</strong>
-            <span>社团公开谷子会显示在这里</span>
+            <span>社团公开的谷子会在这里集合哦~</span>
           </div>
           <div v-if="goodsError" class="club-import-inline-error club-import-inline-error--goods">
             <el-icon><WarningFilled /></el-icon>

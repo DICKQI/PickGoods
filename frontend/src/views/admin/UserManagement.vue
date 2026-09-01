@@ -1,6 +1,6 @@
 <template>
   <div class="admin-page">
-    <AdminPageHeader title="用户管理" subtitle="管理系统用户账号与角色">
+    <AdminPageHeader title="用户管理" subtitle="在这里整理系统用户账号和角色~">
       <el-button type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         <span>新增用户</span>

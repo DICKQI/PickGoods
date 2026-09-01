@@ -1,7 +1,7 @@
 <template>
   <section class="popularity-page">
     <header class="section-title">
-      <div><p class="section-eyebrow">AUDIENCE SIGNALS</p><h2>人气统计</h2><p>按去重用户统计意向入手和已入手人数，帮助安排下一批公开目录。</p></div>
+      <div><p class="section-eyebrow">AUDIENCE SIGNALS</p><h2>人气统计</h2></div>
       <el-button text @click="load"><el-icon><Refresh /></el-icon>刷新</el-button>
     </header>
     <div class="kpi-grid" aria-label="人气摘要">

@@ -4,7 +4,7 @@
     <div class="header-section">
       <div class="title-wrapper">
         <h2 class="page-title">品类管理</h2>
-        <span class="sub-title">配置谷子的种类（如：立牌、马口铁徽章等）</span>
+        <span class="sub-title">给谷子们分个小家吧~ 立牌、徽章都能安排上喵 (๑•̀ㅂ•́)و✧</span>
       </div>
       <div class="header-actions">
         <el-button class="add-btn" type="primary" @click="handleAdd" v-if="authStore.isAdmin" title="新增顶级品类">
@@ -220,7 +220,7 @@
           <div class="category-editor-desktop-copy">
             <span class="category-editor-desktop-kicker">Category Setup</span>
             <h3 class="category-editor-desktop-title">{{ categoryEditorTitle }}</h3>
-            <p>用清晰层级、颜色标签和排序规则，让谷子品类更适合在 PC 端快速维护。</p>
+            <p>层级、颜色和顺序都整理好，找起谷子品类就更轻松啦~</p>
           </div>
           <button
             class="category-editor-desktop-close"
@@ -239,7 +239,7 @@
           </div>
           <div class="category-editor-hero-copy">
             <h3>{{ categoryEditorTitle }}</h3>
-            <p>管理谷子的收纳分类与层级</p>
+            <p>把谷子的分类和层级整理得整整齐齐吧~</p>
           </div>
           <button
             class="category-editor-close"
@@ -257,7 +257,7 @@
             <section class="category-editor-section category-editor-section--identity">
               <div class="category-editor-section-head">
                 <span class="section-kicker">基础信息</span>
-                <p>给这个收纳分类一个清晰好找的名字</p>
+                <p>给这个分类取个一眼就能认出的名字吧~</p>
               </div>
               <el-form-item label="品类名称" prop="name">
                 <el-input
@@ -295,7 +295,7 @@
             <section class="category-editor-section category-editor-section--display">
               <div class="category-editor-section-head">
                 <span class="section-kicker">显示与排序</span>
-                <p>颜色用于快速识别，同级排序数值越小越靠前</p>
+                <p>用颜色快速认出它~ 同级排序数值越小，就会站得越靠前哦</p>
               </div>
               <div class="category-editor-field-grid">
                 <el-form-item label="颜色标签" prop="color_tag">

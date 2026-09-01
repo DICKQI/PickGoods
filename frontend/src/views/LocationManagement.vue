@@ -11,7 +11,7 @@
               <el-tag v-if="selectedNode.is_favorite" type="warning" effect="plain">常用</el-tag>
             </div>
             <p v-if="selectedNode.description" class="mobile-selected-description">{{ selectedNode.description }}</p>
-            <p v-else class="mobile-selected-description muted">还没有备注，可以记录这个位置放什么、怎么找。</p>
+            <p v-else class="mobile-selected-description muted">这里还没有备注~ 记下放了什么，以后就能轻松找到啦</p>
           </div>
 
           <div class="mobile-selected-actions">
@@ -238,7 +238,7 @@
                   <el-tag v-if="selectedNode.is_favorite" type="warning" effect="plain">常用</el-tag>
                 </div>
                 <p v-if="selectedNode.description" class="plate-description">{{ selectedNode.description }}</p>
-                <p v-else class="plate-description muted">还没有备注，可以记录这个位置放什么、怎么找。</p>
+                <p v-else class="plate-description muted">这里还没有备注~ 记下放了什么，以后就能轻松找到啦</p>
               </div>
 
               <div class="compact-metrics" aria-label="位置统计">
@@ -731,7 +731,7 @@
           <span class="location-dialog-kicker">{{ isEdit ? 'Refine location' : 'Create location' }}</span>
           <h3 class="location-dialog-title">{{ dialogTitle }}</h3>
           <p class="location-dialog-subtitle">
-            {{ isEdit ? '调整位置标签、层级和容量，让收纳路径保持清晰。' : '先给这个收纳点贴上好找的标签，之后可以继续整理谷子。' }}
+            {{ isEdit ? '调一调位置标签、层级和容量，让收纳路线一直清清楚楚吧~' : '先给这个收纳点贴上好找的标签，再把谷子慢慢安顿进来吧~' }}
           </p>
         </div>
       </template>

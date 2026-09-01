@@ -4,7 +4,6 @@
       <div>
         <p class="section-eyebrow">ACCOUNT</p>
         <h2 id="account-title">账号信息</h2>
-        <p>查看当前账号的身份和访问权限。</p>
       </div>
       <el-icon class="account-mark" aria-hidden="true"><User /></el-icon>
     </div>
@@ -15,11 +14,6 @@
       <div class="account-row"><dt>系统角色</dt><dd>{{ roleLabel }}</dd></div>
       <div class="account-row"><dt>用户 ID</dt><dd>{{ authStore.user?.id || '—' }}</dd></div>
     </dl>
-
-    <p class="account-tip">
-      <el-icon aria-hidden="true"><InfoFilled /></el-icon>
-      <span>{{ permissionTip }}</span>
-    </p>
 
     <div class="account-actions">
       <el-button v-if="authStore.isAdmin" type="primary" @click="goToAdmin">
@@ -39,7 +33,7 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { InfoFilled, Key, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
+import { Key, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
@@ -48,12 +42,6 @@ const refreshing = ref(false)
 
 const roleLabel = computed(() => authStore.isAdmin ? '管理员' : '普通用户')
 const accountTypeLabel = computed(() => authStore.isClub ? '社团' : '吃谷人')
-const permissionTip = computed(() => authStore.isAdmin
-  ? '管理员可以管理公共资料、所有用户和全部内容。'
-  : authStore.isClub
-    ? '社团账号可以维护社团资料和公开谷子。'
-    : '吃谷人可以维护自己的谷仓、展柜、主题和收纳位置。')
-
 async function refreshUser() {
   refreshing.value = true
   try {

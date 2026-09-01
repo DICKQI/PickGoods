@@ -17,7 +17,7 @@
               </span>
             </div>
           </div>
-          <p>整理主题名称、备注与参考图，便于后续筛选和归档。</p>
+          <p>把主题名称、备注和参考图收拾整齐，之后筛选起来更轻松啦~</p>
         </div>
         <el-button
           type="primary"
@@ -185,7 +185,7 @@
     <div class="header-section">
       <div class="title-wrapper">
         <h2 class="page-title">主题</h2>
-        <span class="sub-title">配置谷子的主题分类（如：夏日主题、节日主题等）</span>
+        <span class="sub-title">给不同主题的谷子贴上可爱的分类标签吧~</span>
       </div>
       <div class="header-actions">
         <el-button class="add-btn" type="primary" @click="handleAdd">
@@ -361,7 +361,7 @@
           <div class="theme-editor-desktop-copy">
             <span class="theme-editor-desktop-kicker">Theme Library</span>
             <h3 class="theme-editor-desktop-title">{{ dialogTitle }}</h3>
-            <p>沉淀主题名称、描述和参考图，让后续筛选、搭配与归档更直观。</p>
+            <p>把名称、描述和参考图收进主题档案，之后筛选和搭配就更直观啦~</p>
           </div>
           <button
             class="theme-editor-desktop-close"
@@ -380,7 +380,7 @@
           </div>
           <div class="theme-editor-hero-copy">
             <h3>{{ dialogTitle }}</h3>
-            <p>整理谷子的主题分类与参考图</p>
+            <p>把主题分类和参考图一起整理好吧~</p>
           </div>
           <button
             class="theme-editor-close"
@@ -405,7 +405,7 @@
               <div class="theme-editor-section-header">
                 <div>
                   <h4>基础信息</h4>
-                  <p>用清晰的名称和备注，让主题更好找。</p>
+                  <p>取个清楚又好记的名字，让主题更容易找到吧~</p>
                 </div>
               </div>
 
@@ -434,7 +434,7 @@
               <div class="theme-editor-section-header">
                 <div>
                   <h4>参考图片</h4>
-                  <p>可添加拍立得、官图、工艺细节等图片。</p>
+                  <p>拍立得、官图和工艺细节，都可以放进参考图里哦~</p>
                 </div>
               </div>
 

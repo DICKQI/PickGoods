@@ -6,7 +6,7 @@
         <div class="preorder-hero-left">
           <span class="preorder-eyebrow">PREORDER &amp; REMINDER</span>
           <h1 class="preorder-title">预购与尾款提醒</h1>
-          <p class="preorder-subtitle">登记外部平台下单的手办定金，临近补款期时右上角通知中心会提醒你</p>
+          <p class="preorder-subtitle">把外部平台的手办定金记下来吧~ 快到补款期时，通知中心会来提醒你哦</p>
         </div>
         <div class="preorder-hero-right">
           <div class="preorder-metrics" role="group" aria-label="预购统计">
@@ -223,7 +223,7 @@
             <div class="preorder-editor-heading">
               <span class="preorder-editor-kicker">PREORDER FORM</span>
               <h3>{{ editingTarget ? '编辑预购' : '新增预购' }}</h3>
-              <p>{{ editingTarget ? '修改订单信息、金额与备注' : '登记外部平台下单的手办定金' }}</p>
+              <p>{{ editingTarget ? '订单信息、金额和备注都可以重新整理哦~' : '把外部平台下单的手办定金记下来吧~' }}</p>
             </div>
             <button type="button" class="preorder-editor-close" aria-label="关闭" @click="formDialogVisible = false">
               <el-icon><Close /></el-icon>
@@ -255,7 +255,7 @@
             <div class="preorder-editor-heading">
               <span class="preorder-editor-kicker">DELAY PREORDER</span>
               <h3>跳票延期</h3>
-              <p>厂家跳票时顺延补款时间，旧提醒自动失效并按新时间重新提醒</p>
+              <p>厂家延期也不用慌~ 顺延后会按新时间重新提醒你哦</p>
             </div>
             <button type="button" class="preorder-editor-close" aria-label="关闭" @click="delayDialogVisible = false">
               <el-icon><Close /></el-icon>
@@ -287,7 +287,7 @@
             <div class="preorder-editor-heading">
               <span class="preorder-editor-kicker">CONVERT TO GOODS</span>
               <h3>转正为谷子</h3>
-              <p>补款完成后将预购登记转为平台内谷子</p>
+              <p>补款完成后，就把预购登记变成正式谷子吧~</p>
             </div>
             <button type="button" class="preorder-editor-close" aria-label="关闭" @click="convertDialogVisible = false">
               <el-icon><Close /></el-icon>
@@ -307,7 +307,7 @@
         v-if="isMobile"
         v-model="formDialogVisible"
         :title="editingTarget ? '编辑预购' : '新增预购'"
-        :subtitle="editingTarget ? '修改订单信息、金额与备注' : '登记外部平台下单的手办定金'"
+        :subtitle="editingTarget ? '订单信息、金额和备注都可以重新整理哦~' : '把外部平台下单的手办定金记下来吧~'"
       >
         <PreorderEditorForm
           :visible="formDialogVisible"
@@ -322,7 +322,7 @@
         v-if="isMobile"
         v-model="delayDialogVisible"
         title="跳票延期"
-        subtitle="厂家跳票时顺延补款时间，旧提醒自动失效"
+        subtitle="厂家延期也不用慌~ 顺延后旧提醒会自动失效"
       >
         <PreorderDelayDialog
           :visible="delayDialogVisible"
@@ -337,7 +337,7 @@
         v-if="isMobile"
         v-model="convertDialogVisible"
         title="转正为谷子"
-        subtitle="补款完成后将预购登记转为平台内谷子"
+        subtitle="补款完成后，就把预购登记变成正式谷子吧~"
       >
         <ConvertGoodsForm
           :visible="convertDialogVisible"

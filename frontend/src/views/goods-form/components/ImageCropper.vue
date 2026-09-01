@@ -12,7 +12,7 @@
         <div class="crop-header-row">
           <div class="crop-header-copy">
             <div class="crop-title">主图编辑</div>
-            <div class="crop-subtitle">调整比例与滤镜，让画面更契合主题</div>
+            <div class="crop-subtitle">调一调比例和滤镜，让图片和主题更合拍吧~</div>
           </div>
           <div class="crop-history-actions">
             <el-button size="small" :disabled="!canUndoCropEdit" @click="handleCropUndo">撤回</el-button>
@@ -176,7 +176,7 @@
         <div class="crop-header-row">
           <div class="crop-header-copy">
             <div class="crop-title">主图编辑</div>
-            <div class="crop-subtitle">调整比例与滤镜，让画面更契合主题</div>
+            <div class="crop-subtitle">调一调比例和滤镜，让图片和主题更合拍吧~</div>
           </div>
           <div class="crop-history-actions">
             <el-button size="small" :disabled="!canUndoCropEdit" @click="handleCropUndo">撤回</el-button>

@@ -1,6 +1,6 @@
 <template>
   <div class="admin-page">
-    <AdminPageHeader title="BGM 自动同步" subtitle="定时从 Bangumi 拉取已绑定 IP 的角色变更，支持审计" />
+    <AdminPageHeader title="BGM 自动同步" subtitle="定时从 Bangumi 带回已绑定 IP 的角色变更，并保留审计记录~" />
 
     <!-- 顶部设置卡片 -->
     <el-card class="settings-card" shadow="never">

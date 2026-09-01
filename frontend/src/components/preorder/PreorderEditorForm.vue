@@ -8,7 +8,7 @@
           <span>{{ ocrPanelVisible ? '收起截图识别' : '📸 用订单截图自动填写' }}</span>
           <el-icon class="preorder-ocr-chevron" :class="{ 'is-open': ocrPanelVisible }"><ArrowDown /></el-icon>
         </button>
-        <p class="preorder-ocr-hint">上传淘宝 / 哔哩哔哩会员购订单截图，自动填入表单；也可完全不用，手动填写即可</p>
+        <p class="preorder-ocr-hint">上传淘宝 / 哔哩哔哩会员购截图，就能帮你自动填表啦~ 手动填写也完全没问题哦</p>
         <div v-if="ocrPanelVisible" class="preorder-ocr-body">
           <!-- 桌面端：通用文件上传入口 -->
           <el-upload
@@ -64,7 +64,7 @@
         <section class="preorder-editor-section preorder-basic-section">
           <div class="preorder-editor-section-title">
             <h4>基本信息</h4>
-            <p>手办名称与下单渠道</p>
+            <p>把手办名称和下单渠道记下来吧~</p>
           </div>
           <el-form-item label="手办名称" prop="name">
             <el-input v-model="form.name" placeholder="例如：流萤 1/7 手办" maxlength="200" />
@@ -87,7 +87,7 @@
         <section class="preorder-editor-section preorder-payment-section">
           <div class="preorder-editor-section-title">
             <h4>金额与补款</h4>
-            <p>定金必填，尾款未知可留空</p>
+            <p>定金要记得填写哦~ 尾款还不知道的话可以先空着</p>
           </div>
           <div class="preorder-editor-grid">
             <el-form-item label="定金金额" prop="deposit_amount">

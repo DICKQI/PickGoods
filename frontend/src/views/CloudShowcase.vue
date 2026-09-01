@@ -86,7 +86,7 @@
         <div v-if="guziStore.selectionMode" class="selection-status-bar">
           <span>多选模式</span>
           <strong>已选 {{ guziStore.selectedGoodsCount }} 个谷子</strong>
-          <span class="selection-hint">可继续搜索、筛选或翻页添加更多谷子</span>
+          <span class="selection-hint">还想多选一些吗~ 搜索、筛选或翻页都可以继续添加哦</span>
           <el-button
             v-if="guziStore.selectedGoodsCount > 0"
             text

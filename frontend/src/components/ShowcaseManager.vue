@@ -136,7 +136,7 @@
           <span class="showcase-dialog-kicker">{{ showcaseDialogMode === 'create' ? 'Curate Showcase' : 'Refine Showcase' }}</span>
           <h3 class="showcase-dialog-title">{{ showcaseDialogTitle }}</h3>
           <p class="showcase-dialog-subtitle">
-            {{ showcaseDialogMode === 'create' ? '用一个更完整的名字、描述和封面，为你的展柜定下第一眼印象。' : '微调名称、描述和封面，让这个展柜更贴近你现在的收藏氛围。' }}
+            {{ showcaseDialogMode === 'create' ? '取好名字、写点描述，再选一张封面~ 为展柜准备漂亮的第一印象吧' : '调一调名称、描述和封面，让展柜更贴近现在的收藏氛围吧~' }}
           </p>
         </div>
       </template>
@@ -149,7 +149,7 @@
             <span class="showcase-dialog-kicker">{{ showcaseDialogMode === 'create' ? 'Curate Showcase' : 'Refine Showcase' }}</span>
             <h3 class="showcase-dialog-title">{{ showcaseDialogTitle }}</h3>
             <p class="showcase-dialog-subtitle">
-              {{ showcaseDialogMode === 'create' ? '用一个更完整的名字、描述和封面，为你的展柜定下第一眼印象。' : '微调名称、描述和封面，让这个展柜更贴近你现在的收藏氛围。' }}
+              {{ showcaseDialogMode === 'create' ? '取好名字、写点描述，再选一张封面~ 为展柜准备漂亮的第一印象吧' : '调一调名称、描述和封面，让展柜更贴近现在的收藏氛围吧~' }}
             </p>
           </div>
           <button class="showcase-editor-close" type="button" aria-label="关闭展柜编辑面板" @click="showcaseDialogVisible = false">
@@ -183,7 +183,7 @@
                 >
                   <el-icon><Plus /></el-icon>
                 </el-upload>
-                <div class="cover-tip">建议使用 1:1 或 4:3 比例图片</div>
+                <div class="cover-tip">推荐使用 1:1 或 4:3 的图片，展示效果会更好看哦~</div>
               </div>
             </el-form-item>
           </section>
@@ -192,7 +192,7 @@
             <div class="showcase-visibility-row">
               <div class="showcase-visibility-copy">
                 <span class="showcase-visibility-title">是否公开</span>
-                <span class="showcase-visibility-desc">公开后，其他人可以在公共展柜中看到这个展柜。</span>
+                <span class="showcase-visibility-desc">公开之后，大家就能来你的公共展柜参观啦~ (´▽`ʃ♡ƪ)</span>
               </div>
               <el-switch v-model="showcaseForm.is_public" active-color="#A29BFE" />
             </div>

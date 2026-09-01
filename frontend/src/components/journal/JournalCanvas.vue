@@ -197,7 +197,7 @@
       <el-button size="small" @click="setZoom(zoomLevel - 0.1)">-</el-button>
       <span>{{ Math.round(zoomLevel * 100) }}%</span>
       <el-button size="small" @click="setZoom(zoomLevel + 0.1)">+</el-button>
-      <small>按住方向键微调，Shift 可加速移动</small>
+      <small>用方向键慢慢挪位置，按住 Shift 就能快速移动啦~</small>
     </div>
   </div>
 </template>

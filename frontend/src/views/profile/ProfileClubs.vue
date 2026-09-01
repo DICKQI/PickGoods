@@ -4,7 +4,7 @@
       <div>
         <p class="section-eyebrow">BOOKMARKS</p>
         <h2 id="favorite-clubs-title">我的社团</h2>
-        <p>收藏的社团会按最近收藏时间排列。</p>
+        <p>收藏过的社团会按最近收藏时间排好队哦~</p>
       </div>
       <el-button text class="directory-link" @click="goDirectory">
         <el-icon><Shop /></el-icon><span>浏览社团</span>

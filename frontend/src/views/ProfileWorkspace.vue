@@ -33,7 +33,6 @@ const authStore = useAuthStore()
 
 .profile-header {
   padding-bottom: 22px;
-  border-bottom: 1px solid rgba(212, 175, 55, 0.3);
 }
 
 .profile-eyebrow {

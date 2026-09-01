@@ -4,7 +4,7 @@
       <div>
         <p class="section-eyebrow">CATALOG OPERATIONS</p>
         <h2>社团谷子</h2>
-        <p>管理公开目录，草稿和下架条目不会出现在公开主页。</p>
+        <p>一起打理公开目录吧~ 草稿和下架条目会乖乖藏起来 (ง •̀_•́)ง</p>
       </div>
       <el-button type="primary" class="primary-action" @click="router.push('/club/goods/new')">
         <el-icon><Plus /></el-icon>新增谷子
@@ -57,7 +57,7 @@
         <el-button :type="bulkAction === 'delete' ? 'danger' : 'warning'" :loading="bulkLoading" :disabled="!selectedGoodsIds.length" data-test="confirm-bulk-action" :aria-label="`确认批量${bulkActionLabel}`" @click="executeBulkAction"><el-icon><Check /></el-icon>{{ bulkActionLabel }}</el-button>
       </div>
     </div>
-    <p v-if="!canReorder && !bulkAction" class="sort-hint">筛选或搜索状态下暂不支持拖拽排序，请切回“全部 / 公开顺序”。</p>
+    <p v-if="!canReorder && !bulkAction" class="sort-hint">正在筛选时暂时不能拖动排序哦~ 切回“全部 / 公开顺序”就可以啦</p>
 
     <div v-loading="loading" class="goods-list">
       <div v-if="goods.length" :class="['goods-list-header', { 'has-selection': bulkAction }]" aria-hidden="true" data-test="catalog-column-header">

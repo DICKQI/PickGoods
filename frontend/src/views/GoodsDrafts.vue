@@ -3,7 +3,7 @@
     <div class="header-section">
       <div class="title-wrapper">
         <h2 class="page-title">草稿箱</h2>
-        <span class="sub-title">仅显示状态为草稿的谷子，点击可继续编辑</span>
+        <span class="sub-title">这里只放还在努力打磨中的草稿谷子，点开就能继续编辑啦~</span>
       </div>
       <div class="header-actions">
         <el-button @click="handleBack">返回</el-button>
@@ -233,4 +233,3 @@ onMounted(fetchDrafts)
   }
 }
 </style>
-

@@ -164,7 +164,7 @@ describe('NotificationCenter 移动端', () => {
     const entry = wrapper.find('.notification-preorder-entry')
     expect(entry.exists()).toBe(true)
     expect(entry.text()).toContain('管理预购')
-    expect(entry.text()).toContain('登记定金 · 补款提醒 · 一键转正')
+    expect(entry.text()).toContain('记下定金 · 提醒补款 · 一键转正~')
 
     await entry.trigger('click')
     await flushPromises()

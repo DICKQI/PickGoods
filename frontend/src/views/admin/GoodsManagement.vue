@@ -1,6 +1,6 @@
 <template>
   <div class="admin-page">
-    <AdminPageHeader title="谷子管理" subtitle="管理全站谷子数据，可按用户筛选">
+    <AdminPageHeader title="谷子管理" subtitle="在这里整理全站谷子数据，也可以按用户筛选~">
       <el-button type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         <span>新增谷子</span>

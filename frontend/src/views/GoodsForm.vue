@@ -48,7 +48,7 @@
             <span class="form-section-header-bar" aria-hidden="true"></span>
             <div class="form-section-header-body">
               <h3 class="form-section-title"><span class="form-section-title-text">基础信息</span></h3>
-              <p class="form-section-subtitle form-section-header-copy">IP、角色与品类等核心信息</p>
+              <p class="form-section-subtitle form-section-header-copy">IP、角色与品类，都来认识一下吧~</p>
             </div>
           </div>
           <el-row :gutter="20">
@@ -161,7 +161,7 @@
                     常用 {{ node.code || node.name }}
                   </button>
                 </div>
-                <div v-else class="location-helper">不确定具体位置时，可以先留空，之后在位置作业台整理~</div>
+                <div v-else class="location-helper">位置还没想好也没关系~ 先空着，之后再慢慢整理就好啦 (つω`｡)</div>
               </el-form-item>
             </el-col>
           </el-row>
@@ -175,7 +175,7 @@
             <span class="form-section-header-bar" aria-hidden="true"></span>
             <div class="form-section-header-body">
               <h3 class="form-section-title"><span class="form-section-title-text">数量与购入</span></h3>
-              <p class="form-section-subtitle form-section-header-copy">记录个人库存数量、价格与购买时间</p>
+              <p class="form-section-subtitle form-section-header-copy">数量、价格和入手时间，都帮你的收藏记下来啦~</p>
             </div>
           </div>
           <el-row :gutter="20" class="meta-field-grid">
@@ -210,7 +210,7 @@
             <span class="form-section-header-bar" aria-hidden="true"></span>
             <div class="form-section-header-body">
               <h3 class="form-section-title"><span class="form-section-title-text">备注</span></h3>
-              <p class="form-section-subtitle form-section-header-copy">可以记录店铺、工艺、画师等细节</p>
+              <p class="form-section-subtitle form-section-header-copy">店铺、工艺、画师这些小细节，也一起收进档案吧~</p>
             </div>
           </div>
           <el-row :gutter="20">
@@ -250,7 +250,6 @@
           <span class="form-section-header-bar" aria-hidden="true"></span>
           <div class="form-section-header-body">
             <h3 class="form-section-title"><span class="form-section-title-text">图片</span></h3>
-            <p class="form-section-subtitle form-section-header-copy">主图与细节图会直接影响云展柜观感</p>
           </div>
         </div>
         <div class="goods-form-media-stack">
@@ -339,7 +338,7 @@
                     />
                   </el-select>
                 </div>
-                <p class="ocr-upload-hint">支持淘宝/天猫订单截图，识别商品名、价格、日期等信息</p>
+                <p class="ocr-upload-hint">淘宝 / 天猫订单截图也能认出来哦~ 商品名、价格和日期都交给我吧</p>
               </div>
             </el-form-item>
           </el-col>
@@ -408,7 +407,7 @@
         </div>
         <div class="goods-leave-copy">
           <h3>离开编辑？</h3>
-          <p class="goods-leave-subtitle">当前填写的谷子信息还没有保存</p>
+          <p class="goods-leave-subtitle">现在填写的谷子信息还没有保存哦~</p>
         </div>
         <div class="goods-leave-warning">
           未保存的谷子信息不会保留。离开后，未保存的名称、分类、图片、备注等内容将不会保留。
@@ -438,7 +437,7 @@
         </div>
         <div class="goods-reset-copy">
           <h3>重置表单？</h3>
-          <p class="goods-reset-subtitle">当前填写内容将恢复为进入页面时的状态</p>
+          <p class="goods-reset-subtitle">现在填写的内容会恢复到刚进入页面时的状态哦~</p>
         </div>
         <div class="goods-reset-warning">
           重置后，未保存的修改会丢失；新增谷子会回到第一步，已填写的名称、分类、图片、备注等内容会被清空或恢复。
@@ -467,7 +466,7 @@
     <!-- 新建去重弹窗 -->
     <el-dialog v-model="duplicateDialogVisible" width="min(92vw, 644px)" class="duplicate-dialog" :lock-scroll="!isMobile" :close-on-click-modal="false" @close="setDuplicateSelectedId(null)">
       <template #header><span class="duplicate-dialog-title">检测到库存中已存在相同项目</span></template>
-      <p class="duplicate-dialog-desc">以下谷子与当前填写信息可能重复，请选择合并到已有条目或仍然新建一条。</p>
+      <p class="duplicate-dialog-desc">发现几条可能重复的谷子哦~ 可以合并到已有条目，也可以坚持新建一条</p>
       <div class="duplicate-candidates-list">
         <div v-for="c in duplicateCandidates" :key="c.id" class="duplicate-candidate-card" :class="{ 'is-selected': duplicateSelectedId === c.id }" @click="setDuplicateSelectedId(c.id)">
           <div class="duplicate-candidate-thumb">

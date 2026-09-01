@@ -101,7 +101,7 @@
         </span>
         <span class="notification-preorder-entry__copy">
           <strong>管理预购</strong>
-          <small>登记定金 · 补款提醒 · 一键转正</small>
+          <small>记下定金 · 提醒补款 · 一键转正~</small>
         </span>
         <el-icon class="notification-preorder-entry__arrow"><ArrowRight /></el-icon>
       </button>

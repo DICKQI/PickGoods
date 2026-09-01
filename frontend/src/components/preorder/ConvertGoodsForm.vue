@@ -3,13 +3,13 @@
     <div class="convert-goods-form-scroll">
       <div class="convert-tip">
         <el-icon class="convert-tip-icon"><InfoFilled /></el-icon>
-        <span>金额自动带入（定金 + 尾款），购入日期为补款日；默认保存为草稿，可稍后补充图片等信息。</span>
+        <span>金额会自动带入（定金 + 尾款），购入日期就是补款日~ 默认先存成草稿，之后还能补图片哦</span>
       </div>
       <el-form :ref="setFormRef" :model="convertForm" :rules="convertRules" label-position="top" class="preorder-editor-form">
       <section class="preorder-editor-section">
         <div class="preorder-editor-section-title">
           <h4>谷子信息</h4>
-          <p>名称默认预填预购名</p>
+          <p>名称已经帮你填好预购名啦~</p>
         </div>
         <el-form-item label="谷子名称" prop="name">
           <el-input v-model="convertForm.name" maxlength="200" />
@@ -36,14 +36,14 @@
           <el-select v-model="convertForm.characters" placeholder="选择角色（可多选）" multiple filterable :disabled="!convertForm.ip" style="width: 100%">
             <el-option v-for="c in ipCharacters" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
-          <div v-if="convertForm.status === 'draft'" class="convert-hint">草稿状态角色可暂不选择</div>
+          <div v-if="convertForm.status === 'draft'" class="convert-hint">草稿状态可以先不选角色哦~</div>
         </el-form-item>
       </section>
 
       <section class="preorder-editor-section">
         <div class="preorder-editor-section-title">
           <h4>状态与归属</h4>
-          <p>非草稿状态需至少关联一个角色</p>
+          <p>不是草稿时，至少要带上一位角色哦~</p>
         </div>
         <el-form-item label="状态">
           <el-radio-group v-model="convertForm.status" class="convert-status-group">

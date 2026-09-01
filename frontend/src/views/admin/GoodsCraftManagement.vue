@@ -1,6 +1,6 @@
 <template>
   <div class="admin-page">
-    <AdminPageHeader title="谷子工艺" subtitle="维护前台备注快捷填入的工艺选项">
+    <AdminPageHeader title="谷子工艺" subtitle="整理前台备注可以快速填入的工艺选项~">
       <el-button type="primary" @click="handleAdd">
         <el-icon><Plus /></el-icon>
         <span>新增工艺</span>

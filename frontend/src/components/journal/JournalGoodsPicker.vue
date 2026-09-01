@@ -76,7 +76,7 @@
 
     <div v-else-if="activeTab === 'upload'" class="upload-panel">
       <input ref="fileInputRef" type="file" accept="image/*" @change="handleLocalImageChange" />
-      <small>选择本地图片后会作为贴纸插入当前页面。</small>
+      <small>选一张本地图片，它就会变成贴纸来到当前页面啦~</small>
     </div>
 
     <div v-else-if="loading" class="picker-state">

@@ -4,7 +4,7 @@
       <div>
         <p class="section-title__eyebrow">CLUB PROFILE</p>
         <h2>社团资料</h2>
-        <p>公开资料会展示在社团主页，申请理由仅管理员可见。</p>
+        <p>公开资料会展示在社团主页哦~ 申请理由只会悄悄给管理员看</p>
       </div>
       <el-button type="primary" :loading="saving" class="save-button" @click="save">
         <el-icon><Check /></el-icon>
@@ -19,7 +19,7 @@
         </el-avatar>
         <div class="avatar-field__copy">
           <strong>社团头像</strong>
-          <span>建议上传清晰的方形图片，审批通过后即可更新。</span>
+          <span>推荐上传清晰的方形图片~ 审批通过后就能换上新头像啦</span>
           <el-upload accept="image/*" :show-file-list="false" :before-upload="uploadAvatar" :disabled="avatarUploading">
             <el-button plain class="outline-button" :loading="avatarUploading" :disabled="avatarUploading">
               <el-icon><Upload /></el-icon>
@@ -32,7 +32,7 @@
       <div class="form-section">
         <div class="form-section__heading">
           <h3>基础资料</h3>
-          <span>让访客快速了解你的社团</span>
+          <span>让来访的小伙伴快速认识你的社团吧~</span>
         </div>
         <el-form-item label="社团名称">
           <el-input v-model="form.name" maxlength="200" show-word-limit />
@@ -48,7 +48,7 @@
       <div class="form-section">
         <div class="form-section__heading">
           <h3>联系信息</h3>
-          <span>至少填写一种方便访客联系的方式</span>
+          <span>至少留下一种联系方式，方便小伙伴找到你哦~</span>
         </div>
         <div class="contact-grid">
           <el-form-item label="联系人">
@@ -72,7 +72,7 @@
       <div class="form-section">
         <div class="form-section__heading">
           <h3>平台入口</h3>
-          <span>填写后会在社团主页显示对应平台 logo</span>
+          <span>填写后，社团主页就会亮起对应的平台入口啦~</span>
         </div>
         <div class="platform-grid">
           <div v-for="platform in platforms" :key="platform.key" class="platform-card">
@@ -95,7 +95,7 @@
             :rows="3"
             placeholder="例如：官方网店 | https://example.com"
           />
-          <p class="field-help">旧版自定义链接会继续保留，不会自动归类到上述平台。</p>
+          <p class="field-help">旧版自定义链接会继续好好保留~ 但不会自动搬进上面的平台分类哦</p>
         </el-form-item>
       </div>
     </el-form>

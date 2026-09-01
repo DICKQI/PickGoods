@@ -8,7 +8,7 @@
         <div>
           <p class="eyebrow">CLUB WORKSPACE</p>
           <h1>{{ authStore.user?.club?.name || '社团工作台' }}</h1>
-          <p class="workspace-caption">把公开目录、社团资料和用户反馈放在一个清晰的工作区里。</p>
+          <p class="workspace-caption">公开目录、社团资料，还有大家的反馈，都在这里一起打理喵~</p>
         </div>
       </div>
       <el-button text class="public-link" @click="router.push(publicHomePath)">

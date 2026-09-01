@@ -4,20 +4,20 @@
       <section class="preorder-delay-section">
         <div class="preorder-delay-section-title">
           <h4>当前预计补款</h4>
-          <p>厂家跳票时可顺延补款时间</p>
+          <p>厂家延期也不用慌~ 补款时间可以往后挪喵</p>
         </div>
         <div class="preorder-delay-current">
           <span class="preorder-delay-current-icon"><el-icon><Calendar /></el-icon></span>
           <span class="preorder-delay-current-text">{{ currentText }}</span>
           <span v-if="targetRef && targetRef.delay_count > 0" class="preorder-delay-badge">已延期 {{ targetRef.delay_count }} 次</span>
         </div>
-        <p class="preorder-delay-hint">延期后旧提醒自动失效，并按新时间重新提醒</p>
+        <p class="preorder-delay-hint">延期后旧提醒会自动失效，再按新时间提醒你哦~</p>
       </section>
 
       <section class="preorder-delay-section">
         <div class="preorder-delay-section-title">
           <h4>延期到</h4>
-          <p>只能顺延到更晚的时间</p>
+          <p>只能往更晚的时间顺延哦~</p>
         </div>
         <el-segmented v-model="selectedKey" :options="segmentedOptions" class="preorder-delay-options" />
         <div v-if="selectedKey === 'custom'" class="preorder-delay-custom">
@@ -40,7 +40,7 @@
       <section class="preorder-delay-section">
         <div class="preorder-delay-section-title">
           <h4>延期说明</h4>
-          <p>会写入通知与历史记录</p>
+          <p>这段说明会一起记进通知和历史记录里~</p>
         </div>
         <el-form-item label="">
           <el-input v-model="reason" maxlength="100" placeholder="延期原因，默认「厂家跳票」" />

@@ -407,7 +407,7 @@
         <span v-else class="import-dialog__icon"><el-icon><Plus /></el-icon></span>
         <div>
           <strong>{{ selected?.name || '社团谷子' }}</strong>
-          <p>将打开个人库存表单，社团公开信息会作为可编辑的初始值。</p>
+          <p>接下来会打开个人库存表单~ 社团公开信息已经帮你预先填好啦</p>
         </div>
       </div>
 

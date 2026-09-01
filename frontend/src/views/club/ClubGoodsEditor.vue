@@ -4,7 +4,7 @@
       <div class="editor-title-block">
         <el-button text class="editor-back" @click="router.push('/club/goods')"><el-icon><ArrowLeft /></el-icon>返回社团谷子</el-button>
         <h2>{{ isEdit ? '编辑社团谷子' : '新增社团谷子' }}</h2>
-        <p>维护公开目录信息、图片和上架状态。</p>
+        <p>名称、图片和上架状态，都在这里好好整理吧~</p>
       </div>
     </header>
 
@@ -14,7 +14,7 @@
           <section class="form-section form-section--basic">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
-              <div><h3>基础信息</h3><p>IP、角色与品类等核心信息</p></div>
+              <div><h3>基础信息</h3><p>IP、角色与品类，都来认识一下吧~</p></div>
             </div>
             <el-row :gutter="20">
               <el-col :xs="24" :sm="12">
@@ -52,7 +52,7 @@
           <section class="form-section form-section--publish">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
-              <div><h3>发布设置</h3><p>决定目录可见性与公开价格</p></div>
+              <div><h3>发布设置</h3><p>决定谁能看见它，再定好公开价格吧~</p></div>
             </div>
             <el-row :gutter="20">
               <el-col :xs="24" :sm="14">
@@ -73,7 +73,7 @@
                   <input v-model="publishAtLocal" class="datetime-input" type="datetime-local" :min="minimumPublishAt" :disabled="form.publication_status !== 'draft'" @change="isDirty = true" />
                   <el-button v-if="publishAtLocal || form.publish_error" class="cancel-schedule" link type="warning" :disabled="form.publication_status !== 'draft'" @click="cancelPublishSchedule">取消计划</el-button>
                 </div>
-                <p class="field-help">到点后自动从草稿切换为已上架。手动保存为上架或下架时会清除计划。</p>
+                <p class="field-help">到点后会自动从草稿变成已上架哦~ 手动改为上架或下架时，原来的计划会被清除</p>
               </el-form-item>
               <p v-if="form.publish_error" class="publish-error">上次定时上架失败：{{ form.publish_error }}（请重新设置时间）</p>
             </div>
@@ -82,7 +82,7 @@
           <section class="form-section form-section--notes">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
-              <div><h3>公开说明</h3><p>补充展示给访客的说明信息</p></div>
+              <div><h3>公开说明</h3><p>给来访的小伙伴留下一点补充说明吧~</p></div>
             </div>
             <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="5" maxlength="2000" show-word-limit placeholder="请输入公开说明" /></el-form-item>
           </section>
@@ -92,7 +92,7 @@
           <section class="form-section form-section--images">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
-              <div><h3>图片</h3><p>主图与细节图会直接影响公开主页观感</p></div>
+              <div><h3>图片</h3></div>
             </div>
             <el-form-item label="主图">
               <el-upload v-model:file-list="mainPhotoList" list-type="picture-card" :auto-upload="false" :limit="1" accept="image/*" class="main-photo-uploader" :on-change="handleMainPhotoChange" :on-exceed="handleMainPhotoExceed" :on-remove="handleMainPhotoRemove"><el-icon><Plus /></el-icon></el-upload>

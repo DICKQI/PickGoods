@@ -3,7 +3,7 @@
     <div class="header-section">
       <div class="title-wrapper">
         <h2 class="page-title">设置</h2>
-        <span class="sub-title">配置应用程序设置</span>
+        <span class="sub-title">把拾谷调成最顺手的样子吧~</span>
       </div>
     </div>
 
@@ -27,7 +27,7 @@
           </el-input>
           <div class="form-tip">
             <el-icon class="tip-icon"><InfoFilled /></el-icon>
-            <span>当前地址将用于所有 API 请求。修改后立即生效。</span>
+            <span>所有 API 请求都会使用这个地址，修改后会立即生效哦~</span>
           </div>
         </el-form-item>
 
@@ -70,10 +70,10 @@
         >
           <template #default>
             <ul class="help-list">
-              <li>后端地址应为完整的 URL，包含协议（http:// 或 https://）和端口号</li>
+              <li>后端地址要填写完整 URL~ 记得带上协议（http:// 或 https://）和端口号</li>
               <li>示例：<code>http://127.0.0.1:8000</code> 或 <code>https://api.example.com</code></li>
-              <li>修改后的地址会保存到浏览器本地存储，刷新页面后仍然有效</li>
-              <li>如果配置错误，可以点击"恢复默认"按钮重置为默认地址</li>
+              <li>修改后的地址会保存在浏览器里，刷新页面后依然有效哦~</li>
+              <li>如果不小心配错了，点击“恢复默认”就能回到默认地址啦~</li>
             </ul>
           </template>
         </el-alert>

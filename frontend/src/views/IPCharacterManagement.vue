@@ -4,7 +4,7 @@
     <div class="header-section">
       <div class="title-wrapper">
         <h2 class="page-title">IP作品与角色管理</h2>
-        <span class="sub-title">管理您的作品分类及其角色</span>
+        <span class="sub-title">把作品和角色档案整理得漂漂亮亮吧~ (｡･ω･｡)ﾉ♡</span>
       </div>
 
       <!-- 合并后的操作按钮 -->
@@ -478,7 +478,7 @@
           <div class="ip-editor-desktop-copy">
             <span class="ip-editor-desktop-kicker">IP Archive</span>
             <h3 class="ip-editor-desktop-title">{{ ipDialogTitle }}</h3>
-            <p>维护作品全称、类型和检索别名，让角色归档与搜索更准确。</p>
+            <p>补好作品全称、类型和检索别名，角色归档和搜索就更准确啦~</p>
           </div>
           <button
             class="ip-editor-desktop-close"
@@ -497,7 +497,7 @@
           <div class="ip-editor-mobile-hero-copy">
             <span>IP Archive</span>
             <h3>{{ ipDialogTitle }}</h3>
-            <p>维护作品名称、类型和检索别名，角色归档会更清晰。</p>
+            <p>整理好作品名称、类型和检索别名，角色档案会更清楚哦~</p>
           </div>
           <button
             class="ip-editor-mobile-close"
@@ -515,7 +515,7 @@
             <section class="ip-editor-section ip-editor-section--identity">
               <div class="ip-editor-section-header">
                 <h4>基础信息</h4>
-                <p>记录作品官方名称和类型，后续新增角色时会作为归属来源。</p>
+                <p>记下作品的正式名称和类型~ 以后新增角色时会以它作为归属哦</p>
               </div>
               <div class="ip-editor-field-grid">
                 <el-form-item label="作品官方全称" prop="name">
@@ -541,7 +541,7 @@
             <section class="ip-editor-section ip-editor-section--keywords">
               <div class="ip-editor-section-header">
                 <h4>检索关键词</h4>
-                <p>添加别名、简称或缩写，便于搜索和快速匹配。</p>
+                <p>把别名、简称或缩写也收进来，搜索匹配会更快啦~</p>
               </div>
               <el-form-item label="关联关键词 (别名/缩写)">
                 <div class="keyword-manager-box">
@@ -602,7 +602,7 @@
             <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
             <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
             <p class="bgm-dialog-subtitle">
-              从 Bangumi 获取角色资料并整理成可批量导入的候选列表，帮助你更快完成作品角色建档。
+              从 Bangumi 把角色资料带回来，再整理成批量候选列表~ 建档会轻松很多哦
             </p>
           </div>
         </div>
@@ -615,7 +615,7 @@
           <div class="bgm-import-mobile-hero-copy">
             <span>{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
             <h3>{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
-            <p>搜索作品、勾选角色，再批量建立角色档案。</p>
+            <p>搜索作品、勾选角色，再一口气建立角色档案吧~</p>
           </div>
           <button
             class="bgm-import-mobile-close"
@@ -893,7 +893,7 @@
             <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
             <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
             <p class="bgm-dialog-subtitle">
-              对比本地角色与 Bangumi 最新条目，预览差异后再应用更新，保持角色资料与关联信息一致。
+              对比本地角色和 Bangumi 最新条目，确认差异后再更新~ 角色资料就能保持一致啦
             </p>
           </div>
         </div>
@@ -910,7 +910,7 @@
                 class="bgm-sync-alert"
               >
                 <template #title>
-                  该作品尚未关联 Bangumi 条目。请搜索并选择对应的 BGM 作品以建立关联，后续更新将自动识别。
+                  这个作品还没有关联 Bangumi 条目哦~ 搜索并选中对应的 BGM 作品后，后续更新就能自动认出来啦
                 </template>
               </el-alert>
             </div>
@@ -1172,7 +1172,7 @@
           <div class="character-editor-desktop-copy">
             <span class="character-editor-desktop-kicker">Character Profile</span>
             <h3 class="character-editor-desktop-title">{{ characterDialogTitle }}</h3>
-            <p>补全角色头像、名称和所属作品，让角色卡片在列表里更清晰。</p>
+            <p>补上头像、名称和所属作品，让角色卡片漂漂亮亮地排好队吧~</p>
           </div>
           <button
             class="character-editor-desktop-close"
@@ -1191,7 +1191,7 @@
           <div class="character-editor-mobile-hero-copy">
             <span>Character Profile</span>
             <h3>{{ isEditCharacter ? characterDialogTitle : '迎接新角色' }}</h3>
-            <p>补全头像、名称和所属作品，让角色卡片更好找。</p>
+            <p>补上头像、名称和所属作品，角色卡片就更好找啦~</p>
           </div>
           <button
             class="character-editor-mobile-close"
@@ -1216,7 +1216,7 @@
               <div class="avatar-col character-editor-avatar-card">
                 <div class="character-editor-section-header">
                   <h4>角色头像</h4>
-                  <p>上传文件或粘贴图片 URL。</p>
+                  <p>上传图片或贴上图片 URL 都可以哦~</p>
                 </div>
                 <div class="avatar-mode-switch">
                   <el-radio-group v-model="avatarInputMode" size="small" class="mode-radio-group">
@@ -1256,7 +1256,7 @@
               <section class="info-col character-editor-section character-editor-section--identity">
                 <div class="character-editor-section-header">
                   <h4>基础信息</h4>
-                  <p>角色名称和所属作品会用于列表展示与筛选。</p>
+                  <p>角色名称和所属作品会用于展示和筛选，要认真填写哦~</p>
                 </div>
                 <el-form-item label="角色名称" prop="name">
                   <el-input v-model="characterFormData.name" placeholder="输入角色名" />
