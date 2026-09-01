@@ -144,6 +144,8 @@ DJANGO_SECRET_KEY=请替换为随机密钥
 
 ```env
 JWT_SECRET=独立的JWT签名密钥
+REGISTER_CAPTCHA_ENABLED=true
+DRF_NUM_PROXIES=0
 BGM_ACCESS_TOKEN=Bangumi访问令牌
 BGM_SCHEDULER_DISABLED=1
 BGM_ZOMBIE_TIMEOUT_HOURS=2
@@ -314,6 +316,8 @@ gunicorn ShiGu.wsgi:application --config gunicorn_config.py
 - `LANGUAGE_CODE` 为 `en-us`，`TIME_ZONE` 为 `UTC`。
 - 上传文件位于本地 `media/`，需要备份和容量规划。
 - 进程内 APScheduler 在多 Gunicorn Worker 下可能重复启动，生产环境应明确调度进程策略，或设置 `BGM_SCHEDULER_DISABLED=1` 后改用独立调度。
+- DRF 限流当前使用进程内 LocMemCache；多 Gunicorn Worker 下每个进程独立计数，实际总请求量可能接近配置值乘以 Worker 数。需要严格限流时应切换到共享 Redis 缓存。
+- `DRF_NUM_PROXIES` 默认是 `0`，仅信任直连地址。若由 Nginx 反向代理，应限制 Django 端口只允许代理访问、由代理覆盖 `X-Forwarded-For`，并按实际可信代理层数设置该值（单层代理通常为 `1`）。
 
 ## 许可证
 

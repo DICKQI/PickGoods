@@ -1,15 +1,14 @@
 import request from '@/utils/request'
-import type { AuthTokenResponse, RegistrationPending, UserInfo } from './types'
+import type { AuthTokenResponse, CaptchaChallenge, RegisterPayload, RegistrationPending, UserInfo } from './types'
 
 /** 注册（创建用户并返回 Token） */
-export function register(data: {
-  username: string
-  password: string
-  account_type?: 'collector' | 'club'
-  application_reason?: string
-  club_profile?: Record<string, unknown>
-}) {
+export function register(data: RegisterPayload) {
   return request.post<AuthTokenResponse | RegistrationPending>('/api/auth/register/', data)
+}
+
+/** 获取注册验证码 challenge。 */
+export function getCaptcha() {
+  return request.get<CaptchaChallenge>('/api/auth/captcha/')
 }
 
 /** 登录（返回 Token） */

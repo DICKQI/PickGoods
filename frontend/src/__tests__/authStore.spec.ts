@@ -7,6 +7,7 @@ import { AUTH_TOKEN_KEY } from '@/utils/request'
 vi.mock('@/api/auth', () => ({
   login: vi.fn(),
   register: vi.fn(),
+  getCaptcha: vi.fn(),
   getCurrentUser: vi.fn(),
   logout: vi.fn(),
 }))
@@ -84,17 +85,6 @@ describe('useAuthStore', () => {
     expect(store.loading).toBe(false)
   })
 
-  it('registerAndLogin 成功设置 token 和 user', async () => {
-    vi.mocked(authApi.register).mockResolvedValue({ access_token: 'reg_tok', token_type: 'Bearer', expires_in: 3600 })
-    vi.mocked(authApi.getCurrentUser).mockResolvedValue({ id: 2, username: 'new', role: 'User' } as any)
-
-    const store = useAuthStore()
-    await store.registerAndLogin('new', 'pass')
-
-    expect(store.token).toBe('reg_tok')
-    expect(store.user?.username).toBe('new')
-  })
-
   it('initFromStorage 从 localStorage 恢复', async () => {
     localStorage.setItem(AUTH_TOKEN_KEY, 'saved_tok')
     vi.mocked(authApi.getCurrentUser).mockResolvedValue({ id: 3, username: 'saved', role: 'User' } as any)
@@ -156,8 +146,14 @@ describe('useAuthStore', () => {
       account_type: 'club',
       application_reason: '申请理由',
       club_profile: { name: '待审批社团' },
+      captcha_key: 'captcha-key',
+      captcha_code: 'AbCd',
     })
 
+    expect(authApi.register).toHaveBeenCalledWith(expect.objectContaining({
+      captcha_key: 'captcha-key',
+      captcha_code: 'AbCd',
+    }))
     expect(result?.code).toBe('account_pending')
     expect(store.token).toBeNull()
     expect(store.user).toBeNull()

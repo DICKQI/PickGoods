@@ -82,3 +82,31 @@ describe('handleResponseError 401 处理', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('无权限访问')
   })
 })
+
+describe('handleResponseError 429 处理', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('优先透传后端 detail 并保留原始错误', async () => {
+    const err = {
+      response: {
+        status: 429,
+        data: { detail: '请求被限流，请在 42 秒后重试' },
+        headers: { 'retry-after': '42' },
+      },
+      config: { url: '/api/auth/register/' },
+    }
+    await expect(handleResponseError(err)).rejects.toBe(err)
+    expect(ElMessage.warning).toHaveBeenCalledWith('请求被限流，请在 42 秒后重试')
+  })
+
+  it('无 detail 时使用 Retry-After 生成提示', async () => {
+    const err = {
+      response: { status: 429, data: {}, headers: { 'retry-after': '8.2' } },
+      config: { url: '/api/clubs/' },
+    }
+    await expect(handleResponseError(err)).rejects.toBe(err)
+    expect(ElMessage.warning).toHaveBeenCalledWith('请求过于频繁，请在 9 秒后重试')
+  })
+})

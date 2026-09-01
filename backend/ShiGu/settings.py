@@ -58,6 +58,7 @@ INSTALLED_APPS = [
     'corsheaders',  # 跨域支持
     'django_extensions',
     'drf_spectacular',
+    'captcha',
     # 本地应用
     "apps.goods.apps.GoodsConfig",
     "apps.location.apps.LocationConfig",
@@ -181,7 +182,20 @@ REST_FRAMEWORK = {
         "ocr": "20/minute",
         # 公开手帐页读取接口限流，避免匿名 token 枚举和异常流量
         "journal_public": "60/minute",
+        # 社团公开读取、收藏、管理和导入接口
+        "club_public_read": "60/minute",
+        "club_write": "60/minute",
+        "club_manage": "120/minute",
+        "club_import": "10/minute",
+        # 注册、登录和注册验证码接口
+        "auth_register": "10/hour",
+        "auth_login": "10/minute",
+        "auth_login_username": "10/minute",
+        "auth_captcha": "30/minute",
+        "auth_captcha_image": "60/minute",
     },
+    # 默认不信任客户端传入的 X-Forwarded-For；反向代理部署时显式配置。
+    "NUM_PROXIES": int(os.environ.get("DRF_NUM_PROXIES", "0")),
     # 指定使用的 Schema 类
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -189,6 +203,12 @@ REST_FRAMEWORK = {
 # JWT 配置
 JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
 JWT_ACCESS_TTL_SECONDS = 7 * 24 * 3600
+
+# django-simple-captcha 的超时单位是分钟。
+CAPTCHA_TIMEOUT = 5
+REGISTER_CAPTCHA_ENABLED = os.environ.get(
+    "REGISTER_CAPTCHA_ENABLED", "true"
+).strip().lower() not in {"0", "false", "no", "off"}
 SPECTACULAR_SETTINGS = {
     'TITLE': 'SHIGU API',
     'DESCRIPTION': 'SHIGU API Documentation',

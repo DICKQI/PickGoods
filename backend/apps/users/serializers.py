@@ -1,4 +1,7 @@
+from django.conf import settings
 from django.db import transaction
+from django.utils import timezone
+from captcha.models import CaptchaStore
 from rest_framework import serializers
 
 from core.jwt import build_access_payload, encode_hs256
@@ -13,6 +16,8 @@ class RegisterSerializer(serializers.Serializer):
     account_type = serializers.ChoiceField(choices=User.ACCOUNT_TYPE_CHOICES, default=User.ACCOUNT_TYPE_COLLECTOR)
     application_reason = serializers.CharField(required=False, allow_blank=True, write_only=True)
     club_profile = serializers.DictField(required=False, write_only=True)
+    captcha_key = serializers.CharField(max_length=40, required=False, write_only=True)
+    captcha_code = serializers.CharField(max_length=32, required=False, write_only=True)
 
     def validate_username(self, value: str) -> str:
         v = (value or "").strip()
@@ -40,10 +45,48 @@ class RegisterSerializer(serializers.Serializer):
             if not reason:
                 raise serializers.ValidationError({"application_reason": "社团申请理由不能为空"})
             attrs["application_reason"] = reason
+
+        if getattr(settings, "REGISTER_CAPTCHA_ENABLED", True):
+            captcha_key = str(attrs.get("captcha_key") or "").strip()
+            captcha_code = str(attrs.get("captcha_code") or "").strip()
+            errors = {}
+            if not captcha_key:
+                errors["captcha_key"] = "请刷新验证码后重试"
+            if not captcha_code:
+                errors["captcha_code"] = "请输入验证码"
+            if errors:
+                raise serializers.ValidationError(errors)
+
+            CaptchaStore.remove_expired()
+            now = timezone.now()
+            store = CaptchaStore.objects.filter(
+                hashkey=captcha_key,
+                expiration__gt=now,
+            ).first()
+            if store is None:
+                raise serializers.ValidationError(
+                    {"captcha_code": "验证码已失效，请刷新后重试"}
+                )
+
+            deleted, _ = CaptchaStore.objects.filter(
+                pk=store.pk,
+                hashkey=captcha_key,
+                expiration__gt=timezone.now(),
+            ).delete()
+            if deleted != 1:
+                raise serializers.ValidationError(
+                    {"captcha_code": "验证码已失效，请刷新后重试"}
+                )
+            if store.response.strip().casefold() != captcha_code.casefold():
+                raise serializers.ValidationError(
+                    {"captcha_code": "验证码错误，请刷新后重试"}
+                )
         return attrs
 
     @transaction.atomic
     def create(self, validated_data):
+        validated_data.pop("captcha_key", None)
+        validated_data.pop("captcha_code", None)
         username = validated_data["username"]
         password = validated_data["password"]
         account_type = validated_data.get("account_type", User.ACCOUNT_TYPE_COLLECTOR)
@@ -83,6 +126,12 @@ class RegisterSerializer(serializers.Serializer):
 class LoginSerializer(serializers.Serializer):
     username = serializers.CharField(max_length=150)
     password = serializers.CharField(write_only=True)
+
+
+class CaptchaChallengeSerializer(serializers.Serializer):
+    enabled = serializers.BooleanField()
+    key = serializers.CharField(allow_null=True)
+    image = serializers.CharField(allow_null=True)
 
 
 class UserMeSerializer(serializers.Serializer):

@@ -73,6 +73,8 @@ router.register("journal-page-versions", JournalPageVersionViewSet, basename="jo
 urlpatterns = [
     path('admin/', admin.site.urls),
     # Auth
+    path("api/auth/captcha/", user_views.captcha_challenge, name="auth-captcha"),
+    path("api/auth/captcha/<str:key>/image/", user_views.captcha_image, name="auth-captcha-image"),
     path("api/auth/register/", user_views.register, name="auth-register"),
     path("api/auth/login/", user_views.login, name="auth-login"),
     path("api/auth/me/", user_views.me, name="auth-me"),

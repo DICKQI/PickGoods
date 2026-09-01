@@ -124,8 +124,45 @@
                   </el-form-item>
                 </template>
 
+                <el-form-item
+                  v-if="mode === 'register' && captchaEnabled !== false"
+                  label="图形验证码"
+                  prop="captchaCode"
+                  class="captcha-form-item"
+                >
+                  <div class="captcha-control">
+                    <button
+                      type="button"
+                      class="captcha-image-shell"
+                      :disabled="captchaLoading"
+                      aria-label="点击更换验证码"
+                      title="点击更换验证码"
+                      @click="loadCaptcha"
+                    >
+                      <img v-if="captchaImageUrl" :src="captchaImageUrl" alt="图形验证码" class="captcha-image" />
+                      <span v-else class="captcha-image-placeholder">{{ captchaLoading ? '加载中' : '暂不可用' }}</span>
+                    </button>
+                    <el-input
+                      v-model="formData.captchaCode"
+                      placeholder="输入图片中的字符"
+                      maxlength="32"
+                      clearable
+                      :disabled="captchaLoading || !captchaKey"
+                      @keyup.enter="handleSubmit"
+                    />
+                  </div>
+                  <p v-if="captchaLoadError" class="captcha-load-error">{{ captchaLoadError }}</p>
+                </el-form-item>
+
                 <div class="form-actions">
-                  <el-button type="primary" class="submit-btn" :loading="authStore.loading" @click="handleSubmit" round>
+                  <el-button
+                    type="primary"
+                    class="submit-btn"
+                    :loading="authStore.loading"
+                    :disabled="registerCaptchaUnavailable"
+                    @click="handleSubmit"
+                    round
+                  >
                     <span class="btn-text">{{ mode === 'login' ? '登 录' : (formData.accountType === 'club' ? '提交社团申请' : '注册并自动登录') }}</span>
                   </el-button>
                 </div>
@@ -172,7 +209,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { User, Lock, Tools, Shop } from '@element-plus/icons-vue'
 import type { FormInstance, FormRules } from 'element-plus'
 import { ElMessage } from 'element-plus'
+import * as authApi from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
+import { getCurrentBaseURL } from '@/utils/request'
 
 const route = useRoute()
 const router = useRouter()
@@ -189,6 +228,7 @@ const cardHeight = ref<number | null>(null)
 let cardResizeTimer: ReturnType<typeof setTimeout> | undefined
 let cardHeightTimer: ReturnType<typeof setTimeout> | undefined
 let cardHeightFrame: number | undefined
+let captchaRequestVersion = 0
 
 // Data
 const formData = reactive({
@@ -198,7 +238,29 @@ const formData = reactive({
   accountType: '' as '' | 'collector' | 'club',
   clubName: '',
   applicationReason: '',
+  captchaCode: '',
 })
+
+const captchaEnabled = ref<boolean | null>(null)
+const captchaKey = ref('')
+const captchaImagePath = ref('')
+const captchaLoading = ref(false)
+const captchaLoadError = ref('')
+
+const captchaImageUrl = computed(() => {
+  if (!captchaImagePath.value) return ''
+  try {
+    return new URL(captchaImagePath.value, getCurrentBaseURL()).toString()
+  } catch {
+    return ''
+  }
+})
+
+const registerCaptchaUnavailable = computed(() => (
+  mode.value === 'register'
+  && captchaEnabled.value !== false
+  && (captchaLoading.value || !captchaKey.value || Boolean(captchaLoadError.value))
+))
 
 // Validation
 const validateConfirmPassword = (_rule: any, value: string, callback: (err?: Error) => void) => {
@@ -231,6 +293,12 @@ const registerRules: FormRules = {
   }, trigger: 'blur' }],
   applicationReason: [{ validator: (_rule: any, value: string, callback: (err?: Error) => void) => {
     if (mode.value === 'register' && formData.accountType === 'club' && !value.trim()) callback(new Error('请填写申请理由'))
+    else callback()
+  }, trigger: 'blur' }],
+  captchaCode: [{ validator: (_rule: any, value: string, callback: (err?: Error) => void) => {
+    if (mode.value !== 'register' || captchaEnabled.value === false) callback()
+    else if (!captchaKey.value || captchaLoadError.value) callback(new Error('请先获取验证码'))
+    else if (!value.trim()) callback(new Error('请输入验证码'))
     else callback()
   }, trigger: 'blur' }],
 }
@@ -310,6 +378,68 @@ function triggerCardResize() {
 
 watch([mode, () => formData.accountType], triggerCardResize)
 
+watch([mode, () => formData.accountType], ([nextMode, nextAccountType]) => {
+  if (nextMode === 'register' && nextAccountType) {
+    void loadCaptcha()
+    return
+  }
+  captchaRequestVersion += 1
+  captchaEnabled.value = null
+  captchaKey.value = ''
+  captchaImagePath.value = ''
+  captchaLoadError.value = ''
+  formData.captchaCode = ''
+})
+
+async function loadCaptcha() {
+  const requestVersion = ++captchaRequestVersion
+  captchaLoading.value = true
+  captchaLoadError.value = ''
+  formData.captchaCode = ''
+  try {
+    const challenge = await authApi.getCaptcha()
+    if (requestVersion !== captchaRequestVersion) return
+    captchaEnabled.value = challenge.enabled
+    captchaKey.value = challenge.key || ''
+    captchaImagePath.value = challenge.image || ''
+  } catch {
+    if (requestVersion !== captchaRequestVersion) return
+    captchaEnabled.value = null
+    captchaKey.value = ''
+    captchaImagePath.value = ''
+    captchaLoadError.value = '验证码加载失败，请稍后重试'
+  } finally {
+    if (requestVersion === captchaRequestVersion) captchaLoading.value = false
+  }
+}
+
+function firstValidationMessage(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.trim()) return value
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const message = firstValidationMessage(item)
+      if (message) return message
+    }
+  }
+  if (value && typeof value === 'object') {
+    for (const item of Object.values(value)) {
+      const message = firstValidationMessage(item)
+      if (message) return message
+    }
+  }
+  return undefined
+}
+
+function readErrorMessage(err: any, fallback: string): string {
+  const data = err.response?.data
+  if (typeof data?.detail === 'string') return data.detail
+  for (const key of ['captcha_code', 'captcha_key', 'username', 'club_profile', 'application_reason']) {
+    const message = firstValidationMessage(data?.[key])
+    if (message) return message
+  }
+  return err.message || fallback
+}
+
 // Actions
 function switchMode(newMode: 'login' | 'register') {
   if (mode.value === newMode) return
@@ -360,6 +490,10 @@ async function handleSubmit() {
           account_type: accountType,
           application_reason: formData.applicationReason.trim(),
           club_profile: { name: formData.clubName.trim() },
+          ...(captchaEnabled.value === true ? {
+            captcha_key: captchaKey.value,
+            captcha_code: formData.captchaCode.trim(),
+          } : {}),
         })
         if (pending) {
           ElMessage.success('社团申请已提交，请等待管理员审批')
@@ -372,8 +506,10 @@ async function handleSubmit() {
       }
       await router.push(getRedirectPath())
     } catch (err: any) {
-      const msg = err.response?.data?.detail || err.message || (mode.value === 'login' ? '登录失败' : '注册失败')
-      errorMessage.value = typeof msg === 'string' ? msg : JSON.stringify(msg)
+      errorMessage.value = readErrorMessage(err, mode.value === 'login' ? '登录失败' : '注册失败')
+      if (mode.value === 'register' && err.response && err.response.status !== 429) {
+        void loadCaptcha()
+      }
     }
   })
 }
@@ -419,6 +555,7 @@ onBeforeUnmount(() => {
   background-color: #FFFFFF; /* PM 1.2 BG */
   position: relative;
   overflow-y: auto;
+  overflow-x: hidden;
   box-sizing: border-box;
 }
 
@@ -886,6 +1023,59 @@ onBeforeUnmount(() => {
   color: #303133;
 }
 
+.captcha-control {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+.captcha-image-shell {
+  position: relative;
+  display: block;
+  width: 132px;
+  height: 52px;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #f5f5f7;
+  cursor: pointer;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.captcha-image-shell:hover:not(:disabled),
+.captcha-image-shell:focus-visible {
+  border-color: #d4af37;
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.16);
+  outline: none;
+}
+
+.captcha-image-shell:disabled {
+  cursor: wait;
+}
+
+.captcha-image,
+.captcha-image-placeholder {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  object-fit: contain;
+  color: #909399;
+  font-size: 13px;
+}
+
+.captcha-load-error {
+  width: 100%;
+  margin: 6px 0 0;
+  color: #f56c6c;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 /* Expand Animation Wrapper */
 .expand-wrapper {
   overflow: hidden;
@@ -1103,9 +1293,18 @@ onBeforeUnmount(() => {
     margin-top: 0;
   }
 
-  .register-field-grid {
+  .register-field-grid,
+  .login-form--club .register-field-grid {
     grid-template-columns: 1fr;
     gap: 0;
+  }
+
+  .captcha-control {
+    grid-template-columns: 112px minmax(0, 1fr);
+  }
+
+  .captcha-image-shell {
+    width: 112px;
   }
 
   .identity-option__copy small {

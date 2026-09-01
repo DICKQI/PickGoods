@@ -3,13 +3,17 @@ from io import BytesIO
 from uuid import uuid4
 
 from django.db import connection
-from django.test import TestCase
+from django.conf import settings
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
 from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
+from rest_framework.throttling import ScopedRateThrottle
+from unittest.mock import patch
 
 from apps.goods.models import (
     Category,
@@ -25,11 +29,21 @@ from apps.goods.models import (
 )
 from apps.goods.club_scheduler import publish_scheduled_club_goods
 
+from .club_views import (
+    ClubCatalogManagementViewSet,
+    ClubGoodsImportTemplateView,
+    ClubGoodsImportView,
+    ClubViewSet,
+    PublicClubGoodsDetailView,
+)
+
 from .models import Club, ClubFavorite, Role, User
 
 
+@override_settings(REGISTER_CAPTCHA_ENABLED=False)
 class ClubFeatureAPITestCase(TestCase):
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.user_role, _ = Role.objects.get_or_create(name="User")
         self.admin_role, _ = Role.objects.get_or_create(name="Admin")
@@ -53,6 +67,58 @@ class ClubFeatureAPITestCase(TestCase):
             publication_status=ClubCatalogItem.PUBLICATION_LISTED,
         )
         self.source.characters.add(self.character)
+
+    def test_club_views_use_expected_throttle_scopes(self):
+        expected = {
+            "list": "club_public_read",
+            "retrieve": "club_public_read",
+            "goods": "club_public_read",
+            "goods_facets": "club_public_read",
+            "favorite": "club_write",
+            "favorites": "club_write",
+            "me": "club_manage",
+            "avatar": "club_manage",
+            "popularity": "club_manage",
+            "future_action": "club_manage",
+        }
+        for action, scope in expected.items():
+            view = ClubViewSet()
+            view.action = action
+            throttles = view.get_throttles()
+            self.assertEqual(view.throttle_scope, scope)
+            self.assertEqual(len(throttles), 1)
+            self.assertIsInstance(throttles[0], ScopedRateThrottle)
+        self.assertEqual(ClubCatalogManagementViewSet.throttle_scope, "club_manage")
+        self.assertEqual(ClubGoodsImportTemplateView.throttle_scope, "club_import")
+        self.assertEqual(ClubGoodsImportView.throttle_scope, "club_import")
+        self.assertEqual(PublicClubGoodsDetailView.throttle_scope, "club_public_read")
+
+    def test_goods_facets_public_read_throttle_returns_429(self):
+        rates = {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], "club_public_read": "1/minute"}
+        rest_framework_settings = {**settings.REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": rates}
+        with override_settings(REST_FRAMEWORK=rest_framework_settings), patch.object(
+            ScopedRateThrottle, "THROTTLE_RATES", rates
+        ):
+            first = self.client.get(f"/api/clubs/{self.club.id}/goods/facets/", REMOTE_ADDR="192.0.2.30")
+            second = self.client.get(f"/api/clubs/{self.club.id}/goods/facets/", REMOTE_ADDR="192.0.2.30")
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_club_import_throttle_returns_429(self):
+        self.client.force_authenticate(self.collector)
+        rates = {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], "club_import": "1/minute"}
+        rest_framework_settings = {**settings.REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": rates}
+        with override_settings(REST_FRAMEWORK=rest_framework_settings), patch.object(
+            ScopedRateThrottle, "THROTTLE_RATES", rates
+        ):
+            first = self.client.post(
+                f"/api/clubs/goods/{self.source.id}/import/", {"status": "intended"}, format="json"
+            )
+            second = self.client.post(
+                f"/api/clubs/goods/{self.source.id}/import/", {"status": "intended"}, format="json"
+            )
+        self.assertEqual(first.status_code, status.HTTP_201_CREATED)
+        self.assertEqual(second.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
 
     def test_club_registration_is_pending_and_cannot_login(self):
         response = self.client.post(

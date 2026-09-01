@@ -240,6 +240,22 @@ class ClubViewSet(viewsets.GenericViewSet):
     pagination_class = ClubPagination
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
+    def get_throttles(self):
+        scopes = {
+            "list": "club_public_read",
+            "retrieve": "club_public_read",
+            "goods": "club_public_read",
+            "goods_facets": "club_public_read",
+            "favorite": "club_write",
+            "favorites": "club_write",
+            "me": "club_manage",
+            "avatar": "club_manage",
+            "popularity": "club_manage",
+        }
+        # Future actions are private/manage by default and must opt in to public access.
+        self.throttle_scope = scopes.get(self.action, "club_manage")
+        return super().get_throttles()
+
     def get_permissions(self):
         if self.action in ("list", "retrieve", "goods", "goods_facets"):
             return [AllowAny()]
@@ -544,6 +560,7 @@ class ClubViewSet(viewsets.GenericViewSet):
 
 class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsClubAccount]
+    throttle_scope = "club_manage"
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     pagination_class = ClubPagination
     serializer_class = ClubCatalogItemSerializer
@@ -720,6 +737,7 @@ class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
 
 class ClubGoodsImportTemplateView(APIView):
     permission_classes = [IsAuthenticated]
+    throttle_scope = "club_import"
 
     def get(self, request, pk, goods_id):
         if getattr(request.user, "account_type", None) != User.ACCOUNT_TYPE_COLLECTOR and not is_admin(request.user):
@@ -766,6 +784,7 @@ class ClubGoodsImportTemplateView(APIView):
 
 class ClubGoodsImportView(viewsets.ViewSet):
     permission_classes = [IsAuthenticated]
+    throttle_scope = "club_import"
 
     def import_goods(self, request, goods_id=None):
         serializer = ClubImportSerializer(data=request.data)
@@ -863,6 +882,7 @@ class ClubGoodsImportView(viewsets.ViewSet):
 
 class PublicClubGoodsDetailView(APIView):
     permission_classes = [AllowAny]
+    throttle_scope = "club_public_read"
 
     def get(self, request, pk, goods_id):
         club = get_object_or_404(_public_club_queryset(), pk=pk)

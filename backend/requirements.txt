@@ -2,6 +2,7 @@ Django>=6.0,<7.0
 djangorestframework>=3.17.1
 django-filter>=23.0
 django-cors-headers>=4.3.0
+django-simple-captcha>=0.7,<0.8
 Pillow>=10.0.0
 numpy>=1.26.0
 opencv-python-headless>=4.9.0

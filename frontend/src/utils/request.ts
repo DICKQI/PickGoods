@@ -149,7 +149,14 @@ export function handleResponseError(error: any): Promise<any> {
   }
   // 处理限流错误
   if (status === 429) {
-    ElMessage.warning('搜索太快了，请稍后再试')
+    const detail = error.response?.data?.detail
+    const retryAfter = Number(error.response?.headers?.['retry-after'])
+    const message = typeof detail === 'string' && detail.trim()
+      ? detail
+      : Number.isFinite(retryAfter) && retryAfter > 0
+        ? `请求过于频繁，请在 ${Math.ceil(retryAfter)} 秒后重试`
+        : '请求过于频繁，请稍后再试'
+    ElMessage.warning(message)
     return Promise.reject(error)
   }
   // 409 由业务层（如谷子新建去重弹窗）单独处理，不弹全局错误

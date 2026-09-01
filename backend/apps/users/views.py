@@ -1,13 +1,27 @@
 from django.conf import settings
+from django.http import HttpResponse
+from django.urls import reverse
+from django.utils import timezone
+from captcha.models import CaptchaStore
+from captcha.views import captcha_image as render_captcha_image
+from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .models import User
+from .throttling import (
+    CaptchaImageRateThrottle,
+    CaptchaRateThrottle,
+    LoginIPRateThrottle,
+    LoginUsernameRateThrottle,
+    RegisterRateThrottle,
+)
 from .serializers import (
     LoginSerializer,
+    CaptchaChallengeSerializer,
     RegisterSerializer,
     TokenResponseSerializer,
     UserMeSerializer,
@@ -30,6 +44,7 @@ from .serializers import (
 )
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([RegisterRateThrottle])
 def register(request):
     serializer = RegisterSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -62,6 +77,7 @@ def register(request):
 )
 @api_view(["POST"])
 @permission_classes([AllowAny])
+@throttle_classes([LoginIPRateThrottle, LoginUsernameRateThrottle])
 def login(request):
     serializer = LoginSerializer(data=request.data)
     serializer.is_valid(raise_exception=True)
@@ -88,6 +104,52 @@ def login(request):
     ttl = int(getattr(settings, "JWT_ACCESS_TTL_SECONDS", 7 * 24 * 3600))
     data = build_token_response(user=user, secret=secret, ttl_seconds=ttl)
     return Response(data, status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    tags=["Auth"],
+    summary="获取注册图形验证码",
+    responses={200: CaptchaChallengeSerializer},
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@throttle_classes([CaptchaRateThrottle])
+def captcha_challenge(request):
+    if not getattr(settings, "REGISTER_CAPTCHA_ENABLED", True):
+        return Response({"enabled": False, "key": None, "image": None})
+
+    CaptchaStore.remove_expired()
+    key = CaptchaStore.generate_key()
+    response = Response({
+        "enabled": True,
+        "key": key,
+        "image": reverse("auth-captcha-image", kwargs={"key": key}),
+    })
+    response["Cache-Control"] = "no-store, private"
+    return response
+
+
+@extend_schema(
+    tags=["Auth"],
+    summary="获取注册验证码图片",
+    responses={
+        (200, "image/png"): OpenApiTypes.BINARY,
+        410: OpenApiResponse(description="验证码不存在或已过期"),
+    },
+)
+@api_view(["GET"])
+@permission_classes([AllowAny])
+@throttle_classes([CaptchaImageRateThrottle])
+def captcha_image(request, key):
+    if not CaptchaStore.objects.filter(
+        hashkey=key,
+        expiration__gt=timezone.now(),
+    ).exists():
+        return HttpResponse(status=410)
+    response = render_captcha_image(request._request, key)
+    response["Cache-Control"] = "no-store, private"
+    response["Pragma"] = "no-cache"
+    return response
 
 @extend_schema(
     tags=["Auth"],

@@ -46,6 +46,15 @@ def _club_publish_tick() -> None:
         logger.exception("[ClubScheduler] scheduled publication tick failed")
 
 
+def _captcha_cleanup_tick() -> None:
+    try:
+        from captcha.models import CaptchaStore
+
+        CaptchaStore.remove_expired()
+    except Exception:  # noqa: BLE001
+        logger.exception("[CaptchaScheduler] expired captcha cleanup failed")
+
+
 def _should_start() -> bool:
     """判断当前进程是否应启动调度器。"""
     if os.environ.get("BGM_SCHEDULER_DISABLED") == "1":
@@ -91,6 +100,7 @@ def start_scheduler() -> None:
             return
         try:
             from apscheduler.schedulers.background import BackgroundScheduler
+            from apscheduler.triggers.cron import CronTrigger
             from apscheduler.triggers.interval import IntervalTrigger
         except ImportError:
             logger.warning(
@@ -111,6 +121,14 @@ def start_scheduler() -> None:
             _club_publish_tick,
             trigger=IntervalTrigger(minutes=_CLUB_TICK_MINUTES),
             id="club_catalog_publish_tick",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            _captcha_cleanup_tick,
+            trigger=CronTrigger(hour=3, minute=30, timezone="Asia/Shanghai"),
+            id="captcha_cleanup_daily",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

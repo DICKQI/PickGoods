@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import * as authApi from '@/api/auth'
-import type { AuthTokenResponse, RegistrationPending, UserInfo } from '@/api/types'
+import type { RegisterPayload, RegistrationPending, UserInfo } from '@/api/types'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
 
 export const useAuthStore = defineStore('auth', () => {
@@ -55,25 +55,7 @@ export const useAuthStore = defineStore('auth', () => {
     }
   }
 
-  async function registerAndLogin(username: string, password: string) {
-    loading.value = true
-    try {
-      const data = await authApi.register({ username, password, account_type: 'collector' }) as AuthTokenResponse
-      setToken(data.access_token)
-      const me = await authApi.getCurrentUser()
-      user.value = me
-    } finally {
-      loading.value = false
-    }
-  }
-
-  async function registerAccount(data: {
-    username: string
-    password: string
-    account_type: 'collector' | 'club'
-    application_reason?: string
-    club_profile?: Record<string, unknown>
-  }): Promise<RegistrationPending | null> {
+  async function registerAccount(data: RegisterPayload): Promise<RegistrationPending | null> {
     loading.value = true
     try {
       const result = await authApi.register(data)
@@ -137,7 +119,6 @@ export const useAuthStore = defineStore('auth', () => {
     isCollector,
     initFromStorage,
     login,
-    registerAndLogin,
     registerAccount,
     fetchCurrentUser,
     logout,

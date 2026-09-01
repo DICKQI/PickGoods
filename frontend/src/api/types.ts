@@ -26,6 +26,20 @@ export interface RegistrationPending {
   approval_status: 'pending' | string
 }
 
+export interface RegisterPayload {
+  username: string
+  password: string
+  account_type: 'collector' | 'club'
+  application_reason?: string
+  club_profile?: Record<string, unknown>
+  captcha_key?: string
+  captcha_code?: string
+}
+
+export type CaptchaChallenge =
+  | { enabled: true; key: string; image: string }
+  | { enabled: false; key: null; image: null }
+
 export interface ClubStoreLink {
   label: string
   url: string
