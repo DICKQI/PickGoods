@@ -56,8 +56,18 @@ describe('ClubWorkspace 社团工作区导航', () => {
     const wrapper = mountWorkspace()
 
     expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(3)
+    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(0%)')
     expect(wrapper.text()).toContain('社团谷子')
     expect(wrapper.text()).toContain('人气统计')
     expect(wrapper.text()).toContain('社团资料')
+  })
+
+  it('根据当前子路由移动唯一滑块，并把内容切换限制在嵌套路由区域', async () => {
+    routeMock.name = 'ClubPopularity'
+    const wrapper = mountWorkspace()
+
+    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(100%)')
+    expect(wrapper.find('.workspace-tab.is-active').text()).toContain('人气统计')
+    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(3)
   })
 })

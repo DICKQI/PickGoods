@@ -32,17 +32,17 @@
 }
 
 /* 按钮样式 */
-.el-button--primary:not(.is-plain) {
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text) {
   background-color: var(--accent-purple);
   border-color: var(--accent-purple);
 }
 
-.el-button--primary:not(.is-plain):hover {
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text):hover {
   background-color: var(--accent-purple-dark);
   border-color: var(--accent-purple-dark);
 }
 
-.el-button--primary:not(.is-plain):focus {
+.el-button--primary:not(.is-plain):not(.is-link):not(.is-text):focus {
   background-color: var(--accent-purple-dark);
   border-color: var(--accent-purple-dark);
 }

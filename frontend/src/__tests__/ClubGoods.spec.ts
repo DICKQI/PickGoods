@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { defineComponent, nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
@@ -31,6 +33,8 @@ vi.mock('@/api/clubs', () => ({
 
 import * as clubApi from '@/api/clubs'
 import { ElMessage, ElMessageBox } from 'element-plus'
+
+const clubGoodsSource = readFileSync(resolve(process.cwd(), 'src/views/club/ClubGoods.vue'), 'utf8')
 
 const passthrough = (name: string, tag = 'div') => defineComponent({
   name,
@@ -183,6 +187,11 @@ describe('ClubGoods 批量操作', () => {
     expect(wrapper.get('.goods-row__publication').text()).toContain('¥39.00')
     expect(wrapper.get('.goods-row__publication').text()).toContain('已上架')
     expect(wrapper.get('.popularity-meta').text()).toContain('意向入手 0 人')
+  })
+
+  it('编辑操作使用金色链接样式，不继承紫色主色填充', () => {
+    expect(clubGoodsSource).toContain('class="row-edit-button"')
+    expect(clubGoodsSource).not.toMatch(/<el-button[^>]*row-edit-button[^>]*type="primary"/)
   })
 
   it('状态和排序使用统一下拉组件并将选择同步到列表查询', async () => {

@@ -104,7 +104,7 @@
         <Transition :name="pageTransitionName" mode="out-in">
           <component
             :is="Component"
-            :key="route.meta.preserveOnQueryChange ? route.path : route.fullPath"
+            :key="pageComponentKey(route)"
           />
         </Transition>
       </router-view>
@@ -405,6 +405,20 @@ const pageTransitionName = computed(() => {
   if (route.path.startsWith('/admin')) return 'no-transition'
   return isMobile.value ? 'page-slide-up' : 'page-fade'
 })
+
+// Nested workspaces own their child navigation. Keep the shell mounted while
+// switching children so only the nested router-view updates its main region.
+const pageComponentKey = (currentRoute: typeof route) => {
+  if (currentRoute.matched.length > 1) {
+    const parentRecord = currentRoute.matched[0]
+    const params = Object.entries(currentRoute.params)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => `${key}:${Array.isArray(value) ? value.join(',') : value}`)
+      .join('|')
+    return `${parentRecord?.path || currentRoute.path}|${params}`
+  }
+  return currentRoute.meta.preserveOnQueryChange ? currentRoute.path : currentRoute.fullPath
+}
 
 const handleRefresh = async () => {
   if (refreshLoading.value) return

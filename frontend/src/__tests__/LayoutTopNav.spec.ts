@@ -10,6 +10,7 @@ import { useNotificationStore } from '@/stores/notification'
 
 const layoutSource = readFileSync(resolve(process.cwd(), 'src/components/Layout.vue'), 'utf8')
 const routerSource = readFileSync(resolve(process.cwd(), 'src/router/index.ts'), 'utf8')
+const globalStyleSource = readFileSync(resolve(process.cwd(), 'src/styles/index.css'), 'utf8')
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -113,8 +114,13 @@ describe('Layout top navigation', () => {
   })
 
   it('preserves the club detail view when only filter query parameters change', () => {
-    expect(layoutSource).toContain(':key="route.meta.preserveOnQueryChange ? route.path : route.fullPath"')
+    expect(layoutSource).toContain(':key="pageComponentKey(route)"')
+    expect(layoutSource).toContain('if (currentRoute.matched.length > 1)')
     expect(routerSource).toMatch(/name:\s*'ClubDetail',[\s\S]*?meta:\s*\{\s*title:\s*'社团详情',\s*preserveOnQueryChange:\s*true\s*\}/)
+  })
+
+  it('reserves the desktop scrollbar gutter so nested workspace tabs do not shift the shell', () => {
+    expect(globalStyleSource).toContain('scrollbar-gutter: stable;')
   })
 
   it('shows the app version badge on all desktop pages', async () => {

@@ -11,6 +11,8 @@ html {
   /* 禁用移动端弹性滚动（果冻效果） */
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
+  /* Keep fixed navigation centered when a child route changes page height. */
+  scrollbar-gutter: stable;
   height: 100%;
   position: relative;
 }

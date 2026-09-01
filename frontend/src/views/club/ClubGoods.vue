@@ -102,7 +102,7 @@
           <div class="popularity-meta" aria-label="谷子人气统计"><el-tag class="popularity-badge popularity-badge--intended" size="small" effect="plain" type="warning">意向入手 {{ popularityByGoodsId[item.id]?.intended_user_count ?? 0 }} 人</el-tag><el-tag class="popularity-badge popularity-badge--acquired" size="small" effect="plain" type="success">已入手 {{ popularityByGoodsId[item.id]?.acquired_user_count ?? 0 }} 人</el-tag></div>
         </div>
         <div class="row-actions">
-          <el-button link type="primary" :disabled="bulkLoading" @click="router.push(`/club/goods/${item.id}/edit`)"><el-icon><Edit /></el-icon>编辑</el-button>
+          <el-button link class="row-edit-button" :disabled="bulkLoading" @click="router.push(`/club/goods/${item.id}/edit`)"><el-icon><Edit /></el-icon>编辑</el-button>
           <el-button v-if="item.publish_at" link type="warning" :disabled="bulkLoading" @click="cancelSchedule(item)">取消计划</el-button>
           <el-button v-if="item.publication_status !== 'draft'" link :disabled="bulkLoading" :type="item.publication_status === 'listed' ? 'warning' : 'success'" @click="togglePublished(item)">{{ item.publication_status === 'listed' ? '下架' : '上架' }}</el-button>
         </div>
@@ -290,6 +290,9 @@ onUnmounted(() => {
 .popularity-badge { margin: 0; font-weight: 500; }
 .row-actions { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 2px; min-width: 0; }
 .row-actions .el-button { margin: 0; white-space: nowrap; }
+.row-actions .row-edit-button { color: var(--primary-gold-dark); }
+.row-actions .row-edit-button:hover,
+.row-actions .row-edit-button:focus-visible { color: var(--primary-gold-dark); background: rgba(212, 175, 55, .1); }
 .goods-page :deep(.el-pagination) { justify-content: center; margin-top: 20px; }
 @media (max-width: 1050px) {
   .goods-list-header,
