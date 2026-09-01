@@ -693,15 +693,29 @@ onMounted(() => {
   min-height: 34px;
   margin: 0;
   border-radius: var(--button-radius);
-  border-color: rgba(162, 155, 254, 0.45);
-  color: var(--accent-purple-dark);
+  border-color: rgba(212, 175, 55, 0.55);
+  color: var(--primary-gold-dark);
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, box-shadow 0.25s ease;
 }
 
 .favorite-button:hover,
 .favorite-button:focus-visible {
-  border-color: var(--accent-purple);
-  color: var(--accent-purple-dark);
-  background: rgba(162, 155, 254, 0.1);
+  border-color: var(--primary-gold-dark);
+  color: #fff;
+  background: var(--primary-gold-dark);
+  box-shadow: 0 6px 16px rgba(184, 148, 31, 0.32);
+}
+
+.favorite-button[aria-pressed='true'] {
+  border-color: var(--primary-gold-dark);
+  color: #fff;
+  background: var(--primary-gold-dark);
+}
+
+.favorite-button[aria-pressed='true']:hover,
+.favorite-button[aria-pressed='true']:focus-visible {
+  border-color: #9a7b16;
+  background: #9a7b16;
 }
 
 .club-hero__eyebrow,

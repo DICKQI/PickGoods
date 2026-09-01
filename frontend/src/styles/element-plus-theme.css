@@ -32,19 +32,33 @@
 }
 
 /* 按钮样式 */
-.el-button--primary {
+.el-button--primary:not(.is-plain) {
   background-color: var(--accent-purple);
   border-color: var(--accent-purple);
 }
 
-.el-button--primary:hover {
+.el-button--primary:not(.is-plain):hover {
   background-color: var(--accent-purple-dark);
   border-color: var(--accent-purple-dark);
 }
 
-.el-button--primary:focus {
+.el-button--primary:not(.is-plain):focus {
   background-color: var(--accent-purple-dark);
   border-color: var(--accent-purple-dark);
+}
+
+/* 朴素主色按钮：默认白底金描边，悬停/聚焦时填充深金 */
+.el-button--primary.is-plain {
+  background-color: #fff;
+  border-color: rgba(212, 175, 55, 0.55);
+  color: var(--el-color-primary-dark-2);
+}
+
+.el-button--primary.is-plain:hover,
+.el-button--primary.is-plain:focus {
+  background-color: var(--el-color-primary-dark-2);
+  border-color: var(--el-color-primary-dark-2);
+  color: #fff;
 }
 
 /* 输入框焦点颜色 */
