@@ -8,19 +8,21 @@ import ClubDetail from '@/views/ClubDetail.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { Club, ClubCatalogItem } from '@/api/types'
 
-const { pushMock, routeMock } = vi.hoisted(() => ({
+const { pushMock, replaceMock, routeMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
-  routeMock: { params: { id: '1' }, fullPath: '/clubs/1' },
+  replaceMock: vi.fn(),
+  routeMock: { params: { id: '1' }, query: {} as Record<string, string>, fullPath: '/clubs/1' },
 }))
 
 vi.mock('vue-router', () => ({
   useRoute: () => routeMock,
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }))
 
 vi.mock('@/api/clubs', () => ({
   getClub: vi.fn(),
   getClubGoods: vi.fn(),
+  getClubGoodsFacets: vi.fn(),
   getClubGoodsDetail: vi.fn(),
   favoriteClub: vi.fn(),
   unfavoriteClub: vi.fn(),
@@ -101,7 +103,7 @@ const ElInputStub = defineComponent({
   name: 'ElInput',
   inheritAttrs: false,
   props: { modelValue: { type: String, default: '' }, placeholder: { type: String, default: '' } },
-  emits: ['update:modelValue', 'clear', 'keyup'],
+  emits: ['update:modelValue', 'blur', 'clear', 'keyup'],
   template: `
     <label class="el-input-stub">
       <slot name="prefix" />
@@ -109,6 +111,7 @@ const ElInputStub = defineComponent({
         :value="modelValue"
         :placeholder="placeholder"
         @input="$emit('update:modelValue', $event.target.value)"
+        @blur="$emit('blur', $event)"
         @keyup="$emit('keyup', $event)"
       />
       <button type="button" class="clear-input" @click="$emit('update:modelValue', ''); $emit('clear')">清空</button>
@@ -119,7 +122,7 @@ const ElInputStub = defineComponent({
 const ElSelectStub = defineComponent({
   name: 'ElSelect',
   inheritAttrs: false,
-  props: { modelValue: { type: String, default: '' }, placeholder: { type: String, default: '' } },
+  props: { modelValue: { type: [String, Number], default: '' }, placeholder: { type: String, default: '' } },
   emits: ['update:modelValue', 'change'],
   template: `
     <select
@@ -135,8 +138,15 @@ const ElSelectStub = defineComponent({
 
 const ElOptionStub = defineComponent({
   name: 'ElOption',
-  props: { label: { type: String, default: '' }, value: { type: String, default: '' } },
+  props: { label: { type: String, default: '' }, value: { type: [String, Number, Boolean], default: '' } },
   template: '<option :value="value">{{ label }}</option>',
+})
+
+const ElTreeSelectStub = defineComponent({
+  name: 'ElTreeSelect',
+  props: { modelValue: { type: [String, Number], default: '' }, placeholder: { type: String, default: '' } },
+  emits: ['update:modelValue'],
+  template: '<select :aria-label="placeholder" :value="modelValue" @change="$emit(\'update:modelValue\', Number($event.target.value) || undefined)"><option value="">{{ placeholder }}</option></select>',
 })
 
 const ElDialogStub = defineComponent({
@@ -188,6 +198,13 @@ function mockSuccessfulLoad(items: ClubCatalogItem[] = [goods]) {
     results: items,
   })
   vi.mocked(clubApi.getClubGoodsDetail).mockResolvedValue(goodsDetail)
+  vi.mocked(clubApi.getClubGoodsFacets).mockResolvedValue({
+    ips: [{ id: 1, name: '崩坏：星穹铁道', count: items.length }],
+    characters: [{ id: 1, name: '流萤', ip_id: 1, count: items.length }],
+    categories: [{ id: 1, name: '镭射票', path_name: '纸制品/镭射票', parent: null, count: items.length }],
+    themes: [],
+    price_bounds: { min: '88.00', max: '88.00' },
+  })
 }
 
 async function mountPage(options: { authenticated?: boolean; clubAccount?: boolean } = {}) {
@@ -212,6 +229,7 @@ async function mountPage(options: { authenticated?: boolean; clubAccount?: boole
       stubs: {
         ElButton: passthroughStub('ElButton', 'button'),
         ElDialog: ElDialogStub,
+        ElDrawer: ElDialogStub,
         ElEmpty: ElEmptyStub,
         ElIcon: passthroughStub('ElIcon', 'span'),
         ElImage: ElImageStub,
@@ -221,6 +239,8 @@ async function mountPage(options: { authenticated?: boolean; clubAccount?: boole
         ElSelect: ElSelectStub,
         ElSkeleton: passthroughStub('ElSkeleton'),
         ElTag: passthroughStub('ElTag', 'span'),
+        ElTooltip: passthroughStub('ElTooltip'),
+        ElTreeSelect: ElTreeSelectStub,
       },
     },
   })
@@ -231,8 +251,12 @@ async function mountPage(options: { authenticated?: boolean; clubAccount?: boole
 
 describe('ClubDetail 社团对外页', () => {
   beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 768 })
     localStorage.clear()
     pushMock.mockReset()
+    replaceMock.mockReset()
+    routeMock.query = {}
     vi.clearAllMocks()
     mockSuccessfulLoad()
   })
@@ -311,9 +335,69 @@ describe('ClubDetail 社团对外页', () => {
     expect(source).toMatch(/\.section-heading__count\s*\{[\s\S]*?white-space:\s*nowrap;/)
   })
 
+  it('大屏详情页扩展内容宽度并固定展示四列谷子', () => {
+    expect(source).toMatch(/\.club-detail-page\s*\{[\s\S]*?max-width:\s*1680px;/)
+    expect(source).toMatch(/\.detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(220px,\s*250px\) minmax\(0,\s*1fr\);/)
+    expect(source).toMatch(/@media \(min-width:\s*1360px\)\s*\{[\s\S]*?\.goods-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/)
+  })
+
+  it('社团筛选面板使用谷仓同款高度过渡并带轻微缩放', () => {
+    expect(source).toContain('<div v-if="!isMobile && filtersExpanded" class="filter-collapse-wrapper">')
+    expect(source).toMatch(/\.filter-collapse-wrapper\s*\{[\s\S]*?grid-template-rows:\s*minmax\(0,\s*1fr\);/)
+    expect(source).toMatch(/\.filter-collapse-wrapper > \.desktop-filter-panel\s*\{[\s\S]*?transform-origin:\s*top center;/)
+    expect(source).toMatch(/\.filter-collapse-enter-active,[\s\S]*?transition:\s*grid-template-rows 0\.3s ease, margin-bottom 0\.3s ease, opacity 0\.3s ease;/)
+    expect(source).toMatch(/\.filter-collapse-enter-from,[\s\S]*?grid-template-rows:\s*minmax\(0,\s*0fr\);/)
+    expect(source).toMatch(/\.filter-collapse-enter-from,[\s\S]*?\.filter-collapse-leave-to\s*\{[\s\S]*?margin-bottom:\s*4px;/)
+    expect(source).toMatch(/\.filter-collapse-enter-to,[\s\S]*?\.filter-collapse-leave-from\s*\{[\s\S]*?margin-bottom:\s*20px;/)
+    expect(source).toMatch(/\.filter-collapse-enter-from > \.desktop-filter-panel,[\s\S]*?transform:\s*translateY\(-6px\) scale\(0\.98\);/)
+    expect(source).toMatch(/prefers-reduced-motion:\s*reduce[\s\S]*?\.filter-collapse-enter-from > \.desktop-filter-panel,[\s\S]*?transform:\s*none;/)
+  })
+
+  it('桌面筛选面板默认收起，排序按钮与搜索栏平铺', () => {
+    expect(source).toContain('const filtersExpanded = ref(false)')
+    expect(source).toContain('<div v-if="!isMobile" class="goods-sort-group" role="group" aria-label="谷子排序">')
+    expect(source).toContain('class="goods-sort-button"')
+    expect(source).toContain('class="goods-sort-button goods-sort-button--direction"')
+    expect(source).toContain("toggleOrdering('time')")
+    expect(source).toContain("toggleOrdering('price')")
+    expect(source).not.toContain('class="reset-filter-button"')
+  })
+
+  it('点击排序按钮在社团顺序、上架时间和价格方向之间切换', async () => {
+    const wrapper = await mountPage()
+    const vm = wrapper.vm as unknown as {
+      filters: { ordering: string }
+      setOrdering: (ordering: string) => void
+      toggleOrdering: (type: 'time' | 'price') => void
+    }
+
+    vm.setOrdering('default')
+    expect(vm.filters.ordering).toBe('default')
+    vm.toggleOrdering('time')
+    await flushPromises()
+    expect(vm.filters.ordering).toBe('newest')
+    vm.toggleOrdering('time')
+    await flushPromises()
+    expect(vm.filters.ordering).toBe('oldest')
+    vm.toggleOrdering('price')
+    await flushPromises()
+    expect(vm.filters.ordering).toBe('price_asc')
+    vm.toggleOrdering('price')
+    await flushPromises()
+    expect(vm.filters.ordering).toBe('price_desc')
+  })
+
+  it('已选择排序时不显示额外的重置按钮', async () => {
+    routeMock.query = { ordering: 'newest' }
+    const wrapper = await mountPage()
+
+    expect(wrapper.find('.reset-filter-button').exists()).toBe(false)
+    expect(wrapper.findAll('.goods-sort-button')).toHaveLength(3)
+  })
+
   it('搜索名称时将筛选条件发送给公开谷子接口且不提供库存状态筛选', async () => {
     const wrapper = await mountPage()
-    const input = wrapper.get('input[placeholder="搜索名称、IP或品类"]')
+    const input = wrapper.get('input[placeholder="搜索名称、IP、角色、品类或主题"]')
     await input.setValue('流萤')
     await input.trigger('keyup', { key: 'Enter' })
     await flushPromises()
@@ -322,6 +406,115 @@ describe('ClubDetail 社团对外页', () => {
 
     expect(wrapper.find('select[aria-label="全部状态"]').exists()).toBe(false)
     expect(clubApi.getClubGoods).toHaveBeenLastCalledWith(1, expect.objectContaining({ search: '流萤' }))
+  })
+
+  it('从 URL 恢复筛选和分页且首次只请求一次列表', async () => {
+    routeMock.query = {
+      search: '流萤',
+      ip: '1',
+      character: '1',
+      category: '1',
+      price_min: '80',
+      ordering: 'price_asc',
+      page: '2',
+    }
+    await mountPage()
+
+    expect(clubApi.getClubGoods).toHaveBeenCalledTimes(1)
+    expect(clubApi.getClubGoods).toHaveBeenCalledWith(1, expect.objectContaining({
+      search: '流萤',
+      ip: 1,
+      character: 1,
+      category: 1,
+      price_min: '80',
+      ordering: 'price_asc',
+      page: 2,
+    }))
+    expect(replaceMock).not.toHaveBeenCalled()
+  })
+
+  it('空公开价格输入框聚焦后失焦不会刷新谷子列表', async () => {
+    const wrapper = await mountPage()
+    const requestCount = vi.mocked(clubApi.getClubGoods).mock.calls.length
+    await wrapper.get('.filter-toggle-button').trigger('click')
+    await nextTick()
+    const priceInput = wrapper.get('input[placeholder="最低 88.00"]')
+
+    await priceInput.trigger('focus')
+    await priceInput.trigger('blur')
+    await flushPromises()
+
+    expect(clubApi.getClubGoods).toHaveBeenCalledTimes(requestCount)
+    expect(wrapper.find('.goods-grid--skeleton').exists()).toBe(false)
+  })
+
+  it('根据 facets 清理 URL 中已失效的筛选项', async () => {
+    routeMock.query = { ip: '999', character: '1', category: '999', imported: 'imported', page: '3' }
+    await mountPage()
+
+    expect(replaceMock).toHaveBeenCalledWith(expect.objectContaining({ query: { page: '3' } }))
+    expect(clubApi.getClubGoods).toHaveBeenCalledTimes(1)
+    expect(clubApi.getClubGoods).toHaveBeenCalledWith(1, expect.objectContaining({
+      ip: undefined,
+      character: undefined,
+      category: undefined,
+      imported: undefined,
+      page: 3,
+    }))
+  })
+
+  it('移动端筛选使用草稿，关闭不生效，应用后再请求', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 844 })
+    const wrapper = await mountPage()
+    vi.mocked(clubApi.getClubGoods).mockClear()
+    const vm = wrapper.vm as unknown as {
+      filters: Record<string, unknown>
+      mobileDraftFilters: Record<string, unknown>
+      mobileFilterVisible: boolean
+      applyMobileFilters: () => Promise<void>
+    }
+
+    await wrapper.get('.filter-toggle-button').trigger('click')
+    vm.mobileDraftFilters = { ...vm.mobileDraftFilters, ip: 1 }
+    vm.mobileFilterVisible = false
+    await nextTick()
+    expect(vm.filters.ip).toBeUndefined()
+    expect(clubApi.getClubGoods).not.toHaveBeenCalled()
+
+    vm.mobileDraftFilters = { ...vm.mobileDraftFilters, ip: 1 }
+    await vm.applyMobileFilters()
+    expect(clubApi.getClubGoods).toHaveBeenCalledWith(1, expect.objectContaining({ ip: 1, page: 1 }))
+  })
+
+  it('卡片展示角色摘要、主题、公开价格和当前用户导入状态', async () => {
+    const richGoods = {
+      ...goods,
+      characters: [
+        goods.characters[0]!,
+        { ...goods.characters[0]!, id: 2, name: '银狼' },
+        { ...goods.characters[0]!, id: 3, name: '卡芙卡' },
+      ],
+      theme: { id: 9, name: '流光主题', description: '', created_at: '2026-08-29T00:00:00Z' },
+      public_price: '88.00',
+      is_imported: true,
+      imported_quantity: 3,
+    }
+    mockSuccessfulLoad([richGoods])
+    vi.mocked(clubApi.getClubGoodsFacets).mockResolvedValue({
+      ips: [{ id: 1, name: '崩坏：星穹铁道', count: 1 }],
+      characters: richGoods.characters.map(character => ({ id: character.id, name: character.name, ip_id: 1, count: 1 })),
+      categories: [{ id: 1, name: '镭射票', path_name: '纸制品/镭射票', parent: null, count: 1 }],
+      themes: [{ id: 9, name: '流光主题', count: 1 }],
+      price_bounds: { min: '88.00', max: '88.00' },
+      imported_counts: { imported: 1, unimported: 0 },
+    })
+    const wrapper = await mountPage({ authenticated: true })
+
+    expect(wrapper.get('.goods-card__characters').text()).toContain('流萤、银狼 +1')
+    expect(wrapper.get('.goods-card__theme').text()).toBe('流光主题')
+    expect(wrapper.get('.goods-card__price').text()).toBe('¥88.00')
+    expect(wrapper.get('.goods-card__imported').text()).toContain('已导入 · 3 件')
   })
 
   it('筛选无结果时提供明确空状态和清除筛选入口', async () => {
@@ -334,7 +527,7 @@ describe('ClubDetail 社团对外页', () => {
       results: [],
     })
     const wrapper = await mountPage()
-    const input = wrapper.get('input[placeholder="搜索名称、IP或品类"]')
+    const input = wrapper.get('input[placeholder="搜索名称、IP、角色、品类或主题"]')
     await input.setValue('不存在')
     await input.trigger('keyup', { key: 'Enter' })
     await flushPromises()
@@ -359,8 +552,11 @@ describe('ClubDetail 社团对外页', () => {
       results: [{ ...goods, id: 'goods-new', name: '最新搜索结果' }],
     }
     vi.mocked(clubApi.getClubGoods).mockResolvedValueOnce(secondResult)
-    ;(wrapper.vm as unknown as { goodsSearch: string }).goodsSearch = '最新'
-    await (wrapper.vm as unknown as { searchClubGoods: () => Promise<void> }).searchClubGoods()
+    const vm = wrapper.vm as unknown as {
+      filters: { search: string }
+      applyFilters: (value: Record<string, unknown>) => Promise<boolean>
+    }
+    await vm.applyFilters({ ...vm.filters, search: '最新' })
 
     first.resolve({
       count: 1,

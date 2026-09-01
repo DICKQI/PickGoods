@@ -38,7 +38,7 @@ const routes: RouteRecordRaw[] = [
     path: '/clubs/:id',
     name: 'ClubDetail',
     component: () => import('@/views/ClubDetail.vue'),
-    meta: { title: '社团详情' },
+    meta: { title: '社团详情', preserveOnQueryChange: true },
   },
   {
     path: '/club',

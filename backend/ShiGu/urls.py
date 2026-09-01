@@ -85,6 +85,7 @@ urlpatterns = [
     path("api/clubs/<int:pk>/favorite/", ClubViewSet.as_view({"put": "favorite", "delete": "favorite"}), name="club-favorite"),
     path("api/clubs/me/favorites/", ClubViewSet.as_view({"get": "favorites"}), name="club-favorites"),
     path("api/clubs/<int:pk>/goods/", ClubViewSet.as_view({"get": "goods"}), name="club-goods"),
+    path("api/clubs/<int:pk>/goods/facets/", ClubViewSet.as_view({"get": "goods_facets"}), name="club-goods-facets"),
     path("api/clubs/<int:pk>/goods/<uuid:goods_id>/", PublicClubGoodsDetailView.as_view(), name="club-goods-detail"),
     path("api/clubs/me/goods/", ClubCatalogManagementViewSet.as_view({"get": "list", "post": "create"}), name="club-my-goods"),
     path("api/clubs/me/goods/batch-delete/", ClubCatalogManagementViewSet.as_view({"post": "batch_delete"}), name="club-my-goods-batch-delete"),

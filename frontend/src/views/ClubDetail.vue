@@ -140,23 +140,108 @@
               <p>浏览社团正在公开展示的谷子。</p>
             </div>
 
-            <div class="goods-filters" role="search" aria-label="搜索社团谷子">
+            <div class="goods-toolbar" role="search" aria-label="搜索和筛选社团谷子">
               <el-input
-                v-model="goodsSearch"
+                :model-value="filters.search"
                 clearable
-                placeholder="搜索名称、IP或品类"
+                placeholder="搜索名称、IP、角色、品类或主题"
                 class="goods-search"
-                @keyup.enter="searchClubGoods"
-                @clear="searchClubGoods"
+                @update:model-value="updateSearch"
+                @keyup.enter="applySearchImmediately"
+                @clear="applySearchImmediately"
               >
                 <template #prefix><el-icon><Search /></el-icon></template>
               </el-input>
-              <el-button type="primary" class="search-button" @click="searchClubGoods">
-                <el-icon><Search /></el-icon>
-                <span>搜索</span>
+
+              <el-button
+                class="filter-toggle-button"
+                :class="{ 'is-active': activeDetailedFilterCount > 0 }"
+                :aria-expanded="isMobile ? mobileFilterVisible : filtersExpanded"
+                @click="toggleFilterPanel"
+              >
+                <el-icon><Filter /></el-icon>
+                <span>筛选</span>
+                <strong v-if="activeDetailedFilterCount">{{ activeDetailedFilterCount }}</strong>
               </el-button>
+
+              <div v-if="!isMobile" class="goods-sort-group" role="group" aria-label="谷子排序">
+                <el-button
+                  class="goods-sort-button"
+                  :class="{ 'is-active': filters.ordering === 'default' }"
+                  :aria-pressed="filters.ordering === 'default'"
+                  @click="setOrdering('default')"
+                >
+                  社团排序
+                </el-button>
+                <el-button
+                  class="goods-sort-button goods-sort-button--direction"
+                  :class="{ 'is-active': filters.ordering === 'newest' || filters.ordering === 'oldest' }"
+                  :aria-pressed="filters.ordering === 'newest' || filters.ordering === 'oldest'"
+                  :aria-label="`上架时间，${filters.ordering === 'oldest' ? '从早到晚' : '从晚到早'}，点击切换方向`"
+                  :title="`上架时间：${filters.ordering === 'oldest' ? '从早到晚' : '从晚到早'}`"
+                  @click="toggleOrdering('time')"
+                >
+                  <span>上架时间</span>
+                  <el-icon aria-hidden="true">
+                    <ArrowUp v-if="filters.ordering === 'oldest'" />
+                    <ArrowDown v-else />
+                  </el-icon>
+                </el-button>
+                <el-button
+                  class="goods-sort-button goods-sort-button--direction"
+                  :class="{ 'is-active': filters.ordering === 'price_asc' || filters.ordering === 'price_desc' }"
+                  :aria-pressed="filters.ordering === 'price_asc' || filters.ordering === 'price_desc'"
+                  :aria-label="`价格，${filters.ordering === 'price_desc' ? '从高到低' : '从低到高'}，点击切换方向`"
+                  :title="`价格：${filters.ordering === 'price_desc' ? '从高到低' : '从低到高'}`"
+                  @click="toggleOrdering('price')"
+                >
+                  <span>价格</span>
+                  <el-icon aria-hidden="true">
+                    <ArrowUp v-if="filters.ordering === 'price_desc'" />
+                    <ArrowDown v-else />
+                  </el-icon>
+                </el-button>
+              </div>
+
             </div>
           </header>
+
+          <div v-if="activeFilterChips.length" class="active-filter-row" aria-label="当前筛选条件">
+            <el-tag
+              v-for="chip in activeFilterChips"
+              :key="chip.key"
+              closable
+              effect="plain"
+              @close="removeFilter(chip.key)"
+            >
+              {{ chip.label }}
+            </el-tag>
+            <el-button text type="primary" class="clear-filter-link" @click="clearGoodsFilters">清除全部</el-button>
+          </div>
+
+          <transition name="filter-collapse">
+            <div v-if="!isMobile && filtersExpanded" class="filter-collapse-wrapper">
+              <section class="desktop-filter-panel" aria-label="详细筛选">
+                <div v-if="facetsLoading" class="filter-loading" aria-label="正在加载筛选选项">
+                  <el-skeleton animated :rows="2" />
+                </div>
+                <div v-else-if="facetsError" class="filter-error" role="alert">
+                  <span>{{ facetsError }}</span>
+                  <el-button text type="primary" @click="retryFacets">重试</el-button>
+                </div>
+                <ClubPublicGoodsFilterPanel
+                  v-else
+                  :model-value="filters"
+                  :facets="facets"
+                  :show-imported="canFilterImported"
+                  @update:model-value="filters = $event"
+                  @change="applyDesktopFilters"
+                  @price-change="schedulePriceFilter"
+                  @price-commit="commitPriceFilter"
+                />
+              </section>
+            </div>
+          </transition>
 
           <div v-if="goodsError" class="state-panel state-panel--compact" role="alert">
             <el-icon><WarningFilled /></el-icon>
@@ -183,6 +268,9 @@
                 @click="openGoodsDetail(item)"
               ></button>
               <div class="goods-card__media">
+                <span v-if="canFilterImported && item.is_imported" class="goods-card__imported">
+                  已导入<span v-if="item.imported_quantity"> · {{ item.imported_quantity }} 件</span>
+                </span>
                 <el-image
                   v-if="item.main_photo"
                   :src="item.main_photo"
@@ -203,6 +291,13 @@
                   <span class="goods-card__meta-separator">·</span>
                   <span>{{ item.category?.name || '未分类' }}</span>
                 </p>
+                <p v-if="item.characters?.length" class="goods-card__characters" :title="item.characters.map(character => character.name).join('、')">
+                  {{ characterSummary(item) }}
+                </p>
+                <div v-if="item.theme || item.public_price !== null && item.public_price !== undefined" class="goods-card__facts">
+                  <span v-if="item.theme" class="goods-card__theme" :title="item.theme.name">{{ item.theme.name }}</span>
+                  <strong v-if="item.public_price !== null && item.public_price !== undefined" class="goods-card__price">¥{{ item.public_price }}</strong>
+                </div>
                 <div class="goods-card__footer">
                   <el-tag size="small" effect="plain" type="success">已上架</el-tag>
                   <el-button
@@ -236,11 +331,64 @@
             :page-size="pageSize"
             :total="total"
             layout="prev, pager, next"
-            @current-change="loadGoods"
+            @current-change="changePage"
           />
         </section>
       </section>
     </template>
+
+    <el-drawer
+      v-model="mobileFilterVisible"
+      direction="btt"
+      size="min(82vh, 680px)"
+      class="mobile-filter-drawer"
+      :with-header="false"
+      :close-on-click-modal="true"
+    >
+      <section class="mobile-filter-sheet" aria-label="筛选社团谷子">
+        <header class="mobile-filter-sheet__header">
+          <div>
+            <span>FILTER GOODS</span>
+            <h2>筛选社团谷子</h2>
+          </div>
+          <el-button text circle aria-label="关闭筛选" @click="mobileFilterVisible = false">
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </header>
+
+        <div class="mobile-filter-sheet__body">
+          <label class="mobile-ordering-field">
+            <span>排序方式</span>
+            <el-select v-model="mobileDraftFilters.ordering" aria-label="移动端谷子排序">
+              <el-option label="社团排序" value="default" />
+              <el-option label="最新上架" value="newest" />
+              <el-option label="最早上架" value="oldest" />
+              <el-option label="价格从低到高" value="price_asc" />
+              <el-option label="价格从高到低" value="price_desc" />
+            </el-select>
+          </label>
+
+          <div v-if="facetsLoading" class="filter-loading" aria-label="正在加载筛选选项">
+            <el-skeleton animated :rows="5" />
+          </div>
+          <div v-else-if="facetsError" class="filter-error" role="alert">
+            <span>{{ facetsError }}</span>
+            <el-button text type="primary" @click="retryFacets">重试</el-button>
+          </div>
+          <ClubPublicGoodsFilterPanel
+            v-else
+            v-model="mobileDraftFilters"
+            :facets="facets"
+            :show-imported="canFilterImported"
+          />
+        </div>
+
+        <footer class="mobile-filter-sheet__footer">
+          <el-button @click="resetMobileDraft">重置</el-button>
+          <el-button type="primary" @click="applyMobileFilters">应用筛选</el-button>
+        </footer>
+      </section>
+    </el-drawer>
 
     <el-dialog
       v-model="importVisible"
@@ -367,13 +515,17 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import {
+  ArrowDown,
   ArrowLeft,
+  ArrowUp,
   Bell,
   Clock,
+  Close,
+  Filter,
   Link,
   Location,
   Message,
@@ -387,13 +539,38 @@ import {
   User,
   WarningFilled,
 } from '@element-plus/icons-vue'
-import { favoriteClub, getClub, getClubGoods, getClubGoodsDetail, unfavoriteClub } from '@/api/clubs'
+import {
+  favoriteClub,
+  getClub,
+  getClubGoods,
+  getClubGoodsDetail,
+  getClubGoodsFacets,
+  unfavoriteClub,
+} from '@/api/clubs'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useAuthStore } from '@/stores/auth'
-import type { Club, ClubGoodsDetail, ClubGoodsListItem } from '@/api/types'
+import ClubPublicGoodsFilterPanel from '@/views/club/ClubPublicGoodsFilterPanel.vue'
+import {
+  clubGoodsFilterCount,
+  clubGoodsFiltersToApi,
+  clubGoodsFiltersToQuery,
+  createDefaultClubGoodsFilters,
+  normalizeClubGoodsFilters,
+  parseClubGoodsFilters,
+} from '@/views/club/clubPublicGoodsFilters'
+import type { ClubPublicGoodsFilterState } from '@/views/club/clubPublicGoodsFilters'
+import type {
+  Club,
+  ClubGoodsFacets,
+  ClubGoodsDetail,
+  ClubGoodsListItem,
+  ClubGoodsOrdering,
+} from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { isMobile } = useResponsiveDevice()
 
 const club = ref<Club | null>(null)
 const goodsItems = ref<ClubGoodsListItem[]>([])
@@ -404,7 +581,20 @@ const goodsError = ref('')
 const total = ref(0)
 const page = ref(1)
 const pageSize = 20
-const goodsSearch = ref('')
+const filters = ref<ClubPublicGoodsFilterState>(parseClubGoodsFilters(route.query))
+const mobileDraftFilters = ref<ClubPublicGoodsFilterState>({ ...filters.value })
+const filtersExpanded = ref(false)
+const mobileFilterVisible = ref(false)
+const facets = ref<ClubGoodsFacets>({
+  ips: [],
+  characters: [],
+  categories: [],
+  themes: [],
+  price_bounds: { min: null, max: null },
+})
+const facetsLoading = ref(false)
+const facetsError = ref('')
+const facetsReady = ref(false)
 const importVisible = ref(false)
 const selected = ref<ClubGoodsListItem | null>(null)
 const detailVisible = ref(false)
@@ -423,8 +613,15 @@ const platformLinkDefinitions: Array<{ key: PlatformKey; label: string; logo: st
 let goodsRequestSequence = 0
 let clubRequestSequence = 0
 let detailRequestSequence = 0
+let facetsRequestSequence = 0
+let searchTimer: number | undefined
+let priceTimer: number | undefined
+let lastWrittenRouteKey = ''
+let lastLoadedFiltersKey = ''
 
-const hasGoodsFilters = computed(() => Boolean(goodsSearch.value.trim()))
+const canFilterImported = computed(() => authStore.isAuthenticated && authStore.isCollector)
+const activeDetailedFilterCount = computed(() => clubGoodsFilterCount(filters.value))
+const hasGoodsFilters = computed(() => Boolean(filters.value.search.trim()) || activeDetailedFilterCount.value > 0)
 const platformLinks = computed(() => platformLinkDefinitions
   .map(platform => ({ ...platform, url: club.value?.[platform.key]?.trim() || null }))
   .filter((platform): platform is typeof platform & { url: string } => Boolean(platform.url)))
@@ -436,6 +633,29 @@ const detailPhotoUrls = computed(() => {
   ]
 })
 const activeDetailImage = computed(() => selectedDetailImage.value || detailPhotoUrls.value[0] || null)
+const activeFilterChips = computed(() => {
+  const value = filters.value
+  const chips: Array<{ key: string; label: string }> = []
+  if (value.search) chips.push({ key: 'search', label: `搜索：${value.search}` })
+  const ip = facets.value.ips.find(option => option.id === value.ip)
+  if (ip) chips.push({ key: 'ip', label: `IP：${ip.name}` })
+  const character = facets.value.characters.find(option => option.id === value.character)
+  if (character) chips.push({ key: 'character', label: `角色：${character.name}` })
+  const category = facets.value.categories.find(option => option.id === value.category)
+  if (category) chips.push({ key: 'category', label: `品类：${category.path_name}` })
+  const theme = facets.value.themes.find(option => option.id === value.theme)
+  if (theme) chips.push({ key: 'theme', label: `主题：${theme.name}` })
+  if (value.price_min || value.price_max) {
+    chips.push({
+      key: 'price',
+      label: `价格：${value.price_min || '0'} - ${value.price_max || '不限'}`,
+    })
+  }
+  if (value.imported !== 'all' && canFilterImported.value) {
+    chips.push({ key: 'imported', label: value.imported === 'imported' ? '已导入' : '未导入' })
+  }
+  return chips
+})
 
 function selectDetailImage(url: string) {
   selectedDetailImage.value = url
@@ -446,8 +666,84 @@ function currentClubId() {
   return Number.isFinite(id) && id > 0 ? id : null
 }
 
+function routePage(value: unknown) {
+  const raw = Array.isArray(value) ? value[0] : value
+  const parsed = typeof raw === 'string' && /^\d+$/.test(raw) ? Number(raw) : 1
+  return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : 1
+}
+
+function routeQueryKey(query?: Record<string, unknown>) {
+  const source = query || {}
+  return Object.keys(source)
+    .sort()
+    .map((key) => {
+      const value = source[key]
+      return `${key}=${Array.isArray(value) ? value.join(',') : value ?? ''}`
+    })
+    .join('&')
+}
+
 function goodsAriaLabel(item: ClubGoodsListItem) {
   return `${item.name}，查看详情`
+}
+
+function characterSummary(item: ClubGoodsListItem) {
+  const names = item.characters.map(character => character.name)
+  return names.length > 2 ? `${names.slice(0, 2).join('、')} +${names.length - 2}` : names.join('、')
+}
+
+function clearInteractionTimers() {
+  if (searchTimer) window.clearTimeout(searchTimer)
+  if (priceTimer) window.clearTimeout(priceTimer)
+  searchTimer = undefined
+  priceTimer = undefined
+}
+
+function validPriceRange(value: ClubPublicGoodsFilterState) {
+  if (!value.price_min || !value.price_max) return true
+  if (Number(value.price_min) <= Number(value.price_max)) return true
+  ElMessage.warning('最高价不能低于最低价')
+  return false
+}
+
+function filterStateKey(value: ClubPublicGoodsFilterState) {
+  return JSON.stringify({
+    ...value,
+    search: value.search.trim(),
+  })
+}
+
+async function syncFiltersToRoute() {
+  const query = clubGoodsFiltersToQuery(filters.value, page.value)
+  const targetKey = routeQueryKey(query)
+  lastWrittenRouteKey = targetKey
+  if (targetKey === routeQueryKey(route.query)) return
+  await router.replace({
+    name: 'ClubDetail',
+    params: { id: route.params.id },
+    query,
+  })
+}
+
+async function loadFacets(id = currentClubId()) {
+  if (!id) return false
+  const sequence = ++facetsRequestSequence
+  facetsLoading.value = true
+  facetsError.value = ''
+  try {
+    const result = await getClubGoodsFacets(id)
+    if (sequence !== facetsRequestSequence) return false
+    facets.value = result
+    facetsReady.value = true
+    return true
+  } catch (error: any) {
+    if (sequence !== facetsRequestSequence) return false
+    facetsReady.value = false
+    facetsError.value = error?.response?.data?.detail || error?.message || '筛选选项加载失败，请重试。'
+    return false
+  } finally {
+    if (sequence === facetsRequestSequence) facetsLoading.value = false
+  }
 }
 
 async function toggleFavorite() {
@@ -472,17 +768,17 @@ async function loadGoods() {
   const id = currentClubId()
   if (!id) return
   const sequence = ++goodsRequestSequence
+  const requestFilters = { ...filters.value }
+  const requestFiltersKey = filterStateKey(requestFilters)
+  const requestPage = page.value
   goodsLoading.value = true
   goodsError.value = ''
   try {
-    const result = await getClubGoods(id, {
-      page: page.value,
-      page_size: pageSize,
-      search: goodsSearch.value.trim() || undefined,
-    })
+    const result = await getClubGoods(id, clubGoodsFiltersToApi(requestFilters, requestPage, pageSize))
     if (sequence !== goodsRequestSequence) return
     goodsItems.value = result.results
     total.value = result.count
+    lastLoadedFiltersKey = requestFiltersKey
   } catch (error: any) {
     if (sequence !== goodsRequestSequence) return
     goodsError.value = error?.response?.data?.detail || error?.message || '公开谷子加载失败，请重试。'
@@ -501,11 +797,19 @@ async function loadClub() {
   loading.value = true
   pageError.value = ''
   goodsError.value = ''
-  page.value = 1
+  filters.value = parseClubGoodsFilters(route.query)
+  page.value = routePage(route.query?.page)
   try {
-    const result = await getClub(id)
+    const [result] = await Promise.all([getClub(id), loadFacets(id)])
     if (sequence !== clubRequestSequence) return
     club.value = result
+    if (facetsReady.value) {
+      filters.value = normalizeClubGoodsFilters(filters.value, facets.value, canFilterImported.value)
+    } else if (!canFilterImported.value) {
+      filters.value = { ...filters.value, imported: 'all' }
+    }
+    mobileDraftFilters.value = { ...filters.value }
+    await syncFiltersToRoute()
     await loadGoods()
   } catch (error: any) {
     if (sequence !== clubRequestSequence) return
@@ -516,14 +820,130 @@ async function loadClub() {
   }
 }
 
-async function searchClubGoods() {
-  page.value = 1
+async function applyFilters(value: ClubPublicGoodsFilterState, resetPage = true) {
+  if (!validPriceRange(value)) return false
+  const next = { ...value, search: value.search.trim() }
+  filters.value = next
+  mobileDraftFilters.value = { ...filters.value }
+  if (filterStateKey(next) === lastLoadedFiltersKey) return true
+  if (resetPage) page.value = 1
+  await syncFiltersToRoute()
   await loadGoods()
+  return true
 }
 
 function clearGoodsFilters() {
-  goodsSearch.value = ''
-  void searchClubGoods()
+  clearInteractionTimers()
+  void applyFilters(createDefaultClubGoodsFilters())
+}
+
+function updateSearch(value: unknown) {
+  filters.value = { ...filters.value, search: typeof value === 'string' ? value : '' }
+  if (searchTimer) window.clearTimeout(searchTimer)
+  searchTimer = window.setTimeout(() => {
+    searchTimer = undefined
+    void applyFilters(filters.value)
+  }, 300)
+}
+
+function applySearchImmediately() {
+  if (searchTimer) window.clearTimeout(searchTimer)
+  searchTimer = undefined
+  void applyFilters(filters.value)
+}
+
+function applyDesktopFilters(value: ClubPublicGoodsFilterState) {
+  clearInteractionTimers()
+  void applyFilters(value)
+}
+
+function schedulePriceFilter(value: ClubPublicGoodsFilterState) {
+  filters.value = value
+  if (priceTimer) window.clearTimeout(priceTimer)
+  priceTimer = window.setTimeout(() => {
+    priceTimer = undefined
+    void applyFilters(value)
+  }, 350)
+}
+
+function commitPriceFilter(value: ClubPublicGoodsFilterState) {
+  if (priceTimer) window.clearTimeout(priceTimer)
+  priceTimer = undefined
+  void applyFilters(value)
+}
+
+function updateOrdering(value: unknown) {
+  const allowed: ClubGoodsOrdering[] = ['default', 'newest', 'oldest', 'price_asc', 'price_desc']
+  const ordering = allowed.includes(value as ClubGoodsOrdering) ? value as ClubGoodsOrdering : 'default'
+  void applyFilters({ ...filters.value, ordering })
+}
+
+function setOrdering(ordering: ClubGoodsOrdering) {
+  void applyFilters({ ...filters.value, ordering })
+}
+
+function toggleOrdering(type: 'time' | 'price') {
+  const ordering: ClubGoodsOrdering = type === 'time'
+    ? filters.value.ordering === 'newest' ? 'oldest' : 'newest'
+    : filters.value.ordering === 'price_asc' ? 'price_desc' : 'price_asc'
+  void applyFilters({ ...filters.value, ordering })
+}
+
+function toggleFilterPanel() {
+  if (isMobile.value) {
+    mobileDraftFilters.value = { ...filters.value }
+    mobileFilterVisible.value = true
+    return
+  }
+  filtersExpanded.value = !filtersExpanded.value
+}
+
+function resetMobileDraft() {
+  mobileDraftFilters.value = {
+    ...createDefaultClubGoodsFilters(),
+    search: filters.value.search,
+  }
+}
+
+async function applyMobileFilters() {
+  if (!validPriceRange(mobileDraftFilters.value)) return
+  mobileFilterVisible.value = false
+  await applyFilters(mobileDraftFilters.value)
+}
+
+async function retryFacets() {
+  const loaded = await loadFacets()
+  if (!loaded) return
+  const normalized = normalizeClubGoodsFilters(filters.value, facets.value, canFilterImported.value)
+  if (JSON.stringify(normalized) !== JSON.stringify(filters.value)) {
+    await applyFilters(normalized)
+  } else {
+    mobileDraftFilters.value = { ...filters.value }
+  }
+}
+
+function removeFilter(key: string) {
+  const next = { ...filters.value }
+  if (key === 'search') next.search = ''
+  if (key === 'ip') {
+    next.ip = undefined
+    next.character = undefined
+  }
+  if (key === 'character') next.character = undefined
+  if (key === 'category') next.category = undefined
+  if (key === 'theme') next.theme = undefined
+  if (key === 'price') {
+    next.price_min = ''
+    next.price_max = ''
+  }
+  if (key === 'imported') next.imported = 'all'
+  void applyFilters(next)
+}
+
+async function changePage(nextPage: number) {
+  page.value = nextPage
+  await syncFiltersToRoute()
+  await loadGoods()
 }
 
 async function openGoodsDetail(item: ClubGoodsListItem) {
@@ -570,9 +990,12 @@ function confirmImport() {
 }
 
 watch(() => route.params.id, () => {
+  clearInteractionTimers()
   goodsRequestSequence += 1
   detailRequestSequence += 1
-  goodsSearch.value = ''
+  facetsRequestSequence += 1
+  filters.value = parseClubGoodsFilters(route.query)
+  mobileDraftFilters.value = { ...filters.value }
   goodsItems.value = []
   total.value = 0
   importVisible.value = false
@@ -583,15 +1006,37 @@ watch(() => route.params.id, () => {
   void loadClub()
 })
 
+watch(() => route.query, (query) => {
+  if (!club.value) return
+  const key = routeQueryKey(query)
+  if (key === lastWrittenRouteKey) return
+  lastWrittenRouteKey = key
+  let next = parseClubGoodsFilters(query)
+  if (facetsReady.value) {
+    next = normalizeClubGoodsFilters(next, facets.value, canFilterImported.value)
+  }
+  filters.value = next
+  mobileDraftFilters.value = { ...next }
+  page.value = routePage(query?.page)
+  void loadGoods()
+}, { deep: true })
+
 onMounted(() => {
   void loadClub()
+})
+
+onUnmounted(() => {
+  clearInteractionTimers()
+  goodsRequestSequence += 1
+  detailRequestSequence += 1
+  facetsRequestSequence += 1
 })
 </script>
 
 <style scoped>
 .club-detail-page {
   width: 100%;
-  max-width: 1240px;
+  max-width: 1680px;
   margin: 0 auto;
   padding: 24px 24px 64px;
   color: var(--text-dark);
@@ -787,7 +1232,7 @@ onMounted(() => {
 
 .detail-layout {
   display: grid;
-  grid-template-columns: minmax(230px, 270px) minmax(0, 1fr);
+  grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
   gap: 24px;
   margin-top: 24px;
 }
@@ -945,10 +1390,10 @@ onMounted(() => {
 }
 
 .section-heading {
-  display: flex;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 18px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(430px, 620px);
+  align-items: end;
+  gap: 20px;
   margin-bottom: 20px;
   padding-bottom: 18px;
   border-bottom: 1px solid rgba(212, 175, 55, 0.16);
@@ -986,51 +1431,186 @@ onMounted(() => {
   line-height: 1.45;
 }
 
-.goods-filters {
-  display: grid;
-  grid-template-columns: minmax(180px, 240px) 132px auto;
+.goods-toolbar {
+  display: flex;
+  flex-wrap: wrap;
   gap: 8px;
   align-items: center;
   min-width: 0;
 }
 
-.goods-search,
-.goods-status {
-  width: 100%;
+.goods-search {
+  flex: 1 1 250px;
+  width: auto;
   min-width: 0;
 }
 
-.goods-filters :deep(.el-input__wrapper),
-.goods-filters :deep(.el-select .el-input__wrapper) {
+.goods-toolbar :deep(.el-input__wrapper) {
   min-height: 36px;
   border-radius: var(--button-radius);
   box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.18) inset, var(--shadow-sm);
   transition: box-shadow var(--transition-fast), background-color var(--transition-fast);
 }
 
-.goods-filters :deep(.el-input__wrapper:hover),
-.goods-filters :deep(.el-select .el-input__wrapper:hover) {
+.goods-toolbar :deep(.el-input__wrapper:hover) {
   box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.42) inset, var(--shadow-sm);
 }
 
-.search-button {
+.goods-sort-group {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 6px;
+}
+
+.goods-sort-button {
   min-height: 36px;
-  border: 0;
+  margin: 0;
+  padding: 0 11px;
   border-radius: var(--button-radius);
-  background: linear-gradient(135deg, var(--accent-purple), var(--accent-purple-hover));
-  box-shadow: 0 5px 12px rgba(142, 125, 255, 0.22), inset 0 1px 0 rgba(255, 255, 255, 0.28);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), filter var(--transition-fast);
+  border-color: rgba(212, 175, 55, 0.22);
+  color: var(--text-regular);
+  background: rgba(255, 255, 255, 0.78);
+  white-space: nowrap;
+  transition: border-color var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.search-button:hover,
-.search-button:focus-visible {
-  box-shadow: 0 8px 16px rgba(142, 125, 255, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.32);
-  filter: saturate(1.04);
-  transform: translateY(-1px);
+.goods-sort-button:hover {
+  border-color: rgba(212, 175, 55, 0.54);
+  color: var(--accent-purple-dark);
 }
 
-.search-button:active {
-  transform: translateY(0) scale(0.98);
+.goods-sort-button.is-active {
+  border-color: var(--primary-gold);
+  color: var(--accent-purple-dark);
+  background: rgba(255, 251, 235, 0.96);
+  box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
+}
+
+.goods-sort-button--direction {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.goods-sort-button--direction :deep(.el-icon) {
+  font-size: 14px;
+}
+
+.filter-toggle-button {
+  min-height: 36px;
+  border-radius: var(--button-radius);
+  border-color: rgba(162, 155, 254, 0.34);
+  color: var(--accent-purple-dark);
+  background: rgba(246, 244, 255, 0.7);
+}
+
+.filter-toggle-button.is-active {
+  border-color: var(--accent-purple);
+  background: var(--accent-purple-soft);
+  box-shadow: 0 0 0 2px rgba(162, 155, 254, 0.1);
+}
+
+.filter-toggle-button strong {
+  display: inline-grid;
+  min-width: 20px;
+  height: 20px;
+  place-items: center;
+  padding: 0 5px;
+  border-radius: 10px;
+  background: var(--accent-purple);
+  color: #fff;
+  font-size: 11px;
+}
+
+.active-filter-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: -4px 0 16px;
+}
+
+.active-filter-row :deep(.el-tag) {
+  max-width: min(100%, 260px);
+  border-color: rgba(162, 155, 254, 0.3);
+  background: var(--accent-purple-soft);
+  color: var(--accent-purple-dark);
+}
+
+.clear-filter-link {
+  margin-left: auto;
+}
+
+.desktop-filter-panel {
+  padding: 16px;
+  border-top: 1px solid rgba(212, 175, 55, 0.14);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+  background: rgba(250, 249, 246, 0.72);
+}
+
+/* 与谷仓筛选面板保持一致：用网格行高控制展开高度，并叠加轻微缩放。 */
+.filter-collapse-wrapper {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+  margin: -4px 0 20px;
+  overflow: hidden;
+}
+
+.filter-collapse-wrapper > .desktop-filter-panel {
+  min-height: 0;
+  transform-origin: top center;
+  will-change: transform;
+}
+
+.filter-loading {
+  min-height: 92px;
+}
+
+.filter-error {
+  display: flex;
+  min-height: 72px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: #8f4545;
+  font-size: var(--font-caption);
+}
+
+.filter-collapse-enter-active,
+.filter-collapse-leave-active {
+  overflow: hidden;
+  transition: grid-template-rows 0.3s ease, margin-bottom 0.3s ease, opacity 0.3s ease;
+}
+
+.filter-collapse-enter-active > .desktop-filter-panel,
+.filter-collapse-leave-active > .desktop-filter-panel {
+  transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.filter-collapse-enter-from,
+.filter-collapse-leave-to {
+  grid-template-rows: minmax(0, 0fr);
+  margin-bottom: 4px;
+  opacity: 0;
+}
+
+.filter-collapse-enter-from > .desktop-filter-panel,
+.filter-collapse-leave-to > .desktop-filter-panel {
+  transform: translateY(-6px) scale(0.98);
+}
+
+.filter-collapse-enter-to,
+.filter-collapse-leave-from {
+  grid-template-rows: minmax(0, 1fr);
+  margin-bottom: 20px;
+  opacity: 1;
+}
+
+.filter-collapse-enter-to > .desktop-filter-panel,
+.filter-collapse-leave-from > .desktop-filter-panel {
+  transform: translateY(0) scale(1);
 }
 
 .goods-grid {
@@ -1038,6 +1618,12 @@ onMounted(() => {
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 16px;
   min-height: 120px;
+}
+
+@media (min-width: 1360px) {
+  .goods-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
 }
 
 .goods-card {
@@ -1095,6 +1681,25 @@ onMounted(() => {
     var(--secondary-gray);
 }
 
+.goods-card__imported {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 2;
+  max-width: calc(100% - 20px);
+  overflow: hidden;
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: var(--button-radius);
+  background: rgba(80, 72, 140, 0.88);
+  box-shadow: var(--shadow-sm);
+  color: #fff;
+  font-size: 11px;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .goods-card__image {
   display: block;
   width: 100%;
@@ -1116,7 +1721,7 @@ onMounted(() => {
 .goods-card__body {
   display: flex;
   min-width: 0;
-  min-height: 150px;
+  min-height: 190px;
   flex: 1;
   flex-direction: column;
   padding: 13px 14px 14px;
@@ -1157,6 +1762,52 @@ onMounted(() => {
 .goods-card__meta-separator {
   flex: none;
   color: var(--primary-gold-dark);
+}
+
+.goods-card__characters {
+  margin: 7px 0 0;
+  overflow: hidden;
+  color: var(--text-regular);
+  font-size: var(--font-small);
+  line-height: 1.4;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goods-card__characters::before {
+  margin-right: 5px;
+  color: var(--primary-gold-dark);
+  content: '角色';
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.goods-card__facts {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.goods-card__theme {
+  min-width: 0;
+  overflow: hidden;
+  padding: 3px 7px;
+  border: 1px solid rgba(162, 155, 254, 0.24);
+  border-radius: 4px;
+  background: var(--accent-purple-soft);
+  color: var(--accent-purple-dark);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goods-card__price {
+  flex: none;
+  color: #9a6e10;
+  font-size: var(--font-caption);
 }
 
 .goods-card__footer {
@@ -1645,13 +2296,93 @@ onMounted(() => {
   height: 100%;
 }
 
+:global(.mobile-filter-drawer.el-drawer) {
+  overflow: hidden;
+  border-radius: 12px 12px 0 0;
+}
+
+:global(.mobile-filter-drawer .el-drawer__body) {
+  padding: 0;
+}
+
+.mobile-filter-sheet {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--bg-white);
+}
+
+.mobile-filter-sheet__header {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 14px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.18);
+}
+
+.mobile-filter-sheet__header span {
+  color: var(--primary-gold-dark);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.mobile-filter-sheet__header h2 {
+  margin: 2px 0 0;
+  font-size: var(--font-section);
+}
+
+.mobile-filter-sheet__body {
+  display: grid;
+  min-height: 0;
+  flex: 1;
+  align-content: start;
+  gap: 18px;
+  overflow-y: auto;
+  padding: 18px;
+}
+
+.mobile-ordering-field {
+  display: grid;
+  gap: 7px;
+  color: var(--text-regular);
+  font-size: var(--font-small);
+  font-weight: 600;
+}
+
+.mobile-ordering-field :deep(.el-select) {
+  width: 100%;
+}
+
+.mobile-filter-sheet__footer {
+  display: grid;
+  flex: none;
+  grid-template-columns: 1fr 1.6fr;
+  gap: 10px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(212, 175, 55, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.mobile-filter-sheet__footer .el-button {
+  min-height: 42px;
+  margin: 0;
+  border-radius: var(--button-radius);
+}
+
 @media (max-width: 1024px) {
   .detail-layout {
     gap: 16px;
   }
 
-  .goods-filters {
-    grid-template-columns: minmax(150px, 1fr) 124px auto;
+  .section-heading {
+    grid-template-columns: minmax(0, 1fr) minmax(380px, 1fr);
+  }
+
+  .goods-search {
+    flex-basis: 180px;
   }
 }
 
@@ -1696,20 +2427,16 @@ onMounted(() => {
   }
 
   .section-heading {
-    display: block;
+    grid-template-columns: 1fr;
   }
 
   .goods-panel {
     padding: 16px;
   }
 
-  .goods-filters {
-    grid-template-columns: minmax(0, 1fr) auto;
+  .goods-toolbar {
+    grid-template-columns: minmax(0, 1fr) auto auto;
     margin-top: 14px;
-  }
-
-  .goods-search {
-    grid-column: 1 / -1;
   }
 
   .goods-grid {
@@ -1783,7 +2510,7 @@ onMounted(() => {
   }
 
   .goods-card__body {
-    min-height: 142px;
+    min-height: 184px;
     padding: 10px;
   }
 
@@ -1796,8 +2523,16 @@ onMounted(() => {
   }
 
   .club-import-button {
+    width: 88px;
     --brand-add-padding-x: 8px;
     --brand-add-font-size: 11px;
+  }
+
+  .goods-card__imported {
+    top: 7px;
+    left: 7px;
+    max-width: calc(100% - 14px);
+    padding: 4px 6px;
   }
 
   :deep(.club-dialog .el-dialog__body) {
@@ -1816,17 +2551,33 @@ onMounted(() => {
 @media (prefers-reduced-motion: reduce) {
   .back-button,
   .store-link,
-  .search-button,
+  .filter-toggle-button,
+  .filter-collapse-wrapper,
+  .filter-collapse-enter-active,
+  .filter-collapse-leave-active,
   .goods-card,
   .goods-card__image,
   .status-option {
     transition: none;
   }
 
+  .filter-collapse-wrapper > .desktop-filter-panel,
+  .filter-collapse-enter-from,
+  .filter-collapse-leave-to,
+  .filter-collapse-enter-to,
+  .filter-collapse-leave-from,
+  .filter-collapse-enter-active > .desktop-filter-panel,
+  .filter-collapse-leave-active > .desktop-filter-panel,
+  .filter-collapse-enter-from > .desktop-filter-panel,
+  .filter-collapse-leave-to > .desktop-filter-panel,
+  .filter-collapse-enter-to > .desktop-filter-panel,
+  .filter-collapse-leave-from > .desktop-filter-panel {
+    transform: none;
+  }
+
   .goods-card:hover,
   .goods-card:hover .goods-card__image,
   .store-link:hover,
-  .search-button:hover,
   .status-option:active {
     transform: none;
   }

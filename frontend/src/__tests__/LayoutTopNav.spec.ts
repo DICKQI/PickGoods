@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -5,6 +7,9 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import Layout from '@/components/Layout.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationStore } from '@/stores/notification'
+
+const layoutSource = readFileSync(resolve(process.cwd(), 'src/components/Layout.vue'), 'utf8')
+const routerSource = readFileSync(resolve(process.cwd(), 'src/router/index.ts'), 'utf8')
 
 vi.mock('@capacitor/core', () => ({
   Capacitor: {
@@ -105,6 +110,11 @@ describe('Layout top navigation', () => {
     expect(topMenu.attributes('data-ellipsis')).toBe('false')
     expect(themeItem.text()).toBe('主题')
     expect(topMenu.text()).not.toContain('主题管理')
+  })
+
+  it('preserves the club detail view when only filter query parameters change', () => {
+    expect(layoutSource).toContain(':key="route.meta.preserveOnQueryChange ? route.path : route.fullPath"')
+    expect(routerSource).toMatch(/name:\s*'ClubDetail',[\s\S]*?meta:\s*\{\s*title:\s*'社团详情',\s*preserveOnQueryChange:\s*true\s*\}/)
   })
 
   it('shows the app version badge on all desktop pages', async () => {

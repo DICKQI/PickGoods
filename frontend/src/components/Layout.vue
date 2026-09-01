@@ -102,7 +102,10 @@
     }">
       <router-view v-slot="{ Component, route }">
         <Transition :name="pageTransitionName" mode="out-in">
-          <component :is="Component" :key="route.fullPath" />
+          <component
+            :is="Component"
+            :key="route.meta.preserveOnQueryChange ? route.path : route.fullPath"
+          />
         </Transition>
       </router-view>
     </main>

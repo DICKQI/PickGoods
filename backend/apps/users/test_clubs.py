@@ -20,6 +20,7 @@ from apps.goods.models import (
     ClubGoodsOrigin,
     Goods,
     IP,
+    IPKeyword,
     Theme,
 )
 from apps.goods.club_scheduler import publish_scheduled_club_goods
@@ -252,6 +253,177 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(len(response.json()["results"]), 40)
         # Pagination, annotations, and prefetches should stay bounded as the page grows.
         self.assertLess(len(queries), 20)
+
+    def test_public_goods_supports_catalog_filters_search_price_and_ordering(self):
+        second_ip = IP.objects.create(name="第二 IP", subject_type=4)
+        IPKeyword.objects.create(ip=second_ip, value="作品别名")
+        second_character = Character.objects.create(ip=second_ip, name="筛选角色", gender="other")
+        parent_category = Category.objects.create(name="纸制品", path_name="纸制品")
+        child_category = Category.objects.create(
+            name="拍立得", parent=parent_category, path_name="纸制品/拍立得"
+        )
+        theme = Theme.objects.create(user=self.club_user, name="夏日祭")
+        target = ClubCatalogItem.objects.create(
+            club=self.club,
+            name="目标目录条目",
+            ip=second_ip,
+            category=child_category,
+            theme=theme,
+            public_price="120.00",
+            order=20,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+        target.characters.add(second_character)
+        no_price = ClubCatalogItem.objects.create(
+            club=self.club,
+            name="无价格条目",
+            ip=self.ip,
+            category=self.category,
+            public_price=None,
+            order=30,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+        no_price.characters.add(self.character)
+
+        for keyword in ("作品别名", "筛选角色", "纸制品", "夏日祭"):
+            response = self.client.get(f"/api/clubs/{self.club.id}/goods/?search={keyword}")
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+            self.assertEqual([item["id"] for item in response.json()["results"]], [str(target.id)])
+
+        filtered = self.client.get(
+            f"/api/clubs/{self.club.id}/goods/",
+            {
+                "ip": second_ip.id,
+                "character": second_character.id,
+                "category": parent_category.id,
+                "theme": theme.id,
+                "price_min": "100.00",
+                "price_max": "130.00",
+            },
+        )
+        self.assertEqual(filtered.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in filtered.json()["results"]], [str(target.id)])
+
+        ascending = self.client.get(f"/api/clubs/{self.club.id}/goods/?ordering=price_asc")
+        self.assertEqual(
+            [item["name"] for item in ascending.json()["results"]],
+            ["社团徽章", "目标目录条目", "无价格条目"],
+        )
+        descending = self.client.get(f"/api/clubs/{self.club.id}/goods/?ordering=price_desc")
+        self.assertEqual(
+            [item["name"] for item in descending.json()["results"]],
+            ["目标目录条目", "社团徽章", "无价格条目"],
+        )
+        oldest = self.client.get(f"/api/clubs/{self.club.id}/goods/?ordering=oldest")
+        self.assertEqual(
+            [item["name"] for item in oldest.json()["results"]],
+            ["社团徽章", "目标目录条目", "无价格条目"],
+        )
+
+    def test_public_goods_rejects_invalid_filter_values(self):
+        cases = (
+            {"ip": "not-an-id"},
+            {"character": "0"},
+            {"price_min": "not-a-price"},
+            {"price_min": "-1"},
+            {"price_min": "100", "price_max": "10"},
+            {"ordering": "unknown"},
+            {"imported": "unknown"},
+        )
+        for params in cases:
+            with self.subTest(params=params):
+                response = self.client.get(f"/api/clubs/{self.club.id}/goods/", params)
+                self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+
+    def test_public_goods_facets_are_club_scoped_and_include_category_ancestors(self):
+        second_ip = IP.objects.create(name="聚合 IP", subject_type=4)
+        second_character = Character.objects.create(ip=second_ip, name="聚合角色", gender="other")
+        parent_category = Category.objects.create(name="父品类", path_name="父品类")
+        child_category = Category.objects.create(
+            name="子品类", parent=parent_category, path_name="父品类/子品类"
+        )
+        theme = Theme.objects.create(user=self.club_user, name="聚合主题")
+        for index, price in enumerate(("12.00", "34.00")):
+            item = ClubCatalogItem.objects.create(
+                club=self.club,
+                name=f"聚合条目 {index}",
+                ip=second_ip,
+                category=child_category,
+                theme=theme,
+                public_price=price,
+                publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+            )
+            item.characters.add(second_character)
+        ClubCatalogItem.objects.create(
+            club=self.club,
+            name="不参与聚合的草稿",
+            ip=second_ip,
+            category=child_category,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        other_club_user = User.objects.create(
+            username="other-club-facets",
+            role=self.user_role,
+            account_type=User.ACCOUNT_TYPE_CLUB,
+            approval_status=User.APPROVAL_APPROVED,
+        )
+        other_club = Club.objects.create(user=other_club_user, name="其他聚合社团", application_reason="测试")
+        other_theme = Theme.objects.create(user=other_club_user, name="不可见主题")
+        ClubCatalogItem.objects.create(
+            club=other_club,
+            name="其他社团条目",
+            ip=second_ip,
+            category=child_category,
+            theme=other_theme,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+
+        response = self.client.get(f"/api/clubs/{self.club.id}/goods/facets/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertNotIn("imported_counts", payload)
+        self.assertEqual(next(item for item in payload["ips"] if item["id"] == second_ip.id)["count"], 2)
+        self.assertEqual(next(item for item in payload["characters"] if item["id"] == second_character.id)["count"], 2)
+        self.assertEqual(next(item for item in payload["themes"] if item["id"] == theme.id)["count"], 2)
+        self.assertNotIn("不可见主题", [item["name"] for item in payload["themes"]])
+        category_counts = {item["id"]: item["count"] for item in payload["categories"]}
+        self.assertEqual(category_counts[parent_category.id], 2)
+        self.assertEqual(category_counts[child_category.id], 2)
+        self.assertEqual(payload["price_bounds"], {"min": "12", "max": "88"})
+
+        personal = Goods.objects.create(
+            user=self.collector,
+            name="已导入聚合条目",
+            ip=self.ip,
+            category=self.category,
+            quantity=1,
+            status="intended",
+        )
+        ClubGoodsOrigin.objects.create(
+            collector=self.collector,
+            source_item=self.source,
+            personal_goods=personal,
+            first_source_snapshot={},
+        )
+        self.client.force_authenticate(self.collector)
+        authenticated = self.client.get(f"/api/clubs/{self.club.id}/goods/facets/")
+        self.assertEqual(authenticated.json()["imported_counts"], {"imported": 1, "unimported": 2})
+
+    def test_public_goods_facets_query_count_is_bounded(self):
+        for index in range(100):
+            ClubCatalogItem.objects.create(
+                club=self.club,
+                name=f"聚合性能条目 {index}",
+                ip=self.ip,
+                category=self.category,
+                publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+            )
+        self.client.force_authenticate(self.collector)
+        with CaptureQueriesContext(connection) as queries:
+            response = self.client.get(f"/api/clubs/{self.club.id}/goods/facets/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["ips"][0]["count"], 101)
+        self.assertLess(len(queries), 15)
 
     def test_public_directory_includes_latest_limited_previews_with_photo_fallback(self):
         now = timezone.now()

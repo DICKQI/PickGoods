@@ -337,6 +337,53 @@ export interface ClubCatalogItem {
 /** 公开社团目录条目；不包含社团内部发布状态、排序/审计和官谷语义字段。 */
 export type ClubCatalogPublicItem = Omit<ClubCatalogItem, 'publication_status' | 'order' | 'created_at' | 'updated_at' | 'is_official'>
 
+export type ClubGoodsImportedFilter = 'all' | 'imported' | 'unimported'
+export type ClubGoodsOrdering = 'default' | 'newest' | 'oldest' | 'price_asc' | 'price_desc'
+
+export interface ClubGoodsQuery {
+  page?: number
+  page_size?: number
+  search?: string
+  ip?: number
+  character?: number
+  category?: number
+  theme?: number
+  price_min?: string
+  price_max?: string
+  imported?: ClubGoodsImportedFilter
+  ordering?: ClubGoodsOrdering
+}
+
+export interface ClubGoodsFacetOption {
+  id: number
+  name: string
+  count: number
+}
+
+export interface ClubGoodsCharacterFacet extends ClubGoodsFacetOption {
+  ip_id: number
+}
+
+export interface ClubGoodsCategoryFacet extends ClubGoodsFacetOption {
+  path_name: string
+  parent: number | null
+}
+
+export interface ClubGoodsFacets {
+  ips: ClubGoodsFacetOption[]
+  characters: ClubGoodsCharacterFacet[]
+  categories: ClubGoodsCategoryFacet[]
+  themes: ClubGoodsFacetOption[]
+  price_bounds: {
+    min: string | null
+    max: string | null
+  }
+  imported_counts?: {
+    imported: number
+    unimported: number
+  }
+}
+
 export interface ClubCatalogInput {
   name: string
   description?: string

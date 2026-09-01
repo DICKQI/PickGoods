@@ -5,6 +5,8 @@ import type {
   ClubCatalogItem,
   ClubCatalogListResponse,
   ClubCatalogPublicItem,
+  ClubGoodsFacets,
+  ClubGoodsQuery,
   ClubBatchDeleteResponse,
   ClubBatchUnlistResponse,
   ClubImportTemplate,
@@ -36,13 +38,12 @@ export function getMyFavoriteClubs(params?: { page?: number; page_size?: number 
   return request.get<PaginatedResponse<ClubFavoriteItem>>('/api/clubs/me/favorites/', { params })
 }
 
-export function getClubGoods(id: number, params?: {
-  page?: number
-  page_size?: number
-  search?: string
-  imported?: 'all' | 'imported' | 'unimported'
-}) {
+export function getClubGoods(id: number, params?: ClubGoodsQuery) {
   return request.get<PaginatedResponse<ClubCatalogPublicItem>>(`/api/clubs/${id}/goods/`, { params })
+}
+
+export function getClubGoodsFacets(id: number) {
+  return request.get<ClubGoodsFacets>(`/api/clubs/${id}/goods/facets/`)
 }
 
 export function getClubGoodsDetail(clubId: number, goodsId: string) {

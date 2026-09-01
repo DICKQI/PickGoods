@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import BooleanField, Count, Exists, IntegerField, Min, OuterRef, Prefetch, Q, Subquery, UUIDField, Value
+from django.db.models import BooleanField, Count, Exists, F, IntegerField, Max, Min, OuterRef, Prefetch, Q, Subquery, UUIDField, Value
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import ValidationError
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -14,6 +17,7 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.goods.models import (
+    Category,
     Character,
     ClubCatalogItem,
     ClubCatalogImage,
@@ -66,6 +70,7 @@ class ClubPagination(PageNumberPagination):
 
 
 CLUB_DIRECTORY_PREVIEW_LIMIT = 5
+CLUB_GOODS_ORDERINGS = {"default", "newest", "oldest", "price_asc", "price_desc"}
 
 
 def _public_club_queryset():
@@ -74,6 +79,99 @@ def _public_club_queryset():
         user__approval_status=User.APPROVAL_APPROVED,
         user__is_active=True,
     ).order_by("name", "id")
+
+
+def _can_view_imported_state(user) -> bool:
+    return bool(
+        getattr(user, "is_authenticated", False)
+        and (
+            getattr(user, "account_type", None) == User.ACCOUNT_TYPE_COLLECTOR
+            or is_admin(user)
+        )
+    )
+
+
+def _collector_origin_queryset(user):
+    return ClubGoodsOrigin.objects.filter(
+        collector=user,
+        source_item=OuterRef("pk"),
+        personal_goods__isnull=False,
+    )
+
+
+def _public_catalog_queryset(club, user):
+    public_ip_queryset = IP.objects.annotate(
+        character_count=Count("characters", distinct=True),
+    ).prefetch_related("keywords")
+    public_character_queryset = Character.objects.prefetch_related(
+        Prefetch("ip", queryset=public_ip_queryset),
+    )
+    queryset = ClubCatalogItem.objects.filter(
+        club=club,
+        publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+    ).select_related("club", "category", "theme").prefetch_related(
+        Prefetch("ip", queryset=public_ip_queryset),
+        Prefetch("characters", queryset=public_character_queryset),
+        "additional_photos",
+    )
+    if _can_view_imported_state(user):
+        origins = _collector_origin_queryset(user)
+        return queryset.annotate(
+            collector_imported=Exists(origins),
+            collector_imported_quantity=Subquery(
+                origins.values("personal_goods__quantity")[:1]
+            ),
+            collector_imported_goods_id=Subquery(
+                origins.values("personal_goods_id")[:1]
+            ),
+        )
+    return queryset.annotate(
+        collector_imported=Value(False, output_field=BooleanField()),
+        collector_imported_quantity=Value(None, output_field=IntegerField()),
+        collector_imported_goods_id=Value(None, output_field=UUIDField()),
+    )
+
+
+def _positive_int_param(request, name):
+    raw_value = request.query_params.get(name)
+    if raw_value in (None, ""):
+        return None
+    try:
+        value = int(raw_value)
+    except (TypeError, ValueError):
+        raise ValidationError({name: "必须是正整数"})
+    if value <= 0:
+        raise ValidationError({name: "必须是正整数"})
+    return value
+
+
+def _decimal_param(request, name):
+    raw_value = request.query_params.get(name)
+    if raw_value in (None, ""):
+        return None
+    try:
+        value = Decimal(str(raw_value))
+    except (InvalidOperation, TypeError, ValueError):
+        raise ValidationError({name: "必须是有效价格"})
+    if not value.is_finite() or value < 0:
+        raise ValidationError({name: "必须是大于或等于 0 的有效价格"})
+    return value
+
+
+def _category_descendant_ids(category_id):
+    rows = list(Category.objects.values_list("id", "parent_id"))
+    if not any(row_id == category_id for row_id, _ in rows):
+        return []
+    children_by_parent = {}
+    for row_id, parent_id in rows:
+        children_by_parent.setdefault(parent_id, []).append(row_id)
+    descendants = []
+    stack = [category_id]
+    while stack:
+        current = stack.pop()
+        descendants.append(current)
+        stack.extend(children_by_parent.get(current, ()))
+    return descendants
 
 
 def _copy_theme_for_user(source_theme: Theme, user):
@@ -143,7 +241,7 @@ class ClubViewSet(viewsets.GenericViewSet):
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_permissions(self):
-        if self.action in ("list", "retrieve", "goods"):
+        if self.action in ("list", "retrieve", "goods", "goods_facets"):
             return [AllowAny()]
         if self.action in ("me", "avatar", "popularity"):
             return [IsAuthenticated(), IsClubAccount()]
@@ -235,59 +333,149 @@ class ClubViewSet(viewsets.GenericViewSet):
     @action(detail=True, methods=["get"], url_path="goods")
     def goods(self, request, pk=None):
         club = get_object_or_404(self.get_queryset(), pk=pk)
-        public_ip_queryset = IP.objects.annotate(
-            character_count=Count("characters", distinct=True),
-        ).prefetch_related("keywords")
-        public_character_queryset = Character.objects.prefetch_related(
-            Prefetch("ip", queryset=public_ip_queryset),
-        )
-        queryset = ClubCatalogItem.objects.filter(
-            club=club,
-            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
-        ).select_related("club", "category", "theme").prefetch_related(
-            Prefetch("ip", queryset=public_ip_queryset),
-            Prefetch("characters", queryset=public_character_queryset),
-            "additional_photos",
-        )
-        if request.user.is_authenticated and (
-            getattr(request.user, "account_type", None) == User.ACCOUNT_TYPE_COLLECTOR
-            or is_admin(request.user)
-        ):
-            import_origin_queryset = ClubGoodsOrigin.objects.filter(
-                collector=request.user,
-                source_item=OuterRef("pk"),
-                personal_goods__isnull=False,
-            )
-            queryset = queryset.annotate(
-                collector_imported=Exists(import_origin_queryset),
-                collector_imported_quantity=Subquery(
-                    import_origin_queryset.values("personal_goods__quantity")[:1]
-                ),
-                collector_imported_goods_id=Subquery(
-                    import_origin_queryset.values("personal_goods_id")[:1]
-                ),
-            )
-        else:
-            queryset = queryset.annotate(
-                collector_imported=Value(False, output_field=BooleanField()),
-                collector_imported_quantity=Value(None, output_field=IntegerField()),
-                collector_imported_goods_id=Value(None, output_field=UUIDField()),
-            )
+        queryset = _public_catalog_queryset(club, request.user)
+
         imported_filter = (request.query_params.get("imported") or "").strip().lower()
+        if imported_filter not in {"", "all", "imported", "unimported"}:
+            raise ValidationError({"imported": "必须是 all、imported 或 unimported"})
         if imported_filter == "imported":
             queryset = queryset.filter(collector_imported=True)
         elif imported_filter == "unimported":
             queryset = queryset.filter(collector_imported=False)
+
+        ip_id = _positive_int_param(request, "ip")
+        character_id = _positive_int_param(request, "character")
+        category_id = _positive_int_param(request, "category")
+        theme_id = _positive_int_param(request, "theme")
+        price_min = _decimal_param(request, "price_min")
+        price_max = _decimal_param(request, "price_max")
+        if price_min is not None and price_max is not None and price_min > price_max:
+            raise ValidationError({"price_max": "最高价不能低于最低价"})
+
+        if ip_id is not None:
+            queryset = queryset.filter(ip_id=ip_id)
+        if character_id is not None:
+            queryset = queryset.filter(characters__id=character_id)
+        if category_id is not None:
+            queryset = queryset.filter(category_id__in=_category_descendant_ids(category_id))
+        if theme_id is not None:
+            queryset = queryset.filter(theme_id=theme_id)
+        if price_min is not None:
+            queryset = queryset.filter(public_price__isnull=False, public_price__gte=price_min)
+        if price_max is not None:
+            queryset = queryset.filter(public_price__isnull=False, public_price__lte=price_max)
+
         keyword = (request.query_params.get("search") or "").strip()
         if keyword:
             queryset = queryset.filter(
                 Q(name__icontains=keyword)
                 | Q(ip__name__icontains=keyword)
+                | Q(ip__keywords__value__icontains=keyword)
+                | Q(characters__name__icontains=keyword)
                 | Q(category__name__icontains=keyword)
-            ).distinct()
+                | Q(category__path_name__icontains=keyword)
+                | Q(theme__name__icontains=keyword)
+            )
+
+        ordering = (request.query_params.get("ordering") or "default").strip().lower()
+        if ordering not in CLUB_GOODS_ORDERINGS:
+            raise ValidationError({"ordering": "不支持的排序方式"})
+        ordering_fields = {
+            "default": ("order", "-created_at", "id"),
+            "newest": ("-created_at", "id"),
+            "oldest": ("created_at", "id"),
+            "price_asc": (F("public_price").asc(nulls_last=True), "order", "id"),
+            "price_desc": (F("public_price").desc(nulls_last=True), "order", "id"),
+        }
+        queryset = queryset.distinct().order_by(*ordering_fields[ordering])
         page = self.paginate_queryset(queryset)
         serializer = ClubCatalogPublicSerializer(page, many=True, context={"request": request})
         return self.get_paginated_response(serializer.data)
+
+    @action(detail=True, methods=["get"], url_path="goods/facets")
+    def goods_facets(self, request, pk=None):
+        club = get_object_or_404(self.get_queryset(), pk=pk)
+        base_queryset = ClubCatalogItem.objects.filter(
+            club=club,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+
+        ips = [
+            {"id": row["ip_id"], "name": row["ip__name"], "count": row["count"]}
+            for row in base_queryset.values("ip_id", "ip__name")
+            .annotate(count=Count("id", distinct=True))
+            .order_by("ip__order", "ip__name", "ip_id")
+        ]
+        characters = [
+            {
+                "id": row["characters__id"],
+                "name": row["characters__name"],
+                "ip_id": row["characters__ip_id"],
+                "count": row["count"],
+            }
+            for row in base_queryset.exclude(characters__id__isnull=True)
+            .values("characters__id", "characters__name", "characters__ip_id")
+            .annotate(count=Count("id", distinct=True))
+            .order_by("characters__name", "characters__id")
+        ]
+        themes = [
+            {"id": row["theme_id"], "name": row["theme__name"], "count": row["count"]}
+            for row in base_queryset.exclude(theme_id__isnull=True)
+            .values("theme_id", "theme__name")
+            .annotate(count=Count("id", distinct=True))
+            .order_by("theme__name", "theme_id")
+        ]
+
+        direct_category_counts = {
+            row["category_id"]: row["count"]
+            for row in base_queryset.values("category_id").annotate(count=Count("id", distinct=True))
+        }
+        all_categories = list(Category.objects.only("id", "name", "path_name", "parent_id", "order"))
+        category_by_id = {category.id: category for category in all_categories}
+        category_counts = {}
+        for category_id, count in direct_category_counts.items():
+            current_id = category_id
+            visited = set()
+            while current_id is not None and current_id not in visited:
+                visited.add(current_id)
+                category_counts[current_id] = category_counts.get(current_id, 0) + count
+                current = category_by_id.get(current_id)
+                current_id = current.parent_id if current else None
+        categories = [
+            {
+                "id": category.id,
+                "name": category.name,
+                "path_name": category.path_name or category.name,
+                "parent": category.parent_id,
+                "count": category_counts[category.id],
+            }
+            for category in sorted(
+                (category_by_id[category_id] for category_id in category_counts if category_id in category_by_id),
+                key=lambda item: (item.order, item.path_name or item.name, item.id),
+            )
+        ]
+        price_bounds = base_queryset.aggregate(min=Min("public_price"), max=Max("public_price"))
+        payload = {
+            "ips": ips,
+            "characters": characters,
+            "categories": categories,
+            "themes": themes,
+            "price_bounds": {
+                "min": str(price_bounds["min"]) if price_bounds["min"] is not None else None,
+                "max": str(price_bounds["max"]) if price_bounds["max"] is not None else None,
+            },
+        }
+        if _can_view_imported_state(request.user):
+            imported_count = ClubGoodsOrigin.objects.filter(
+                collector=request.user,
+                source_item__in=base_queryset,
+                personal_goods__isnull=False,
+            ).count()
+            payload["imported_counts"] = {
+                "imported": imported_count,
+                "unimported": max(base_queryset.count() - imported_count, 0),
+            }
+        return Response(payload)
 
     @action(detail=False, methods=["get"], url_path="me/popularity")
     def popularity(self, request):
