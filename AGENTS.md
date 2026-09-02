@@ -53,3 +53,8 @@ Pull requests should include a summary, verification commands, linked issue or c
 ## Security & Configuration Tips
 
 `deploy.cjs` is gitignored because it contains SFTP credentials; do not commit local secrets. Backend uses SQLite by default and PostgreSQL in production. CORS is wide open in development; review settings before release.
+
+## Element Plus 抽屉（el-drawer）与移动端滚动锁踩坑
+
+- el-drawer 内部 DOM（`.el-overlay`/`.el-drawer`/`.el-drawer__body`）不携带组件的 scoped 属性，SFC 里 `:deep(.el-drawer__body)` 永远命中不了，body 会保持 EP 默认 `padding:20px; overflow:auto`（多出滚动条、布局塌陷）。必须用 `:global(.组件专属类名 .el-drawer__body)` 覆盖（ClubDetail/LocationManagement 已是此模式；GoodsDrawer 仍是失效的 `:deep` 写法，待迁移）。
+- 移动端打开抽屉锁 body 滚动时，不要用 `transform: translateY(-scrollTop)` 保留滚动位置：transform 会把 body 变成 fixed 后代（el-overlay 遮罩、抽屉）的包含块，遮罩和抽屉会随页面滚动整体偏移、无法贴住视口。应改用 `position: fixed; top: -scrollTop px`。

@@ -394,12 +394,13 @@ function lockMobileBodyScroll() {
     transform: document.body.style.transform,
   }
   document.body.style.position = 'fixed'
-  document.body.style.top = '0'
+  // 用负 top 而非 transform 保留滚动位置：transform 会把 body 变成 fixed 定位基准，
+  // 导致 el-overlay 遮罩和抽屉随页面滚动偏移、无法贴住视口底部
+  document.body.style.top = `-${mobileBodyScrollTop}px`
   document.body.style.left = '0'
   document.body.style.right = '0'
   document.body.style.width = '100%'
   document.body.style.overflow = 'hidden'
-  document.body.style.transform = `translateY(-${mobileBodyScrollTop}px)`
 }
 
 function unlockMobileBodyScroll() {
@@ -1065,7 +1066,9 @@ defineExpose({
   flex: 0 0 92px;
 }
 
-:deep(.el-drawer__body) {
+/* el-drawer 内部 DOM 不携带本组件的 scoped 属性，:deep 命不中，须用 :global + 组件专属类名覆盖，
+   否则 body 保持 EP 默认的 padding:20px/overflow:auto，会多出一条滚动条并把内容滚动条顶离边缘 */
+:global(.el-drawer.club-goods-detail-drawer .el-drawer__body) {
   display: flex;
   min-height: 0;
   flex-direction: column;
@@ -1091,6 +1094,11 @@ defineExpose({
 
 :global(.el-drawer.club-goods-detail-drawer.is-mobile .detail-scroll-content) {
   padding: 0 12px 18px;
+  scrollbar-width: none;
+}
+
+:global(.el-drawer.club-goods-detail-drawer.is-mobile .detail-scroll-content::-webkit-scrollbar) {
+  display: none;
 }
 
 :global(.el-drawer.club-goods-detail-drawer.is-dragging) {
