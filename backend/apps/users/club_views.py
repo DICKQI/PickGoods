@@ -4,7 +4,7 @@ from decimal import Decimal, InvalidOperation
 
 from django.core.files.base import ContentFile
 from django.db import transaction
-from django.db.models import BooleanField, Count, Exists, F, IntegerField, Max, Min, OuterRef, Prefetch, Q, Subquery, UUIDField, Value
+from django.db.models import BooleanField, Case, Count, Exists, F, IntegerField, Max, Min, OuterRef, Prefetch, Q, Subquery, UUIDField, Value, When
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -51,6 +51,7 @@ from .club_serializers import (
     ClubSerializer,
 )
 from .models import Club, ClubFavorite, User
+from .club_recommendation import rank_club_ids
 
 
 class ClubPagination(PageNumberPagination):
@@ -71,6 +72,7 @@ class ClubPagination(PageNumberPagination):
 
 CLUB_DIRECTORY_PREVIEW_LIMIT = 5
 CLUB_GOODS_ORDERINGS = {"default", "newest", "oldest", "price_asc", "price_desc"}
+CLUB_LIST_ORDERINGS = {"name", "recommended"}
 
 
 def _public_club_queryset():
@@ -276,6 +278,37 @@ class ClubViewSet(viewsets.GenericViewSet):
         keyword = (request.query_params.get("search") or "").strip()
         if keyword:
             queryset = queryset.filter(Q(name__icontains=keyword) | Q(description__icontains=keyword))
+
+        ordering = (request.query_params.get("ordering") or "name").strip().lower()
+        if ordering not in CLUB_LIST_ORDERINGS:
+            raise ValidationError({"ordering": "不支持的排序方式"})
+        seed = (request.query_params.get("recommendation_seed") or "").strip()
+        if seed and ordering != "recommended":
+            raise ValidationError({"recommendation_seed": "仅推荐排序支持推荐种子"})
+        if ordering == "recommended":
+            if not seed or len(seed) > 64 or not all(
+                ("a" <= character <= "z")
+                or ("A" <= character <= "Z")
+                or ("0" <= character <= "9")
+                or character in "_-"
+                for character in seed
+            ):
+                raise ValidationError({"recommendation_seed": "推荐排序必须提供 1-64 位字母、数字、下划线或连字符组成的种子"})
+            if keyword:
+                raise ValidationError({"ordering": "搜索时不支持推荐排序"})
+            candidate_ids = list(queryset.values_list("id", flat=True))
+            ranked_ids = rank_club_ids(candidate_ids, request.user, seed)
+            if ranked_ids:
+                queryset = queryset.filter(pk__in=ranked_ids).order_by(
+                    Case(
+                        *[When(pk=club_id, then=position) for position, club_id in enumerate(ranked_ids)],
+                        output_field=IntegerField(),
+                    )
+                )
+            else:
+                queryset = queryset.none()
+        else:
+            queryset = queryset.order_by("name", "id")
         page = self.paginate_queryset(queryset)
         page_clubs = list(page or [])
         preview_by_club = {}

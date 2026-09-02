@@ -77,6 +77,16 @@ export interface Club {
   is_favorited?: boolean
 }
 
+export type ClubListOrdering = 'name' | 'recommended'
+
+export interface ClubListQuery {
+  page?: number
+  page_size?: number
+  search?: string
+  ordering?: ClubListOrdering
+  recommendation_seed?: string
+}
+
 export interface ClubFavoriteItem {
   club: Club
   favorite_count: number

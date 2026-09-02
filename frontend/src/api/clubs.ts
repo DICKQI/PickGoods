@@ -1,6 +1,7 @@
 import request from '@/utils/request'
 import type {
   Club,
+  ClubListQuery,
   ClubCatalogInput,
   ClubCatalogItem,
   ClubCatalogListResponse,
@@ -18,7 +19,7 @@ import type {
   PaginatedResponse,
 } from './types'
 
-export function getClubs(params?: { page?: number; page_size?: number; search?: string }) {
+export function getClubs(params?: ClubListQuery) {
   return request.get<PaginatedResponse<Club>>('/api/clubs/', { params })
 }
 

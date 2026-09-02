@@ -5236,7 +5236,22 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 2. 按窗口规则 `get_or_create(user, preorder, type, is_stale=False)` 幂等生成；
    3. 取消 / 延期时，旧 `preorder_soon` / `preorder_due` 置为 `is_stale=True, is_read=True`；延期后按新时间重新生成。
 
-### 9.7 社团工作台接口
+### 9.7 社团公开目录与推荐
+
+公开社团目录使用 `GET /api/clubs/`。默认按社团名称升序返回，工具型调用（例如从社团导入谷子）不传推荐参数即可保持稳定顺序。
+
+| 参数 | 说明 |
+| ---- | ---- |
+| `search` | 按社团名称或简介搜索；搜索结果固定按名称排序，不支持推荐排序 |
+| `ordering=name` | 显式按社团名称升序排序 |
+| `ordering=recommended` | 启用混合推荐排序，必须同时提供 `recommendation_seed` |
+| `recommendation_seed` | 1-64 位字母、数字、下划线或连字符；推荐模式下同一用户和种子得到稳定完整顺序，适合分页；更换种子可探索另一轮顺序 |
+
+推荐排序只改变公开目录顺序，不改变社团候选资格或社团内部谷子顺序。登录吃谷人的画像使用非草稿个人库存、社团收藏和已导入的社团目录条目；匿名用户或没有有效画像时使用有效收藏/导入热度、最近上架时间和上架数量进行冷启动。草稿、下架条目和无效账号不会参与推荐统计。推荐不采集浏览、点击或曝光事件。
+
+`ordering=recommended` 与非空 `search` 同时传入，或缺少 / 超出格式限制的 `recommendation_seed`，返回 `400`。
+
+### 9.8 社团工作台接口
 
 社团目录管理接口使用 `/api/clubs/me/goods/`。目录条目仍使用 `draft`、`listed`、`unlisted` 三态，并额外返回 `publish_at`、`publish_failed_at`、`publish_error`。`publish_at` 只接受草稿的未来时间，前端按北京时间输入，后端统一以 UTC 存储。
 

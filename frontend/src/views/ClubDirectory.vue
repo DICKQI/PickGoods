@@ -1,6 +1,32 @@
 <template>
-  <main class="club-page">
-    <header class="directory-header">
+  <main
+    class="club-page"
+    @touchstart.capture.passive="handlePullStart"
+    @touchmove="handlePullMove"
+    @touchend="handlePullEnd"
+    @touchcancel="resetPullRefresh"
+  >
+    <div
+      v-if="isMobile"
+      class="club-pull-indicator"
+      :class="{ 'is-animating': pullIsAnimating }"
+      :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
+      aria-live="polite"
+    >
+      <div class="club-pull-indicator__content">
+        <el-icon v-if="isPullRefreshing" class="is-loading"><Loading /></el-icon>
+        <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
+        <span>{{ isPullRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
+      </div>
+    </div>
+
+    <div
+      class="club-page__content"
+      :class="{ 'is-animating': pullIsAnimating }"
+      :style="pullRefreshStyle"
+      @transitionend="clearPullRefreshAnimation"
+    >
+      <header class="directory-header">
       <div class="directory-heading">
         <p class="directory-kicker"><span class="directory-kicker__mark" aria-hidden="true"></span> PICKGOODS COMMUNITY</p>
         <h1>社团目录</h1>
@@ -18,13 +44,18 @@
         </el-input>
         <el-button type="primary" native-type="submit" aria-label="搜索社团">
           <el-icon><Search /></el-icon>
-          <span>搜索</span>
+          <span class="search-button__label">搜索</span>
         </el-button>
       </form>
     </header>
 
     <section v-loading="loading" class="club-list" aria-live="polite">
-      <article v-for="club in clubs" :key="club.id" class="club-shop">
+      <article
+        v-for="(club, index) in clubs"
+        :key="club.id"
+        class="club-shop"
+        :class="{ 'club-shop--featured': isFeaturedClub(index) }"
+      >
         <header class="club-shop__header">
           <button type="button" class="club-identity" @click="openClub(club.id)">
             <span class="club-identity__avatar">
@@ -73,6 +104,10 @@
                 <span>{{ link.label }}</span>
               </a>
             </div>
+            <el-button class="enter-club-button" :aria-label="`进入${club.name}`" @click="openClub(club.id)">
+              <span>进入</span>
+              <el-icon aria-hidden="true"><ArrowRight /></el-icon>
+            </el-button>
           </div>
         </header>
 
@@ -82,6 +117,7 @@
             :key="item.id"
             type="button"
             class="preview-item"
+            :aria-label="`${item.name}，${formatPrice(item.public_price)}`"
             @click="openClub(club.id)"
           >
             <span class="preview-item__media">
@@ -106,23 +142,27 @@
       </article>
     </section>
 
-    <el-empty v-if="!loading && clubs.length === 0" description="暂无匹配的社团" />
-    <el-pagination
-      v-if="total > pageSize"
-      v-model:current-page="page"
-      :page-size="pageSize"
-      :total="total"
-      layout="prev, pager, next"
-      @current-change="load"
-    />
+      <el-empty v-if="!loading && clubs.length === 0" description="暂无匹配的社团" />
+      <el-pagination
+        v-if="total > pageSize"
+        v-model:current-page="page"
+        :page-size="pageSize"
+        :total="total"
+        layout="prev, pager, next"
+        @current-change="handlePageChange"
+      />
+    </div>
   </main>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowRight, Link, Picture, Search, Shop } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+import { ArrowRight, Link, Loading, Picture, Search, Shop, Top } from '@element-plus/icons-vue'
 import { getClubs } from '@/api/clubs'
+import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import type { Club } from '@/api/types'
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
@@ -134,12 +174,25 @@ const platforms: Array<{ key: PlatformKey; label: string; logo: string }> = [
 ]
 
 const router = useRouter()
+const { isMobile } = useResponsiveDevice()
 const clubs = ref<Club[]>([])
 const search = ref('')
 const loading = ref(false)
 const page = ref(1)
 const pageSize = 10
 const total = ref(0)
+const appliedSearch = ref('')
+const loadedPage = ref(1)
+const recommendationSeed = ref(createRecommendationSeed())
+
+function createRecommendationSeed() {
+  if (typeof globalThis.crypto?.getRandomValues === 'function') {
+    const bytes = new Uint8Array(16)
+    globalThis.crypto.getRandomValues(bytes)
+    return Array.from(bytes, byte => byte.toString(16).padStart(2, '0')).join('')
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`.slice(0, 64)
+}
 
 function platformLinks(club: Club) {
   return platforms.filter(platform => Boolean(club[platform.key])).map(platform => ({
@@ -152,16 +205,70 @@ function formatPrice(price: string | null) {
   return price ? `￥${price}` : '价格待定'
 }
 
-async function load() {
+function isFeaturedClub(index: number) {
+  return loadedPage.value === 1 && appliedSearch.value === '' && index < 2
+}
+
+async function load(keyword: string, requestedPage = page.value) {
   loading.value = true
   try {
-    const result = await getClubs({ page: page.value, page_size: pageSize, search: search.value || undefined })
+    const result = await getClubs(keyword
+      ? { page: requestedPage, page_size: pageSize, search: keyword, ordering: 'name' }
+      : {
+          page: requestedPage,
+          page_size: pageSize,
+          search: undefined,
+          ordering: 'recommended',
+          recommendation_seed: recommendationSeed.value,
+        })
     clubs.value = result.results
     total.value = result.count
+    appliedSearch.value = keyword
+    loadedPage.value = requestedPage
+    return true
+  } catch {
+    // The global request layer reports the error; keep the currently rendered result and mode.
+    page.value = loadedPage.value
+    return false
   } finally {
     loading.value = false
   }
 }
+
+async function refreshDirectory() {
+  const keyword = appliedSearch.value
+  const previousSeed = recommendationSeed.value
+  page.value = 1
+  if (!keyword) recommendationSeed.value = createRecommendationSeed()
+
+  const refreshed = await load(keyword, 1)
+  if (!refreshed) {
+    recommendationSeed.value = previousSeed
+    return
+  }
+  ElMessage.success('刷新成功')
+}
+
+const {
+  pullDistance,
+  isRefreshing: isPullRefreshing,
+  isAnimating: pullIsAnimating,
+  clearAnimating: clearPullRefreshAnimation,
+  handleTouchStart: handlePullStart,
+  handleTouchMove: handlePullMove,
+  handleTouchEnd: handlePullEnd,
+  reset: resetPullRefresh,
+} = useMobilePullRefresh({
+  enabled: isMobile,
+  blocked: loading,
+  onRefresh: refreshDirectory,
+})
+
+const pullRefreshStyle = computed(() => (
+  isMobile.value && pullDistance.value > 0
+    ? { transform: `translate3d(0, ${pullDistance.value}px, 0)` }
+    : undefined
+))
 
 function openClub(id: number) {
   void router.push({ name: 'ClubDetail', params: { id } })
@@ -169,23 +276,70 @@ function openClub(id: number) {
 
 function handleSearch() {
   page.value = 1
-  void load()
+  void load(search.value.trim(), 1)
 }
 
 function handleClearSearch() {
   page.value = 1
-  void load()
+  void load('', 1)
 }
 
-onMounted(load)
+function handlePageChange(nextPage: number) {
+  page.value = nextPage
+  void load(appliedSearch.value, nextPage)
+}
+
+onMounted(() => {
+  void load('', 1)
+})
 </script>
 
 <style scoped>
 .club-page {
+  position: relative;
   width: min(1260px, 100%);
   margin: 0 auto;
   padding: 32px 28px 64px;
   color: var(--text-dark);
+}
+
+.club-pull-indicator {
+  position: absolute;
+  top: 0;
+  right: 0;
+  left: 0;
+  z-index: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  color: var(--text-light);
+  pointer-events: none;
+}
+
+.club-pull-indicator.is-animating {
+  transition: height 0.28s ease, opacity 0.2s ease;
+}
+
+.club-pull-indicator__content {
+  display: flex;
+  height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding-bottom: 8px;
+  font-size: 13px;
+}
+
+.club-pull-indicator__content .el-icon {
+  color: var(--primary-gold-dark);
+  font-size: 17px;
+  transition: transform 0.22s ease;
+}
+
+.club-page__content {
+  position: relative;
+  z-index: 1;
 }
 
 .directory-header {
@@ -376,6 +530,10 @@ onMounted(load)
   gap: 14px;
 }
 
+.enter-club-button {
+  display: none;
+}
+
 .club-shop__links {
   display: flex;
   align-items: center;
@@ -556,98 +714,226 @@ onMounted(load)
 
 @media (max-width: 768px) {
   .club-page {
-    padding: 22px 16px calc(42px + env(safe-area-inset-bottom));
+    padding: 12px 12px calc(42px + env(safe-area-inset-bottom));
+    overscroll-behavior-y: contain;
+  }
+
+  .club-page__content {
+    will-change: transform;
+  }
+
+  .club-page__content.is-animating {
+    transition: transform 0.28s ease;
   }
 
   .directory-header {
-    display: block;
-    margin-bottom: 4px;
-    padding-bottom: 18px;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 0;
+    padding-bottom: 12px;
+  }
+
+  .directory-kicker {
+    display: none;
+  }
+
+  .directory-heading h1 {
+    font-size: 24px;
+    white-space: nowrap;
   }
 
   .directory-search {
     width: 100%;
-    margin-top: 17px;
+    min-width: 0;
+    gap: 6px;
+    margin-top: 0;
+  }
+
+  .directory-search :deep(.el-input__wrapper),
+  .directory-search .el-button {
+    min-height: 38px;
+  }
+
+  .directory-search .el-button {
+    width: 38px;
+    flex: 0 0 38px;
+    padding: 0;
+  }
+
+  .search-button__label {
+    display: none;
   }
 
   .club-shop {
-    padding: 19px 0 22px;
+    padding: 10px 0;
   }
 
   .club-shop:first-child {
-    padding-top: 18px;
+    padding-top: 10px;
+  }
+
+  .club-shop--featured {
+    padding-top: 12px;
+    padding-bottom: 11px;
   }
 
   .club-shop__header {
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 13px;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 0;
+  }
+
+  .club-shop--featured .club-shop__header {
+    margin-bottom: 8px;
   }
 
   .club-identity {
+    flex: 1;
+    overflow: hidden;
     gap: 10px;
   }
 
   .club-identity__avatar {
-    width: 54px;
-    height: 54px;
-    border-radius: 13px;
-    font-size: 21px;
+    width: 44px;
+    height: 44px;
+    border-radius: 10px;
+    font-size: 18px;
+    box-shadow: none;
+  }
+
+  .club-identity__copy {
+    gap: 1px;
+  }
+
+  .club-identity__title h2 {
+    font-size: 15px;
+    line-height: 1.3;
+  }
+
+  .club-identity__title .el-icon {
+    display: none;
   }
 
   .club-identity__description {
-    max-width: 47vw;
+    max-width: none;
+    font-size: 12px;
+    line-height: 1.35;
+  }
+
+  .club-identity__meta {
+    gap: 4px;
+    font-size: 11px;
+    line-height: 1.35;
   }
 
   .club-shop__actions {
-    width: 100%;
-    justify-content: space-between;
-    gap: 0;
+    width: auto;
+    gap: 6px;
+  }
+
+  .club-shop__links {
+    display: none;
+  }
+
+  .enter-club-button {
+    display: inline-flex;
+    min-width: 50px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0 7px;
+    border-color: rgba(212, 175, 55, 0.38);
+    border-radius: 6px;
+    background: rgba(212, 175, 55, 0.14);
+    color: var(--primary-gold-dark);
+    font-size: 12px;
+    box-shadow: none;
+  }
+
+  .enter-club-button:hover,
+  .enter-club-button:focus,
+  .enter-club-button:active {
+    border-color: rgba(212, 175, 55, 0.58);
+    background: rgba(212, 175, 55, 0.22);
+    color: var(--primary-gold-dark);
+  }
+
+  .enter-club-button .el-icon {
+    margin-left: 2px;
   }
 
   .preview-grid {
-    gap: 10px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .club-shop:not(.club-shop--featured) .preview-grid,
+  .club-shop:not(.club-shop--featured) .club-shop__empty {
+    display: none;
+  }
+
+  .preview-item {
+    border: 0;
+    border-radius: 6px;
+    box-shadow: none;
+  }
+
+  .preview-item:hover,
+  .preview-item:active {
+    border-color: transparent;
+    box-shadow: none;
+    transform: none;
+  }
+
+  .preview-item__media {
+    border-radius: 6px;
+  }
+
+  .preview-item__placeholder {
+    font-size: 18px;
   }
 
   .preview-item__body {
     display: block;
-    min-height: 57px;
-    padding: 8px 9px 9px;
+    min-height: 18px;
+    padding: 3px 1px 0;
+    text-align: center;
   }
 
-  .preview-item__name,
+  .preview-item__name {
+    display: none;
+  }
+
   .preview-item__price {
     display: block;
+    width: 100%;
+    margin-top: 0;
+    overflow: hidden;
+    font-size: 11px;
+    line-height: 1.35;
+    text-align: center;
+    text-overflow: ellipsis;
   }
 
-  .preview-item__price {
-    margin-top: 4px;
+  .club-shop__empty {
+    min-height: 38px;
+    padding: 0 10px;
+    font-size: 12px;
   }
 }
 
 @media (max-width: 480px) {
-  .directory-heading h1 {
-    font-size: 27px;
-  }
-
-  .club-identity__title h2 {
-    font-size: var(--font-body);
-  }
-
-  .club-identity__description {
-    max-width: 42vw;
-  }
-
-  .club-identity__meta {
-    gap: 5px;
-  }
-
-  .preview-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .directory-header {
+    gap: 10px;
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .club-pull-indicator,
+  .club-pull-indicator__content .el-icon,
+  .club-page__content,
   .club-identity__title .el-icon,
   .platform-link,
   .custom-link,
