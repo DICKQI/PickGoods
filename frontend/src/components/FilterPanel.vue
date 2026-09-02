@@ -883,6 +883,7 @@ onUnmounted(() => {})
 /* 状态筛选：多选胶囊 Chip（按状态语义着色） */
 .filter-item--status {
   --status-in-cabinet: #0ea371; /* 翠绿：安全/存储中 */
+  --status-intended: #7c3aed; /* 紫罗兰：心愿/待入手 */
   --status-outdoor: #d4a017; /* 香槟金/橙黄：活跃/携带中 */
   --status-sold: #6b7280; /* 中性灰：已售出 */
   --status-chip-bg: #f3f4f6;
@@ -966,6 +967,12 @@ onUnmounted(() => {})
   color: var(--status-in-cabinet) !important;
   background-color: rgba(14, 163, 113, 0.12) !important;
   border-color: rgba(14, 163, 113, 0.55) !important;
+}
+
+.filter-item--status :deep(.status-chip--intended.is-checked .el-checkbox-button__inner) {
+  color: var(--status-intended) !important;
+  background-color: rgba(124, 58, 237, 0.12) !important;
+  border-color: rgba(124, 58, 237, 0.55) !important;
 }
 
 .filter-item--status :deep(.status-chip--outdoor.is-checked .el-checkbox-button__inner) {

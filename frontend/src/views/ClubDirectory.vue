@@ -6,27 +6,7 @@
     @touchend="handlePullEnd"
     @touchcancel="resetPullRefresh"
   >
-    <div
-      v-if="isMobile"
-      class="club-pull-indicator"
-      :class="{ 'is-animating': pullIsAnimating }"
-      :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
-      aria-live="polite"
-    >
-      <div class="club-pull-indicator__content">
-        <el-icon v-if="isPullRefreshing" class="is-loading"><Loading /></el-icon>
-        <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
-        <span>{{ isPullRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
-      </div>
-    </div>
-
-    <div
-      class="club-page__content"
-      :class="{ 'is-animating': pullIsAnimating }"
-      :style="pullRefreshStyle"
-      @transitionend="clearPullRefreshAnimation"
-    >
-      <header class="directory-header">
+    <header class="directory-header">
       <div class="directory-heading">
         <p class="directory-kicker"><span class="directory-kicker__mark" aria-hidden="true"></span> PICKGOODS COMMUNITY</p>
         <h1>社团目录</h1>
@@ -49,7 +29,23 @@
       </form>
     </header>
 
-    <section v-loading="loading" class="club-list" aria-live="polite">
+    <div class="club-page__content">
+      <div
+        v-if="isMobile"
+        class="club-pull-indicator"
+        :class="{ 'is-animating': pullIsAnimating }"
+        :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
+        aria-live="polite"
+        @transitionend="clearPullRefreshAnimation"
+      >
+        <div class="club-pull-indicator__content">
+          <el-icon v-if="isPullRefreshing" class="is-loading"><Loading /></el-icon>
+          <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
+          <span>{{ isPullRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
+        </div>
+      </div>
+
+      <section v-loading="loading" class="club-list" aria-live="polite">
       <article
         v-for="(club, index) in clubs"
         :key="club.id"
@@ -156,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { ArrowRight, Link, Loading, Picture, Search, Shop, Top } from '@element-plus/icons-vue'
@@ -264,12 +260,6 @@ const {
   onRefresh: refreshDirectory,
 })
 
-const pullRefreshStyle = computed(() => (
-  isMobile.value && pullDistance.value > 0
-    ? { transform: `translate3d(0, ${pullDistance.value}px, 0)` }
-    : undefined
-))
-
 function openClub(id: number) {
   void router.push({ name: 'ClubDetail', params: { id } })
 }
@@ -304,11 +294,6 @@ onMounted(() => {
 }
 
 .club-pull-indicator {
-  position: absolute;
-  top: 0;
-  right: 0;
-  left: 0;
-  z-index: 0;
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -335,11 +320,6 @@ onMounted(() => {
   color: var(--primary-gold-dark);
   font-size: 17px;
   transition: transform 0.22s ease;
-}
-
-.club-page__content {
-  position: relative;
-  z-index: 1;
 }
 
 .directory-header {
@@ -718,14 +698,6 @@ onMounted(() => {
     overscroll-behavior-y: contain;
   }
 
-  .club-page__content {
-    will-change: transform;
-  }
-
-  .club-page__content.is-animating {
-    transition: transform 0.28s ease;
-  }
-
   .directory-header {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -933,7 +905,6 @@ onMounted(() => {
 @media (prefers-reduced-motion: reduce) {
   .club-pull-indicator,
   .club-pull-indicator__content .el-icon,
-  .club-page__content,
   .club-identity__title .el-icon,
   .platform-link,
   .custom-link,

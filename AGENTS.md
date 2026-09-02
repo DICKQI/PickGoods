@@ -58,3 +58,10 @@ Pull requests should include a summary, verification commands, linked issue or c
 
 - el-drawer 内部 DOM（`.el-overlay`/`.el-drawer`/`.el-drawer__body`）不携带组件的 scoped 属性，SFC 里 `:deep(.el-drawer__body)` 永远命中不了，body 会保持 EP 默认 `padding:20px; overflow:auto`（多出滚动条、布局塌陷）。必须用 `:global(.组件专属类名 .el-drawer__body)` 覆盖（ClubDetail/LocationManagement 已是此模式；GoodsDrawer 仍是失效的 `:deep` 写法，待迁移）。
 - 移动端打开抽屉锁 body 滚动时，不要用 `transform: translateY(-scrollTop)` 保留滚动位置：transform 会把 body 变成 fixed 后代（el-overlay 遮罩、抽屉）的包含块，遮罩和抽屉会随页面滚动整体偏移、无法贴住视口。应改用 `position: fixed; top: -scrollTop px`。
+
+## Android APK 构建流程与坑
+
+- 文档流程：`pnpm build` → `npx cap sync android` → `android/gradlew.bat assembleDebug`，产物在 `android/app/build/outputs/apk/debug/app-debug.apk`。
+- `@capacitor-community/http@1.4.1` 缺少 AGP 8 必需的 namespace，靠 `package.json` 里 `pnpm.patchedDependencies`（patches/@capacitor-community__http@1.4.1.patch）修复。注意：
+  - 文件名是 pnpm 原生补丁格式（`__` 双下划线），`npx patch-package` 不认识（报 Unrecognized patch file），必须用 `pnpm install` 应用；补丁未生效时 `CI=true pnpm install` 会重建 node_modules 并打上补丁。
+  - pnpm 打补丁后插件目录会变成 `.pnpm/@capacitor-community+http@1.4.1_patch_hash=xxx/`，`android/capacitor.settings.gradle` 里的旧路径失效（Gradle 报 "No variants exist"）。所以 **pnpm install 之后必须重新 `npx cap sync android`** 再跑 Gradle。
