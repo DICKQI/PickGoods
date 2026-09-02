@@ -12,7 +12,7 @@
               <div class="logo-icon">PG</div>
             </div>
             <h2 class="login-title">拾谷 PickGoods</h2>
-            <p class="login-subtitle">欢迎回到拾谷</p>
+            <p class="login-subtitle">{{ mode === 'login' ? '欢迎回到拾谷' : '欢迎加入拾谷' }}</p>
           </div>
 
           <div class="auth-workspace">
@@ -59,7 +59,7 @@
               <!-- Login form and the selected registration form share validation/submission logic. -->
               <el-form
                 v-else
-                :key="`form-${mode}-${formData.accountType || 'none'}`"
+                :key="`form-${mode}-${formData.accountType || 'none'}-${formData.accountType === 'club' ? clubRegistrationStep : 'single'}`"
                 ref="formRef"
                 :model="formData"
                 :rules="currentRules"
@@ -78,10 +78,28 @@
                 </div>
 
                 <template v-if="mode === 'register' && formData.accountType === 'club'">
-                  <div class="register-sections">
-                    <section class="register-form-section">
+                  <div class="club-registration-progress" aria-label="社团注册进度">
+                    <span :class="{ 'is-active': clubRegistrationStep === 1, 'is-complete': clubRegistrationStep > 1 }">1 社团申请信息</span>
+                    <i aria-hidden="true"></i>
+                    <span :class="{ 'is-active': clubRegistrationStep === 2 }">2 基础信息</span>
+                  </div>
+
+                  <section v-if="clubRegistrationStep === 1" class="register-form-section">
+                    <div class="register-form-section__heading">
+                      <span class="form-kicker">第 1 步 · 社团申请信息</span>
+                      <p>先介绍你的社团，管理员审批通过后就能发布社团谷子啦~</p>
+                    </div>
+                    <el-form-item label="社团名称" prop="clubName">
+                      <el-input v-model="formData.clubName" placeholder="请输入社团名称" maxlength="200" show-word-limit />
+                    </el-form-item>
+                    <el-form-item label="申请理由" prop="applicationReason">
+                      <el-input v-model="formData.applicationReason" type="textarea" :rows="4" placeholder="请介绍社团以及申请入驻的理由" maxlength="1000" show-word-limit />
+                    </el-form-item>
+                  </section>
+
+                  <section v-else class="register-form-section">
                       <div class="register-form-section__heading">
-                        <span class="form-kicker">基础信息</span>
+                        <span class="form-kicker">第 2 步 · 基础信息</span>
                         <p>这是进入社团工作区的通行证哦~</p>
                       </div>
                       <el-form-item label="登录用户名" prop="username">
@@ -95,21 +113,7 @@
                           <el-input v-model="formData.confirmPassword" type="password" placeholder="再次输入密码" show-password clearable :prefix-icon="Lock" @keyup.enter="handleSubmit" />
                         </el-form-item>
                       </div>
-                    </section>
-
-                    <section class="register-form-section register-form-section--application">
-                      <div class="register-form-section__heading">
-                        <span class="form-kicker">社团申请</span>
-                        <p>管理员审批通过后，就能发布社团谷子啦~</p>
-                      </div>
-                      <el-form-item label="社团名称" prop="clubName">
-                        <el-input v-model="formData.clubName" placeholder="请输入社团名称" maxlength="200" show-word-limit />
-                      </el-form-item>
-                      <el-form-item label="申请理由" prop="applicationReason">
-                        <el-input v-model="formData.applicationReason" type="textarea" :rows="4" placeholder="请介绍社团以及申请入驻的理由" maxlength="1000" show-word-limit />
-                      </el-form-item>
-                    </section>
-                  </div>
+                  </section>
                 </template>
 
                 <template v-else>
@@ -125,7 +129,7 @@
                 </template>
 
                 <el-form-item
-                  v-if="mode === 'register' && captchaEnabled !== false"
+                  v-if="mode === 'register' && captchaEnabled !== false && (formData.accountType !== 'club' || clubRegistrationStep === 2)"
                   prop="captchaCode"
                   class="captcha-form-item"
                 >
@@ -155,16 +159,22 @@
                 </el-form-item>
 
                 <div class="form-actions">
-                  <el-button
-                    type="primary"
-                    class="submit-btn"
-                    :loading="authStore.loading"
-                    :disabled="registerCaptchaUnavailable"
-                    @click="handleSubmit"
-                    round
-                  >
-                    <span class="btn-text">{{ mode === 'login' ? '登 录' : (formData.accountType === 'club' ? '提交社团申请' : '注册并自动登录') }}</span>
-                  </el-button>
+                  <template v-if="mode === 'register' && formData.accountType === 'club' && clubRegistrationStep === 1">
+                    <el-button type="primary" class="submit-btn" @click="goToClubBasics" round>
+                      <span class="btn-text">下一步：填写基础信息</span>
+                    </el-button>
+                  </template>
+                  <template v-else>
+                    <div v-if="mode === 'register' && formData.accountType === 'club'" class="club-step-actions">
+                      <el-button class="back-step-btn" @click="backToClubApplication">上一步</el-button>
+                      <el-button type="primary" class="submit-btn" :loading="authStore.loading" :disabled="registerCaptchaUnavailable" @click="handleSubmit" round>
+                        <span class="btn-text">提交社团申请</span>
+                      </el-button>
+                    </div>
+                    <el-button v-else type="primary" class="submit-btn" :loading="authStore.loading" :disabled="registerCaptchaUnavailable" @click="handleSubmit" round>
+                      <span class="btn-text">{{ mode === 'login' ? '登 录' : '注册并自动登录' }}</span>
+                    </el-button>
+                  </template>
                 </div>
               </el-form>
             </transition>
@@ -219,6 +229,7 @@ const authStore = useAuthStore()
 
 // State
 const mode = ref<'login' | 'register'>('login')
+const clubRegistrationStep = ref<1 | 2>(1)
 const errorMessage = ref('')
 const infoMessage = ref('')
 const formRef = ref<FormInstance>()
@@ -228,6 +239,8 @@ const cardHeight = ref<number | null>(null)
 let cardResizeTimer: ReturnType<typeof setTimeout> | undefined
 let cardHeightTimer: ReturnType<typeof setTimeout> | undefined
 let cardHeightFrame: number | undefined
+let cardResizeObserver: ResizeObserver | undefined
+let lastNaturalCardHeight: number | undefined
 let captchaRequestVersion = 0
 
 // Data
@@ -343,23 +356,35 @@ function readNaturalCardHeight(): number | undefined {
   return naturalHeight
 }
 
-function handlePanelAfterEnter() {
-  const targetHeight = readNaturalCardHeight()
-  if (!targetHeight) return
+function animateCardToNaturalHeight() {
+  const naturalHeight = readNaturalCardHeight()
+  if (!naturalHeight) return
+  const previousHeight = lastNaturalCardHeight
+  lastNaturalCardHeight = naturalHeight
+  if (!previousHeight || Math.abs(previousHeight - naturalHeight) < 1) return
+
+  if (cardHeightTimer) clearTimeout(cardHeightTimer)
   if (cardHeightFrame !== undefined) cancelAnimationFrame(cardHeightFrame)
+  cardHeight.value = previousHeight
   cardHeightFrame = requestAnimationFrame(() => {
     cardHeightFrame = undefined
-    cardHeight.value = targetHeight
-    if (cardHeightTimer) clearTimeout(cardHeightTimer)
+    cardHeight.value = naturalHeight
     cardHeightTimer = setTimeout(() => {
       cardHeight.value = null
-    }, 340)
+    }, 360)
   })
+}
+
+function handlePanelAfterEnter() {
+  animateCardToNaturalHeight()
 }
 
 function triggerCardResize() {
   const currentHeight = readCardHeight()
-  if (currentHeight) cardHeight.value = currentHeight
+  if (currentHeight) {
+    cardHeight.value = currentHeight
+    lastNaturalCardHeight = currentHeight
+  }
   if (cardHeightTimer) clearTimeout(cardHeightTimer)
   if (cardHeightFrame !== undefined) {
     cancelAnimationFrame(cardHeightFrame)
@@ -376,19 +401,42 @@ function triggerCardResize() {
   })
 }
 
-watch([mode, () => formData.accountType], triggerCardResize)
+watch([mode, () => formData.accountType, clubRegistrationStep], triggerCardResize)
+
+onMounted(() => {
+  nextTick(() => {
+    const content = cardWrapperRef.value?.querySelector<HTMLElement>('.login-content')
+    if (!content || typeof ResizeObserver === 'undefined') return
+    cardResizeObserver = new ResizeObserver(() => {
+      animateCardToNaturalHeight()
+    })
+    cardResizeObserver.observe(content)
+    const initialHeight = readNaturalCardHeight()
+    if (initialHeight) lastNaturalCardHeight = initialHeight
+  })
+})
 
 watch([mode, () => formData.accountType], ([nextMode, nextAccountType]) => {
-  if (nextMode === 'register' && nextAccountType) {
-    void loadCaptcha()
-    return
-  }
+  clubRegistrationStep.value = 1
   captchaRequestVersion += 1
   captchaEnabled.value = null
   captchaKey.value = ''
   captchaImagePath.value = ''
   captchaLoadError.value = ''
   formData.captchaCode = ''
+  if (nextMode === 'register' && nextAccountType === 'collector') {
+    void nextTick(() => {
+      if (mode.value === 'register' && formData.accountType === 'collector') {
+        return loadCaptcha()
+      }
+    })
+  }
+})
+
+watch(clubRegistrationStep, (nextStep) => {
+  if (mode.value === 'register' && formData.accountType === 'club' && nextStep === 2) {
+    void loadCaptcha()
+  }
 })
 
 async function loadCaptcha() {
@@ -457,7 +505,28 @@ function switchMode(newMode: 'login' | 'register') {
   })
 }
 
+async function goToClubBasics() {
+  if (mode.value !== 'register' || formData.accountType !== 'club') return
+  const valid = await formRef.value?.validateField(['clubName', 'applicationReason']).catch(() => false)
+  if (valid === false) return
+  clubRegistrationStep.value = 2
+  await nextTick()
+  formRef.value?.clearValidate()
+}
+
+function backToClubApplication() {
+  clubRegistrationStep.value = 1
+  captchaRequestVersion += 1
+  captchaEnabled.value = null
+  captchaKey.value = ''
+  captchaImagePath.value = ''
+  captchaLoadError.value = ''
+  formData.captchaCode = ''
+  nextTick(() => formRef.value?.clearValidate())
+}
+
 function changeIdentity() {
+  clubRegistrationStep.value = 1
   formData.accountType = ''
   errorMessage.value = ''
   infoMessage.value = ''
@@ -476,6 +545,10 @@ async function handleSubmit() {
   errorMessage.value = ''
   infoMessage.value = ''
   if (mode.value === 'register' && !formData.accountType) return
+  if (mode.value === 'register' && formData.accountType === 'club' && clubRegistrationStep.value === 1) {
+    await goToClubBasics()
+    return
+  }
   await formRef.value?.validate(async (valid) => {
     if (!valid) return
     try {
@@ -529,6 +602,7 @@ onBeforeUnmount(() => {
   if (cardResizeTimer) clearTimeout(cardResizeTimer)
   if (cardHeightTimer) clearTimeout(cardHeightTimer)
   if (cardHeightFrame !== undefined) cancelAnimationFrame(cardHeightFrame)
+  cardResizeObserver?.disconnect()
 })
 </script>
 
@@ -556,12 +630,35 @@ onBeforeUnmount(() => {
   position: relative;
   overflow-y: auto;
   overflow-x: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
   box-sizing: border-box;
+}
+
+.login-container::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* During height transitions the browser may promote scrolling to the root. Keep
+   that fallback scrollable while hiding its transient scrollbar as well. */
+:global(html),
+:global(body) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+:global(html::-webkit-scrollbar),
+:global(body::-webkit-scrollbar) {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 /* Background Shapes (Simulating Laser Reflection) */
 .bg-shape {
-  position: absolute;
+  position: fixed;
   border-radius: 50%;
   filter: blur(60px);
   z-index: 0;
@@ -620,13 +717,7 @@ onBeforeUnmount(() => {
 }
 
 .login-card--club {
-  max-width: 860px;
   min-height: 540px;
-}
-
-.login-card--club .login-content {
-  padding-right: 36px;
-  padding-left: 36px;
 }
 
 .login-card.is-resizing {
@@ -906,11 +997,31 @@ onBeforeUnmount(() => {
   border-radius: var(--button-radius, 8px);
 }
 
-.register-sections {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
-  align-items: stretch;
+.club-registration-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 2px 0 14px;
+  color: #b7b4c1;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.club-registration-progress span {
+  transition: color 0.2s ease;
+}
+
+.club-registration-progress span.is-active,
+.club-registration-progress span.is-complete {
+  color: var(--primary-gold-dark, #b8941f);
+}
+
+.club-registration-progress i {
+  flex: 1;
+  height: 1px;
+  min-width: 12px;
+  background: rgba(212, 175, 55, 0.2);
 }
 
 .register-form-section {
@@ -922,6 +1033,19 @@ onBeforeUnmount(() => {
     linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 255, 255, 0.86)),
     radial-gradient(circle at top right, rgba(162, 155, 254, 0.11), transparent 38%);
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 10px 28px -24px rgba(17, 24, 39, 0.5);
+}
+
+.club-step-actions {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.club-step-actions .back-step-btn {
+  min-width: 76px;
+  height: 48px;
+  border-radius: 24px;
 }
 
 .register-form-section:last-of-type {
@@ -998,7 +1122,7 @@ onBeforeUnmount(() => {
   left: 0;
 }
 
-.login-form--club .register-form-section--application :deep(.el-textarea__inner) {
+.login-form--club .register-form-section :deep(.el-textarea__inner) {
   height: 94px !important;
   min-height: 94px !important;
   max-height: 94px !important;
@@ -1014,8 +1138,8 @@ onBeforeUnmount(() => {
 }
 
 .login-form--club .register-field-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: 1fr;
+  gap: 0;
 }
 
 .login-form :deep(.el-input__wrapper) {
@@ -1254,8 +1378,7 @@ onBeforeUnmount(() => {
     justify-content: center;
   }
 
-  .identity-options,
-  .register-sections {
+  .identity-options {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
