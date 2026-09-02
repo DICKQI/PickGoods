@@ -16,7 +16,7 @@
         查看公开主页
       </el-button>
     </header>
-    <nav v-if="!isGoodsEditor" class="workspace-tabs" aria-label="社团工作区">
+    <nav v-if="!isGoodsEditor && !isMobile" class="workspace-tabs" aria-label="社团工作区">
       <span class="workspace-tab-slider" :style="tabSliderStyle" aria-hidden="true"></span>
       <router-link
         v-for="(tab, index) in workspaceTabs"
@@ -42,10 +42,12 @@ import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { View } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { isMobile } = useResponsiveDevice()
 const isGoodsEditor = computed(() => route.name === 'ClubGoodsNew' || route.name === 'ClubGoodsEdit')
 const workspaceTabs = [
   { name: 'ClubGoods', to: '/club/goods', label: '社团谷子', caption: '目录运营' },

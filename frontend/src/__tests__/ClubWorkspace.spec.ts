@@ -29,11 +29,16 @@ describe('ClubWorkspace 社团工作区导航', () => {
     pushMock.mockReset()
   })
 
-  function mountWorkspace() {
+  function mountWorkspace(width = 1024) {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, value: 800 })
+    Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 0 })
+
     return mount(ClubWorkspace, {
       global: {
         stubs: {
           ElButton: passthroughStub('ElButton', 'button'),
+          ElAvatar: passthroughStub('ElAvatar'),
           ElIcon: passthroughStub('ElIcon', 'span'),
           RouterLink: defineComponent({
             props: { to: { type: String, default: '' } },
@@ -60,6 +65,12 @@ describe('ClubWorkspace 社团工作区导航', () => {
     expect(wrapper.text()).toContain('社团谷子')
     expect(wrapper.text()).toContain('人气统计')
     expect(wrapper.text()).toContain('社团资料')
+  })
+
+  it('移动端隐藏与底部导航重复的工作区 TAB', () => {
+    const wrapper = mountWorkspace(390)
+
+    expect(wrapper.find('.workspace-tabs').exists()).toBe(false)
   })
 
   it('根据当前子路由移动唯一滑块，并把内容切换限制在嵌套路由区域', async () => {

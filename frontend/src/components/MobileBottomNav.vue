@@ -4,8 +4,12 @@
       v-for="item in navItems" 
       :key="item.path"
       class="nav-item"
+      role="link"
+      tabindex="0"
       :class="{ active: isActive(item.path) }"
       @click="handleNavClick(item.path)"
+      @keydown.enter="handleNavClick(item.path)"
+      @keydown.space.prevent="handleNavClick(item.path)"
     >
       <el-icon class="nav-icon">
         <component :is="item.icon" />
@@ -18,53 +22,15 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Collection, Box, Star, Shop, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
+import { CLUB_NAV_ITEMS, useMobileNavStore } from '@/stores/mobileNav'
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
+const mobileNavStore = useMobileNavStore()
 
-interface NavItem {
-  path: string
-  label: string
-  icon: any
-}
-
-const collectorNavItems: NavItem[] = [
-  {
-    path: '/showcase',
-    label: '云展柜',
-    icon: Grid
-  },
-  {
-    path: '/location',
-    label: '位置',
-    icon: FolderOpened
-  },
-  {
-    path: '/ipcharacter',
-    label: 'IP与角色',
-    icon: Collection
-  },
-  {
-    path: '/category',
-    label: '品类',
-    icon: Box
-  },
-  {
-    path: '/theme',
-    label: '主题',
-    icon: Star
-  }
-]
-
-const navItems = computed<NavItem[]>(() => authStore.isClub ? [
-  { path: '/club/goods', label: '社团谷子', icon: Shop },
-  { path: '/club/popularity', label: '人气', icon: Grid },
-  { path: '/club/profile', label: '资料', icon: User },
-  { path: '/clubs', label: '社团', icon: Shop },
-] : collectorNavItems)
+const navItems = computed(() => authStore.isClub ? CLUB_NAV_ITEMS : mobileNavStore.selectedItems)
 
 const isCharacterStatsFromShowcase = computed(() => {
   const returnTo = route.query.returnTo

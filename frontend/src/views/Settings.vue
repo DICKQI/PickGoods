@@ -27,7 +27,7 @@
           </el-input>
           <div class="form-tip">
             <el-icon class="tip-icon"><InfoFilled /></el-icon>
-            <span>所有 API 请求都会使用这个地址，修改后会立即生效哦~</span>
+            <span>所有 API 请求均使用此地址，修改后立即生效</span>
           </div>
         </el-form-item>
 
@@ -53,30 +53,36 @@
       </div>
     </el-card>
 
-    <el-card class="settings-card" shadow="never">
+    <el-card v-if="authStore.isCollector" class="settings-card mobile-nav-settings-card" shadow="never">
       <template #header>
         <div class="card-header">
-          <el-icon class="header-icon"><Document /></el-icon>
-          <span>使用说明</span>
+          <el-icon class="header-icon"><Menu /></el-icon>
+          <span>底部导航设置</span>
         </div>
       </template>
 
-      <div class="help-content">
-        <el-alert
-          title="后端地址配置说明"
-          type="info"
-          :closable="false"
-          show-icon
+      <div class="mobile-nav-settings">
+        <div
+          v-for="item in COLLECTOR_NAV_ITEMS"
+          :key="item.key"
+          class="mobile-nav-option"
+          :class="{ 'is-selected': mobileNavStore.isSelected(item.key) }"
         >
-          <template #default>
-            <ul class="help-list">
-              <li>后端地址要填写完整 URL~ 记得带上协议（http:// 或 https://）和端口号</li>
-              <li>示例：<code>http://127.0.0.1:8000</code> 或 <code>https://api.example.com</code></li>
-              <li>修改后的地址会保存在浏览器里，刷新页面后依然有效哦~</li>
-              <li>如果不小心配错了，点击“恢复默认”就能回到默认地址啦~</li>
-            </ul>
-          </template>
-        </el-alert>
+          <el-checkbox
+            :model-value="mobileNavStore.isSelected(item.key)"
+            :disabled="mobileNavStore.isOnlySelected(item.key)"
+            :aria-label="`${item.label}底部导航`"
+            @change="toggleMobileNavItem(item.key, $event)"
+          >
+            <span class="mobile-nav-option-label">
+              <el-icon><component :is="item.icon" /></el-icon>
+              <span>{{ item.label }}</span>
+            </span>
+          </el-checkbox>
+        </div>
+        <el-button class="mobile-nav-reset" :disabled="isMobileNavDefault" @click="resetMobileNav">
+          恢复默认
+        </el-button>
       </div>
     </el-card>
 
@@ -85,13 +91,22 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Setting, Link, InfoFilled, Document } from '@element-plus/icons-vue'
+import { Setting, Link, InfoFilled, Menu } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { updateBaseURL, getCurrentBaseURL, resetBaseURL } from '@/utils/request'
 import { useMetadataStore } from '@/stores/metadata'
+import { useAuthStore } from '@/stores/auth'
+import {
+  COLLECTOR_DEFAULT_NAV_KEYS,
+  COLLECTOR_NAV_ITEMS,
+  useMobileNavStore,
+  type CollectorNavKey,
+} from '@/stores/mobileNav'
 
 const metadataStore = useMetadataStore()
+const authStore = useAuthStore()
+const mobileNavStore = useMobileNavStore()
 
 const formRef = ref<FormInstance>()
 const saving = ref(false)
@@ -140,6 +155,11 @@ const isDefault = computed(() => {
   return formData.value.apiBaseURL === defaultBaseURL.value || formData.value.apiBaseURL === ''
 })
 
+const isMobileNavDefault = computed(() => (
+  mobileNavStore.selectedKeys.length === COLLECTOR_DEFAULT_NAV_KEYS.length &&
+  COLLECTOR_DEFAULT_NAV_KEYS.every(key => mobileNavStore.selectedKeys.includes(key))
+))
+
 const loadCurrentSettings = () => {
   currentBaseURL.value = getCurrentBaseURL()
   formData.value.apiBaseURL = currentBaseURL.value
@@ -172,6 +192,18 @@ const handleReset = () => {
   currentBaseURL.value = defaultBaseURL.value
   metadataStore.clearCache() // 清除元数据缓存
   ElMessage.success('已恢复为默认地址')
+}
+
+const toggleMobileNavItem = (key: CollectorNavKey, checked: boolean | string | number) => {
+  const next = checked
+    ? [...mobileNavStore.selectedKeys, key]
+    : mobileNavStore.selectedKeys.filter(item => item !== key)
+  mobileNavStore.setSelectedKeys(next)
+}
+
+const resetMobileNav = () => {
+  mobileNavStore.resetToDefault()
+  ElMessage.success('底部导航已恢复默认')
 }
 
 onMounted(() => {
@@ -247,6 +279,11 @@ onMounted(() => {
   color: #909399;
 }
 
+.form-tip span {
+  min-width: 0;
+  white-space: nowrap;
+}
+
 .tip-icon {
   font-size: 14px;
   color: #409eff;
@@ -291,28 +328,45 @@ onMounted(() => {
   color: #909399;
 }
 
-.help-content {
-  margin-top: 12px;
+.mobile-nav-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
 }
 
-.help-list {
-  margin: 12px 0 0 0;
-  padding-left: 20px;
-  line-height: 1.8;
-  color: #606266;
+.mobile-nav-option {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid #e4e7ed;
+  border-radius: 8px;
+  background: #fff;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
 }
 
-.help-list li {
-  margin-bottom: 8px;
+.mobile-nav-option.is-selected {
+  border-color: rgba(142, 125, 255, 0.45);
+  background: rgba(142, 125, 255, 0.06);
 }
 
-.help-list code {
-  background-color: #f5f7fa;
-  padding: 2px 6px;
-  border-radius: 4px;
-  font-family: 'Consolas', 'Monaco', monospace;
-  font-size: 12px;
-  color: #e6a23c;
+.mobile-nav-option :deep(.el-checkbox) {
+  width: 100%;
+}
+
+.mobile-nav-option-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: #303133;
+}
+
+.mobile-nav-option-label .el-icon {
+  color: #d4af37;
+}
+
+.mobile-nav-reset {
+  width: fit-content;
 }
 
 @media (max-width: 768px) {
@@ -335,5 +389,19 @@ onMounted(() => {
     margin: 0;
   }
 
+  .mobile-nav-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .mobile-nav-reset {
+    width: 100%;
+  }
+
+}
+
+@media (max-width: 359px) {
+  .form-tip span {
+    white-space: normal;
+  }
 }
 </style>
