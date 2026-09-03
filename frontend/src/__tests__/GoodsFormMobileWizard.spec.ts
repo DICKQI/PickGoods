@@ -781,6 +781,12 @@ describe('GoodsForm mobile create wizard', () => {
     expect(wrapper.text()).toContain('发布')
   })
 
+  it('keeps the wizard heading below the fixed top navigation after changing steps', () => {
+    expect(goodsFormSource).toContain("const navbar = document.querySelector('.navbar')")
+    expect(goodsFormSource).toContain('const navbarHeight = navbar?.getBoundingClientRect().height ?? 0')
+    expect(goodsFormSource).toContain('const targetTop = Math.max(0, elementTop - navbarHeight - 12)')
+  })
+
   it('publishes from the final wizard step through the existing submit path', async () => {
     const wrapper = await mountGoodsForm({
       width: 390,

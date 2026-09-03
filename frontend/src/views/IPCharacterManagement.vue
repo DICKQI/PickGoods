@@ -4938,7 +4938,7 @@ const handleBGMSyncClose = () => {
   }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   :global(.el-overlay-dialog:has(.is-ip-editor-mobile)),
   :global(.el-overlay-dialog:has(.is-character-editor-mobile)),
   :global(.el-overlay-dialog:has(.is-bgm-import-mobile)) {

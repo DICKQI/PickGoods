@@ -42,9 +42,14 @@
         @touchend="handleTouchEnd"
       >
         <div class="handle-indicator"></div>
-        <div class="mobile-close-btn" @click.stop="handleMobileClose">
+        <button
+          type="button"
+          class="mobile-close-btn"
+          aria-label="关闭谷子详情"
+          @click.stop="handleMobileClose"
+        >
           <el-icon><Close /></el-icon>
-        </div>
+        </button>
       </div>
 
       <!-- 可滚动的内容区域 -->
@@ -576,12 +581,11 @@ function lockMobileBodyScroll() {
   }
 
   document.body.style.position = 'fixed'
-  document.body.style.top = '0'
+  document.body.style.top = `-${mobileBodyScrollTop}px`
   document.body.style.left = '0'
   document.body.style.right = '0'
   document.body.style.width = '100%'
   document.body.style.overflow = 'hidden'
-  document.body.style.transform = `translateY(-${mobileBodyScrollTop}px)`
 }
 
 function unlockMobileBodyScroll() {
@@ -866,10 +870,13 @@ onBeforeUnmount(() => {
   right: 16px;
   top: 50%;
   transform: translateY(-50%);
+  border: 0;
+  background: transparent;
   color: #909399;
   font-size: 20px;
   cursor: pointer;
   padding: 4px;
+  line-height: 1;
 }
 
 /* ---------------- 移动端详情内容 ---------------- */
@@ -1428,16 +1435,16 @@ onBeforeUnmount(() => {
 
 /* ---------------- Element UI 样式重置与动画控制 ---------------- */
 
-:deep(.el-drawer__body) { padding: 20px; overflow-y: auto; }
+:global(.guzi-detail-drawer .el-drawer__body) { padding: 20px; overflow-y: auto; }
 
 /* 移动端特殊处理 */
-.is-mobile :deep(.el-drawer__body) {
+:global(.guzi-detail-drawer.is-mobile .el-drawer__body) {
   padding: 0 !important;
   display: flex;
   flex-direction: column;
   max-height: 100dvh;
 }
-.is-mobile :deep(.el-drawer) {
+:global(.guzi-detail-drawer.is-mobile) {
   border-top-left-radius: 20px;
   border-top-right-radius: 20px;
   overflow: visible;
@@ -1452,15 +1459,15 @@ onBeforeUnmount(() => {
   padding-bottom: calc(40px + env(safe-area-inset-bottom));
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .is-mobile .main-image-wrapper {
     height: 38dvh;
     max-height: 450px;
     min-height: 250px;
   }
 
-  .is-mobile :deep(.el-drawer__body),
-  .is-mobile :deep(.el-drawer),
+  :global(.guzi-detail-drawer.is-mobile .el-drawer__body),
+  :global(.guzi-detail-drawer.is-mobile),
   .is-mobile .drawer-container {
     max-height: 100dvh;
   }
@@ -1474,7 +1481,7 @@ onBeforeUnmount(() => {
   关键：当正在拖拽时，强制移除 Drawer 的过渡动画
   这样高度变化就是实时的，不会有滞后感
 */
-.is-dragging :deep(.el-drawer) {
+:global(.guzi-detail-drawer.is-dragging) {
   transition: none !important;
 }
 </style>

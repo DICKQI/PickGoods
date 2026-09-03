@@ -193,7 +193,13 @@ function setStatus(value: string) { statusFilter.value = value; handleSearch() }
 function startBulkAction(action: BulkAction) { bulkAction.value = action; selectedGoodsIds.value = [] }
 function cancelBulkAction() { bulkAction.value = null; selectedGoodsIds.value = [] }
 function isSelected(id: string) { return selectedGoodsIds.value.includes(id) }
-function toggleSelection(item: ClubCatalogItem, selected: boolean) { if (!isSelectable(item)) return; const ids = new Set(selectedGoodsIds.value); selected ? ids.add(item.id) : ids.delete(item.id); selectedGoodsIds.value = [...ids] }
+function toggleSelection(item: ClubCatalogItem, selected: boolean) {
+  if (!isSelectable(item)) return
+  const ids = new Set(selectedGoodsIds.value)
+  if (selected) ids.add(item.id)
+  else ids.delete(item.id)
+  selectedGoodsIds.value = [...ids]
+}
 function toggleItemSelection(item: ClubCatalogItem, value: unknown) { toggleSelection(item, Boolean(value)) }
 function toggleRowSelection(item: ClubCatalogItem) { if (!bulkAction.value || bulkLoading.value || !isSelectable(item)) return; toggleSelection(item, !isSelected(item.id)) }
 function handleRowSelectionClick(item: ClubCatalogItem, event: MouseEvent) {

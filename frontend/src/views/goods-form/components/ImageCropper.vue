@@ -962,7 +962,7 @@ const handleCropDialogClose = () => {
   .dialog-footer :deep(.el-button) { flex: 1; }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .crop-layout-inner {
     flex-direction: column;
     height: auto;

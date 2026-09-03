@@ -478,11 +478,11 @@
               class="unassigned-status-group"
               @change="() => fetchUnassignedGoods(1)"
             >
-              <el-checkbox-button data-test="unassigned-status-draft" label="draft">草稿</el-checkbox-button>
-              <el-checkbox-button data-test="unassigned-status-intended" label="intended">意向入手</el-checkbox-button>
-              <el-checkbox-button data-test="unassigned-status-in-cabinet" label="in_cabinet">在柜</el-checkbox-button>
-              <el-checkbox-button data-test="unassigned-status-outdoor" label="outdoor">外带</el-checkbox-button>
-              <el-checkbox-button data-test="unassigned-status-sold" label="sold">已出</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-draft" value="draft">草稿</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-intended" value="intended">意向入手</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-in-cabinet" value="in_cabinet">在柜</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-outdoor" value="outdoor">外带</el-checkbox-button>
+              <el-checkbox-button data-test="unassigned-status-sold" value="sold">已出</el-checkbox-button>
             </el-checkbox-group>
           </div>
         </el-form>

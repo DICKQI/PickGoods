@@ -58,9 +58,9 @@
               <el-col :xs="24" :sm="14">
                 <el-form-item label="状态" prop="publication_status">
                   <el-radio-group v-model="form.publication_status" class="status-segmented">
-                    <el-radio-button label="draft">草稿</el-radio-button>
-                    <el-radio-button label="listed" value="listed">已上架</el-radio-button>
-                    <el-radio-button label="unlisted" value="unlisted">已下架</el-radio-button>
+                    <el-radio-button value="draft">草稿</el-radio-button>
+                    <el-radio-button value="listed">已上架</el-radio-button>
+                    <el-radio-button value="unlisted">已下架</el-radio-button>
                   </el-radio-group>
                 </el-form-item>
               </el-col>

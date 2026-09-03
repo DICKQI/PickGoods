@@ -1827,7 +1827,7 @@ onUnmounted(() => {
   .visible-xs-only { display: none !important; }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .category-management-container {
     padding: 16px;
   }

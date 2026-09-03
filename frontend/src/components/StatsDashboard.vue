@@ -2002,7 +2002,7 @@ watch(chartTab, () => {
   border-color: var(--accent-purple) !important;
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .overview-row {
     margin-bottom: 4px;
   }

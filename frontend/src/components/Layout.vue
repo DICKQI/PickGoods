@@ -1288,7 +1288,7 @@ watch(isMobile, (mobile) => {
   }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .navbar-content {
     padding: 0 12px;
     grid-template-columns: 1fr auto;
@@ -1475,7 +1475,7 @@ watch(isMobile, (mobile) => {
   }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   @supports not (bottom: env(safe-area-inset-bottom)) {
     .fab-group.fab-mobile {
       bottom: 84px;

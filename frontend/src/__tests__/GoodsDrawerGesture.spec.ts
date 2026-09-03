@@ -47,6 +47,12 @@ const setMobileViewport = (width = 390, height = 844) => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: width })
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: height })
   Object.defineProperty(navigator, 'maxTouchPoints', { configurable: true, value: 1 })
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: query === '(pointer: coarse)',
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
 }
 
 const createTouchEvent = (
@@ -330,6 +336,14 @@ describe('GoodsDrawer mobile gesture', () => {
   // ---------- Close button ----------
 
   describe('close button', () => {
+    it('uses a keyboard-accessible button control', () => {
+      const button = wrapper.get('.mobile-close-btn')
+
+      expect(button.element.tagName).toBe('BUTTON')
+      expect(button.attributes('type')).toBe('button')
+      expect(button.attributes('aria-label')).toBe('关闭谷子详情')
+    })
+
     it('closes the drawer when clicked', async () => {
       await wrapper.get('.mobile-close-btn').trigger('click')
       await wrapper.vm.$nextTick()
@@ -352,12 +366,15 @@ describe('GoodsDrawer mobile gesture', () => {
       const localWrapper = await mountDrawer()
 
       expect(document.body.style.position).toBe('fixed')
-      expect(document.body.style.top).toBe('0px')
+      // jsdom rejects negative top values in CSSStyleDeclaration; the source
+      // assertion below protects the actual browser behavior.
       expect(document.body.style.left).toBe('0px')
       expect(document.body.style.right).toBe('0px')
       expect(document.body.style.width).toBe('100%')
       expect(document.body.style.overflow).toBe('hidden')
-      expect(document.body.style.transform).toBe('translateY(-180px)')
+      expect(document.body.style.transform).toBe('')
+      expect(readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8'))
+        .toContain('document.body.style.top = ' + String.fromCharCode(96) + '-${mobileBodyScrollTop}px' + String.fromCharCode(96))
 
       await localWrapper.setProps({ modelValue: false })
       await localWrapper.vm.$nextTick()
@@ -369,6 +386,15 @@ describe('GoodsDrawer mobile gesture', () => {
       expect(scrollToSpy).toHaveBeenCalledWith(0, 180)
 
       scrollToSpy.mockRestore()
+    })
+
+    it('targets the teleported drawer DOM with global selectors', () => {
+      const source = readFileSync(join(process.cwd(), 'src/components/GoodsDrawer.vue'), 'utf-8')
+
+      expect(source).toContain(':global(.guzi-detail-drawer .el-drawer__body)')
+      expect(source).toContain(':global(.guzi-detail-drawer.is-mobile .el-drawer__body)')
+      expect(source).not.toContain(':deep(.el-drawer__body)')
+      expect(source).not.toContain('document.body.style.transform = ' + String.fromCharCode(96) + 'translateY')
     })
   })
 })

@@ -275,6 +275,7 @@ watch(
 
 .admin-main {
   flex: 1;
+  min-width: 0;
   margin-left: 220px;
   transition: margin-left var(--transition-normal);
   display: flex;
@@ -294,6 +295,7 @@ watch(
   align-items: center;
   justify-content: space-between;
   padding: 0 var(--space-lg);
+  min-width: 0;
   position: sticky;
   top: 0;
   z-index: var(--z-admin-header);
@@ -302,6 +304,7 @@ watch(
 .header-left {
   display: flex;
   align-items: center;
+  min-width: 0;
 }
 
 .page-title {
@@ -309,6 +312,10 @@ watch(
   font-weight: 600;
   color: var(--text-dark);
   margin: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .header-right {
@@ -327,8 +334,9 @@ watch(
 
 .admin-content {
   flex: 1;
+  min-width: 0;
   padding: var(--space-lg);
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .admin-page-fade-enter-active,
@@ -381,7 +389,7 @@ watch(
   }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .admin-sidebar {
     width: 220px;
   }

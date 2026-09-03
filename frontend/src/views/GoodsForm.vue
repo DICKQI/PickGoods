@@ -120,11 +120,11 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="状态" prop="status" class="is-required">
                 <el-radio-group v-model="formData.status" class="status-segmented">
-                  <el-radio-button label="draft">草稿</el-radio-button>
-                  <el-radio-button label="intended">意向入手</el-radio-button>
-                  <el-radio-button label="in_cabinet">在馆</el-radio-button>
-                  <el-radio-button label="outdoor">出街中</el-radio-button>
-                  <el-radio-button label="sold">已售出</el-radio-button>
+                  <el-radio-button value="draft">草稿</el-radio-button>
+                  <el-radio-button value="intended">意向入手</el-radio-button>
+                  <el-radio-button value="in_cabinet">在馆</el-radio-button>
+                  <el-radio-button value="outdoor">出街中</el-radio-button>
+                  <el-radio-button value="sold">已售出</el-radio-button>
                 </el-radio-group>
               </el-form-item>
             </el-col>
@@ -551,7 +551,7 @@
       <el-form label-position="top">
         <el-form-item label="社团"><el-select v-model="clubImportClubId" filterable remote reserve-keyword placeholder="搜索并选择社团" style="width: 100%" :remote-method="searchClubImportClubs" :loading="clubImportClubLoading" @change="loadClubImportGoods"><el-option v-for="club in clubImportClubs" :key="club.id" :label="club.name" :value="club.id" /></el-select></el-form-item>
         <el-form-item label="谷子"><el-select v-model="clubImportGoodsId" filterable remote reserve-keyword placeholder="搜索社团谷子" style="width: 100%" :disabled="!clubImportClubId" :remote-method="searchClubImportGoods" :loading="clubImportGoodsLoading"><el-option v-for="item in clubImportGoods" :key="item.id" :label="item.name" :value="item.id" /></el-select></el-form-item>
-        <el-form-item label="加入后的状态"><el-radio-group v-model="clubImportStatus"><el-radio-button label="intended">意向入手</el-radio-button><el-radio-button label="in_cabinet">在馆</el-radio-button><el-radio-button label="outdoor">出街中</el-radio-button><el-radio-button label="sold">已售出</el-radio-button></el-radio-group></el-form-item>
+        <el-form-item label="加入后的状态"><el-radio-group v-model="clubImportStatus"><el-radio-button value="intended">意向入手</el-radio-button><el-radio-button value="in_cabinet">在馆</el-radio-button><el-radio-button value="outdoor">出街中</el-radio-button><el-radio-button value="sold">已售出</el-radio-button></el-radio-group></el-form-item>
       </el-form>
       <template #footer><el-button @click="clubImportVisible = false">取消</el-button><el-button type="primary" :loading="clubImporting" :disabled="!clubImportGoodsId" @click="submitClubImport">导入并编辑</el-button></template>
     </el-dialog>
@@ -1485,14 +1485,17 @@ const scrollWizardToTop = () => {
     const elementTop = formElement
       ? formElement.getBoundingClientRect().top + window.scrollY
       : 0
+    const navbar = document.querySelector('.navbar')
+    const navbarHeight = navbar?.getBoundingClientRect().height ?? 0
+    const targetTop = Math.max(0, elementTop - navbarHeight - 12)
     try {
       window.scrollTo({
-        top: Math.max(0, elementTop - 12),
+        top: targetTop,
         behavior: 'smooth',
       })
     } catch {
       try {
-        window.scrollTo(0, Math.max(0, elementTop - 12))
+        window.scrollTo(0, targetTop)
       } catch {
         // Some embedded WebViews and test environments do not implement scrollTo.
       }
@@ -2398,7 +2401,7 @@ onUnmounted(() => {
   gap: 10px;
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .goods-form {
     padding: 16px;
   }
@@ -2613,7 +2616,7 @@ onUnmounted(() => {
   }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) and (prefers-reduced-motion: reduce) {
+@media (max-width: 768px) and (prefers-reduced-motion: reduce), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) and (prefers-reduced-motion: reduce) {
   :global(.el-dialog.is-goods-leave-mobile),
   :global(.el-dialog.is-goods-reset-mobile),
   :global(.dialog-fade-leave-active .el-dialog.is-goods-leave-mobile),

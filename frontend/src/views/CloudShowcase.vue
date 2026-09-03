@@ -1386,7 +1386,7 @@ watch(mobileFilterVisible, (visible) => {
   font-size: 13px;
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .cloud-showcase {
     padding: 12px 10px 128px;
     min-height: calc(100dvh - 64px);
@@ -1611,7 +1611,7 @@ watch(mobileFilterVisible, (visible) => {
 
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   @supports not (top: env(safe-area-inset-top)) {
     .cloud-tabs {
       top: 64px;

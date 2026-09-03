@@ -85,10 +85,10 @@
         <div class="status-filter-strip">
           <span class="status-filter-title">状态</span>
           <el-checkbox-group v-model="selectedStatuses" class="status-filter-group" @change="fetchGoods(1)">
-            <el-checkbox-button data-test="add-goods-status-in-cabinet" label="in_cabinet">在馆</el-checkbox-button>
-            <el-checkbox-button data-test="add-goods-status-intended" label="intended">意向入手</el-checkbox-button>
-            <el-checkbox-button data-test="add-goods-status-outdoor" label="outdoor">出街中</el-checkbox-button>
-            <el-checkbox-button data-test="add-goods-status-sold" label="sold">已售出</el-checkbox-button>
+            <el-checkbox-button data-test="add-goods-status-in-cabinet" value="in_cabinet">在馆</el-checkbox-button>
+            <el-checkbox-button data-test="add-goods-status-intended" value="intended">意向入手</el-checkbox-button>
+            <el-checkbox-button data-test="add-goods-status-outdoor" value="outdoor">出街中</el-checkbox-button>
+            <el-checkbox-button data-test="add-goods-status-sold" value="sold">已售出</el-checkbox-button>
           </el-checkbox-group>
         </div>
       </el-form>

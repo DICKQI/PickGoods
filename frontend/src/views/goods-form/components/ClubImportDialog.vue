@@ -148,9 +148,9 @@
         </div>
         <div class="club-import-goods-toolbar">
           <el-radio-group v-model="importFilter" size="small" @change="handleGoodsFilterChange">
-            <el-radio-button label="all">全部</el-radio-button>
-            <el-radio-button label="unimported">未导入</el-radio-button>
-            <el-radio-button label="imported">已导入</el-radio-button>
+            <el-radio-button value="all">全部</el-radio-button>
+            <el-radio-button value="unimported">未导入</el-radio-button>
+            <el-radio-button value="imported">已导入</el-radio-button>
           </el-radio-group>
           <el-checkbox
             v-if="goods.length"

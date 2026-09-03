@@ -194,14 +194,14 @@ const ElCheckboxGroupStub = defineComponent({
 })
 
 const ElCheckboxButtonStub = defineComponent({
-  props: ['label'],
+  props: ['value'],
   inject: ['checkboxGroupValue', 'toggleCheckbox'],
   template: `
     <button
       type="button"
       class="el-checkbox-button-stub"
-      :data-checked="checkboxGroupValue().includes(label)"
-      @click="toggleCheckbox(label)"
+      :data-checked="checkboxGroupValue().includes(value)"
+      @click="toggleCheckbox(value)"
     >
       <slot />
     </button>

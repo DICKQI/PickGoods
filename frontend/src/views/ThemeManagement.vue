@@ -2741,7 +2741,7 @@ onUnmounted(() => {
   .desktop-view { display: block; }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .theme-management-container { padding: 12px; }
 
   .header-section { margin-bottom: 10px; }

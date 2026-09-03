@@ -155,10 +155,10 @@
             class="status-group"
             @change="handleStatusChange"
           >
-            <el-checkbox-button class="status-chip status-chip--in-cabinet" label="in_cabinet">在馆</el-checkbox-button>
-            <el-checkbox-button class="status-chip status-chip--intended" label="intended">意向入手</el-checkbox-button>
-            <el-checkbox-button class="status-chip status-chip--outdoor" label="outdoor">出街中</el-checkbox-button>
-            <el-checkbox-button class="status-chip status-chip--sold" label="sold">已售出</el-checkbox-button>
+            <el-checkbox-button class="status-chip status-chip--in-cabinet" value="in_cabinet">在馆</el-checkbox-button>
+            <el-checkbox-button class="status-chip status-chip--intended" value="intended">意向入手</el-checkbox-button>
+            <el-checkbox-button class="status-chip status-chip--outdoor" value="outdoor">出街中</el-checkbox-button>
+            <el-checkbox-button class="status-chip status-chip--sold" value="sold">已售出</el-checkbox-button>
           </el-checkbox-group>
         </div>
 
@@ -998,7 +998,7 @@ onUnmounted(() => {})
 }
 
 /* 输入类控件的高度/圆角已在上方统一变量中设置 */
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .filter-panel {
     --filter-control-height: 36px;
     margin-bottom: 12px;

@@ -16,8 +16,8 @@
                     <el-icon><Collection /></el-icon>
                   </div>
                   <el-radio-group v-model="showcaseStore.scope" size="small" @change="handleScopeChange" class="scope-switch">
-                    <el-radio-button label="private">我的展柜</el-radio-button>
-                    <el-radio-button label="public">公共展柜</el-radio-button>
+                    <el-radio-button value="private">我的展柜</el-radio-button>
+                    <el-radio-button value="public">公共展柜</el-radio-button>
                   </el-radio-group>
                 </div>
                 <el-button
@@ -1747,7 +1747,7 @@ watch(
   }
 }
 
-@media (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
+@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .showcase-manager:not(.is-detail-mode) {
     min-height: calc(100dvh - 50px);
     height: calc(100dvh - 50px);

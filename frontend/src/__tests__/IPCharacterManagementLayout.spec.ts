@@ -199,6 +199,7 @@ describe('IPCharacterManagement mobile layout', () => {
       expect(rule).toContain('margin: 0 !important;')
       expect(rule).toContain('border-radius: 24px 24px 0 0;')
     }
+    expect(source).toContain('@media (max-width: 768px), (pointer: coarse)')
   })
 
   it('adds mobile hero headers while preserving PC headers for the three entry forms', () => {
