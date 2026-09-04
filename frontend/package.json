@@ -1,6 +1,6 @@
 {
   "name": "pickgoods-vue",
-  "version": "1.3.2",
+  "version": "1.3.2post1",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@9.0.0",
