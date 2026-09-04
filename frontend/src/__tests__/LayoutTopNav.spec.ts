@@ -119,8 +119,14 @@ describe('Layout top navigation', () => {
     expect(routerSource).toMatch(/name:\s*'ClubDetail',[\s\S]*?meta:\s*\{\s*title:\s*'社团详情',\s*preserveOnQueryChange:\s*true\s*\}/)
   })
 
-  it('reserves the desktop scrollbar gutter so nested workspace tabs do not shift the shell', () => {
-    expect(globalStyleSource).toContain('scrollbar-gutter: stable;')
+  it('does not reserve a desktop scrollbar gutter when scrollbars are hidden', () => {
+    expect(globalStyleSource).toContain('scrollbar-gutter: auto;')
+  })
+
+  it('keeps native navbar, content, and sticky page tabs on one top offset', () => {
+    expect(layoutSource).toContain("<div class=\"layout\" :class=\"{ 'layout-native': isNativePlatform }\">")
+    expect(layoutSource).toContain('padding-top: var(--app-navbar-height);')
+    expect(layoutSource).not.toContain("getPropertyValue('env(safe-area-inset-top)')")
   })
 
   it('shows the app version badge on all desktop pages', async () => {

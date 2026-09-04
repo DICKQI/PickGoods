@@ -192,6 +192,12 @@ describe('CloudShowcase mobile compact header', () => {
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-to')
   })
 
+  it('aligns the mobile sticky tabs with the shared navbar height', () => {
+    expect(cloudShowcaseSource).toContain('top: var(--app-navbar-height, 64px);')
+    expect(cloudShowcaseSource).toContain('background: var(--bg-gray, #f7f8fa);')
+    expect(cloudShowcaseSource).toContain('padding-top: 0;')
+  })
+
   it('places the journal tab before the stats dashboard tab', () => {
     const journalIndex = cloudShowcaseSource.indexOf('name="journal"')
     const statsIndex = cloudShowcaseSource.indexOf('name="stats"')

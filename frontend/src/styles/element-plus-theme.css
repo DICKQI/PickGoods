@@ -264,7 +264,7 @@ html body .el-message {
 @media screen and (max-width: 768px) {
   html body .el-message {
     /* 移动端顶部避让 */
-    top: calc(70px + env(safe-area-inset-top, 0px)) !important;
+    top: calc(var(--app-navbar-height, 64px) + 6px) !important;
     
     /* 移动端稍微调小一点内边距，显得更精致 */
     padding: 8px 20px !important;

@@ -122,7 +122,7 @@ defineExpose({ collapseSearch })
 <style scoped>
 .preorder-mobile-filterbar {
   position: sticky;
-  top: calc(64px + env(safe-area-inset-top));
+  top: var(--app-navbar-height, 64px);
   z-index: 900;
   margin: 10px -12px 0;
   padding: 8px 12px 6px;
@@ -132,12 +132,6 @@ defineExpose({ collapseSearch })
   border-top: 1px solid rgba(212, 175, 55, 0.12);
   border-bottom: 1px solid rgba(212, 175, 55, 0.14);
   box-shadow: 0 8px 18px -18px rgba(17, 24, 39, 0.4);
-}
-
-@supports not (top: calc(64px + env(safe-area-inset-top))) {
-  .preorder-mobile-filterbar {
-    top: 64px;
-  }
 }
 
 .preorder-mobile-filterbar__row {

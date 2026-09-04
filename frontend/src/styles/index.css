@@ -5,6 +5,7 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  scrollbar-width: none;
 }
 
 html {
@@ -12,9 +13,16 @@ html {
   overscroll-behavior: none;
   -webkit-overflow-scrolling: touch;
   /* Keep fixed navigation centered when a child route changes page height. */
-  scrollbar-gutter: stable;
+  /* Do not reserve a gutter for a scrollbar that is intentionally hidden. */
+  scrollbar-gutter: auto;
   height: 100%;
   position: relative;
+}
+
+:root {
+  /* Capacitor 8 injects --safe-area-inset-top on Android 15+. */
+  --app-safe-area-top: max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top, 0px));
+  --app-navbar-height: calc(64px + var(--app-safe-area-top, 0px));
 }
 
 body {
@@ -26,7 +34,8 @@ body {
   /* Keep the document root from chaining edge gestures to the WebView. */
   overscroll-behavior: none;
   overscroll-behavior-y: none;
-  overflow-x: hidden;
+  /* Clip horizontal overflow without turning the document root into a nested scroller. */
+  overflow-x: clip;
   height: 100%;
   position: relative;
   touch-action: pan-y;
@@ -39,8 +48,9 @@ a {
 
 /* 滚动条样式 */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 ::-webkit-scrollbar-track {

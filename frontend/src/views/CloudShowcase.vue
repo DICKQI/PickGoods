@@ -1092,11 +1092,11 @@ watch(mobileFilterVisible, (visible) => {
 
   .cloud-tabs {
     position: sticky;
-    top: calc(64px + env(safe-area-inset-top));
+    top: var(--app-navbar-height, 64px);
     z-index: 30;
     margin: 0 -10px 12px;
     padding: 0 10px 8px;
-    background: rgba(247, 248, 250, 0.92);
+    background: var(--bg-gray, #f7f8fa);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid rgba(212, 175, 55, 0.18);
@@ -1307,11 +1307,6 @@ watch(mobileFilterVisible, (visible) => {
     line-height: 1.4;
   }
 
-  @supports not (top: env(safe-area-inset-top)) {
-    .cloud-tabs {
-      top: 64px;
-    }
-  }
 }
 
 /* 哨兵元素：无限滚动触发点 */
@@ -1394,11 +1389,11 @@ watch(mobileFilterVisible, (visible) => {
 
   .cloud-tabs {
     position: sticky;
-    top: calc(64px + env(safe-area-inset-top));
+    top: var(--app-navbar-height, 64px);
     z-index: 30;
     margin: 0 -10px 12px;
     padding: 0 10px 8px;
-    background: rgba(247, 248, 250, 0.92);
+    background: var(--bg-gray, #f7f8fa);
     backdrop-filter: blur(14px);
     -webkit-backdrop-filter: blur(14px);
     border-bottom: 1px solid rgba(212, 175, 55, 0.18);
@@ -1612,17 +1607,8 @@ watch(mobileFilterVisible, (visible) => {
 }
 
 @media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  @supports not (top: env(safe-area-inset-top)) {
-    .cloud-tabs {
-      top: 64px;
-    }
-  }
-
-}
-
-@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
   .cloud-showcase {
-    padding-top: 8px;
+    padding-top: 0;
   }
 
   .barn-pull-refresh-content {

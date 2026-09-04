@@ -10,7 +10,8 @@ import Layout from './components/Layout.vue'
 #app {
   min-height: 100vh;
   height: 100%;
-  overflow-x: hidden;
+  /* Clip horizontal overflow without creating a nested vertical scroller. */
+  overflow-x: clip;
   /* Keep the WebView from forwarding edge gestures to the document root. */
   overscroll-behavior: none;
   position: relative;

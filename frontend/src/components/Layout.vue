@@ -1,7 +1,7 @@
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ 'layout-native': isNativePlatform }">
     <!-- 顶部导航栏 -->
-    <nav v-if="!route.meta.hideTopNav" ref="navbarRef" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
+    <nav v-if="!route.meta.hideTopNav" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
       <div class="navbar-content">
         <div class="brand" @click="goHome">
           <span class="brand-text">✦ 拾谷 PickGoods</span>
@@ -276,8 +276,6 @@ const refreshLoading = ref(false)
 const mobileActionOpen = ref(false)
 const fabDimmed = ref(false)
 const isNativePlatform = ref(Capacitor.isNativePlatform())
-const statusBarHeight = ref(0)
-const navbarRef = ref<HTMLElement | null>(null)
 const showcaseActiveTab = ref<'showcase' | 'barn' | 'stats' | null>(route.path.startsWith('/showcase') ? 'barn' : null)
 // 应用版本号（由 Vite define 注入，来源：package.json 的 version 字段）
 const appVersion = __APP_VERSION__
@@ -453,31 +451,6 @@ const handleShowcaseTabChanged = (e: Event) => {
 onMounted(() => {
   window.addEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
   window.addEventListener('scroll', handleFabScrollDim, { passive: true })
-
-  // 在原生平台上，尝试获取状态栏高度并设置 padding（作为 CSS env() 的后备方案）
-  if (Capacitor.isNativePlatform() && Capacitor.getPlatform() === 'android') {
-    // 延迟检查，确保 Capacitor 和状态栏已完全初始化
-    setTimeout(() => {
-      // 检查 safe-area-inset-top 是否可用且有效
-      const safeAreaTop = getComputedStyle(document.documentElement)
-        .getPropertyValue('env(safe-area-inset-top)')
-
-      // 如果 safe-area-inset-top 不可用或为 0，使用 JavaScript 设置默认值
-      // 这主要作为后备方案，因为 Capacitor 通常会自动设置 safe-area-inset-top
-      if (!safeAreaTop || safeAreaTop === '0px' || safeAreaTop.trim() === '') {
-        // Android 状态栏的标准高度通常是 24dp
-        // 根据设备像素比调整（高DPI设备可能需要更大的值）
-        const defaultStatusBarHeight = window.devicePixelRatio >= 3 ? 28 :
-                                      window.devicePixelRatio >= 2 ? 26 : 24
-        statusBarHeight.value = defaultStatusBarHeight
-
-        // 直接设置 padding-top 作为后备方案
-        if (navbarRef.value) {
-          navbarRef.value.style.paddingTop = `${defaultStatusBarHeight}px`
-        }
-      }
-    }, 100) // 延迟 100ms 确保初始化完成
-  }
 })
 
 onUnmounted(() => {
@@ -508,12 +481,18 @@ watch(isMobile, (mobile) => {
 
 <style scoped>
 .layout {
+  --app-navbar-height: 64px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
   /* 防止轻微阴影或误差造成横向滚动条 */
-  overflow-x: hidden;
+  /* Keep the document as the only vertical scroll container. */
+  overflow-x: clip;
   overscroll-behavior: none;
+}
+
+.layout-native {
+  --app-navbar-height: calc(64px + var(--app-safe-area-top, 0px));
 }
 
 .navbar {
@@ -531,7 +510,7 @@ watch(isMobile, (mobile) => {
 
 /* 在 Capacitor 原生环境中，为导航栏添加状态栏高度的 padding-top */
 .navbar-native {
-  padding-top: env(safe-area-inset-top);
+  padding-top: var(--app-safe-area-top, 0px);
 }
 
 /* 如果浏览器不支持 safe-area-inset-top，则不应用 padding */
@@ -724,7 +703,7 @@ watch(isMobile, (mobile) => {
 .main-content {
   flex: 1;
   min-height: 100vh;
-  padding-top: 64px;
+  padding-top: var(--app-navbar-height);
   overscroll-behavior: none;
 }
 
@@ -1280,12 +1259,12 @@ watch(isMobile, (mobile) => {
   /* 为主内容区域在移动端预留顶部导航高度，避免内容被遮挡 */
   .main-content {
     min-height: 100vh;
-    padding-top: calc(64px + env(safe-area-inset-top));
+    padding-top: var(--app-navbar-height);
   }
 
   @supports not (padding-top: env(safe-area-inset-top)) {
     .main-content {
-      padding-top: 64px;
+      padding-top: var(--app-navbar-height);
     }
   }
 }
@@ -1473,7 +1452,7 @@ watch(isMobile, (mobile) => {
 
   .main-content {
     min-height: 100dvh;
-    padding-top: calc(64px + env(safe-area-inset-top));
+    padding-top: var(--app-navbar-height);
   }
 }
 
@@ -1498,7 +1477,7 @@ watch(isMobile, (mobile) => {
 
   @supports not (padding-top: env(safe-area-inset-top)) {
     .main-content {
-      padding-top: 64px;
+      padding-top: var(--app-navbar-height);
     }
   }
 }
