@@ -70,8 +70,23 @@
       </h3>
 
       <p class="mobile-goods-meta" :title="metaTitle">
-        <span>{{ goods.ip.name }}</span>
-        <span v-if="characterNames">{{ characterNames }}</span>
+        <span class="mobile-goods-ip">{{ goods.ip.name }}</span>
+        <span v-if="characterNames" class="mobile-goods-meta-separator" aria-hidden="true">·</span>
+        <span
+          v-if="characterNames"
+          ref="characterHostRef"
+          class="mobile-goods-characters"
+          :class="{ 'is-scrollable': isCharacterScrollable }"
+          :style="{ '--character-scroll-duration': characterScrollDuration }"
+        >
+          <span class="mobile-character-clip">
+            <span ref="characterTextRef" class="mobile-character-text">{{ characterNames }}</span>
+            <span class="mobile-character-track" aria-hidden="true">
+              <span class="mobile-character-scroll-text">{{ characterNames }}</span>
+              <span class="mobile-character-scroll-text">{{ characterNames }}</span>
+            </span>
+          </span>
+        </span>
       </p>
 
       <div class="mobile-card-footer">
@@ -96,6 +111,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Brush, Check, CircleCheck, Location, MoreFilled } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
+import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
 import type { GoodsListItem } from '@/api/types'
 
 interface Props {
@@ -124,10 +140,15 @@ const isLongPress = ref(false)
 const titleHostRef = ref<HTMLElement | null>(null)
 const titleTextRef = ref<HTMLElement | null>(null)
 const titleOverflowing = ref(false)
+const characterHostRef = ref<HTMLElement | null>(null)
+const characterTextRef = ref<HTMLElement | null>(null)
+const isCharacterScrollable = ref(false)
+const characterScrollDuration = ref('8s')
 let longPressTimer: number | null = null
 let longPressStartPoint: { x: number; y: number } | null = null
 let latestTouchPoint: { x: number; y: number } | null = null
 let titleResizeObserver: ResizeObserver | null = null
+const CHARACTER_SCROLL_GAP_PX = 16
 
 const LONG_PRESS_DELAY = 600
 const LONG_PRESS_MOVE_TOLERANCE = 12
@@ -177,6 +198,23 @@ const syncTitleOverflow = async () => {
   if (titleOverflowing.value !== isOverflowing) {
     titleOverflowing.value = isOverflowing
   }
+}
+
+const syncCharacterOverflow = async () => {
+  await nextTick()
+  const textEl = characterTextRef.value
+
+  if (!textEl) {
+    isCharacterScrollable.value = false
+    characterScrollDuration.value = '8s'
+    return
+  }
+
+  const isOverflowing = textEl.scrollWidth > textEl.clientWidth + 1
+  isCharacterScrollable.value = isOverflowing
+  characterScrollDuration.value = isOverflowing
+    ? getReadableMarqueeDuration(textEl.scrollWidth + CHARACTER_SCROLL_GAP_PX)
+    : '8s'
 }
 
 const handleClick = () => {
@@ -270,6 +308,7 @@ const handleTouchMove = (event: TouchEvent) => {
 
 onMounted(() => {
   void syncTitleOverflow()
+  void syncCharacterOverflow()
 
   if (typeof ResizeObserver === 'undefined') return
 
@@ -283,6 +322,12 @@ onMounted(() => {
   if (titleTextRef.value) {
     titleResizeObserver.observe(titleTextRef.value)
   }
+  if (characterHostRef.value) {
+    titleResizeObserver.observe(characterHostRef.value)
+  }
+  if (characterTextRef.value) {
+    titleResizeObserver.observe(characterTextRef.value)
+  }
 })
 
 onBeforeUnmount(() => {
@@ -293,6 +338,10 @@ onBeforeUnmount(() => {
 watch(() => props.goods.name, () => {
   titleOverflowing.value = false
   syncTitleOverflow()
+})
+
+watch(characterNames, () => {
+  void syncCharacterOverflow()
 })
 </script>
 
@@ -369,26 +418,25 @@ watch(() => props.goods.name, () => {
 }
 
 .mobile-attr-tag {
-  top: 6px;
-  left: 6px;
+  top: 10px;
+  left: 10px;
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  max-width: calc(100% - 44px);
-  min-height: 20px;
-  padding: 2px 6px;
+  gap: 4px;
+  max-width: calc(100% - 58px);
+  min-height: 22px;
+  padding: 3px 8px;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.32);
+  border: 1px solid rgba(255, 255, 255, 0.46);
   border-radius: 999px;
-  color: #ffffff;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   line-height: 1;
   text-overflow: ellipsis;
   white-space: nowrap;
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.18);
+  backdrop-filter: blur(10px) saturate(1.24);
+  -webkit-backdrop-filter: blur(10px) saturate(1.24);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.1);
 }
 
 .mobile-tag-icon {
@@ -397,11 +445,13 @@ watch(() => props.goods.name, () => {
 }
 
 .tag-official {
-  background: rgba(190, 138, 12, 0.72);
+  background: rgba(255, 249, 232, 0.46);
+  color: #a8790e;
 }
 
 .tag-unofficial {
-  background: rgba(99, 102, 241, 0.68);
+  background: rgba(245, 243, 255, 0.46);
+  color: #6657f0;
 }
 
 .mobile-quantity-badge {
@@ -568,15 +618,115 @@ watch(() => props.goods.name, () => {
   white-space: nowrap;
 }
 
-.mobile-goods-meta span {
+.mobile-goods-ip {
+  /* IP 是识别主信息，不能被角色名称挤压或省略。 */
+  flex: 0 0 auto;
+  min-width: max-content;
+  overflow: visible;
+  text-overflow: clip;
+  white-space: nowrap;
+}
+
+.mobile-goods-meta-separator {
+  flex: none;
+  margin: 0 4px;
+  color: #cbd5e1;
+}
+
+.mobile-goods-characters {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mobile-character-clip {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.mobile-character-text {
+  display: block;
+  max-width: 100%;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.mobile-goods-meta span + span::before {
-  content: ' · ';
-  color: #cbd5e1;
+.mobile-character-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  max-width: none;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.mobile-character-scroll-text {
+  flex: 0 0 auto;
+}
+
+.mobile-goods-characters.is-scrollable .mobile-character-text {
+  animation: mobileCharacterEllipsis var(--character-scroll-duration, 8s) ease-in-out infinite;
+}
+
+.mobile-goods-characters.is-scrollable .mobile-character-track {
+  animation: mobileCharacterScroll var(--character-scroll-duration, 8s) ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes mobileCharacterEllipsis {
+  0%,
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes mobileCharacterScroll {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 8px));
+  }
+
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% - 8px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-goods-characters.is-scrollable .mobile-character-text,
+  .mobile-goods-characters.is-scrollable .mobile-character-track {
+    animation: none;
+  }
 }
 
 .mobile-card-footer {

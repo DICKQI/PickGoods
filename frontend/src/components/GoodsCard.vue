@@ -66,8 +66,20 @@
         </div>
         <div class="info-row">
           <span class="info-label">角色</span>
-          <span class="info-value truncate">
-            {{ characterNames }}
+          <span
+            ref="characterHostRef"
+            class="info-value character-value"
+            :class="{ 'is-scrollable': isCharacterScrollable }"
+            :style="{ '--character-scroll-duration': characterScrollDuration }"
+            :title="characterNames"
+          >
+            <span class="character-value-clip">
+              <span ref="characterTextRef" class="character-value-text">{{ characterNames }}</span>
+              <span class="character-value-track" aria-hidden="true">
+                <span class="character-scroll-text">{{ characterNames }}</span>
+                <span class="character-scroll-text">{{ characterNames }}</span>
+              </span>
+            </span>
           </span>
         </div>
       </div>
@@ -120,6 +132,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Picture, Location, CircleCheck, MoreFilled, Brush, Check } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
+import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
 import type { GoodsListItem } from '@/api/types'
 
 interface Props {
@@ -167,7 +180,12 @@ const characterNames = computed(() =>
 const categoryTagRef = ref<HTMLElement | null>(null)
 const categoryTextRef = ref<HTMLElement | null>(null)
 const isCategoryScrollable = ref(false)
+const characterHostRef = ref<HTMLElement | null>(null)
+const characterTextRef = ref<HTMLElement | null>(null)
+const isCharacterScrollable = ref(false)
+const characterScrollDuration = ref('8s')
 let categoryResizeObserver: ResizeObserver | null = null
+const CHARACTER_SCROLL_GAP_PX = 16
 
 const updateCategoryScrollState = async () => {
   await nextTick()
@@ -179,6 +197,23 @@ const updateCategoryScrollState = async () => {
   }
 
   isCategoryScrollable.value = textEl.scrollWidth > textEl.clientWidth + 1
+}
+
+const updateCharacterScrollState = async () => {
+  await nextTick()
+  const textEl = characterTextRef.value
+
+  if (!textEl) {
+    isCharacterScrollable.value = false
+    characterScrollDuration.value = '8s'
+    return
+  }
+
+  const isOverflowing = textEl.scrollWidth > textEl.clientWidth + 1
+  isCharacterScrollable.value = isOverflowing
+  characterScrollDuration.value = isOverflowing
+    ? getReadableMarqueeDuration(textEl.scrollWidth + CHARACTER_SCROLL_GAP_PX)
+    : '8s'
 }
 
 const locationDisplaySegments = computed(() => {
@@ -261,6 +296,7 @@ const handleTouchMove = () => clearLongPressTimer()
 
 onMounted(() => {
   void updateCategoryScrollState()
+  void updateCharacterScrollState()
 
   if (typeof ResizeObserver === 'undefined') return
 
@@ -274,6 +310,12 @@ onMounted(() => {
   if (categoryTextRef.value) {
     categoryResizeObserver.observe(categoryTextRef.value)
   }
+  if (characterHostRef.value) {
+    categoryResizeObserver.observe(characterHostRef.value)
+  }
+  if (characterTextRef.value) {
+    categoryResizeObserver.observe(characterTextRef.value)
+  }
 })
 
 watch(
@@ -282,6 +324,10 @@ watch(
     void updateCategoryScrollState()
   },
 )
+
+watch(characterNames, () => {
+  void updateCharacterScrollState()
+})
 
 onBeforeUnmount(() => {
   clearLongPressTimer()
@@ -616,6 +662,99 @@ onBeforeUnmount(() => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.character-value {
+  display: block;
+  overflow: hidden;
+}
+
+.character-value-clip {
+  position: relative;
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.character-value-text {
+  display: block;
+  max-width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.character-value-track {
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 16px;
+  max-width: none;
+  opacity: 0;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.character-scroll-text {
+  flex: 0 0 auto;
+}
+
+.character-value.is-scrollable .character-value-text {
+  animation: characterValueEllipsis var(--character-scroll-duration, 8s) ease-in-out infinite;
+}
+
+.character-value.is-scrollable .character-value-track {
+  animation: characterValueScroll var(--character-scroll-duration, 8s) ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+@keyframes characterValueEllipsis {
+  0%,
+  18%,
+  94%,
+  100% {
+    opacity: 1;
+  }
+
+  24%,
+  88% {
+    opacity: 0;
+  }
+}
+
+@keyframes characterValueScroll {
+  0%,
+  18% {
+    opacity: 0;
+    transform: translateX(0);
+  }
+
+  24% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  88% {
+    opacity: 1;
+    transform: translateX(calc(-50% - 8px));
+  }
+
+  94%,
+  100% {
+    opacity: 0;
+    transform: translateX(calc(-50% - 8px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character-value.is-scrollable .character-value-text,
+  .character-value.is-scrollable .character-value-track {
+    animation: none;
+  }
 }
 
 /* 底部脚部 - 解决冲突的关键样式 */

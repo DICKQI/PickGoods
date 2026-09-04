@@ -1,5 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import MobileGoodsCard from '@/components/MobileGoodsCard.vue'
 import type { GoodsListItem } from '@/api/types'
 
@@ -50,6 +52,8 @@ const mockTitleMeasurements = ({
   })
 }
 
+const mobileGoodsCardSource = readFileSync(resolve(process.cwd(), 'src/components/MobileGoodsCard.vue'), 'utf8')
+
 describe('MobileGoodsCard', () => {
   afterEach(() => {
     vi.useRealTimers()
@@ -84,6 +88,27 @@ describe('MobileGoodsCard', () => {
     const wrapper = mountCard()
 
     expect(wrapper.get('.mobile-quantity-badge').text()).toBe('x3')
+  })
+
+  it('supports adaptive scrolling for overflowing character names', () => {
+    expect(mobileGoodsCardSource).toContain('mobile-character-track')
+    expect(mobileGoodsCardSource).toContain('getReadableMarqueeDuration')
+    expect(mobileGoodsCardSource).toContain('characterScrollDuration')
+  })
+
+  it('keeps the IP name complete while allowing characters to use remaining space', () => {
+    expect(mobileGoodsCardSource).toMatch(/\.mobile-goods-ip\s*{[\s\S]*?flex: 0 0 auto;/)
+    expect(mobileGoodsCardSource).toMatch(/\.mobile-goods-ip\s*{[\s\S]*?overflow: visible;/)
+    expect(mobileGoodsCardSource).toMatch(/\.mobile-goods-characters\s*{[\s\S]*?flex: 1 1 auto;/)
+  })
+
+  it('uses the same glass badge palette as desktop cards', () => {
+    expect(mobileGoodsCardSource).toContain('border: 1px solid rgba(255, 255, 255, 0.46);')
+    expect(mobileGoodsCardSource).toContain('backdrop-filter: blur(10px) saturate(1.24);')
+    expect(mobileGoodsCardSource).toContain('background: rgba(255, 249, 232, 0.46);')
+    expect(mobileGoodsCardSource).toContain('color: #a8790e;')
+    expect(mobileGoodsCardSource).toContain('background: rgba(245, 243, 255, 0.46);')
+    expect(mobileGoodsCardSource).toContain('color: #6657f0;')
   })
 
   it('shows the last location segment and emits locationClick from the location chip', async () => {
