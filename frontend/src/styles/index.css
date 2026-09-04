@@ -23,10 +23,10 @@ body {
   color: var(--text-dark);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  /* 禁用移动端弹性滚动（果冻效果） */
+  /* Keep the document root from chaining edge gestures to the WebView. */
   overscroll-behavior: none;
   overscroll-behavior-y: none;
-  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
   height: 100%;
   position: relative;
   touch-action: pan-y;

@@ -64,4 +64,6 @@ Pull requests should include a summary, verification commands, linked issue or c
 - 文档流程：`pnpm build` → `npx cap sync android` → `android/gradlew.bat assembleDebug`，产物在 `android/app/build/outputs/apk/debug/app-debug.apk`。
 - `@capacitor-community/http@1.4.1` 缺少 AGP 8 必需的 namespace，靠 `package.json` 里 `pnpm.patchedDependencies`（patches/@capacitor-community__http@1.4.1.patch）修复。注意：
   - 文件名是 pnpm 原生补丁格式（`__` 双下划线），`npx patch-package` 不认识（报 Unrecognized patch file），必须用 `pnpm install` 应用；补丁未生效时 `CI=true pnpm install` 会重建 node_modules 并打上补丁。
-  - pnpm 打补丁后插件目录会变成 `.pnpm/@capacitor-community+http@1.4.1_patch_hash=xxx/`，`android/capacitor.settings.gradle` 里的旧路径失效（Gradle 报 "No variants exist"）。所以 **pnpm install 之后必须重新 `npx cap sync android`** 再跑 Gradle。
+- pnpm 打补丁后插件目录会变成 `.pnpm/@capacitor-community+http@1.4.1_patch_hash=xxx/`，`android/capacitor.settings.gradle` 里的旧路径失效（Gradle 报 "No variants exist"）。所以 **pnpm install 之后必须重新 `npx cap sync android`** 再跑 Gradle。
+- Android WebView 在页面顶部或底部会对整个 WebView 应用 stretch overscroll，导致固定的移动端底部 Tab 也跟着拉伸。除 Web 层保留 `overscroll-behavior: none` 外，必须在 `frontend/android/app/src/main/java/com/pickgoods/app/MainActivity.java` 的 `onCreate` 中，在 `super.onCreate(savedInstanceState)` 之后执行 `getBridge().getWebView().setOverScrollMode(View.OVER_SCROLL_NEVER)`，并导入 `android.view.View`。
+- `frontend/android/` 当前被 `.gitignore` 忽略。如果新环境中该目录不存在，先执行 `pnpm build` 和 `pnpm exec cap add android`，再检查并重新应用上述 `MainActivity` 原生设置；`npx cap sync android` 不应覆盖这项自定义设置。仅修改 Vue/CSS 不能替代该原生设置。

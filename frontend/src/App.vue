@@ -10,9 +10,9 @@ import Layout from './components/Layout.vue'
 #app {
   min-height: 100vh;
   height: 100%;
-  /* 禁用移动端弹性滚动（果冻效果） */
+  overflow-x: hidden;
+  /* Keep the WebView from forwarding edge gestures to the document root. */
   overscroll-behavior: none;
-  -webkit-overflow-scrolling: touch;
   position: relative;
 }
 </style>

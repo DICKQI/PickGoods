@@ -513,6 +513,7 @@ watch(isMobile, (mobile) => {
   flex-direction: column;
   /* 防止轻微阴影或误差造成横向滚动条 */
   overflow-x: hidden;
+  overscroll-behavior: none;
 }
 
 .navbar {
@@ -724,6 +725,7 @@ watch(isMobile, (mobile) => {
   flex: 1;
   min-height: 100vh;
   padding-top: 64px;
+  overscroll-behavior: none;
 }
 
 .main-content.has-bottom-nav {
