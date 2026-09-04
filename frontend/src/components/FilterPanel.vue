@@ -155,10 +155,42 @@
             class="status-group"
             @change="handleStatusChange"
           >
-            <el-checkbox-button class="status-chip status-chip--in-cabinet" value="in_cabinet">在馆</el-checkbox-button>
-            <el-checkbox-button class="status-chip status-chip--intended" value="intended">意向入手</el-checkbox-button>
-            <el-checkbox-button class="status-chip status-chip--outdoor" value="outdoor">出街中</el-checkbox-button>
-            <el-checkbox-button class="status-chip status-chip--sold" value="sold">已售出</el-checkbox-button>
+            <el-checkbox-button
+              class="status-chip status-chip--in-cabinet"
+              value="in_cabinet"
+              aria-label="在馆"
+              title="在馆"
+            >
+              <el-icon class="status-chip__icon" aria-hidden="true"><House /></el-icon>
+              <span class="status-chip__label">在馆</span>
+            </el-checkbox-button>
+            <el-checkbox-button
+              class="status-chip status-chip--intended"
+              value="intended"
+              aria-label="意向"
+              title="意向"
+            >
+              <el-icon class="status-chip__icon" aria-hidden="true"><Star /></el-icon>
+              <span class="status-chip__label">意向</span>
+            </el-checkbox-button>
+            <el-checkbox-button
+              class="status-chip status-chip--outdoor"
+              value="outdoor"
+              aria-label="出街"
+              title="出街"
+            >
+              <el-icon class="status-chip__icon" aria-hidden="true"><Van /></el-icon>
+              <span class="status-chip__label">出街</span>
+            </el-checkbox-button>
+            <el-checkbox-button
+              class="status-chip status-chip--sold"
+              value="sold"
+              aria-label="已售出"
+              title="已售出"
+            >
+              <el-icon class="status-chip__icon" aria-hidden="true"><SoldOut /></el-icon>
+              <span class="status-chip__label">已售出</span>
+            </el-checkbox-button>
           </el-checkbox-group>
         </div>
 
@@ -218,7 +250,7 @@
 <script setup lang="ts">
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { ArrowDown, RefreshLeft, List, MagicStick } from '@element-plus/icons-vue'
+import { ArrowDown, House, List, MagicStick, RefreshLeft, SoldOut, Star, Van } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useLocationStore } from '@/stores/location'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -275,6 +307,7 @@ const localFilters = ref<GoodsSearchParams>({
 })
 
 // 本地状态多选
+const DEFAULT_SELECTED_STATUSES: GoodsStatus[] = ['in_cabinet', 'intended', 'outdoor']
 const selectedStatuses = ref<GoodsStatus[]>([])
 const ipSearchKeyword = ref('')
 const characterSearchKeyword = ref('')
@@ -437,8 +470,8 @@ const handleReset = () => {
     location: undefined,
     group_by: undefined,
   }
-  selectedStatuses.value = []
-  guziStore.resetFilters()
+  selectedStatuses.value = [...DEFAULT_SELECTED_STATUSES]
+  handleFilterChange()
 }
 
 // 视图模式切换处理函数
@@ -497,8 +530,8 @@ onMounted(async () => {
   } else if (guziStore.filters.status) {
     selectedStatuses.value = [guziStore.filters.status]
   } else {
-    // 页面首次进入且未指定状态时，默认选中“在馆”
-    selectedStatuses.value = ['in_cabinet']
+    // 页面首次进入且未指定状态时，默认显示除“已售出”外的谷子
+    selectedStatuses.value = [...DEFAULT_SELECTED_STATUSES]
     // 触发一次筛选，确保列表与默认状态一致
     handleFilterChange()
   }
@@ -704,7 +737,7 @@ onUnmounted(() => {})
 /* 统一筛选控件的高度与圆角（下拉框/输入框/状态按钮严格对齐） */
 .filter-panel {
   --filter-control-height: 32px;
-  --filter-control-radius: 8px;
+  --filter-control-radius: 12px;
 }
 
 @media (max-width: 768px) {
@@ -713,16 +746,17 @@ onUnmounted(() => {})
   }
 }
 
-::deep(.el-input__wrapper),
-::deep(.el-select__wrapper) {
+/* Element Plus 选择框内部节点没有组件 scoped 属性，使用全局前缀确保圆角覆盖生效。 */
+:global(.filter-panel .el-input__wrapper),
+:global(.filter-panel .el-select__wrapper) {
   border-radius: var(--filter-control-radius) !important;
   height: var(--filter-control-height);
   min-height: var(--filter-control-height);
   background-color: #fff !important;
 }
 
-::deep(.el-input__inner),
-::deep(.el-select__selected-item) {
+:global(.filter-panel .el-input__inner),
+:global(.filter-panel .el-select__selected-item) {
   line-height: var(--filter-control-height);
 }
 
@@ -896,6 +930,10 @@ onUnmounted(() => {})
   min-width: 0;
 }
 
+.status-chip__icon {
+  display: none;
+}
+
 .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
   background-color: var(--status-chip-bg) !important;
   border: 1px solid var(--status-chip-border) !important;
@@ -905,16 +943,17 @@ onUnmounted(() => {})
   align-items: center;
   justify-content: center;
   font-weight: 600;
-  gap: 6px;
+  gap: 4px;
   line-height: 1;
   box-sizing: border-box;
   box-shadow: none !important;
   transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, box-shadow 0.18s ease;
   width: 100%;
   min-width: 0;
-  height: var(--filter-control-height);
-  min-height: var(--filter-control-height);
-  padding: 0 12px !important;
+  height: 30px;
+  min-height: 30px;
+  padding: 0 8px !important;
+  font-size: 12px;
   white-space: nowrap;
 }
 
@@ -991,9 +1030,39 @@ onUnmounted(() => {})
   border-color: #cbd5e1 !important;
 }
 
+/* 紧凑桌面保持八列筛选器，状态项切换为四个等宽图标，避免文字互相挤压。 */
+@media (min-width: 769px) and (max-width: 1279px) {
+  .status-group {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+  }
+
+  .status-chip__label {
+    display: none;
+  }
+
+  .status-chip__icon {
+    display: inline-flex;
+    font-size: 15px;
+  }
+
+  .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
+    padding: 0 !important;
+  }
+
+  .filter-item--status :deep(.status-chip .el-checkbox-button__inner)::before {
+    display: none;
+  }
+}
+
 @media (max-width: 768px) {
   .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
-    padding: 0 8px !important;
+    padding: 0 6px !important;
+    font-size: 12px !important;
+    height: 32px;
+    min-height: 32px;
   }
 }
 
@@ -1037,6 +1106,18 @@ onUnmounted(() => {})
 
   .filter-item--status :deep(.status-chip .el-checkbox-button__inner) {
     padding: 0 8px !important;
+  }
+
+  .status-chip__label {
+    display: inline;
+  }
+
+  .status-chip__icon {
+    display: none;
+  }
+
+  .filter-item--status :deep(.status-chip .el-checkbox-button__inner)::before {
+    display: block;
   }
 
   .toggle-option {

@@ -123,28 +123,40 @@
         </el-button>
       </aside>
 
-      <div
-        v-if="bookContextMenu.visible"
-        class="page-context-menu"
-        :style="{ left: `${bookContextMenu.x}px`, top: `${bookContextMenu.y}px` }"
-        @click.stop
-      >
-        <button type="button" @click="renameContextBook">重命名</button>
-      </div>
+      <Teleport to="body">
+        <div
+          v-if="bookContextMenu.visible"
+          ref="bookContextMenuRef"
+          class="page-context-menu"
+          :style="{
+            left: `${bookContextMenu.x}px`,
+            top: `${bookContextMenu.y}px`,
+            visibility: bookContextMenuPositioned ? 'visible' : 'hidden',
+          }"
+          @click.stop
+        >
+          <button type="button" @click="renameContextBook">重命名</button>
+        </div>
 
-      <div
-        v-if="pageContextMenu.visible"
-        class="page-context-menu"
-        :style="{ left: `${pageContextMenu.x}px`, top: `${pageContextMenu.y}px` }"
-        @click.stop
-      >
-        <button type="button" @click="renameContextPage">重命名</button>
-        <button type="button" @click="duplicateContextPage">复制页面</button>
-        <button class="is-danger" type="button" @click="confirmDeleteContextPage">
-          <el-icon><Delete /></el-icon>
-          删除页面
-        </button>
-      </div>
+        <div
+          v-if="pageContextMenu.visible"
+          ref="pageContextMenuRef"
+          class="page-context-menu"
+          :style="{
+            left: `${pageContextMenu.x}px`,
+            top: `${pageContextMenu.y}px`,
+            visibility: pageContextMenuPositioned ? 'visible' : 'hidden',
+          }"
+          @click.stop
+        >
+          <button type="button" @click="renameContextPage">重命名</button>
+          <button type="button" @click="duplicateContextPage">复制页面</button>
+          <button class="is-danger" type="button" @click="confirmDeleteContextPage">
+            <el-icon><Delete /></el-icon>
+            删除页面
+          </button>
+        </div>
+      </Teleport>
 
       <main class="journal-editor">
         <div v-if="journalStore.loading || journalStore.pageLoading" class="journal-loading">
@@ -568,13 +580,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, DocumentChecked, Download, Hide, Lock, Plus, Unlock, View } from '@element-plus/icons-vue'
 import { useJournalStore } from '@/stores/journal'
 import JournalCanvas from './JournalCanvas.vue'
 import JournalGoodsPicker from './JournalGoodsPicker.vue'
 import type { GoodsListItem, JournalLayer, JournalPageContent, JournalShapeItem, JournalStickerItem, JournalTextItem } from '@/api/types'
+import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 
 const journalStore = useJournalStore()
 const canvasRef = ref<InstanceType<typeof JournalCanvas> | null>(null)
@@ -592,12 +605,17 @@ const pageContextMenu = ref({
   x: 0,
   y: 0,
 })
+const pageContextMenuRef = ref<HTMLElement | null>(null)
+const pageContextMenuPositioned = ref(false)
 const bookContextMenu = ref({
   visible: false,
   bookId: '',
   x: 0,
   y: 0,
 })
+const bookContextMenuRef = ref<HTMLElement | null>(null)
+const bookContextMenuPositioned = ref(false)
+let contextMenuPositionRequest = 0
 let autoSaveTimer: number | null = null
 const draggingPageId = ref<string | null>(null)
 
@@ -658,20 +676,54 @@ const deleteBook = async () => {
   }
 }
 
-const openBookContextMenu = (event: MouseEvent, bookId: string) => {
-  closePageContextMenu()
-  const menuWidth = 108
-  const menuHeight = 40
-  bookContextMenu.value = {
-    visible: true,
-    bookId,
-    x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
-    y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
+const positionJournalContextMenu = async (
+  kind: 'book' | 'page',
+  x: number,
+  y: number,
+) => {
+  const request = ++contextMenuPositionRequest
+  await nextTick()
+  if (request !== contextMenuPositionRequest) return
+
+  const menu = kind === 'book' ? bookContextMenuRef.value : pageContextMenuRef.value
+  if (!menu) return
+  const rect = menu.getBoundingClientRect()
+  const position = getContextMenuPosition({
+    x,
+    y,
+    menuWidth: rect.width,
+    menuHeight: rect.height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  })
+
+  if (kind === 'book') {
+    bookContextMenu.value.x = position.left
+    bookContextMenu.value.y = position.top
+    bookContextMenuPositioned.value = true
+  } else {
+    pageContextMenu.value.x = position.left
+    pageContextMenu.value.y = position.top
+    pageContextMenuPositioned.value = true
   }
 }
 
+const openBookContextMenu = (event: MouseEvent, bookId: string) => {
+  closePageContextMenu()
+  bookContextMenuPositioned.value = false
+  bookContextMenu.value = {
+    visible: true,
+    bookId,
+    x: event.clientX,
+    y: event.clientY,
+  }
+  void positionJournalContextMenu('book', event.clientX, event.clientY)
+}
+
 const closeBookContextMenu = () => {
+  contextMenuPositionRequest += 1
   bookContextMenu.value.visible = false
+  bookContextMenuPositioned.value = false
 }
 
 const renameContextBook = async () => {
@@ -717,18 +769,20 @@ const deletePage = async (pageId: string) => {
 
 const openPageContextMenu = (event: MouseEvent, pageId: string) => {
   closeBookContextMenu()
-  const menuWidth = 116
-  const menuHeight = 112
+  pageContextMenuPositioned.value = false
   pageContextMenu.value = {
     visible: true,
     pageId,
-    x: Math.min(event.clientX, window.innerWidth - menuWidth - 8),
-    y: Math.min(event.clientY, window.innerHeight - menuHeight - 8),
+    x: event.clientX,
+    y: event.clientY,
   }
+  void positionJournalContextMenu('page', event.clientX, event.clientY)
 }
 
 const closePageContextMenu = () => {
+  contextMenuPositionRequest += 1
   pageContextMenu.value.visible = false
+  pageContextMenuPositioned.value = false
 }
 
 const closeContextMenus = () => {
@@ -1592,6 +1646,8 @@ onBeforeUnmount(() => {
   position: fixed;
   z-index: 3000;
   min-width: 108px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
   padding: 4px;
   border: 1px solid rgba(148, 163, 184, 0.22);
   border-radius: 8px;

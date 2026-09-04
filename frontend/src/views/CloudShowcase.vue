@@ -181,18 +181,24 @@
         @clear="guziStore.clearGoodsSelection"
       />
 
-      <!-- 右键菜单 -->
-      <div
-        v-if="contextMenuVisible"
-        class="context-menu-overlay"
-        @click="closeContextMenu"
-        @contextmenu.prevent
-      >
+      <!-- 右键菜单：传送到 body，避免下拉刷新区域的 transform 改变 fixed 坐标系 -->
+      <Teleport to="body">
         <div
-          class="context-menu"
-          :style="{ top: contextMenuY + 'px', left: contextMenuX + 'px' }"
-          @click.stop
+          v-if="contextMenuVisible"
+          class="context-menu-overlay"
+          @click="closeContextMenu"
+          @contextmenu.prevent
         >
+          <div
+            ref="contextMenuRef"
+            class="context-menu"
+            :style="{
+              top: contextMenuY + 'px',
+              left: contextMenuX + 'px',
+              visibility: contextMenuPositioned ? 'visible' : 'hidden',
+            }"
+            @click.stop
+          >
           <div
             class="context-menu-item"
             :class="{ 'is-disabled': moveDisabledToTop }"
@@ -225,8 +231,9 @@
             <el-icon class="context-menu-icon"><Delete /></el-icon>
             <span>删除</span>
           </div>
+          </div>
         </div>
-      </div>
+      </Teleport>
           </div>
         </div>
         <div v-if="isMobile" class="mobile-filter-host">
@@ -268,7 +275,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close, Search } from '@element-plus/icons-vue'
@@ -283,6 +290,7 @@ import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
 import JournalWorkspace from '@/components/journal/JournalWorkspace.vue'
+import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import type { GoodsListItem } from '@/api/types'
@@ -309,6 +317,9 @@ const contextMenuVisible = ref(false)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
 const contextMenuGoods = ref<GoodsListItem | null>(null)
+const contextMenuRef = ref<HTMLElement | null>(null)
+const contextMenuPositioned = ref(false)
+let contextMenuPositionRequest = 0
 const moveLoading = ref(false)
 
 // 刷新状态
@@ -446,12 +457,37 @@ const handleCardSelect = (goods: GoodsListItem) => {
   guziStore.toggleGoodsSelection(goods)
 }
 
-const handleCardContextMenu = (payload: { goods: GoodsListItem; x: number; y: number }) => {
+const repositionContextMenu = () => {
+  const menu = contextMenuRef.value
+  if (!menu) return
+
+  const rect = menu.getBoundingClientRect()
+  const position = getContextMenuPosition({
+    x: contextMenuX.value,
+    y: contextMenuY.value,
+    menuWidth: rect.width,
+    menuHeight: rect.height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  })
+  contextMenuX.value = position.left
+  contextMenuY.value = position.top
+  contextMenuPositioned.value = true
+}
+
+const handleCardContextMenu = async (payload: { goods: GoodsListItem; x: number; y: number }) => {
   if (guziStore.selectionMode) return
   contextMenuGoods.value = payload.goods
   contextMenuX.value = payload.x
   contextMenuY.value = payload.y
+  contextMenuPositioned.value = false
   contextMenuVisible.value = true
+
+  const request = ++contextMenuPositionRequest
+  await nextTick()
+  if (request === contextMenuPositionRequest && contextMenuVisible.value) {
+    repositionContextMenu()
+  }
 }
 
 const handleLocationClick = (path: string) => {
@@ -516,7 +552,9 @@ const closeMobileFilter = () => {
 }
 
 const closeContextMenu = () => {
+  contextMenuPositionRequest += 1
   contextMenuVisible.value = false
+  contextMenuPositioned.value = false
 }
 
 const handleEditGoods = () => {
@@ -789,6 +827,7 @@ const handleShowcaseRefresh = async () => {
 }
 
 const handleResize = () => {
+  closeContextMenu()
   if (!isMobile.value) {
     closeMobileFilter()
     collapseMobileSearch()
@@ -797,6 +836,8 @@ const handleResize = () => {
 
 const handleWindowScroll = () => {
   const currentScrollY = Math.max(window.scrollY || 0, 0)
+
+  if (contextMenuVisible.value) closeContextMenu()
 
   if (isMobile.value && currentScrollY > lastScrollY && currentScrollY >= SCROLL_COLLAPSE_DISTANCE) {
     collapseMobileSearch()
@@ -1142,7 +1183,7 @@ watch(mobileFilterVisible, (visible) => {
 
   .barn-discovery :deep(.el-input__wrapper) {
     min-height: 42px;
-    border-radius: 999px;
+    border-radius: var(--search-control-radius, 12px) !important;
     box-shadow: none;
     background: #ffffff;
   }
@@ -1439,7 +1480,7 @@ watch(mobileFilterVisible, (visible) => {
 
   .barn-discovery :deep(.el-input__wrapper) {
     min-height: 42px;
-    border-radius: 999px;
+    border-radius: var(--search-control-radius, 12px) !important;
     box-shadow: none;
     background: #ffffff;
   }
@@ -1773,6 +1814,8 @@ watch(mobileFilterVisible, (visible) => {
 .context-menu {
   position: fixed;
   min-width: 140px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
   background-color: var(--bg-white);
   border-radius: 10px;
   box-shadow: var(--shadow-md);

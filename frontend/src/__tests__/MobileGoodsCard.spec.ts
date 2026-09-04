@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import MobileGoodsCard from '@/components/MobileGoodsCard.vue'
 import type { GoodsListItem } from '@/api/types'
 
@@ -51,6 +51,10 @@ const mockTitleMeasurements = ({
 }
 
 describe('MobileGoodsCard', () => {
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
   it('emits click in normal mode', async () => {
     const wrapper = mountCard()
 
@@ -165,6 +169,40 @@ describe('MobileGoodsCard', () => {
     vi.advanceTimersByTime(600)
 
     expect(wrapper.emitted('contextMenu')?.[0]).toEqual([{ goods, x: 12, y: 34 }])
-    vi.useRealTimers()
+  })
+
+  it('tolerates small touch jitter while waiting for a long press', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountCard()
+
+    await wrapper.trigger('touchstart', { touches: [{ clientX: 12, clientY: 34 }] })
+    await wrapper.trigger('touchmove', { touches: [{ clientX: 18, clientY: 39 }] })
+    vi.advanceTimersByTime(600)
+
+    expect(wrapper.emitted('contextMenu')?.[0]).toEqual([{ goods, x: 18, y: 39 }])
+  })
+
+  it('cancels the long press after an intentional swipe', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountCard()
+
+    await wrapper.trigger('touchstart', { touches: [{ clientX: 12, clientY: 34 }] })
+    await wrapper.trigger('touchmove', { touches: [{ clientX: 12, clientY: 55 }] })
+    vi.advanceTimersByTime(600)
+
+    expect(wrapper.emitted('contextMenu')).toBeUndefined()
+  })
+
+  it('does not emit a card click after a long press opens the menu', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountCard()
+
+    await wrapper.trigger('touchstart', { touches: [{ clientX: 12, clientY: 34 }] })
+    vi.advanceTimersByTime(600)
+    await wrapper.trigger('touchend')
+    await wrapper.trigger('click')
+
+    expect(wrapper.emitted('contextMenu')).toHaveLength(1)
+    expect(wrapper.emitted('click')).toBeUndefined()
   })
 })

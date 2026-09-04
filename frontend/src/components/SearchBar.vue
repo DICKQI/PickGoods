@@ -48,25 +48,25 @@ watch(() => guziStore.filters.search, (newVal) => {
 <style scoped>
 .search-bar {
   margin-bottom: 20px;
+  --search-control-radius: 12px;
 }
 
 .search-input {
   max-width: 600px;
 }
 
-:deep(.el-input__wrapper) {
-  border-radius: var(--button-radius);
+:global(.search-bar .el-input__wrapper) {
+  border-radius: var(--search-control-radius) !important;
   box-shadow: var(--shadow-sm);
   border: 1px solid var(--border-color);
 }
 
-:deep(.el-input__wrapper:hover) {
+:global(.search-bar .el-input__wrapper:hover) {
   border-color: var(--primary-gold);
 }
 
-:deep(.el-input__wrapper.is-focus) {
+:global(.search-bar .el-input__wrapper.is-focus) {
   border-color: var(--primary-gold);
   box-shadow: 0 0 0 2px rgba(212, 175, 55, 0.1);
 }
 </style>
-

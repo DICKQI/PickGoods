@@ -76,13 +76,19 @@
     </div>
 
     <!-- 右键菜单（谷子/展柜共用遮罩） -->
-    <div v-if="contextMenu.visible" class="context-menu-overlay" @click="closeContextMenu" @contextmenu.prevent>
-      <div
-        class="context-menu"
-        :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
-        @click.stop
-        @contextmenu.prevent
-      >
+    <Teleport to="body">
+      <div v-if="contextMenu.visible" class="context-menu-overlay" @click="closeContextMenu" @contextmenu.prevent>
+        <div
+          ref="contextMenuRef"
+          class="context-menu"
+          :style="{
+            left: contextMenu.x + 'px',
+            top: contextMenu.y + 'px',
+            visibility: contextMenuPositioned ? 'visible' : 'hidden',
+          }"
+          @click.stop
+          @contextmenu.prevent
+        >
         <!-- 谷子卡片右键菜单 -->
         <template v-if="contextMenu.type === 'goods'">
           <div class="context-menu-item" :class="{ 'is-disabled': isFirst(contextMenu.goodsId!) }" @click="ctxMoveUp">
@@ -110,8 +116,9 @@
             删除
           </div>
         </template>
+        </div>
       </div>
-    </div>
+    </Teleport>
 
     <GoodsDrawer v-model="goodsDrawerVisible" :goods-id="selectedGoodsId" />
 
@@ -214,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus'
 import {
   Plus,
@@ -232,6 +239,7 @@ import { useShowcaseStore } from '@/stores/showcase'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { uploadShowcaseCoverImage } from '@/api/showcase'
 import type { GoodsListItem } from '@/api/types'
+import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 
 const { isMobile } = useResponsiveDevice()
 
@@ -299,18 +307,40 @@ const contextMenu = reactive<{
   goodsId: null,
   showcaseId: null,
 })
+const contextMenuRef = ref<HTMLElement | null>(null)
+const contextMenuPositioned = ref(false)
+let contextMenuPositionRequest = 0
 
-const clampMenuPosition = (x: number, y: number) => {
-  // 估一个菜单尺寸，避免贴边溢出（不要求精确）
-  const w = 180
-  const h = 140
-  const maxX = Math.max(8, window.innerWidth - w - 8)
-  const maxY = Math.max(8, window.innerHeight - h - 8)
-  return { x: Math.min(Math.max(8, x), maxX), y: Math.min(Math.max(8, y), maxY) }
+const openContextMenuAt = async (x: number, y: number) => {
+  contextMenu.x = x
+  contextMenu.y = y
+  contextMenuPositioned.value = false
+  contextMenu.visible = true
+
+  const request = ++contextMenuPositionRequest
+  await nextTick()
+  if (request !== contextMenuPositionRequest || !contextMenu.visible) return
+
+  const menu = contextMenuRef.value
+  if (!menu) return
+  const rect = menu.getBoundingClientRect()
+  const position = getContextMenuPosition({
+    x: contextMenu.x,
+    y: contextMenu.y,
+    menuWidth: rect.width,
+    menuHeight: rect.height,
+    viewportWidth: window.innerWidth,
+    viewportHeight: window.innerHeight,
+  })
+  contextMenu.x = position.left
+  contextMenu.y = position.top
+  contextMenuPositioned.value = true
 }
 
 const closeContextMenu = () => {
+  contextMenuPositionRequest += 1
   contextMenu.visible = false
+  contextMenuPositioned.value = false
   contextMenu.type = null
   contextMenu.goodsId = null
   contextMenu.showcaseId = null
@@ -318,35 +348,26 @@ const closeContextMenu = () => {
 
 const openGoodsContextMenu = (payload: { goods: GoodsListItem; x: number; y: number }) => {
   if (isReadonly.value) return
-  const pos = clampMenuPosition(payload.x, payload.y)
-  contextMenu.visible = true
   contextMenu.type = 'goods'
-  contextMenu.x = pos.x
-  contextMenu.y = pos.y
   contextMenu.goodsId = payload.goods.id
   contextMenu.showcaseId = null
+  void openContextMenuAt(payload.x, payload.y)
 }
 
 const openGoodsContextMenuFromDom = (goodsId: string, event: MouseEvent) => {
   if (isReadonly.value) return
-  const pos = clampMenuPosition(event.clientX, event.clientY)
-  contextMenu.visible = true
   contextMenu.type = 'goods'
-  contextMenu.x = pos.x
-  contextMenu.y = pos.y
   contextMenu.goodsId = goodsId
   contextMenu.showcaseId = null
+  void openContextMenuAt(event.clientX, event.clientY)
 }
 
 const openShowcaseContextMenu = (showcaseId: string, event: MouseEvent) => {
   if (isReadonly.value) return
-  const pos = clampMenuPosition(event.clientX, event.clientY)
-  contextMenu.visible = true
   contextMenu.type = 'showcase'
-  contextMenu.x = pos.x
-  contextMenu.y = pos.y
   contextMenu.showcaseId = showcaseId
   contextMenu.goodsId = null
+  void openContextMenuAt(event.clientX, event.clientY)
 }
 
 const showcaseDialogVisible = ref(false)
@@ -615,10 +636,17 @@ const ctxDeleteShowcase = async () => {
 }
 
 onMounted(async () => {
+  window.addEventListener('resize', closeContextMenu)
+  window.addEventListener('scroll', closeContextMenu, true)
   showcaseStore.activeShowcaseId = null
   showcaseStore.activeShowcase = null
   viewMode.value = 'list'
   await showcaseStore.fetchList()
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', closeContextMenu)
+  window.removeEventListener('scroll', closeContextMenu, true)
 })
 
 watch(
@@ -1071,6 +1099,8 @@ watch(
 .context-menu {
   position: fixed;
   min-width: 170px;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.95);
   border: 1px solid rgba(0, 0, 0, 0.06);
   border-radius: 12px;

@@ -125,7 +125,12 @@ const titleHostRef = ref<HTMLElement | null>(null)
 const titleTextRef = ref<HTMLElement | null>(null)
 const titleOverflowing = ref(false)
 let longPressTimer: number | null = null
+let longPressStartPoint: { x: number; y: number } | null = null
+let latestTouchPoint: { x: number; y: number } | null = null
 let titleResizeObserver: ResizeObserver | null = null
+
+const LONG_PRESS_DELAY = 600
+const LONG_PRESS_MOVE_TOLERANCE = 12
 
 const selectable = computed(() => props.selectable)
 const selected = computed(() => props.selected)
@@ -219,19 +224,49 @@ const clearLongPressTimer = () => {
 const handleTouchStart = (event: TouchEvent) => {
   if (selectable.value) return
   clearLongPressTimer()
+  isLongPress.value = false
 
   const touch = event.touches[0]
   if (!touch) return
 
+  longPressStartPoint = { x: touch.clientX, y: touch.clientY }
+  latestTouchPoint = longPressStartPoint
   longPressTimer = window.setTimeout(() => {
     isLongPress.value = true
-    const currentTouch = event.touches[0] || touch
-    emit('contextMenu', { goods: props.goods, x: currentTouch.clientX, y: currentTouch.clientY })
-  }, 600)
+    const currentTouch = latestTouchPoint ?? longPressStartPoint ?? { x: touch.clientX, y: touch.clientY }
+    emit('contextMenu', { goods: props.goods, x: currentTouch.x, y: currentTouch.y })
+    longPressTimer = null
+  }, LONG_PRESS_DELAY)
 }
 
-const handleTouchEnd = () => clearLongPressTimer()
-const handleTouchMove = () => clearLongPressTimer()
+const handleTouchEnd = () => {
+  clearLongPressTimer()
+  longPressStartPoint = null
+  latestTouchPoint = null
+}
+
+const handleTouchMove = (event: TouchEvent) => {
+  const touch = event.touches[0]
+  if (!touch || event.touches.length > 1 || !longPressStartPoint) {
+    clearLongPressTimer()
+    longPressStartPoint = null
+    latestTouchPoint = null
+    return
+  }
+
+  latestTouchPoint = { x: touch.clientX, y: touch.clientY }
+  const distance = Math.hypot(
+    touch.clientX - longPressStartPoint.x,
+    touch.clientY - longPressStartPoint.y,
+  )
+
+  // Android WebView can report a few pixels of jitter while the finger is held still.
+  if (distance > LONG_PRESS_MOVE_TOLERANCE) {
+    clearLongPressTimer()
+    longPressStartPoint = null
+    latestTouchPoint = null
+  }
+}
 
 onMounted(() => {
   void syncTitleOverflow()
@@ -277,6 +312,10 @@ watch(() => props.goods.name, () => {
   background: #ffffff;
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.06);
   cursor: pointer;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
   -webkit-tap-highlight-color: transparent;
   transition:
     border-color 0.18s ease,

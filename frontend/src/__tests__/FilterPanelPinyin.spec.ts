@@ -244,11 +244,22 @@ describe('FilterPanel 拼音筛选', () => {
     themeSelect?.props('filterMethod')?.('hdj')
     await flushPromises()
 
+    vi.mocked(guziStore.searchGuzi).mockClear()
     await wrapper.find('.reset-btn').trigger('click')
     await flushPromises()
 
-    expect(guziStore.resetFilters).toHaveBeenCalledTimes(1)
+    expect(guziStore.searchGuzi).toHaveBeenCalledWith(expect.objectContaining({
+      status__in: 'in_cabinet,intended,outdoor',
+    }))
     expect(ipSelect?.findAll('.el-option-stub').map((node) => node.attributes('data-label'))).toEqual(['原神', '崩坏：星穹铁道', '明日方舟'])
     expect(themeSelect?.findAll('.el-option-stub').map((node) => node.attributes('data-label'))).toEqual(['海灯节', '音律联觉'])
+  })
+
+  it('默认选中除已售出外的全部状态', async () => {
+    const { guziStore } = await mountFilterPanel()
+
+    expect(guziStore.searchGuzi).toHaveBeenCalledWith(expect.objectContaining({
+      status__in: 'in_cabinet,intended,outdoor',
+    }))
   })
 })
