@@ -120,17 +120,23 @@
           <!-- 商品列表状态 -->
           <div v-else class="goods-grid" key="grid">
             <template v-if="isMobile">
-              <MobileGoodsCard
-                v-for="goods in guziStore.guziList"
-                :key="goods.id"
-                :goods="goods"
-                :selectable="guziStore.selectionMode"
-                :selected="guziStore.isGoodsSelected(goods.id)"
-                @click="handleCardClick"
-                @select="handleCardSelect"
-                @location-click="handleLocationClick"
-                @context-menu="handleCardContextMenu"
-              />
+              <div
+                v-for="(column, columnIndex) in mobileGoodsColumns"
+                :key="columnIndex"
+                class="mobile-goods-column"
+              >
+                <MobileGoodsCard
+                  v-for="goods in column"
+                  :key="goods.id"
+                  :goods="goods"
+                  :selectable="guziStore.selectionMode"
+                  :selected="guziStore.isGoodsSelected(goods.id)"
+                  @click="handleCardClick"
+                  @select="handleCardSelect"
+                  @location-click="handleLocationClick"
+                  @context-menu="handleCardContextMenu"
+                />
+              </div>
             </template>
             <template v-else>
               <GoodsCard
@@ -386,6 +392,12 @@ const visibleMobileFilterChips = computed(() =>
 )
 
 const activeFilterCount = computed(() => activeFilterChips.value.length)
+
+// 移动端按原列表顺序拆成左右两列，让每列独立向上填充空隙。
+const mobileGoodsColumns = computed(() => [
+  guziStore.guziList.filter((_, index) => index % 2 === 0),
+  guziStore.guziList.filter((_, index) => index % 2 === 1),
+])
 
 const refreshBarnList = async () => {
   guziStore.pagination.page = 1
@@ -1120,6 +1132,10 @@ watch(mobileFilterVisible, (visible) => {
   margin-bottom: 20px;
 }
 
+.mobile-goods-column {
+  display: contents;
+}
+
 @media (min-width: 1500px) {
   .cloud-showcase {
     max-width: 1520px;
@@ -1336,6 +1352,14 @@ watch(mobileFilterVisible, (visible) => {
   .goods-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px 10px;
+    align-items: start;
+  }
+
+  .mobile-goods-column {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
   }
 
   .selection-status-bar {

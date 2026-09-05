@@ -55,18 +55,10 @@
 
     <div class="mobile-card-content">
       <h3
-        ref="titleHostRef"
         class="mobile-goods-title"
-        :class="{ 'is-overflowing': titleOverflowing, 'is-scrollable': titleOverflowing }"
         :title="goods.name"
       >
-        <span class="mobile-goods-title-clip">
-          <span ref="titleTextRef" class="mobile-title-text">{{ goods.name }}</span>
-          <span class="mobile-goods-title-track" aria-hidden="true">
-            <span class="mobile-title-scroll-text">{{ goods.name }}</span>
-            <span class="mobile-title-scroll-text">{{ goods.name }}</span>
-          </span>
-        </span>
+        {{ goods.name }}
       </h3>
 
       <p class="mobile-goods-meta" :title="metaTitle">
@@ -137,9 +129,6 @@ const emit = defineEmits<{
 }>()
 
 const isLongPress = ref(false)
-const titleHostRef = ref<HTMLElement | null>(null)
-const titleTextRef = ref<HTMLElement | null>(null)
-const titleOverflowing = ref(false)
 const characterHostRef = ref<HTMLElement | null>(null)
 const characterTextRef = ref<HTMLElement | null>(null)
 const isCharacterScrollable = ref(false)
@@ -147,7 +136,7 @@ const characterScrollDuration = ref('8s')
 let longPressTimer: number | null = null
 let longPressStartPoint: { x: number; y: number } | null = null
 let latestTouchPoint: { x: number; y: number } | null = null
-let titleResizeObserver: ResizeObserver | null = null
+let resizeObserver: ResizeObserver | null = null
 const CHARACTER_SCROLL_GAP_PX = 16
 
 const LONG_PRESS_DELAY = 600
@@ -185,20 +174,6 @@ const categoryStyle = computed(() => {
     borderColor: `${color}30`,
   }
 })
-
-const syncTitleOverflow = async () => {
-  await nextTick()
-  const titleText = titleTextRef.value
-  if (!titleText) {
-    if (titleOverflowing.value) titleOverflowing.value = false
-    return
-  }
-
-  const isOverflowing = titleText.scrollWidth > titleText.clientWidth + 1
-  if (titleOverflowing.value !== isOverflowing) {
-    titleOverflowing.value = isOverflowing
-  }
-}
 
 const syncCharacterOverflow = async () => {
   await nextTick()
@@ -307,37 +282,25 @@ const handleTouchMove = (event: TouchEvent) => {
 }
 
 onMounted(() => {
-  void syncTitleOverflow()
   void syncCharacterOverflow()
 
   if (typeof ResizeObserver === 'undefined') return
 
-  titleResizeObserver = new ResizeObserver(() => {
-    void syncTitleOverflow()
+  resizeObserver = new ResizeObserver(() => {
+    void syncCharacterOverflow()
   })
 
-  if (titleHostRef.value) {
-    titleResizeObserver.observe(titleHostRef.value)
-  }
-  if (titleTextRef.value) {
-    titleResizeObserver.observe(titleTextRef.value)
-  }
   if (characterHostRef.value) {
-    titleResizeObserver.observe(characterHostRef.value)
+    resizeObserver.observe(characterHostRef.value)
   }
   if (characterTextRef.value) {
-    titleResizeObserver.observe(characterTextRef.value)
+    resizeObserver.observe(characterTextRef.value)
   }
 })
 
 onBeforeUnmount(() => {
   clearLongPressTimer()
-  titleResizeObserver?.disconnect()
-})
-
-watch(() => props.goods.name, () => {
-  titleOverflowing.value = false
-  syncTitleOverflow()
+  resizeObserver?.disconnect()
 })
 
 watch(characterNames, () => {
@@ -355,7 +318,7 @@ watch(characterNames, () => {
   flex-direction: column;
   overflow: hidden;
   min-width: 0;
-  height: 100%;
+  height: auto;
   border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 14px;
   background: #ffffff;
@@ -508,103 +471,17 @@ watch(characterNames, () => {
 }
 
 .mobile-goods-title {
-  display: block;
-  position: relative;
+  display: -webkit-box;
   margin: 0 0 3px;
   overflow: hidden;
   color: var(--mobile-card-text);
   font-size: 13px;
   font-weight: 750;
   line-height: 1.25;
-  white-space: nowrap;
-}
-
-.mobile-goods-title-clip {
-  position: relative;
-  display: block;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.mobile-title-text {
-  display: block;
-  max-width: 100%;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mobile-goods-title-track {
-  position: absolute;
-  top: 0;
-  left: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: 20px;
-  max-width: none;
-  opacity: 0;
-  white-space: nowrap;
-  pointer-events: none;
-}
-
-.mobile-title-scroll-text {
-  flex: 0 0 auto;
-}
-
-.mobile-goods-title.is-scrollable .mobile-title-text {
-  animation: mobileTitleEllipsis 5.4s ease-in-out infinite;
-}
-
-.mobile-goods-title.is-scrollable .mobile-goods-title-track {
-  animation: mobileTitleScroll 5.4s ease-in-out infinite;
-  will-change: transform, opacity;
-}
-
-@keyframes mobileTitleEllipsis {
-  0%,
-  18%,
-  94%,
-  100% {
-    opacity: 1;
-  }
-
-  24%,
-  88% {
-    opacity: 0;
-  }
-}
-
-@keyframes mobileTitleScroll {
-  0%,
-  18% {
-    opacity: 0;
-    transform: translateX(0);
-  }
-
-  24% {
-    opacity: 1;
-    transform: translateX(0);
-  }
-
-  88% {
-    opacity: 1;
-    transform: translateX(calc(-50% - 10px));
-  }
-
-  94%,
-  100% {
-    opacity: 0;
-    transform: translateX(calc(-50% - 10px));
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .mobile-goods-title.is-scrollable .mobile-title-text,
-  .mobile-goods-title.is-scrollable .mobile-goods-title-track {
-    animation: none;
-  }
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  white-space: normal;
 }
 
 .mobile-goods-meta {

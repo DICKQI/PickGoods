@@ -312,6 +312,12 @@ describe('CloudShowcase mobile compact header', () => {
     expect(cloudShowcaseSource).toContain('v-else')
   })
 
+  it('lets mobile granary cards keep natural heights for subtle two-column staggering', () => {
+    expect(cloudShowcaseSource).toMatch(/\.goods-grid\s*\{[\s\S]*?align-items:\s*start;/)
+    expect(cloudShowcaseSource).toContain('class="mobile-goods-column"')
+    expect(cloudShowcaseSource).toMatch(/\.mobile-goods-column\s*\{[\s\S]*?gap:\s*8px;/)
+  })
+
   it('keeps card event bindings aligned between mobile and desktop branches', () => {
     const mobileCardIndex = cloudShowcaseSource.indexOf('<MobileGoodsCard')
     const desktopCardIndex = cloudShowcaseSource.indexOf('<GoodsCard')

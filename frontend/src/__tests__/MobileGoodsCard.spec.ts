@@ -35,23 +35,6 @@ const mountCard = (props: Partial<InstanceType<typeof MobileGoodsCard>['$props']
     },
   })
 
-const mockTitleMeasurements = ({
-  hostWidth,
-  textWidth,
-}: {
-  hostWidth: number
-  textWidth: number
-}) => {
-  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (this: HTMLElement) {
-    if (this.classList.contains('mobile-title-text')) return hostWidth
-    return 0
-  })
-  vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
-    if (this.classList.contains('mobile-title-text')) return textWidth
-    return 0
-  })
-}
-
 const mobileGoodsCardSource = readFileSync(resolve(process.cwd(), 'src/components/MobileGoodsCard.vue'), 'utf8')
 
 describe('MobileGoodsCard', () => {
@@ -142,34 +125,27 @@ describe('MobileGoodsCard', () => {
     expect(mountCard({ goods: { ...goods, is_official: false } }).get('.mobile-attr-tag').text()).toContain('同人')
   })
 
-  it('keeps short single-line titles static', async () => {
-    mockTitleMeasurements({ hostWidth: 160, textWidth: 80 })
-    const wrapper = mountCard()
-
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('.mobile-goods-title').classes()).not.toContain('is-overflowing')
-    expect(wrapper.get('.mobile-goods-title').classes()).not.toContain('is-scrollable')
-    expect(wrapper.findAll('.mobile-title-scroll-text')).toHaveLength(2)
-  })
-
-  it('uses automatic ellipsis-to-scroll behavior for overflowing single-line titles', async () => {
-    mockTitleMeasurements({ hostWidth: 100, textWidth: 240 })
+  it('renders static titles with a three-line clamp and no title marquee', () => {
     const wrapper = mountCard({
       goods: {
         ...goods,
-        name: 'A very very very very long goods title that should scroll on mobile',
+        name: '这是一个很长很长的谷子名称，用来验证移动端三行静态展示不会滚动',
       },
     })
 
-    await wrapper.vm.$nextTick()
-    await wrapper.vm.$nextTick()
+    expect(wrapper.get('.mobile-goods-title').text()).toContain('这是一个很长很长的谷子名称')
+    expect(mobileGoodsCardSource).toMatch(/\.mobile-goods-title\s*\{[\s\S]*?-webkit-line-clamp:\s*3;/)
+    expect(mobileGoodsCardSource).toContain('white-space: normal;')
+    expect(mobileGoodsCardSource).not.toContain('mobile-goods-title-track')
+    expect(mobileGoodsCardSource).not.toContain('@keyframes mobileTitleScroll')
+    expect(mobileGoodsCardSource).not.toContain('titleOverflowing')
+  })
 
-    expect(wrapper.get('.mobile-goods-title').classes()).toContain('is-overflowing')
-    expect(wrapper.get('.mobile-goods-title').classes()).toContain('is-scrollable')
-    expect(wrapper.get('.mobile-title-text').text()).toContain('A very very very very long goods title')
-    expect(wrapper.findAll('.mobile-title-scroll-text')).toHaveLength(2)
+  it('keeps mobile cards at natural height while retaining character marquee support', () => {
+    expect(mobileGoodsCardSource).toMatch(/\.mobile-goods-card\s*\{[\s\S]*?height:\s*auto;/)
+    expect(mobileGoodsCardSource).toContain('mobile-character-track')
+    expect(mobileGoodsCardSource).toContain('getReadableMarqueeDuration')
+    expect(mobileGoodsCardSource).toContain('characterScrollDuration')
   })
 
   it('hides the menu button when showMenu is false or selection mode is active', () => {
