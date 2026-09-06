@@ -48,6 +48,7 @@ export const COLLECTOR_NAV_ITEMS: readonly CollectorNavItem[] = [
 
 export const CLUB_NAV_ITEMS: readonly ClubNavItem[] = [
   { path: '/club/goods', label: '社团谷子', icon: Shop },
+  { path: '/club/themes', label: '主题', icon: Star },
   { path: '/club/popularity', label: '人气', icon: Grid },
   { path: '/club/profile', label: '资料', icon: User },
   { path: '/clubs', label: '社团', icon: Shop },

@@ -111,7 +111,10 @@
     </main>
 
     <!-- 移动端底部导航栏 -->
-    <MobileBottomNav v-if="isMobile && !route.meta.hideBottomNav" />
+    <MobileBottomNav
+      v-if="isMobile && !route.meta.hideBottomNav"
+      :auto-hide-on-scroll="route.path.startsWith('/showcase') && showcaseActiveTab === 'barn'"
+    />
 
     <!-- 悬浮按钮组（仅云展柜页面展示；统计看板隐藏刷新按钮） -->
     <TransitionGroup

@@ -4,9 +4,8 @@
       <div>
         <p class="section-title__eyebrow">CLUB PROFILE</p>
         <h2>社团资料</h2>
-        <p>公开资料会展示在社团主页哦~ 申请理由只会悄悄给管理员看</p>
       </div>
-      <el-button type="primary" :loading="saving" class="save-button" @click="save">
+      <el-button type="primary" :loading="saving" class="save-button save-button--desktop" @click="save">
         <el-icon><Check /></el-icon>
         保存资料
       </el-button>
@@ -91,6 +90,14 @@
       </div>
 
     </el-form>
+
+    <div class="mobile-save-dock" aria-label="移动端资料操作">
+      <div class="mobile-save-dock__fade" aria-hidden="true"></div>
+      <el-button type="primary" :loading="saving" class="save-button save-button--mobile" @click="save">
+        <el-icon><Check /></el-icon>
+        保存资料
+      </el-button>
+    </div>
   </section>
 </template>
 
@@ -256,15 +263,13 @@ onMounted(load)
   font-size: var(--font-title-lg);
 }
 
-.section-title p:last-child {
-  margin: 7px 0 0;
-  color: var(--text-light);
-  font-size: var(--font-caption);
-}
-
 .save-button,
 .outline-button {
   border-radius: var(--button-radius);
+}
+
+.mobile-save-dock {
+  display: none;
 }
 
 .profile-form {
@@ -321,12 +326,15 @@ onMounted(load)
 }
 
 .form-section__heading h3 {
+  flex: none;
   margin: 0;
   color: var(--text-dark);
   font-size: var(--font-section);
+  white-space: nowrap;
 }
 
 .form-section__heading span {
+  min-width: 0;
   line-height: 1.4;
 }
 
@@ -409,17 +417,47 @@ onMounted(load)
 
 @media (max-width: 640px) {
   .profile-page {
-    padding: 18px 16px calc(32px + env(safe-area-inset-bottom));
+    padding: 18px 16px calc(112px + env(safe-area-inset-bottom));
   }
 
   .section-title {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 16px;
+    margin-bottom: 22px;
+    padding-bottom: 16px;
   }
 
-  .save-button {
-    align-self: flex-start;
+  .save-button--desktop {
+    display: none;
+  }
+
+  .mobile-save-dock {
+    position: fixed;
+    right: 0;
+    bottom: calc(64px + env(safe-area-inset-bottom));
+    left: 0;
+    z-index: 999;
+    display: block;
+    padding: 10px 16px 12px;
+    pointer-events: none;
+  }
+
+  .mobile-save-dock__fade {
+    position: absolute;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    z-index: -1;
+    height: 108px;
+    background: linear-gradient(to top, var(--secondary-gray) 0%, rgba(245,245,247,.9) 45%, rgba(245,245,247,0) 100%);
+    pointer-events: none;
+  }
+
+  .save-button--mobile {
+    width: 100%;
+    min-height: 48px;
+    margin: 0;
+    border-radius: 999px !important;
+    pointer-events: auto;
+    font-weight: 700;
   }
 
   .contact-grid,

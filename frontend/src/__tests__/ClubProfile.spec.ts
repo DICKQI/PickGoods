@@ -149,4 +149,16 @@ describe('ClubProfile 平台入口', () => {
     expect(source).not.toContain('club-account-management')
     expect(source).not.toContain('updateCurrentAccount')
   })
+
+  it('移动端将保存操作固定在底部导航上方并移除页头说明', () => {
+    expect(source).toContain('class="mobile-save-dock"')
+    expect(source).toContain('bottom: calc(64px + env(safe-area-inset-bottom));')
+    expect(source).toContain('class="save-button save-button--mobile"')
+    expect(source).not.toContain('公开资料会展示在社团主页哦~ 申请理由只会悄悄给管理员看')
+  })
+
+  it('窄屏分区标题保持单行且说明可占用剩余空间', () => {
+    expect(source).toMatch(/\.form-section__heading h3\s*\{[^}]*flex: none;[^}]*white-space: nowrap;/s)
+    expect(source).toMatch(/\.form-section__heading span\s*\{[^}]*min-width: 0;/s)
+  })
 })

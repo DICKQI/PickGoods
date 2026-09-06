@@ -1,5 +1,5 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import MobileBottomNav from '@/components/MobileBottomNav.vue'
@@ -13,11 +13,15 @@ const routes = [
   '/ipcharacter',
   '/theme',
   '/club/goods',
+  '/club/themes',
   '/club/popularity',
   '/club/profile',
 ].map(path => ({ path, component: { template: '<div />' } }))
 
-const mountNavigation = async (accountType: 'collector' | 'club') => {
+const mountNavigation = async (
+  accountType: 'collector' | 'club',
+  options: { autoHideOnScroll?: boolean } = {},
+) => {
   const pinia = createPinia()
   setActivePinia(pinia)
   const authStore = useAuthStore()
@@ -34,6 +38,7 @@ const mountNavigation = async (accountType: 'collector' | 'club') => {
   await router.isReady()
 
   const wrapper = mount(MobileBottomNav, {
+    props: options,
     global: {
       plugins: [pinia, router],
       stubs: {
@@ -48,6 +53,10 @@ const mountNavigation = async (accountType: 'collector' | 'club') => {
 describe('MobileBottomNav', () => {
   beforeEach(() => {
     localStorage.clear()
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
   })
 
   it('renders the collector default entries', async () => {
@@ -78,9 +87,51 @@ describe('MobileBottomNav', () => {
 
     expect(wrapper.findAll('.nav-label').map(item => item.text())).toEqual([
       '社团谷子',
+      '主题',
       '人气',
       '资料',
       '社团',
     ])
+  })
+
+  it('社团主题入口可切换并显示激活状态', async () => {
+    const { wrapper } = await mountNavigation('club')
+
+    await wrapper.findAll('.nav-item')[1]!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.findAll('.nav-item')[1]!.classes()).toContain('active')
+  })
+
+  it('谷仓滚动时隐藏，并在滚动停止后自动展开', async () => {
+    vi.useFakeTimers()
+    const { wrapper } = await mountNavigation('collector', { autoHideOnScroll: true })
+    const nav = wrapper.get('.mobile-bottom-nav')
+
+    window.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+
+    expect(nav.classes()).toContain('is-scroll-hidden')
+
+    vi.advanceTimersByTime(300)
+    window.dispatchEvent(new Event('scroll'))
+    vi.advanceTimersByTime(200)
+    await wrapper.vm.$nextTick()
+    expect(nav.classes()).toContain('is-scroll-hidden')
+
+    vi.advanceTimersByTime(299)
+    await wrapper.vm.$nextTick()
+    expect(nav.classes()).toContain('is-scroll-hidden')
+
+    vi.advanceTimersByTime(1)
+    await wrapper.vm.$nextTick()
+    expect(nav.classes()).not.toContain('is-scroll-hidden')
+
+    window.dispatchEvent(new Event('scroll'))
+    await wrapper.vm.$nextTick()
+    await wrapper.setProps({ autoHideOnScroll: false })
+    expect(nav.classes()).not.toContain('is-scroll-hidden')
+
+    wrapper.unmount()
   })
 })

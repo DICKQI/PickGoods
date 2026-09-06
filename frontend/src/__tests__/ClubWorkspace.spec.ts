@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { defineComponent } from 'vue'
 import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -57,6 +59,16 @@ describe('ClubWorkspace 社团工作区导航', () => {
     expect(wrapper.find('.workspace-tabs').exists()).toBe(false)
   })
 
+  it('新增社团谷子时隐藏社团身份头，编辑时仍保留', () => {
+    routeMock.name = 'ClubGoodsNew'
+    const createWrapper = mountWorkspace(390)
+    expect(createWrapper.find('.workspace-header').exists()).toBe(false)
+
+    routeMock.name = 'ClubGoodsEdit'
+    const editWrapper = mountWorkspace(390)
+    expect(editWrapper.find('.workspace-header').exists()).toBe(true)
+  })
+
   it('社团谷子列表页仍显示工作区导航', () => {
     const wrapper = mountWorkspace()
 
@@ -68,11 +80,17 @@ describe('ClubWorkspace 社团工作区导航', () => {
     expect(wrapper.text()).toContain('社团资料')
   })
 
-  it('移动端显示可横向滚动的四个工作区 TAB', () => {
+  it('移动端隐藏与底部导航重复的工作区 TAB', () => {
     const wrapper = mountWorkspace(390)
 
-    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(4)
-    expect(wrapper.find('.workspace-tabs').exists()).toBe(true)
+    expect(wrapper.find('.workspace-tabs').exists()).toBe(false)
+  })
+
+  it('桌面端使用四等分轨道并保留滑块动画', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/views/club/ClubWorkspace.vue'), 'utf8')
+
+    expect(source).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))')
+    expect(source).toContain('transition: transform 240ms cubic-bezier(.22, 1, .36, 1)')
   })
 
   it('根据当前子路由移动唯一滑块，并把内容切换限制在嵌套路由区域', async () => {

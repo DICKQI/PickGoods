@@ -1,5 +1,8 @@
 <template>
-  <nav class="mobile-bottom-nav">
+  <nav
+    class="mobile-bottom-nav"
+    :class="{ 'is-scroll-hidden': isScrollHidden }"
+  >
     <div 
       v-for="item in navItems" 
       :key="item.path"
@@ -20,15 +23,44 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { CLUB_NAV_ITEMS, useMobileNavStore } from '@/stores/mobileNav'
+
+const props = withDefaults(defineProps<{
+  autoHideOnScroll?: boolean
+}>(), {
+  autoHideOnScroll: false,
+})
 
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 const mobileNavStore = useMobileNavStore()
+const isScrollHidden = ref(false)
+
+const SCROLL_STOP_DELAY = 500
+let scrollStopTimer: number | null = null
+
+const revealNav = () => {
+  if (scrollStopTimer !== null) {
+    window.clearTimeout(scrollStopTimer)
+    scrollStopTimer = null
+  }
+  isScrollHidden.value = false
+}
+
+const handleWindowScroll = () => {
+  if (!props.autoHideOnScroll) return
+
+  isScrollHidden.value = true
+  if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
+  scrollStopTimer = window.setTimeout(() => {
+    scrollStopTimer = null
+    isScrollHidden.value = false
+  }, SCROLL_STOP_DELAY)
+}
 
 const navItems = computed(() => authStore.isClub ? CLUB_NAV_ITEMS : mobileNavStore.selectedItems)
 
@@ -55,6 +87,7 @@ const isActive = (path: string): boolean => {
     return currentPath.startsWith('/theme')
   }
   if (path === '/club/goods') return currentPath.startsWith('/club/goods')
+  if (path === '/club/themes') return currentPath.startsWith('/club/themes')
   if (path === '/club/popularity') return currentPath.startsWith('/club/popularity')
   if (path === '/club/profile') return currentPath.startsWith('/club/profile')
   if (path === '/clubs') return currentPath.startsWith('/clubs')
@@ -64,6 +97,22 @@ const isActive = (path: string): boolean => {
 const handleNavClick = (path: string) => {
   router.push(path)
 }
+
+watch(
+  () => props.autoHideOnScroll,
+  enabled => {
+    if (!enabled) revealNav()
+  },
+)
+
+onMounted(() => {
+  window.addEventListener('scroll', handleWindowScroll, { passive: true })
+})
+
+onUnmounted(() => {
+  revealNav()
+  window.removeEventListener('scroll', handleWindowScroll)
+})
 </script>
 
 <style scoped>
@@ -85,6 +134,19 @@ const handleNavClick = (path: string) => {
   z-index: 1000;
   height: calc(64px + env(safe-area-inset-bottom));
   overflow-x: hidden;
+  transform-origin: bottom center;
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.22s ease-out;
+  will-change: transform, opacity;
+}
+
+.mobile-bottom-nav.is-scroll-hidden {
+  transform: translate3d(0, calc(100% + 2px), 0) scale(0.94);
+  opacity: 0;
+  pointer-events: none;
+  transition-duration: 0.18s, 0.14s;
+  transition-timing-function: cubic-bezier(0.4, 0, 1, 1), ease-in;
 }
 
 /* 兼容不支持 safe-area-inset-bottom 的环境 */
@@ -168,6 +230,13 @@ const handleNavClick = (path: string) => {
   to {
     opacity: 1;
     transform: translateX(-50%) scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobile-bottom-nav,
+  .mobile-bottom-nav.is-scroll-hidden {
+    transition-duration: 0.01ms;
   }
 }
 </style>

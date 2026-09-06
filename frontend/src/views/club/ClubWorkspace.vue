@@ -1,6 +1,6 @@
 <template>
   <div class="club-workspace" :class="{ 'club-workspace--editor': isGoodsEditor }">
-    <header class="workspace-header">
+    <header v-if="!isGoodsCreate" class="workspace-header">
       <div class="workspace-identity">
         <el-avatar class="workspace-avatar" :src="authStore.user?.club?.avatar || undefined" :size="52">
           {{ (authStore.user?.club?.name || '社').slice(0, 1) }}
@@ -16,7 +16,7 @@
         查看公开主页
       </el-button>
     </header>
-    <nav v-if="!isGoodsEditor" class="workspace-tabs" aria-label="社团工作区">
+    <nav v-if="!isGoodsEditor && !isMobile" class="workspace-tabs" aria-label="社团工作区">
       <span class="workspace-tab-slider" :style="tabSliderStyle" aria-hidden="true"></span>
       <router-link
         v-for="(tab, index) in workspaceTabs"
@@ -41,11 +41,14 @@
 import { computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { View } from '@element-plus/icons-vue'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useAuthStore } from '@/stores/auth'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const { isMobile } = useResponsiveDevice()
+const isGoodsCreate = computed(() => route.name === 'ClubGoodsNew')
 const isGoodsEditor = computed(() => route.name === 'ClubGoodsNew' || route.name === 'ClubGoodsEdit')
 const workspaceTabs = [
   { name: 'ClubGoods', to: '/club/goods', label: '社团谷子', caption: '目录运营' },
@@ -92,8 +95,9 @@ const publicHomePath = computed(() => {
   .workspace-header h1 { font-size: 22px; }
   .workspace-caption { display: none; }
   .public-link { padding: 6px 0; font-size: var(--font-caption); }
-  .workspace-tabs { overflow-x: auto; grid-template-columns: repeat(4, minmax(104px, 1fr)); }
-  .workspace-tab { padding: 9px 10px; text-align: center; }
+  .workspace-tabs { overflow: hidden; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .workspace-tab { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 9px 10px; text-align: center; }
+  .workspace-tab span { line-height: 20px; }
   .workspace-tab small { display: none; }
 }
 </style>
