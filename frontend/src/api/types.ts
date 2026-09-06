@@ -20,6 +20,12 @@ export interface UserInfo {
   club?: { id: number; name: string; avatar?: string | null } | null
 }
 
+export interface AccountUpdatePayload {
+  username?: string
+  current_password: string
+  new_password?: string
+}
+
 export interface RegistrationPending {
   code: 'account_pending' | string
   detail: string

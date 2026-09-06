@@ -539,8 +539,9 @@ onBeforeUnmount(() => {
 
 .menu-button {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  /* Center the 30px button on the tag's 22px row at top: 10px. */
+  top: 6px;
+  right: 10px;
   width: 30px;
   height: 30px;
   background: rgba(255, 255, 255, 0.9);
@@ -1044,6 +1045,8 @@ onBeforeUnmount(() => {
   }
 
   .menu-button {
+    top: 16px;
+    right: 16px;
     opacity: 0;
   }
 }

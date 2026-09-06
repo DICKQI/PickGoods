@@ -143,6 +143,42 @@ class UserMeSerializer(serializers.Serializer):
     club = serializers.DictField(allow_null=True, required=False)
 
 
+class AccountUpdateSerializer(serializers.Serializer):
+    username = serializers.CharField(max_length=150, required=False)
+    current_password = serializers.CharField(max_length=128, write_only=True)
+    new_password = serializers.CharField(min_length=6, max_length=128, write_only=True, required=False)
+
+    def validate_username(self, value: str) -> str:
+        username = value.strip()
+        user = self.context["request"].user
+        if User.objects.exclude(pk=user.pk).filter(username=username).exists():
+            raise serializers.ValidationError("用户名已存在")
+        return username
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        if not user.check_password(attrs["current_password"]):
+            raise serializers.ValidationError({"current_password": "当前密码不正确"})
+        username_changed = "username" in attrs and attrs["username"] != user.username
+        if not username_changed and not attrs.get("new_password"):
+            raise serializers.ValidationError("没有需要更新的账号信息")
+        return attrs
+
+    def save(self, **kwargs):
+        user = self.context["request"].user
+        update_fields = []
+        username = self.validated_data.get("username")
+        if username is not None and username != user.username:
+            user.username = username
+            update_fields.append("username")
+        new_password = self.validated_data.get("new_password")
+        if new_password:
+            user.set_password(new_password)
+            update_fields.append("password")
+        user.save(update_fields=[*update_fields, "updated_at"])
+        return user
+
+
 class TokenResponseSerializer(serializers.Serializer):
     access_token = serializers.CharField()
     token_type = serializers.CharField()

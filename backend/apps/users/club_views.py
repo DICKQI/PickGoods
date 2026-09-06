@@ -620,6 +620,9 @@ class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
                 | Q(ip__name__icontains=keyword)
                 | Q(category__name__icontains=keyword)
             ).distinct()
+        theme_id = _positive_int_param(request, "theme")
+        if theme_id is not None:
+            queryset = queryset.filter(theme_id=theme_id)
         summary = {
             "total": queryset.count(),
             "listed": queryset.filter(publication_status=ClubCatalogItem.PUBLICATION_LISTED).count(),

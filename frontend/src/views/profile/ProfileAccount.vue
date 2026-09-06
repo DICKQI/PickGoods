@@ -15,6 +15,38 @@
       <div class="account-row"><dt>用户 ID</dt><dd>{{ authStore.user?.id || '—' }}</dd></div>
     </dl>
 
+    <section v-if="authStore.isCollector" class="credentials-section" data-test="collector-account-management">
+      <div class="credentials-heading">
+        <div>
+          <h3>登录信息</h3>
+          <p>修改登录用户名或设置新密码</p>
+        </div>
+        <el-icon aria-hidden="true"><Lock /></el-icon>
+      </div>
+      <el-form :model="accountForm" label-position="top" class="credentials-form">
+        <div class="credentials-grid">
+          <el-form-item label="登录用户名">
+            <el-input v-model="accountForm.username" maxlength="150" autocomplete="username" />
+          </el-form-item>
+          <el-form-item label="当前密码">
+            <el-input v-model="accountForm.current_password" type="password" show-password autocomplete="current-password" placeholder="验证当前密码" />
+          </el-form-item>
+          <el-form-item label="新密码">
+            <el-input v-model="accountForm.new_password" type="password" show-password autocomplete="new-password" placeholder="不修改可留空" />
+          </el-form-item>
+          <el-form-item label="确认新密码">
+            <el-input v-model="accountForm.confirm_password" type="password" show-password autocomplete="new-password" placeholder="再次输入新密码" />
+          </el-form-item>
+        </div>
+        <div class="credentials-footer">
+          <p>修改后，下次登录请使用新的用户名或密码。</p>
+          <el-button type="primary" :loading="accountSaving" @click="updateAccount">
+            <el-icon><Lock /></el-icon><span>更新登录信息</span>
+          </el-button>
+        </div>
+      </el-form>
+    </section>
+
     <div class="account-actions">
       <el-button v-if="authStore.isAdmin" type="primary" @click="goToAdmin">
         <el-icon><Key /></el-icon><span>进入管理后台</span>
@@ -33,19 +65,70 @@
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Key, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
+import { Key, Lock, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
+import { updateCurrentAccount } from '@/api/auth'
 import { useAuthStore } from '@/stores/auth'
 
 const router = useRouter()
 const authStore = useAuthStore()
 const refreshing = ref(false)
+const accountSaving = ref(false)
+const accountForm = ref({
+  username: authStore.user?.username || '',
+  current_password: '',
+  new_password: '',
+  confirm_password: '',
+})
 
 const roleLabel = computed(() => authStore.isAdmin ? '管理员' : '普通用户')
 const accountTypeLabel = computed(() => authStore.isClub ? '社团' : '吃谷人')
+
+function accountErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+  if (!data) return '登录信息更新失败，请稍后重试'
+  for (const key of ['username', 'current_password', 'new_password', 'non_field_errors', 'detail']) {
+    const value = data[key]
+    if (typeof value === 'string' && value) return value
+    if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  }
+  return '登录信息更新失败，请检查输入后重试'
+}
+
+async function updateAccount() {
+  const username = accountForm.value.username.trim()
+  if (!username) return ElMessage.error('请输入登录用户名')
+  if (!accountForm.value.current_password) return ElMessage.error('请输入当前密码')
+  if (accountForm.value.new_password && accountForm.value.new_password.length < 6) return ElMessage.error('新密码不能少于 6 个字符')
+  if (accountForm.value.new_password !== accountForm.value.confirm_password) return ElMessage.error('两次输入的新密码不一致')
+  if (username === authStore.user?.username && !accountForm.value.new_password) return ElMessage.error('没有需要更新的登录信息')
+
+  accountSaving.value = true
+  try {
+    const updated = await updateCurrentAccount({
+      username,
+      current_password: accountForm.value.current_password,
+      ...(accountForm.value.new_password ? { new_password: accountForm.value.new_password } : {}),
+    })
+    authStore.user = updated
+    accountForm.value.username = updated.username
+    accountForm.value.current_password = ''
+    accountForm.value.new_password = ''
+    accountForm.value.confirm_password = ''
+    ElMessage.success('登录信息已更新')
+  } catch (error) {
+    ElMessage.error(accountErrorMessage(error))
+  } finally {
+    accountSaving.value = false
+  }
+}
+
 async function refreshUser() {
   refreshing.value = true
   try {
-    if (await authStore.fetchCurrentUser()) ElMessage.success('已刷新')
+    if (await authStore.fetchCurrentUser()) {
+      accountForm.value.username = authStore.user?.username || ''
+      ElMessage.success('已刷新')
+    }
     else ElMessage.error('刷新失败，请检查网络后重试')
   } finally {
     refreshing.value = false
@@ -101,6 +184,18 @@ async function logout() {
 .account-row { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; padding: 13px 0; border-bottom: 1px solid var(--secondary-gray-dark); }
 .account-row dt { color: var(--text-light); font-size: var(--font-caption); }
 .account-row dd { margin: 0; color: var(--text-dark); font-size: var(--font-body); word-break: break-word; }
+.credentials-section { margin-top: 26px; padding-top: 24px; border-top: 1px solid rgba(212,175,55,.2); }
+.credentials-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 18px; }
+.credentials-heading h3 { margin: 0; color: var(--text-dark); font-size: var(--font-section); }
+.credentials-heading p, .credentials-footer p { margin: 5px 0 0; color: var(--text-light); font-size: var(--font-small); line-height: 1.5; }
+.credentials-heading > .el-icon { flex: none; color: var(--primary-gold); font-size: 22px; }
+.credentials-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 20px; }
+.credentials-form :deep(.el-form-item) { margin-bottom: 18px; }
+.credentials-form :deep(.el-form-item__label) { color: var(--text-regular); font-size: var(--font-caption); font-weight: 600; }
+.credentials-form :deep(.el-input__wrapper) { border-radius: var(--button-radius); }
+.credentials-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.credentials-footer p { margin: 0; }
+.credentials-footer :deep(.el-button) { flex: none; margin: 0; border-radius: var(--button-radius); }
 .account-tip { display: flex; gap: 8px; align-items: flex-start; margin: 18px 0 0; color: var(--text-regular); font-size: var(--font-caption); line-height: 1.6; }
 .account-tip .el-icon { flex: none; margin-top: 2px; color: var(--primary-gold-dark); }
 .account-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
@@ -109,6 +204,9 @@ async function logout() {
 @media (max-width: 480px) {
   .account-page { padding: 18px 16px; }
   .account-row { grid-template-columns: 1fr; gap: 4px; }
+  .credentials-grid { grid-template-columns: 1fr; }
+  .credentials-footer { align-items: stretch; flex-direction: column; }
+  .credentials-footer :deep(.el-button) { width: 100%; }
   .account-actions { display: grid; grid-template-columns: 1fr; }
   .account-actions :deep(.el-button) { width: 100%; }
 }

@@ -24,6 +24,7 @@ from .serializers import (
     CaptchaChallengeSerializer,
     RegisterSerializer,
     TokenResponseSerializer,
+    AccountUpdateSerializer,
     UserMeSerializer,
     build_token_response,
 )
@@ -152,6 +153,7 @@ def captcha_image(request, key):
     return response
 
 @extend_schema(
+    methods=["GET"],
     tags=["Auth"],
     summary="获取当前登录用户信息",
     description=(
@@ -164,10 +166,28 @@ def captcha_image(request, key):
         401: OpenApiResponse(description="未认证或 Token 无效"),
     },
 )
-@api_view(["GET"])
+@extend_schema(
+    methods=["PATCH"],
+    tags=["Auth"],
+    summary="修改当前账号登录信息",
+    request=AccountUpdateSerializer,
+    responses={
+        200: OpenApiResponse(UserMeSerializer, description="修改成功，返回当前用户信息"),
+        400: OpenApiResponse(description="当前密码错误、用户名重复或参数无效"),
+        401: OpenApiResponse(description="未认证或 Token 无效"),
+        403: OpenApiResponse(description="仅吃谷人账号可修改登录信息"),
+    },
+)
+@api_view(["GET", "PATCH"])
 @permission_classes([IsAuthenticated])
 def me(request):
     user = request.user
+    if request.method == "PATCH":
+        if user.account_type != User.ACCOUNT_TYPE_COLLECTOR:
+            return Response({"detail": "仅吃谷人账号可修改登录信息"}, status=status.HTTP_403_FORBIDDEN)
+        serializer = AccountUpdateSerializer(data=request.data, context={"request": request})
+        serializer.is_valid(raise_exception=True)
+        user = serializer.save()
     payload = {
         "id": user.id,
         "username": getattr(user, "username", ""),

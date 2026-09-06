@@ -3,9 +3,9 @@
     <section class="desktop-theme-workbench hidden-xs-only">
       <header class="desktop-theme-header">
         <div class="desktop-theme-heading">
-          <span class="desktop-theme-eyebrow">主题资料库</span>
+          <span class="desktop-theme-eyebrow">{{ isClubContext ? '社团主题资料库' : '主题资料库' }}</span>
           <div class="desktop-theme-title-row">
-            <h1>主题</h1>
+            <h1>{{ isClubContext ? '社团主题' : '主题' }}</h1>
             <div class="desktop-theme-metrics" aria-label="主题统计">
               <span class="desktop-theme-metric">
                 <span>全部</span>
@@ -17,7 +17,7 @@
               </span>
             </div>
           </div>
-          <p>把主题名称、备注和参考图收拾整齐，之后筛选起来更轻松啦~</p>
+          <p>{{ isClubContext ? '管理只属于本社团谷子的主题、备注和参考图。' : '把主题名称、备注和参考图收拾整齐，之后筛选起来更轻松啦~' }}</p>
         </div>
         <el-button
           type="primary"
@@ -184,8 +184,8 @@
     <!-- ================= 顶部区域 ================= -->
     <div class="header-section">
       <div class="title-wrapper">
-        <h2 class="page-title">主题</h2>
-        <span class="sub-title">给不同主题的谷子贴上可爱的分类标签吧~</span>
+        <h2 class="page-title">{{ isClubContext ? '社团主题' : '主题' }}</h2>
+        <span class="sub-title">{{ isClubContext ? '管理只属于本社团谷子的主题资料。' : '给不同主题的谷子贴上可爱的分类标签吧~' }}</span>
       </div>
       <div class="header-actions">
         <el-button class="add-btn" type="primary" @click="handleAdd">
@@ -623,6 +623,7 @@ const currentActionRow = ref<Theme | null>(null)
 
 const authStore = useAuthStore()
 const metadataStore = useMetadataStore()
+const isClubContext = computed(() => authStore.isClub)
 
 const scrollContainerRef = ref<HTMLElement | null>(null)
 const sentinelRef = ref<HTMLElement | null>(null)

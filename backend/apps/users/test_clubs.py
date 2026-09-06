@@ -93,6 +93,59 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(ClubGoodsImportView.throttle_scope, "club_import")
         self.assertEqual(PublicClubGoodsDetailView.throttle_scope, "club_public_read")
 
+    def test_club_account_manages_only_its_own_themes(self):
+        other_club_user = User.objects.create(
+            username="other-theme-owner",
+            role=self.user_role,
+            account_type=User.ACCOUNT_TYPE_CLUB,
+            approval_status=User.APPROVAL_APPROVED,
+        )
+        other_theme = Theme.objects.create(user=other_club_user, name="其他社团主题")
+        self.client.force_authenticate(self.club_user)
+
+        created = self.client.post(
+            "/api/themes/",
+            {"name": "本社团主题", "description": "社团专属"},
+            format="json",
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        theme_id = created.json()["id"]
+        self.assertTrue(Theme.objects.filter(id=theme_id, user=self.club_user).exists())
+
+        listed = self.client.get("/api/themes/")
+        self.assertEqual(listed.status_code, status.HTTP_200_OK)
+        self.assertEqual([item["id"] for item in listed.json()], [theme_id])
+
+        updated = self.client.patch(
+            f"/api/themes/{theme_id}/",
+            {"description": "更新后的说明"},
+            format="json",
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated.json()["description"], "更新后的说明")
+        self.assertEqual(self.client.get(f"/api/themes/{other_theme.id}/").status_code, status.HTTP_404_NOT_FOUND)
+        self.assertEqual(
+            self.client.patch(f"/api/themes/{other_theme.id}/", {"name": "越权修改"}, format="json").status_code,
+            status.HTTP_404_NOT_FOUND,
+        )
+        foreign_theme_goods = self.client.post(
+            "/api/clubs/me/goods/",
+            {
+                "name": "错误主题谷子",
+                "ip_id": self.ip.id,
+                "category_id": self.category.id,
+                "character_ids": [self.character.id],
+                "theme_id": other_theme.id,
+                "publication_status": "draft",
+            },
+            format="json",
+        )
+        self.assertEqual(foreign_theme_goods.status_code, status.HTTP_400_BAD_REQUEST)
+
+        deleted = self.client.delete(f"/api/themes/{theme_id}/")
+        self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
+        self.assertFalse(Theme.objects.filter(id=theme_id).exists())
+
     def test_goods_facets_public_read_throttle_returns_429(self):
         rates = {**settings.REST_FRAMEWORK["DEFAULT_THROTTLE_RATES"], "club_public_read": "1/minute"}
         rest_framework_settings = {**settings.REST_FRAMEWORK, "DEFAULT_THROTTLE_RATES": rates}
@@ -955,6 +1008,62 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(reorder.status_code, status.HTTP_200_OK)
         draft.refresh_from_db(); self.source.refresh_from_db()
         self.assertLess(draft.order, self.source.order)
+
+    def test_catalog_management_filters_by_owned_theme_before_summary(self):
+        selected_theme = Theme.objects.create(user=self.club_user, name="筛选主题")
+        other_theme = Theme.objects.create(user=self.club_user, name="其他主题")
+        selected_draft = ClubCatalogItem.objects.create(
+            club=self.club,
+            name="匹配草稿",
+            description="",
+            ip=self.ip,
+            category=self.category,
+            theme=selected_theme,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        selected_listed = ClubCatalogItem.objects.create(
+            club=self.club,
+            name="匹配上架",
+            description="",
+            ip=self.ip,
+            category=self.category,
+            theme=selected_theme,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+        ClubCatalogItem.objects.create(
+            club=self.club,
+            name="不匹配主题",
+            description="",
+            ip=self.ip,
+            category=self.category,
+            theme=other_theme,
+            publication_status=ClubCatalogItem.PUBLICATION_DRAFT,
+        )
+        self.client.force_authenticate(self.club_user)
+
+        response = self.client.get(
+            "/api/clubs/me/goods/",
+            {"theme": selected_theme.id, "search": "匹配", "sort": "name"},
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        payload = response.json()
+        self.assertEqual(
+            [item["id"] for item in payload["results"]],
+            [str(selected_listed.id), str(selected_draft.id)],
+        )
+        self.assertEqual(payload["summary"], {"total": 2, "listed": 1, "draft": 1, "unlisted": 0})
+
+        draft_only = self.client.get(
+            "/api/clubs/me/goods/",
+            {"theme": selected_theme.id, "status": "draft"},
+        )
+        self.assertEqual([item["id"] for item in draft_only.json()["results"]], [str(selected_draft.id)])
+        self.assertEqual(draft_only.json()["summary"], payload["summary"])
+
+        for invalid_theme in ("not-an-id", "0", "-1"):
+            with self.subTest(theme=invalid_theme):
+                invalid = self.client.get("/api/clubs/me/goods/", {"theme": invalid_theme})
+                self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_source_delete_keeps_personal_goods_and_origin_history(self):
         self.client.force_authenticate(self.collector)

@@ -51,7 +51,7 @@ export function getClubGoodsDetail(clubId: number, goodsId: string) {
   return request.get<ClubCatalogPublicItem>(`/api/clubs/${clubId}/goods/${goodsId}/`)
 }
 
-export function getMyClubGoods(params?: { page?: number; page_size?: number; search?: string; status?: string; sort?: string }) {
+export function getMyClubGoods(params?: { page?: number; page_size?: number; search?: string; status?: string; sort?: string; theme?: number }) {
   return request.get<ClubCatalogListResponse>('/api/clubs/me/goods/', { params })
 }
 

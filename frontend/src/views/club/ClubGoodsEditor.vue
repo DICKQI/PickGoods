@@ -42,7 +42,7 @@
                 </el-form-item>
               </el-col>
               <el-col :xs="24" :sm="12">
-                <el-form-item label="主题"><el-select v-model="form.theme_id" filterable clearable placeholder="选择或创建主题" style="width: 100%">
+                <el-form-item label="主题"><el-select v-model="form.theme_id" filterable clearable :placeholder="metadata.themes.length ? '选择主题' : '请先在主题管理中创建主题'" style="width: 100%">
                   <el-option v-for="theme in metadata.themes" :key="theme.id" :label="theme.name" :value="theme.id" />
                 </el-select></el-form-item>
               </el-col>
@@ -52,30 +52,36 @@
           <section class="form-section form-section--publish">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
-              <div><h3>发布设置</h3><p>决定谁能看见它，再定好公开价格吧~</p></div>
+              <div><h3>发布设置</h3><p>设置发布状态、价格和上架时间</p></div>
             </div>
-            <el-row :gutter="20">
-              <el-col :xs="24" :sm="14">
-                <el-form-item label="状态" prop="publication_status">
-                  <el-radio-group v-model="form.publication_status" class="status-segmented">
-                    <el-radio-button value="draft">草稿</el-radio-button>
-                    <el-radio-button value="listed">已上架</el-radio-button>
-                    <el-radio-button value="unlisted">已下架</el-radio-button>
-                  </el-radio-group>
-                </el-form-item>
-              </el-col>
-              <el-col :xs="24" :sm="10"><el-form-item label="公开价格"><el-input v-model="form.public_price" placeholder="可选" /></el-form-item></el-col>
-            </el-row>
-            <div class="publish-schedule">
-              <div class="publish-schedule__heading"><h4>定时上架</h4><span>仅草稿可设置，按北京时间执行一次</span></div>
-              <el-form-item label="上架时间">
-                <div class="schedule-control">
-                  <input v-model="publishAtLocal" class="datetime-input" type="datetime-local" :min="minimumPublishAt" :disabled="form.publication_status !== 'draft'" @change="isDirty = true" />
-                  <el-button v-if="publishAtLocal || form.publish_error" class="cancel-schedule" link type="warning" :disabled="form.publication_status !== 'draft'" @click="cancelPublishSchedule">取消计划</el-button>
-                </div>
-                <p class="field-help">到点后会自动从草稿变成已上架哦~ 手动改为上架或下架时，原来的计划会被清除</p>
+            <div class="publish-settings-grid">
+              <el-form-item label="状态" prop="publication_status">
+                <el-radio-group v-model="form.publication_status" class="status-segmented">
+                  <el-radio-button value="draft">草稿</el-radio-button>
+                  <el-radio-button value="listed">上架</el-radio-button>
+                </el-radio-group>
               </el-form-item>
-              <p v-if="form.publish_error" class="publish-error">上次定时上架失败：{{ form.publish_error }}（请重新设置时间）</p>
+              <el-form-item label="价格">
+                <el-input v-model="form.public_price" placeholder="可选" />
+              </el-form-item>
+              <el-form-item label="定时上架" class="publish-schedule-field">
+                <el-date-picker
+                  v-model="publishAtLocal"
+                  class="publish-date-picker"
+                  type="datetime"
+                  format="YYYY-MM-DD HH:mm"
+                  value-format="YYYY-MM-DDTHH:mm"
+                  placeholder="选择上架时间"
+                  popper-class="club-publish-datetime-popper"
+                  :disabled="form.publication_status !== 'draft'"
+                  :disabled-date="disablePastPublishDate"
+                  :editable="false"
+                  clearable
+                  @change="handlePublishDateChange"
+                />
+                <p class="field-help">仅草稿可设置，按北京时间执行</p>
+                <p v-if="form.publish_error" class="publish-error">上次定时上架失败：{{ form.publish_error }}（请重新设置时间）</p>
+              </el-form-item>
             </div>
           </section>
 
@@ -103,18 +109,15 @@
           </section>
           <div class="desktop-action-footer" aria-label="桌面端表单操作">
             <el-button class="desktop-action-button desktop-action-button--back" @click="router.push('/club/goods')"><el-icon><ArrowLeft /></el-icon>取消</el-button>
-            <div class="desktop-action-primary">
-              <el-button class="desktop-action-button desktop-action-button--draft" @click="save('draft')">保存草稿</el-button>
-              <el-button type="primary" class="desktop-action-button desktop-action-button--publish" @click="savePrimary"><el-icon><Check /></el-icon>{{ form.publication_status === 'draft' ? '保存并上架' : '保存' }}</el-button>
-            </div>
+            <el-button type="primary" class="desktop-action-button desktop-action-button--save" @click="save(form.publication_status)"><el-icon><Check /></el-icon>{{ form.publication_status === 'draft' ? '保存草稿' : '保存并上架' }}</el-button>
           </div>
         </aside>
       </div>
     </el-form>
 
     <div class="mobile-action-footer" aria-label="移动端表单操作">
-      <el-button class="mobile-action-button mobile-action-button--draft" @click="save('draft')">保存草稿</el-button>
-      <el-button type="primary" class="mobile-action-button mobile-action-button--publish" @click="savePrimary"><el-icon><Check /></el-icon>{{ form.publication_status === 'draft' ? '保存并上架' : '保存' }}</el-button>
+      <el-button class="mobile-action-button mobile-action-button--back" @click="router.push('/club/goods')"><el-icon><ArrowLeft /></el-icon>取消</el-button>
+      <el-button type="primary" class="mobile-action-button mobile-action-button--save" @click="save(form.publication_status)"><el-icon><Check /></el-icon>{{ form.publication_status === 'draft' ? '保存草稿' : '保存并上架' }}</el-button>
     </div>
   </div>
 </template>
@@ -136,6 +139,8 @@ import {
 import { useMetadataStore } from '@/stores/metadata'
 import type { ClubCatalogInput, ClubPublicationStatus } from '@/api/types'
 
+type ClubEditorPublicationStatus = Exclude<ClubPublicationStatus, 'unlisted'>
+
 const route = useRoute()
 const router = useRouter()
 const metadata = useMetadataStore()
@@ -146,7 +151,7 @@ const characters = ref<{ id: number; name: string }[]>([])
 const form = reactive({
   name: '', description: '', ip_id: undefined as number | undefined, category_id: undefined as number | undefined,
   character_ids: [] as number[], theme_id: null as number | null, public_price: '',
-  publication_status: 'draft' as ClubPublicationStatus,
+  publication_status: 'draft' as ClubEditorPublicationStatus,
   publish_error: null as string | null,
 })
 const mainPhotoFile = ref<File | null>(null)
@@ -156,7 +161,6 @@ const additionalPhotoList = ref<UploadFile[]>([])
 const removedAdditionalPhotoIds = ref<number[]>([])
 const publishAtLocal = ref('')
 const isDirty = ref(false)
-const minimumPublishAt = computed(() => toDateTimeLocal(new Date(Date.now() + 60 * 1000)))
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入谷子名称', trigger: 'blur' }],
@@ -198,7 +202,7 @@ async function load() {
     Object.assign(form, {
       name: item.name, description: item.description || '', ip_id: item.ip.id, category_id: item.category.id,
       character_ids: item.characters.map(character => character.id), theme_id: item.theme?.id ?? null,
-      public_price: item.public_price || '', publication_status: item.publication_status,
+      public_price: item.public_price || '', publication_status: item.publication_status === 'listed' ? 'listed' : 'draft',
       publish_error: item.publish_error || null,
     })
     publishAtLocal.value = item.publish_at ? toDateTimeLocal(new Date(item.publish_at)) : ''
@@ -223,15 +227,18 @@ function handleAdditionalPhotoRemove(file: UploadFile) {
   else { const id = Number(file.uid); if (Number.isInteger(id) && id > 0 && !removedAdditionalPhotoIds.value.includes(id)) removedAdditionalPhotoIds.value.push(id) }
 }
 
-async function savePrimary() { await save(form.publication_status === 'draft' ? 'listed' : form.publication_status) }
+function disablePastPublishDate(date: Date) {
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  return date.getTime() < today.getTime()
+}
 
-function cancelPublishSchedule() {
-  publishAtLocal.value = ''
+function handlePublishDateChange() {
   form.publish_error = null
   isDirty.value = true
 }
 
-async function save(publicationStatus: ClubPublicationStatus) {
+async function save(publicationStatus: ClubEditorPublicationStatus) {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
   if (publicationStatus === 'draft' && publishAtLocal.value) {
@@ -306,16 +313,20 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 .status-segmented :deep(.el-radio-button__inner) { border-radius: 999px !important; border: 1px solid #e5e7ef; box-shadow: none; padding: 8px 14px; color: #606266; background: #fff; }
 .status-segmented :deep(.el-radio-button__orig-radio:checked + .el-radio-button__inner) { color: #fff; border-color: var(--primary-gold); background: var(--primary-gold); box-shadow: 0 6px 14px rgba(212,175,55,.22); }
 .status-segmented :deep(.el-radio-button__inner:hover) { color: var(--primary-gold-dark); }
-.publish-schedule { margin-top: 2px; padding: 14px 14px 2px; border: 1px solid rgba(212,175,55,.2); border-radius: 12px; background: rgba(255,250,240,.58); }
-.publish-schedule__heading { display: flex; align-items: baseline; flex-wrap: wrap; gap: 8px 10px; margin-bottom: 12px; }
-.publish-schedule__heading h4 { margin: 0; color: #303133; font-size: 16px; line-height: 1.3; }
-.publish-schedule__heading span, .field-help { color: var(--text-light); font-size: 12px; line-height: 1.45; }
-.schedule-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
-.datetime-input { width: min(100%, 320px); height: 34px; box-sizing: border-box; padding: 0 10px; border: 1px solid #e5e5e5; border-radius: 10px; color: var(--text-regular); background: #fff; font: inherit; }
-.datetime-input:focus { outline: none; border-color: var(--primary-gold); box-shadow: 0 0 0 1px rgba(195,160,80,.35); }
+.publish-settings-grid { display: grid; grid-template-columns: minmax(150px, .85fr) minmax(140px, .7fr) minmax(280px, 1.45fr); align-items: start; gap: 20px; }
+.publish-settings-grid :deep(.el-form-item) { margin-bottom: 0; }
+.field-help { color: var(--text-light); font-size: 12px; line-height: 1.45; }
+.publish-date-picker { width: 100% !important; }
+.publish-date-picker :deep(.el-input__wrapper) { min-height: 34px; border: 1px solid #e5e5e5; border-radius: 10px; background: #fffdf8; box-shadow: none; }
+.publish-date-picker :deep(.el-input__wrapper:hover) { border-color: rgba(195,160,80,.6); box-shadow: 0 0 0 1px rgba(195,160,80,.12); }
+.publish-date-picker :deep(.el-input__wrapper.is-focus) { border-color: var(--primary-gold); box-shadow: 0 0 0 2px rgba(195,160,80,.15); }
+.publish-date-picker :deep(.el-input__prefix) { color: var(--primary-gold-dark); }
 .field-help { margin: 6px 0 0; }
-.publish-error { margin: -4px 0 14px; color: var(--el-color-danger); font-size: 12px; line-height: 1.45; }
-.cancel-schedule { margin-left: 0; }
+.publish-error { margin: 5px 0 0; color: var(--el-color-danger); font-size: 12px; line-height: 1.45; }
+:global(.club-publish-datetime-popper) { --el-color-primary: var(--primary-gold); --el-datepicker-active-color: var(--primary-gold); --el-datepicker-hover-text-color: var(--primary-gold-dark); border-radius: 12px; box-shadow: 0 14px 34px rgba(35,31,24,.16); }
+:global(.club-publish-datetime-popper .el-picker-panel) { border-radius: 12px; overflow: hidden; }
+:global(.club-publish-datetime-popper .el-date-table td.today .el-date-table-cell__text) { color: var(--primary-gold-dark); font-weight: 700; }
+:global(.club-publish-datetime-popper .el-date-table td.current:not(.disabled) .el-date-table-cell__text) { color: #fff; background: var(--primary-gold); }
 .form-section--images { background: linear-gradient(180deg, #fff 0%, #fbfbff 100%); }
 .main-photo-uploader { display: block; width: min(220px, 100%); }
 .main-photo-uploader :deep(.el-upload-list--picture-card) { display: flex; flex-wrap: wrap; width: 100%; }
@@ -324,12 +335,10 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 .main-photo-uploader :deep(.el-icon), .additional-photo-uploader :deep(.el-icon) { color: #b1b5c6; font-size: 26px; }
 .additional-photo-uploader { width: 100%; }
 .additional-photo-uploader :deep(.el-upload--picture-card), .additional-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) { width: 120px; height: 120px; margin: 0 12px 12px 0; border-radius: 12px; border: 1px dashed #e0e3f0; background: #fbfbff; }
-.desktop-action-footer { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px 14px; border: 1px solid rgba(17,24,39,.06); border-radius: 14px; background: #fff; box-shadow: 0 3px 14px rgba(15,23,42,.04); }
+.desktop-action-footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; padding: 12px 14px 14px; border: 1px solid rgba(17,24,39,.06); border-radius: 14px; background: #fff; box-shadow: 0 3px 14px rgba(15,23,42,.04); }
 .desktop-action-button { width: 100%; min-height: 38px; margin: 0; font-weight: 600; }
 .desktop-action-button--back { color: #606266; background: rgba(255,255,255,.72); border-color: #e5e7ef; }
-.desktop-action-primary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.desktop-action-button--draft { color: var(--primary-gold-dark); background: #fffaf0; border-color: rgba(212,175,55,.32); }
-.desktop-action-button--publish {
+.desktop-action-button--save {
   --el-button-bg-color: var(--primary-gold);
   --el-button-border-color: var(--primary-gold);
   --el-button-hover-bg-color: var(--primary-gold-dark);
@@ -340,8 +349,8 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   background-color: var(--primary-gold) !important;
   border-color: var(--primary-gold) !important;
 }
-.desktop-action-button--publish:hover,
-.desktop-action-button--publish:focus {
+.desktop-action-button--save:hover,
+.desktop-action-button--save:focus {
   color: #fff !important;
   background-color: var(--primary-gold-dark) !important;
   border-color: var(--primary-gold-dark) !important;
@@ -362,14 +371,15 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   .editor-page :deep(.el-form-item) { margin-bottom: 18px; }
   .editor-workbench { gap: 12px; }
   .editor-main-column, .editor-side-column { gap: 12px; }
+  .publish-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .main-photo-uploader :deep(.el-upload--picture-card), .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) { width: min(220px, 100%); }
   .desktop-action-footer { display: none; }
   .mobile-action-footer { position: fixed; right: 0; bottom: 0; left: 0; z-index: 999; display: flex; gap: 10px; padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 0; background: transparent; box-shadow: none; pointer-events: none; }
   .mobile-action-footer::before { position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: min(180px, 32vh); content: ''; pointer-events: none; background: linear-gradient(to top, var(--secondary-gray) 0%, rgba(245,245,247,.92) 30%, rgba(245,245,247,.55) 58%, rgba(255,255,255,0) 100%); }
   .mobile-action-button { flex: 1; min-width: 0; min-height: 44px; margin: 0; font-size: 14px; font-weight: 700; }
   .mobile-action-button { pointer-events: auto; border-radius: 999px !important; }
-  .mobile-action-button--draft { color: var(--primary-gold-dark); background: #fffaf0; border-color: rgba(212,175,55,.32); }
-  .mobile-action-button--publish {
+  .mobile-action-button--back { color: #606266; background: rgba(255,255,255,.92); border-color: #e5e7ef; }
+  .mobile-action-button--save {
     --el-button-bg-color: var(--primary-gold);
     --el-button-border-color: var(--primary-gold);
     --el-button-hover-bg-color: var(--primary-gold-dark);
@@ -380,8 +390,8 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
     background-color: var(--primary-gold) !important;
     border-color: var(--primary-gold) !important;
   }
-  .mobile-action-button--publish:hover,
-  .mobile-action-button--publish:focus {
+  .mobile-action-button--save:hover,
+  .mobile-action-button--save:focus {
     color: #fff !important;
     background-color: var(--primary-gold-dark) !important;
     border-color: var(--primary-gold-dark) !important;

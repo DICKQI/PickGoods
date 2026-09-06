@@ -7,6 +7,10 @@ import ClubGoods from '@/views/club/ClubGoods.vue'
 import type { ClubCatalogItem, PaginatedResponse } from '@/api/types'
 
 const { pushMock } = vi.hoisted(() => ({ pushMock: vi.fn() }))
+const { fetchThemesMock, themesMock } = vi.hoisted(() => ({
+  fetchThemesMock: vi.fn(),
+  themesMock: [{ id: 7, name: '夏日祭', description: null, created_at: '' }],
+}))
 
 vi.mock('vue-router', () => ({
   useRouter: () => ({ push: pushMock }),
@@ -31,10 +35,18 @@ vi.mock('@/api/clubs', () => ({
   updateClubGoods: vi.fn(),
 }))
 
+vi.mock('@/stores/metadata', () => ({
+  useMetadataStore: () => ({
+    themes: themesMock,
+    fetchThemes: fetchThemesMock,
+  }),
+}))
+
 import * as clubApi from '@/api/clubs'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const clubGoodsSource = readFileSync(resolve(process.cwd(), 'src/views/club/ClubGoods.vue'), 'utf8')
+const clubGoodsEditorSource = readFileSync(resolve(process.cwd(), 'src/views/club/ClubGoodsEditor.vue'), 'utf8')
 
 const passthrough = (name: string, tag = 'div') => defineComponent({
   name,
@@ -81,11 +93,12 @@ const ElInputStub = defineComponent({
 const ElSelectStub = defineComponent({
   name: 'ElSelect',
   inheritAttrs: false,
-  props: { modelValue: { type: String, default: '' } },
+  props: { modelValue: { type: [String, Number], default: '' } },
   emits: ['update:modelValue', 'change'],
   methods: {
     handleChange(event: Event) {
-      const value = (event.target as HTMLSelectElement).value
+      const rawValue = (event.target as HTMLSelectElement).value
+      const value = this.$attrs['aria-label'] === '主题筛选' && rawValue ? Number(rawValue) : rawValue
       this.$emit('update:modelValue', value)
       this.$emit('change', value)
     },
@@ -95,7 +108,7 @@ const ElSelectStub = defineComponent({
 
 const ElOptionStub = defineComponent({
   name: 'ElOption',
-  props: { label: { type: String, required: true }, value: { type: String, required: true } },
+  props: { label: { type: String, required: true }, value: { type: [String, Number], required: true } },
   template: '<option :value="value">{{ label }}</option>',
 })
 
@@ -154,6 +167,7 @@ describe('ClubGoods 批量操作', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     pushMock.mockReset()
+    fetchThemesMock.mockResolvedValue(themesMock)
   })
 
   it('默认显示批量删除和批量下架入口', async () => {
@@ -194,21 +208,61 @@ describe('ClubGoods 批量操作', () => {
     expect(clubGoodsSource).not.toMatch(/<el-button[^>]*row-edit-button[^>]*type="primary"/)
   })
 
-  it('状态和排序使用统一下拉组件并将选择同步到列表查询', async () => {
+  it('社团谷子编辑器只选择已有主题，不提供表单内创建', () => {
+    expect(clubGoodsEditorSource).toContain("metadata.themes.length ? '选择主题' : '请先在主题管理中创建主题'")
+    expect(clubGoodsEditorSource).not.toContain('allow-create')
+    expect(clubGoodsEditorSource).not.toContain('createTheme')
+    expect(clubGoodsEditorSource).not.toContain('handleThemeCreate')
+  })
+
+  it('社团谷子编辑器只提供草稿和上架状态，并按状态显示两个操作按钮', () => {
+    expect(clubGoodsEditorSource).toContain('<el-radio-button value="draft">草稿</el-radio-button>')
+    expect(clubGoodsEditorSource).toContain('<el-radio-button value="listed">上架</el-radio-button>')
+    expect(clubGoodsEditorSource).not.toContain('<el-radio-button value="unlisted">')
+    expect(clubGoodsEditorSource).toContain("form.publication_status === 'draft' ? '保存草稿' : '保存并上架'")
+    expect(clubGoodsEditorSource).toContain('@click="save(form.publication_status)"')
+    expect(clubGoodsEditorSource).not.toContain('savePrimary')
+    expect(clubGoodsEditorSource).not.toContain('desktop-action-primary')
+  })
+
+  it('发布设置将状态、价格和定时上架放在同一行', () => {
+    expect(clubGoodsEditorSource).toContain('class="publish-settings-grid"')
+    expect(clubGoodsEditorSource).toContain('<el-form-item label="价格">')
+    expect(clubGoodsEditorSource).not.toContain('label="公开价格"')
+    expect(clubGoodsEditorSource).toContain('<el-form-item label="定时上架"')
+    expect(clubGoodsEditorSource).toContain('仅草稿可设置，按北京时间执行')
+    expect(clubGoodsEditorSource).toContain('grid-template-columns: minmax(150px, .85fr) minmax(140px, .7fr) minmax(280px, 1.45fr)')
+  })
+
+  it('定时上架使用统一的日期时间选择器', () => {
+    expect(clubGoodsEditorSource).toContain('<el-date-picker')
+    expect(clubGoodsEditorSource).toContain('type="datetime"')
+    expect(clubGoodsEditorSource).toContain('value-format="YYYY-MM-DDTHH:mm"')
+    expect(clubGoodsEditorSource).toContain('popper-class="club-publish-datetime-popper"')
+    expect(clubGoodsEditorSource).toContain(':disabled-date="disablePastPublishDate"')
+    expect(clubGoodsEditorSource).not.toContain('type="datetime-local"')
+  })
+
+  it('状态、主题和排序使用统一下拉组件并将选择同步到列表查询', async () => {
     const wrapper = await mountPage()
     const selects = wrapper.findAll('.el-select-stub')
 
-    expect(selects).toHaveLength(2)
+    expect(selects).toHaveLength(3)
     expect(selects[0]!.attributes('popper-class')).toBe('catalog-filter-popper')
     expect(selects[1]!.attributes('popper-class')).toBe('catalog-filter-popper')
+    expect(selects[2]!.attributes('popper-class')).toBe('catalog-filter-popper')
 
     await selects[0]!.setValue('listed')
     await flushPromises()
     expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed' }))
 
-    await selects[1]!.setValue('name')
+    await selects[1]!.setValue('7')
     await flushPromises()
-    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed', sort: 'name' }))
+    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed', theme: 7 }))
+
+    await selects[2]!.setValue('name')
+    await flushPromises()
+    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed', theme: 7, sort: 'name' }))
   })
 
   it('搜索输入使用防抖自动查询，回车立即查询且移除独立搜索按钮', async () => {

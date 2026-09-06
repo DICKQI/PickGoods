@@ -81,34 +81,33 @@ async function mountPage() {
 describe('ClubProfile 平台入口', () => {
   beforeEach(() => vi.clearAllMocks())
 
-  it('展示三个固定平台输入项和本地 logo，并保留其他入口', () => {
+  it('只展示三个固定平台输入项和本地 logo', () => {
     expect(source).toContain('平台入口')
     expect(source).toContain('/brand/taobao.png')
     expect(source).toContain('/brand/xiaohongshu.png')
     expect(source).toContain('/brand/weidian.png')
-    expect(source).toContain('其他入口（每行：标签 | URL）')
+    expect(source).not.toContain('其他入口（每行：标签 | URL）')
+    expect(source).not.toContain('storeLinksText')
     expect(source).toContain('v-model="form[platform.key]"')
   })
 
-  it('保存时提交三个平台字段和兼容的自定义链接', async () => {
+  it('保存时提交三个平台字段且不覆盖后端保留的自定义链接', async () => {
     const wrapper = await mountPage()
     const vm = wrapper.vm as unknown as {
       form: Club
       save: () => Promise<void>
-      storeLinksText: string
     }
     vm.form.taobao_url = 'https://shop.taobao.com/demo'
     vm.form.xiaohongshu_url = 'https://www.xiaohongshu.com/demo'
     vm.form.weidian_url = null
-    vm.storeLinksText = '官方网店 | https://example.com/shop'
     await vm.save()
 
     expect(clubApi.updateMyClub).toHaveBeenCalledWith(expect.objectContaining({
       taobao_url: 'https://shop.taobao.com/demo',
       xiaohongshu_url: 'https://www.xiaohongshu.com/demo',
       weidian_url: null,
-      store_links: [{ label: '官方网店', url: 'https://example.com/shop' }],
     }))
+    expect(clubApi.updateMyClub).not.toHaveBeenCalledWith(expect.objectContaining({ store_links: expect.anything() }))
   })
 
   it('保存后同步工作区标题使用的社团摘要', async () => {
@@ -144,5 +143,10 @@ describe('ClubProfile 平台入口', () => {
     expect(clubApi.uploadMyClubAvatar).not.toHaveBeenCalled()
     expect(source).toContain('accept="image/*"')
     expect(source).toContain('MAX_AVATAR_SIZE')
+  })
+
+  it('社团资料不提供登录信息修改入口', () => {
+    expect(source).not.toContain('club-account-management')
+    expect(source).not.toContain('updateCurrentAccount')
   })
 })

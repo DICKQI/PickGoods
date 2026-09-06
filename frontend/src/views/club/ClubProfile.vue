@@ -88,16 +88,8 @@
             />
           </div>
         </div>
-        <el-form-item label="其他入口（每行：标签 | URL）" class="other-links-field">
-          <el-input
-            v-model="storeLinksText"
-            type="textarea"
-            :rows="3"
-            placeholder="例如：官方网店 | https://example.com"
-          />
-          <p class="field-help">旧版自定义链接会继续好好保留~ 但不会自动搬进上面的平台分类哦</p>
-        </el-form-item>
       </div>
+
     </el-form>
   </section>
 </template>
@@ -142,11 +134,8 @@ const form = reactive<Club>({
   created_at: '',
   updated_at: '',
 })
-const storeLinksText = ref('')
-
 function hydrate(data: Club) {
   Object.assign(form, data)
-  storeLinksText.value = (data.store_links || []).map(item => `${item.label} | ${item.url}`).join('\n')
 }
 
 function syncWorkspaceClub(data: Club) {
@@ -159,18 +148,6 @@ function syncWorkspaceClub(data: Club) {
       avatar: data.avatar,
     },
   }
-}
-
-function parseStoreLinks() {
-  return storeLinksText.value
-    .split('\n')
-    .map(line => line.trim())
-    .filter(Boolean)
-    .map(line => {
-      const [label, ...url] = line.split('|')
-      return { label: label?.trim() || '其他入口', url: url.join('|').trim() || label?.trim() || '' }
-    })
-    .filter(item => item.url)
 }
 
 async function load() {
@@ -203,7 +180,6 @@ async function save() {
       taobao_url: form.taobao_url?.trim() || null,
       xiaohongshu_url: form.xiaohongshu_url?.trim() || null,
       weidian_url: form.weidian_url?.trim() || null,
-      store_links: parseStoreLinks(),
       address: form.address,
       business_hours: form.business_hours,
     })
@@ -262,8 +238,7 @@ onMounted(load)
 }
 
 .section-title__eyebrow,
-.form-section__heading span,
-.field-help {
+.form-section__heading span {
   color: var(--text-light);
   font-size: var(--font-small);
 }
@@ -409,15 +384,6 @@ onMounted(load)
   display: block;
   width: 100%;
   height: 100%;
-}
-
-.other-links-field {
-  margin-bottom: 0;
-}
-
-.field-help {
-  margin: 6px 0 0;
-  line-height: 1.4;
 }
 
 :deep(.el-form-item__label) {

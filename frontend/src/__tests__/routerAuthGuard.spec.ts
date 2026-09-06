@@ -106,4 +106,9 @@ describe('auth guard and wiring', () => {
     )
     expect(collectorNext).toHaveBeenCalledWith('/showcase')
   })
+
+  it('社团主题管理使用社团权限路由', () => {
+    expect(routerSource).toContain("path: 'themes', name: 'ClubThemes'")
+    expect(routerSource).toContain("meta: { title: '社团主题', requiresAuth: true, requiresClub: true }")
+  })
 })

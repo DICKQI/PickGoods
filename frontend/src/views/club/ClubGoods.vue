@@ -39,6 +39,11 @@
           <el-option label="已下架" value="unlisted" />
         </el-select>
       </label>
+      <label class="filter-control"><span>主题</span>
+        <el-select v-model="themeFilter" class="toolbar-select toolbar-select--theme" popper-class="catalog-filter-popper" aria-label="主题筛选" clearable filterable placeholder="全部主题" @change="handleSearch">
+          <el-option v-for="theme in metadata.themes" :key="theme.id" :label="theme.name" :value="theme.id" />
+        </el-select>
+      </label>
       <label class="filter-control"><span>排序</span>
         <el-select v-model="sort" class="toolbar-select toolbar-select--sort" popper-class="catalog-filter-popper" aria-label="目录排序" @change="handleSearch">
           <el-option label="公开顺序" value="order" />
@@ -120,14 +125,17 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Check, Delete, Download, Edit, Picture, Plus, Search } from '@element-plus/icons-vue'
 import { batchDeleteClubGoods, batchUnlistClubGoods, getMyClubGoods, getMyClubPopularity, reorderClubGoods, updateClubGoods } from '@/api/clubs'
 import type { ClubCatalogItem, ClubCatalogSummary, ClubPopularityItem, ClubPublicationStatus } from '@/api/types'
+import { useMetadataStore } from '@/stores/metadata'
 
 type BulkAction = 'delete' | 'unlist'
 const router = useRouter()
+const metadata = useMetadataStore()
 const goods = ref<ClubCatalogItem[]>([])
 const popularityByGoodsId = ref<Record<string, ClubPopularityItem>>({})
 const loading = ref(false)
 const search = ref('')
 const statusFilter = ref('')
+const themeFilter = ref<number | undefined>()
 const sort = ref('order')
 const page = ref(1)
 const pageSize = 50
@@ -147,7 +155,7 @@ const bulkActionLabel = computed(() => bulkAction.value === 'delete' ? '删除' 
 const currentPageEligibleIds = computed(() => goods.value.filter(item => isSelectable(item)).map(item => item.id))
 const isPageFullySelected = computed(() => currentPageEligibleIds.value.length > 0 && currentPageEligibleIds.value.every(id => selectedGoodsIds.value.includes(id)))
 const isPageIndeterminate = computed(() => { const n = currentPageEligibleIds.value.filter(id => selectedGoodsIds.value.includes(id)).length; return n > 0 && n < currentPageEligibleIds.value.length })
-const canReorder = computed(() => !search.value.trim() && !statusFilter.value && sort.value === 'order' && total.value <= pageSize && !bulkAction.value)
+const canReorder = computed(() => !search.value.trim() && !statusFilter.value && !themeFilter.value && sort.value === 'order' && total.value <= pageSize && !bulkAction.value)
 const summaryCards = computed(() => [{ key: '', label: '全部', value: summary.value.total }, { key: 'listed', label: '已上架', value: summary.value.listed }, { key: 'draft', label: '草稿', value: summary.value.draft }, { key: 'unlisted', label: '已下架', value: summary.value.unlisted }])
 
 function isSelectable(item: ClubCatalogItem, action = bulkAction.value): boolean { if (action === 'delete') return item.publication_status === 'draft' || item.publication_status === 'unlisted'; if (action === 'unlist') return item.publication_status === 'listed'; return false }
@@ -159,7 +167,7 @@ async function load(options: { preserveSelection?: boolean } = {}) {
   const requestId = ++loadRequestId
   loading.value = true
   try {
-    const [result, popularityResult] = await Promise.all([getMyClubGoods({ page: page.value, page_size: pageSize, search: search.value || undefined, status: statusFilter.value || undefined, sort: sort.value }), getMyClubPopularity()])
+    const [result, popularityResult] = await Promise.all([getMyClubGoods({ page: page.value, page_size: pageSize, search: search.value || undefined, status: statusFilter.value || undefined, theme: themeFilter.value, sort: sort.value }), getMyClubPopularity()])
     if (requestId !== loadRequestId) return
     goods.value = result.results
     total.value = result.count
@@ -234,7 +242,10 @@ async function togglePublished(item: ClubCatalogItem) { try { const publication_
 async function cancelSchedule(item: ClubCatalogItem) { try { const updated = await updateClubGoods(item.id, { publish_at: null }); Object.assign(item, updated); ElMessage.success('已取消定时上架') } catch { /* 全局请求层提示错误 */ } }
 function startDrag(id: string, event: DragEvent) { if (!canReorder.value) return; draggedId.value = id; event.dataTransfer?.setData('text/plain', id) }
 async function dropDrag(targetId: string) { const sourceId = draggedId.value; draggedId.value = null; if (!sourceId || sourceId === targetId || !canReorder.value) return; const from = goods.value.findIndex(item => item.id === sourceId); const to = goods.value.findIndex(item => item.id === targetId); if (from < 0 || to < 0) return; const next = [...goods.value]; const moved = next.splice(from, 1)[0]; if (!moved) return; next.splice(to, 0, moved); goods.value = next; try { await reorderClubGoods(next.map(item => item.id)); ElMessage.success('公开顺序已更新') } catch { ElMessage.error('排序保存失败，正在恢复原顺序'); await load() } }
-onMounted(load)
+onMounted(() => {
+  void metadata.fetchThemes()
+  void load()
+})
 onUnmounted(() => {
   if (searchTimer !== null) window.clearTimeout(searchTimer)
 })

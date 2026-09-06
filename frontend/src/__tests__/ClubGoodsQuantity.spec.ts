@@ -27,8 +27,9 @@ describe('社团谷子数量语义', () => {
     const list = readSource('src/views/club/ClubGoods.vue')
 
     expect(editor).toContain('publication_status')
+    expect(editor).toContain('value="draft"')
     expect(editor).toContain('value="listed"')
-    expect(editor).toContain('value="unlisted"')
+    expect(editor).not.toContain('value="unlisted"')
     expect(editor).not.toContain('in_cabinet')
     expect(editor).not.toContain('outdoor')
     expect(editor).not.toContain('sold')

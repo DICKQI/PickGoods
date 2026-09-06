@@ -327,7 +327,7 @@ class LoginThrottleTestCase(TestCase):
 
 
 class MeViewTestCase(TestCase):
-    """GET /api/auth/me/"""
+    """GET/PATCH /api/auth/me/"""
 
     def setUp(self):
         self.client = APIClient()
@@ -347,6 +347,88 @@ class MeViewTestCase(TestCase):
     def test_me_unauthenticated(self):
         response = self.client.get("/api/auth/me/")
         self.assertIn(response.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_update_username_requires_current_password(self):
+        self.client.force_authenticate(user=self.user)
+        wrong = self.client.patch(
+            "/api/auth/me/",
+            {"username": "renamed", "current_password": "wrong"},
+            format="json",
+        )
+        self.assertEqual(wrong.status_code, status.HTTP_400_BAD_REQUEST)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, "meuser")
+
+        updated = self.client.patch(
+            "/api/auth/me/",
+            {"username": "renamed", "current_password": "pass123"},
+            format="json",
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        self.assertEqual(updated.json()["username"], "renamed")
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.username, "renamed")
+
+    def test_update_rejects_duplicate_username(self):
+        User.objects.create(username="occupied", role=self.role)
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            "/api/auth/me/",
+            {"username": "occupied", "current_password": "pass123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("username", response.json())
+
+    def test_update_password_keeps_current_session_valid(self):
+        self.client.force_authenticate(user=self.user)
+        response = self.client.patch(
+            "/api/auth/me/",
+            {"current_password": "pass123", "new_password": "newpass456"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.check_password("pass123"))
+        self.assertTrue(self.user.check_password("newpass456"))
+        self.assertEqual(self.client.get("/api/auth/me/").status_code, status.HTTP_200_OK)
+
+    def test_update_rejects_no_changes_and_unauthenticated_request(self):
+        self.client.force_authenticate(user=self.user)
+        unchanged = self.client.patch(
+            "/api/auth/me/",
+            {"username": "meuser", "current_password": "pass123"},
+            format="json",
+        )
+        self.assertEqual(unchanged.status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.client.force_authenticate(user=None)
+        unauthenticated = self.client.patch(
+            "/api/auth/me/",
+            {"username": "renamed", "current_password": "pass123"},
+            format="json",
+        )
+        self.assertIn(unauthenticated.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+
+    def test_update_rejects_club_account(self):
+        club_user = User.objects.create(
+            username="club-account",
+            role=self.role,
+            account_type=User.ACCOUNT_TYPE_CLUB,
+        )
+        club_user.set_password("pass123")
+        club_user.save()
+        self.client.force_authenticate(user=club_user)
+
+        response = self.client.patch(
+            "/api/auth/me/",
+            {"username": "club-renamed", "current_password": "pass123"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        club_user.refresh_from_db()
+        self.assertEqual(club_user.username, "club-account")
 
 
 class LogoutViewTestCase(TestCase):

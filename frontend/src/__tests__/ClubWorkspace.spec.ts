@@ -50,7 +50,7 @@ describe('ClubWorkspace 社团工作区导航', () => {
     })
   }
 
-  it('编辑或新增社团谷子时隐藏工作区三个 TAB', () => {
+  it('编辑或新增社团谷子时隐藏工作区 TAB', () => {
     routeMock.name = 'ClubGoodsEdit'
     const wrapper = mountWorkspace()
 
@@ -60,25 +60,35 @@ describe('ClubWorkspace 社团工作区导航', () => {
   it('社团谷子列表页仍显示工作区导航', () => {
     const wrapper = mountWorkspace()
 
-    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(3)
+    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(4)
     expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(0%)')
     expect(wrapper.text()).toContain('社团谷子')
+    expect(wrapper.text()).toContain('主题管理')
     expect(wrapper.text()).toContain('人气统计')
     expect(wrapper.text()).toContain('社团资料')
   })
 
-  it('移动端隐藏与底部导航重复的工作区 TAB', () => {
+  it('移动端显示可横向滚动的四个工作区 TAB', () => {
     const wrapper = mountWorkspace(390)
 
-    expect(wrapper.find('.workspace-tabs').exists()).toBe(false)
+    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(4)
+    expect(wrapper.find('.workspace-tabs').exists()).toBe(true)
   })
 
   it('根据当前子路由移动唯一滑块，并把内容切换限制在嵌套路由区域', async () => {
     routeMock.name = 'ClubPopularity'
     const wrapper = mountWorkspace()
 
-    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(100%)')
+    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(200%)')
     expect(wrapper.find('.workspace-tab.is-active').text()).toContain('人气统计')
-    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(3)
+    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(4)
+  })
+
+  it('主题管理路由激活第二个工作区 TAB', () => {
+    routeMock.name = 'ClubThemes'
+    const wrapper = mountWorkspace()
+
+    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(100%)')
+    expect(wrapper.find('.workspace-tab.is-active').text()).toContain('主题管理')
   })
 })
