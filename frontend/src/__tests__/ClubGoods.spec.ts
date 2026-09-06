@@ -32,6 +32,7 @@ vi.mock('@/api/clubs', () => ({
   batchUnlistClubGoods: vi.fn(),
   getMyClubGoods: vi.fn(),
   getMyClubPopularity: vi.fn(),
+  reorderClubGoods: vi.fn(),
   updateClubGoods: vi.fn(),
 }))
 
@@ -265,11 +266,34 @@ describe('ClubGoods 批量操作', () => {
     expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'listed', theme: 7, sort: 'name' }))
   })
 
+  it('移动筛选下拉菜单显示在底部抽屉之上', () => {
+    expect(clubGoodsSource.match(/popper-class="catalog-filter-popper catalog-filter-popper--sheet"/g)).toHaveLength(3)
+    expect(clubGoodsSource).toContain(':global(.catalog-filter-popper--sheet.el-popper) { z-index: 2500 !important; }')
+  })
+
+  it('移动端只在筛选抽屉中提供发布状态筛选', async () => {
+    const originalWidth = window.innerWidth
+    Object.defineProperty(window, 'innerWidth', { configurable: true, value: 390 })
+
+    try {
+      const wrapper = await mountPage()
+      expect(wrapper.find('.catalog-summary').exists()).toBe(false)
+
+      await wrapper.get('[data-test="mobile-filter-trigger"]').trigger('click')
+      await nextTick()
+      expect(document.body.querySelector('[aria-label="移动端发布状态"]')).not.toBeNull()
+      wrapper.unmount()
+    } finally {
+      Object.defineProperty(window, 'innerWidth', { configurable: true, value: originalWidth })
+    }
+  })
+
   it('搜索输入使用防抖自动查询，回车立即查询且移除独立搜索按钮', async () => {
     vi.useFakeTimers()
     const wrapper = await mountPage()
     const input = wrapper.get('.el-input-stub input')
-    expect(wrapper.find('[aria-label="搜索社团谷子"]').exists()).toBe(false)
+    expect(wrapper.get('[aria-label="搜索社团谷子"]').element.tagName).toBe('INPUT')
+    expect(wrapper.find('button[aria-label="搜索社团谷子"]').exists()).toBe(false)
 
     await input.setValue('流')
     await input.setValue('流萤')
@@ -379,7 +403,7 @@ describe('ClubGoods 批量操作', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('条目状态已变化')
   })
 
-  it('分页或搜索刷新时保留当前批量模式的已选 ID', async () => {
+  it('筛选或首屏刷新时清空旧选择', async () => {
     const wrapper = await mountPage()
     const vm = wrapper.vm as unknown as {
       startBulkAction: (action: 'delete' | 'unlist') => void
@@ -391,6 +415,83 @@ describe('ClubGoods 批量操作', () => {
     vm.toggleSelection(draftGoods, true)
     vi.mocked(clubApi.getMyClubGoods).mockResolvedValue(pageResponse([unlistedGoods]))
     await vm.load()
+    expect(vm.selectedGoodsIds).toEqual([])
+  })
+
+  it('无限滚动请求下一页、按 ID 去重并保留批量选择', async () => {
+    const wrapper = await mountPage([draftGoods])
+    const vm = wrapper.vm as unknown as {
+      nextPage: number | null
+      goods: ClubCatalogItem[]
+      selectedGoodsIds: string[]
+      startBulkAction: (action: 'delete' | 'unlist') => void
+      toggleSelection: (goods: ClubCatalogItem, selected: boolean) => void
+      loadMore: () => Promise<void>
+    }
+    vm.startBulkAction('delete')
+    vm.toggleSelection(draftGoods, true)
+    vm.nextPage = 2
+    vi.mocked(clubApi.getMyClubGoods).mockResolvedValue({
+      ...pageResponse([draftGoods, unlistedGoods]),
+      page: 2,
+      count: 2,
+    })
+
+    await vm.loadMore()
+
+    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ page: 2 }))
+    expect(vm.goods.map(item => item.id)).toEqual(['draft', 'unlisted'])
     expect(vm.selectedGoodsIds).toEqual(['draft'])
+  })
+
+  it('追加请求进行中不会重复触发', async () => {
+    const wrapper = await mountPage([draftGoods])
+    const vm = wrapper.vm as unknown as { nextPage: number | null; loadMore: () => Promise<void> }
+    let resolveRequest!: (value: PaginatedResponse<ClubCatalogItem>) => void
+    vi.mocked(clubApi.getMyClubGoods).mockImplementation(() => new Promise(resolve => { resolveRequest = resolve }))
+    vm.nextPage = 2
+
+    const first = vm.loadMore()
+    const second = vm.loadMore()
+    expect(clubApi.getMyClubGoods).toHaveBeenCalledTimes(2)
+    resolveRequest({ ...pageResponse([unlistedGoods]), page: 2 })
+    await Promise.all([first, second])
+  })
+
+  it('没有下一页时显示全部加载完成且不再请求', async () => {
+    const wrapper = await mountPage([draftGoods])
+    const vm = wrapper.vm as unknown as { loadMore: () => Promise<void> }
+
+    expect(wrapper.get('.no-more').text()).toContain('已加载全部 1 条')
+    await vm.loadMore()
+    expect(clubApi.getMyClubGoods).toHaveBeenCalledTimes(1)
+  })
+
+  it('桌面缩略图启用懒加载并提供无限滚动哨兵降级逻辑', () => {
+    expect(clubGoodsSource).toContain('lazy class="thumb"')
+    expect(clubGoodsSource).toContain('new IntersectionObserver')
+    expect(clubGoodsSource).toContain("rootMargin: '200px 0px'")
+    expect(clubGoodsSource).toContain('!observerSupported')
+    expect(clubGoodsSource).not.toContain('<el-pagination')
+  })
+
+  it('移动筛选使用草稿值，应用后才更新实际查询条件', async () => {
+    const wrapper = await mountPage()
+    const vm = wrapper.vm as unknown as {
+      statusFilter: string
+      themeFilter?: number
+      sort: string
+      mobileDraft: { status: string; theme?: number; sort: string }
+      openMobileFilter: () => void
+      applyMobileFilters: () => void
+    }
+    vm.openMobileFilter()
+    Object.assign(vm.mobileDraft, { status: 'draft', theme: 7, sort: 'name' })
+    expect(vm.statusFilter).toBe('')
+
+    vm.applyMobileFilters()
+    await flushPromises()
+
+    expect(clubApi.getMyClubGoods).toHaveBeenLastCalledWith(expect.objectContaining({ status: 'draft', theme: 7, sort: 'name', page: 1 }))
   })
 })
