@@ -15,11 +15,11 @@
       <div class="account-row"><dt>用户 ID</dt><dd>{{ authStore.user?.id || '—' }}</dd></div>
     </dl>
 
-    <section v-if="authStore.isCollector" class="credentials-section" data-test="collector-account-management">
+    <section v-if="canManageCredentials" class="credentials-section" data-test="account-management">
       <div class="credentials-heading">
         <div>
-          <h3>登录信息</h3>
-          <p>修改登录用户名或设置新密码</p>
+          <h3>{{ credentialsTitle }}</h3>
+          <p>{{ credentialsDescription }}</p>
         </div>
         <el-icon aria-hidden="true"><Lock /></el-icon>
       </div>
@@ -82,6 +82,9 @@ const accountForm = ref({
 
 const roleLabel = computed(() => authStore.isAdmin ? '管理员' : '普通用户')
 const accountTypeLabel = computed(() => authStore.isClub ? '社团' : '吃谷人')
+const canManageCredentials = computed(() => authStore.isCollector || authStore.isClub)
+const credentialsTitle = computed(() => authStore.isClub ? '社团登录信息' : '登录信息')
+const credentialsDescription = computed(() => authStore.isClub ? '修改社团帐号的登录用户名或设置新密码' : '修改登录用户名或设置新密码')
 
 function accountErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: Record<string, unknown> } })?.response?.data

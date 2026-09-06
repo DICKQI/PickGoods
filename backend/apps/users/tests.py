@@ -410,7 +410,7 @@ class MeViewTestCase(TestCase):
         )
         self.assertIn(unauthenticated.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
-    def test_update_rejects_club_account(self):
+    def test_club_account_can_update_username_and_password(self):
         club_user = User.objects.create(
             username="club-account",
             role=self.role,
@@ -422,13 +422,21 @@ class MeViewTestCase(TestCase):
 
         response = self.client.patch(
             "/api/auth/me/",
-            {"username": "club-renamed", "current_password": "pass123"},
+            {
+                "username": "club-renamed",
+                "current_password": "pass123",
+                "new_password": "clubpass456",
+            },
             format="json",
         )
 
-        self.assertEqual(response.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.json()["username"], "club-renamed")
+        self.assertEqual(response.json()["account_type"], User.ACCOUNT_TYPE_CLUB)
         club_user.refresh_from_db()
-        self.assertEqual(club_user.username, "club-account")
+        self.assertEqual(club_user.username, "club-renamed")
+        self.assertFalse(club_user.check_password("pass123"))
+        self.assertTrue(club_user.check_password("clubpass456"))
 
 
 class LogoutViewTestCase(TestCase):

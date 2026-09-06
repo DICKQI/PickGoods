@@ -56,6 +56,7 @@ describe('ProfileAccount 登录信息管理', () => {
 
   it('吃谷人可以修改登录用户名和密码并同步当前用户', async () => {
     const { wrapper, authStore } = mountPage()
+    expect(wrapper.get('[data-test="account-management"] h3').text()).toBe('登录信息')
     const vm = wrapper.vm as unknown as {
       accountForm: { username: string; current_password: string; new_password: string; confirm_password: string }
       updateAccount: () => Promise<void>
@@ -101,8 +102,30 @@ describe('ProfileAccount 登录信息管理', () => {
     expect(ElMessage.error).toHaveBeenCalledWith('两次输入的新密码不一致')
   })
 
-  it('社团账号不显示登录信息修改入口', () => {
-    const { wrapper } = mountPage('club')
-    expect(wrapper.find('[data-test="collector-account-management"]').exists()).toBe(false)
+  it('社团账号显示专属登录信息区域并复用账号更新接口', async () => {
+    const { wrapper, authStore } = mountPage('club')
+    const vm = wrapper.vm as unknown as {
+      accountForm: { username: string; current_password: string; new_password: string; confirm_password: string }
+      updateAccount: () => Promise<void>
+    }
+    expect(wrapper.get('[data-test="account-management"] h3').text()).toBe('社团登录信息')
+    expect(wrapper.get('[data-test="account-management"]').text()).toContain('修改社团帐号的登录用户名或设置新密码')
+    Object.assign(vm.accountForm, {
+      username: 'club-renamed',
+      current_password: 'old-pass',
+      new_password: 'new-club-pass',
+      confirm_password: 'new-club-pass',
+    })
+    vi.mocked(updateCurrentAccount).mockResolvedValue({ ...authStore.user!, username: 'club-renamed' })
+
+    await vm.updateAccount()
+    await flushPromises()
+
+    expect(updateCurrentAccount).toHaveBeenCalledWith({
+      username: 'club-renamed',
+      current_password: 'old-pass',
+      new_password: 'new-club-pass',
+    })
+    expect(authStore.user?.username).toBe('club-renamed')
   })
 })
