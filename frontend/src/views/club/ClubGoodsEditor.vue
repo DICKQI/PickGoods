@@ -1,17 +1,34 @@
 <template>
-  <div v-loading="loading" class="editor-page">
+  <div v-loading="loading" class="editor-page" :class="{ 'editor-page--create-wizard': useCreateWizard }">
     <header class="editor-header">
       <div class="editor-title-block">
         <el-button text class="editor-back" @click="router.push('/club/goods')"><el-icon><ArrowLeft /></el-icon>返回社团谷子</el-button>
         <h2>{{ isEdit ? '编辑社团谷子' : '新增社团谷子' }}</h2>
         <p>名称、图片和上架状态，都在这里好好整理吧~</p>
+        <div v-if="useCreateWizard" class="editor-wizard-heading">
+          <span>{{ currentWizardStep.title }}</span>
+          <strong>{{ wizardProgressText }}</strong>
+        </div>
       </div>
     </header>
+
+    <div v-if="useCreateWizard" class="editor-wizard-progress" aria-label="创建进度">
+      <div
+        v-for="(step, index) in createWizardSteps"
+        :key="step.key"
+        class="editor-wizard-progress__item"
+        :class="{ 'is-active': index === currentWizardStepIndex, 'is-done': index < currentWizardStepIndex }"
+      >
+        <span class="editor-wizard-progress__dot">{{ index + 1 }}</span>
+        <span class="editor-wizard-progress__label">{{ step.title }}</span>
+      </div>
+    </div>
 
     <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="editor-form">
       <div class="editor-workbench">
         <div class="editor-main-column">
-          <section class="form-section form-section--basic">
+          <Transition name="editor-wizard-section" appear>
+          <section v-show="shouldShowFormSection('basic')" class="form-section form-section--basic editor-wizard-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'basic'">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
               <div><h3>基础信息</h3><p>IP、角色与品类，都来认识一下吧~</p></div>
@@ -48,8 +65,10 @@
               </el-col>
             </el-row>
           </section>
+          </Transition>
 
-          <section class="form-section form-section--publish">
+          <Transition name="editor-wizard-section" appear>
+          <section v-show="shouldShowFormSection('publish')" class="form-section form-section--publish editor-wizard-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'publish'">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
               <div><h3>发布设置</h3><p>设置发布状态、价格和上架时间</p></div>
@@ -84,18 +103,22 @@
               </el-form-item>
             </div>
           </section>
+          </Transition>
 
-          <section class="form-section form-section--notes">
+          <Transition name="editor-wizard-section" appear>
+          <section v-show="shouldShowFormSection('publish')" class="form-section form-section--notes editor-wizard-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'publish'">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
               <div><h3>公开说明</h3><p>给来访的小伙伴留下一点补充说明吧~</p></div>
             </div>
             <el-form-item label="说明"><el-input v-model="form.description" type="textarea" :rows="5" maxlength="2000" show-word-limit placeholder="请输入公开说明" /></el-form-item>
           </section>
+          </Transition>
         </div>
 
         <aside class="editor-side-column" aria-label="图片与表单操作">
-          <section class="form-section form-section--images">
+          <Transition name="editor-wizard-section" appear>
+          <section v-show="shouldShowFormSection('images')" class="form-section form-section--images editor-wizard-stage" :aria-hidden="useCreateWizard && currentWizardStep.key !== 'images'">
             <div class="form-section-header">
               <span class="form-section-header-bar" aria-hidden="true"></span>
               <div><h3>图片</h3></div>
@@ -107,6 +130,7 @@
               <el-upload v-model:file-list="additionalPhotoList" list-type="picture-card" :auto-upload="false" multiple accept="image/*" class="additional-photo-uploader" :on-change="handleAdditionalPhotoChange" :on-remove="handleAdditionalPhotoRemove"><el-icon><Plus /></el-icon></el-upload>
             </el-form-item>
           </section>
+          </Transition>
           <div class="desktop-action-footer" aria-label="桌面端表单操作">
             <el-button class="desktop-action-button desktop-action-button--back" @click="router.push('/club/goods')"><el-icon><ArrowLeft /></el-icon>取消</el-button>
             <el-button type="primary" class="desktop-action-button desktop-action-button--save" @click="save(form.publication_status)"><el-icon><Check /></el-icon>{{ form.publication_status === 'draft' ? '保存草稿' : '保存并上架' }}</el-button>
@@ -115,15 +139,31 @@
       </div>
     </el-form>
 
-    <div class="mobile-action-footer" aria-label="移动端表单操作">
-      <el-button class="mobile-action-button mobile-action-button--back" @click="router.push('/club/goods')"><el-icon><ArrowLeft /></el-icon>取消</el-button>
-      <el-button type="primary" class="mobile-action-button mobile-action-button--save" @click="save(form.publication_status)"><el-icon><Check /></el-icon>{{ form.publication_status === 'draft' ? '保存草稿' : '保存并上架' }}</el-button>
+    <div class="mobile-form-dock-wrap" :class="{ 'mobile-form-dock-wrap--wizard': useCreateWizard }" aria-label="移动端表单操作">
+      <div class="mobile-form-dock-stack">
+        <div class="mobile-form-dock-fade" aria-hidden="true"></div>
+        <div class="mobile-form-dock-actions">
+          <template v-if="useCreateWizard">
+            <el-button v-if="!isFirstWizardStep" class="mobile-form-dock-btn mobile-form-dock-btn--back" @click="goPreviousWizardStep">上一步</el-button>
+            <el-button
+              type="primary"
+              class="mobile-form-dock-btn mobile-form-dock-btn--publish"
+              :class="{ 'mobile-form-dock-btn--subtle': !isLastWizardStep }"
+              @click="handleWizardPrimaryAction"
+            >{{ isLastWizardStep ? saveActionLabel : '下一步' }}</el-button>
+          </template>
+          <template v-else>
+            <el-button class="mobile-form-dock-btn mobile-form-dock-btn--back" @click="router.push('/club/goods')">取消</el-button>
+            <el-button type="primary" class="mobile-form-dock-btn mobile-form-dock-btn--publish" @click="save(form.publication_status)">{{ saveActionLabel }}</el-button>
+          </template>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
+import { nextTick, onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile, UploadRawFile } from 'element-plus'
@@ -137,13 +177,21 @@ import {
   uploadClubGoodsMainPhoto,
 } from '@/api/clubs'
 import { useMetadataStore } from '@/stores/metadata'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import type { ClubCatalogInput, ClubPublicationStatus } from '@/api/types'
 
 type ClubEditorPublicationStatus = Exclude<ClubPublicationStatus, 'unlisted'>
+type CreateWizardStepKey = 'basic' | 'images' | 'publish'
+interface CreateWizardStep {
+  key: CreateWizardStepKey
+  title: string
+  validationFields: string[]
+}
 
 const route = useRoute()
 const router = useRouter()
 const metadata = useMetadataStore()
+const { isMobile } = useResponsiveDevice()
 const formRef = ref<FormInstance>()
 const loading = ref(false)
 const isEdit = computed(() => Boolean(route.params.id))
@@ -161,6 +209,19 @@ const additionalPhotoList = ref<UploadFile[]>([])
 const removedAdditionalPhotoIds = ref<number[]>([])
 const publishAtLocal = ref('')
 const isDirty = ref(false)
+const createWizardSteps: CreateWizardStep[] = [
+  { key: 'basic', title: '基础信息', validationFields: ['name', 'ip_id', 'character_ids', 'category_id'] },
+  { key: 'images', title: '图片', validationFields: [] },
+  { key: 'publish', title: '说明与发布', validationFields: [] },
+]
+const currentWizardStepIndex = ref(0)
+const useCreateWizard = computed(() => isMobile.value && !isEdit.value)
+const currentWizardStep = computed(() => createWizardSteps[currentWizardStepIndex.value] ?? createWizardSteps[0]!)
+const wizardProgressText = computed(() => `${currentWizardStepIndex.value + 1}/${createWizardSteps.length}`)
+const isFirstWizardStep = computed(() => currentWizardStepIndex.value === 0)
+const isLastWizardStep = computed(() => currentWizardStepIndex.value === createWizardSteps.length - 1)
+const saveActionLabel = computed(() => form.publication_status === 'draft' ? '保存草稿' : '保存并上架')
+const shouldShowFormSection = (section: CreateWizardStepKey) => !useCreateWizard.value || currentWizardStep.value.key === section
 
 const rules: FormRules = {
   name: [{ required: true, message: '请输入谷子名称', trigger: 'blur' }],
@@ -238,6 +299,53 @@ function handlePublishDateChange() {
   isDirty.value = true
 }
 
+function scrollWizardToTop() {
+  nextTick(() => {
+    const header = document.querySelector<HTMLElement>('.editor-header')
+    if (!header) return
+    const navbar = document.querySelector<HTMLElement>('.navbar')
+    const navbarHeight = navbar?.getBoundingClientRect().height ?? 0
+    const targetTop = Math.max(0, header.getBoundingClientRect().top + window.scrollY - navbarHeight - 10)
+    try {
+      window.scrollTo({ top: targetTop, behavior: 'smooth' })
+    } catch {
+      window.scrollTo(0, targetTop)
+    }
+  })
+}
+
+async function validateCurrentWizardStep() {
+  const fields = currentWizardStep.value.validationFields
+  if (!formRef.value || fields.length === 0) return true
+  try {
+    await formRef.value.validateField(fields)
+    return true
+  } catch {
+    return false
+  }
+}
+
+function goPreviousWizardStep() {
+  if (!useCreateWizard.value || isFirstWizardStep.value) return
+  currentWizardStepIndex.value -= 1
+  scrollWizardToTop()
+}
+
+async function goNextWizardStep() {
+  if (!useCreateWizard.value || isLastWizardStep.value) return
+  if (!await validateCurrentWizardStep()) return
+  currentWizardStepIndex.value += 1
+  scrollWizardToTop()
+}
+
+async function handleWizardPrimaryAction() {
+  if (isLastWizardStep.value) {
+    await save(form.publication_status)
+    return
+  }
+  await goNextWizardStep()
+}
+
 async function save(publicationStatus: ClubEditorPublicationStatus) {
   const valid = await formRef.value?.validate().catch(() => false)
   if (!valid) return
@@ -293,6 +401,18 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
 .editor-back:hover { color: var(--primary-gold-dark); }
 .editor-header h2 { margin: 4px 0 0; color: var(--primary-gold); font-size: 22px; font-weight: 700; line-height: 1.25; }
 .editor-header p { margin: 0; color: var(--text-light); font-size: 13px; line-height: 1.45; }
+.editor-wizard-heading { display: flex; align-items: center; gap: 8px; min-width: 0; margin-top: 2px; color: #909399; font-size: 12px; line-height: 1.2; }
+.editor-wizard-heading span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.editor-wizard-heading strong { flex: none; padding: 2px 7px; border-radius: 999px; color: var(--primary-gold-dark); background: rgba(212,175,55,.1); font-weight: 700; }
+.editor-wizard-progress { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin: 0 0 12px; padding: 8px; border: 1px solid rgba(212,175,55,.14); border-radius: 14px; background: rgba(255,255,255,.96); box-shadow: var(--shadow-sm); }
+.editor-wizard-progress__item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; min-width: 0; color: #a8abb2; }
+.editor-wizard-progress__item:not(:last-child)::after { position: absolute; top: 12px; left: calc(50% + 13px); width: calc(100% - 20px); height: 1px; content: ''; background: #e8eaf2; }
+.editor-wizard-progress__item.is-done:not(:last-child)::after, .editor-wizard-progress__item.is-active:not(:last-child)::after { background: rgba(212,175,55,.38); }
+.editor-wizard-progress__dot { position: relative; z-index: 1; display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; border-radius: 50%; color: #9ca3af; background: #f3f4f8; font-size: 12px; font-weight: 800; }
+.editor-wizard-progress__label { max-width: 100%; overflow: hidden; font-size: 11px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
+.editor-wizard-progress__item.is-active .editor-wizard-progress__dot { color: #fff; background: linear-gradient(135deg, var(--primary-gold), var(--primary-gold-light)); box-shadow: 0 4px 12px rgba(212,175,55,.26); }
+.editor-wizard-progress__item.is-active .editor-wizard-progress__label { color: var(--primary-gold-dark); font-weight: 700; }
+.editor-wizard-progress__item.is-done .editor-wizard-progress__dot { color: var(--primary-gold-dark); background: rgba(212,175,55,.14); }
 .editor-form { width: 100%; margin-top: 4px; }
 .editor-workbench { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; min-width: 0; }
 .editor-main-column, .editor-side-column { display: flex; min-width: 0; flex-direction: column; gap: 16px; }
@@ -355,7 +475,7 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   background-color: var(--primary-gold-dark) !important;
   border-color: var(--primary-gold-dark) !important;
 }
-.mobile-action-footer { display: none; }
+.mobile-form-dock-wrap { display: none; }
 @media (min-width: 1100px) {
   .editor-workbench { grid-template-columns: minmax(0, 1fr) minmax(360px, 420px); gap: 20px; align-items: start; }
   .editor-side-column { position: sticky; top: 84px; max-height: calc(100vh - 108px); overflow-y: auto; padding-right: 4px; }
@@ -374,27 +494,35 @@ function handleBeforeUnload(event: BeforeUnloadEvent) {
   .publish-settings-grid { grid-template-columns: minmax(0, 1fr); gap: 18px; }
   .main-photo-uploader :deep(.el-upload--picture-card), .main-photo-uploader :deep(.el-upload-list--picture-card .el-upload-list__item) { width: min(220px, 100%); }
   .desktop-action-footer { display: none; }
-  .mobile-action-footer { position: fixed; right: 0; bottom: 0; left: 0; z-index: 999; display: flex; gap: 10px; padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px)); border-top: 0; background: transparent; box-shadow: none; pointer-events: none; }
-  .mobile-action-footer::before { position: absolute; right: 0; bottom: 0; left: 0; z-index: -1; height: min(180px, 32vh); content: ''; pointer-events: none; background: linear-gradient(to top, var(--secondary-gray) 0%, rgba(245,245,247,.92) 30%, rgba(245,245,247,.55) 58%, rgba(255,255,255,0) 100%); }
-  .mobile-action-button { flex: 1; min-width: 0; min-height: 44px; margin: 0; font-size: 14px; font-weight: 700; }
-  .mobile-action-button { pointer-events: auto; border-radius: 999px !important; }
-  .mobile-action-button--back { color: #606266; background: rgba(255,255,255,.92); border-color: #e5e7ef; }
-  .mobile-action-button--save {
-    --el-button-bg-color: var(--primary-gold);
-    --el-button-border-color: var(--primary-gold);
-    --el-button-hover-bg-color: var(--primary-gold-dark);
-    --el-button-hover-border-color: var(--primary-gold-dark);
-    --el-button-active-bg-color: var(--primary-gold-dark);
-    --el-button-active-border-color: var(--primary-gold-dark);
-    color: #fff !important;
-    background-color: var(--primary-gold) !important;
-    border-color: var(--primary-gold) !important;
-  }
-  .mobile-action-button--save:hover,
-  .mobile-action-button--save:focus {
-    color: #fff !important;
-    background-color: var(--primary-gold-dark) !important;
-    border-color: var(--primary-gold-dark) !important;
-  }
+  .mobile-form-dock-wrap { position: fixed; right: 0; bottom: 0; left: 0; z-index: 999; display: block; pointer-events: none; }
+  .mobile-form-dock-stack { position: relative; isolation: isolate; display: flex; flex-direction: column; width: 100%; margin: 0 auto; padding: 0 16px calc(12px + env(safe-area-inset-bottom, 0px)); box-sizing: border-box; }
+  .mobile-form-dock-fade { position: absolute; z-index: 0; right: 0; bottom: 0; left: 0; height: min(180px, 36vh); min-height: 126px; pointer-events: none; background: linear-gradient(to top, var(--secondary-gray) 0%, rgba(245,245,247,.92) 30%, rgba(245,245,247,.55) 58%, rgba(255,255,255,0) 100%); }
+  .mobile-form-dock-actions { position: relative; z-index: 1; display: flex; align-items: stretch; gap: 8px; width: 100%; pointer-events: auto; }
+  .mobile-form-dock-btn { flex: 1; min-width: 0; min-height: 48px; margin: 0; border-radius: 999px !important; font-size: 14px; font-weight: 600; }
+  .editor-page :deep(.mobile-form-dock-btn.el-button) { border-radius: 999px !important; }
+  .mobile-form-dock-btn--back { flex: 3; color: #606266 !important; background: #fff !important; border: 1px solid #e6e8ef !important; box-shadow: none !important; }
+  .mobile-form-dock-btn--back:hover, .mobile-form-dock-btn--back:focus { color: var(--primary-gold-dark) !important; background: #fffaf0 !important; border-color: rgba(212,175,55,.4) !important; }
+  .mobile-form-dock-btn--publish { flex: 6; --el-button-bg-color: var(--primary-gold); --el-button-border-color: var(--primary-gold); --el-button-hover-bg-color: var(--primary-gold-dark); --el-button-hover-border-color: var(--primary-gold-dark); --el-button-active-bg-color: var(--primary-gold-dark); --el-button-active-border-color: var(--primary-gold-dark); color: #fff !important; background-color: var(--primary-gold) !important; border-color: var(--primary-gold) !important; }
+  .mobile-form-dock-btn--publish:hover, .mobile-form-dock-btn--publish:focus { color: #fff !important; background-color: var(--primary-gold-dark) !important; border-color: var(--primary-gold-dark) !important; }
+  .mobile-form-dock-btn--subtle { color: var(--primary-gold-dark) !important; background: linear-gradient(180deg, rgba(255,255,255,.94) 0%, rgba(251,247,238,.9) 100%) !important; border: 1px solid rgba(212,175,55,.38) !important; box-shadow: 0 8px 20px rgba(31,41,55,.08), inset 0 1px 0 rgba(255,255,255,.72) !important; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  .mobile-form-dock-btn--subtle:hover, .mobile-form-dock-btn--subtle:focus { color: var(--primary-gold-dark) !important; background: linear-gradient(180deg, rgba(255,255,255,.98) 0%, rgba(249,241,221,.94) 100%) !important; border-color: rgba(212,175,55,.48) !important; }
+  .editor-page--create-wizard .editor-workbench { position: relative; }
+  .editor-page--create-wizard .editor-main-column, .editor-page--create-wizard .editor-side-column { position: relative; }
+  .editor-page--create-wizard .editor-wizard-stage { transform-origin: top center; will-change: opacity, transform; }
+  .editor-page--create-wizard .editor-wizard-section-enter-active { transition: opacity .22s ease, transform .28s cubic-bezier(.22,1,.36,1); }
+  .editor-page--create-wizard .editor-wizard-section-enter-from { opacity: 0; transform: translate3d(12px,8px,0) scale(.99); }
+  .editor-page--create-wizard .editor-wizard-section-leave-active { position: absolute; width: 100%; opacity: 0; pointer-events: none; transition: none; }
+  .editor-page--create-wizard .editor-wizard-section-leave-to { opacity: 0; }
+}
+@media (max-width: 430px) {
+  .editor-wizard-progress { gap: 4px; padding: 8px 6px; }
+  .editor-wizard-progress__label { font-size: 10px; }
+  .editor-wizard-progress__dot { width: 22px; height: 22px; font-size: 11px; }
+  .editor-wizard-progress__item:not(:last-child)::after { top: 11px; left: calc(50% + 12px); }
+  .mobile-form-dock-btn { min-height: 46px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .editor-page--create-wizard .editor-wizard-section-enter-active { transition: opacity .12s ease; }
+  .editor-page--create-wizard .editor-wizard-section-enter-from, .editor-page--create-wizard .editor-wizard-section-leave-to { transform: none; }
 }
 </style>
