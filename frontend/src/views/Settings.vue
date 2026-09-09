@@ -53,60 +53,27 @@
       </div>
     </el-card>
 
-    <el-card v-if="authStore.isCollector" class="settings-card mobile-nav-settings-card" shadow="never">
-      <template #header>
-        <div class="card-header">
-          <el-icon class="header-icon"><Menu /></el-icon>
-          <span>底部导航设置</span>
-        </div>
-      </template>
-
-      <div class="mobile-nav-settings">
-        <div
-          v-for="item in COLLECTOR_NAV_ITEMS"
-          :key="item.key"
-          class="mobile-nav-option"
-          :class="{ 'is-selected': mobileNavStore.isSelected(item.key) }"
-        >
-          <el-checkbox
-            :model-value="mobileNavStore.isSelected(item.key)"
-            :disabled="mobileNavStore.isOnlySelected(item.key)"
-            :aria-label="`${item.label}底部导航`"
-            @change="toggleMobileNavItem(item.key, $event)"
-          >
-            <span class="mobile-nav-option-label">
-              <el-icon><component :is="item.icon" /></el-icon>
-              <span>{{ item.label }}</span>
-            </span>
-          </el-checkbox>
-        </div>
-        <el-button class="mobile-nav-reset" :disabled="isMobileNavDefault" @click="resetMobileNav">
-          恢复默认
-        </el-button>
-      </div>
+    <el-card class="settings-card" shadow="never">
+      <template #header>关于拾谷</template>
+      <p>✦ 拾谷 PickGoods</p>
+      <a href="https://github.com/DICKQI/PickGoods" target="_blank" rel="noopener noreferrer">GitHub · 项目主页</a>
+      <p><RouterLink v-if="!authStore.isAuthenticated" to="/login">登录账号</RouterLink></p>
     </el-card>
-
   </div>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
-import { Setting, Link, InfoFilled, Menu } from '@element-plus/icons-vue'
+import { Setting, Link, InfoFilled } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { updateBaseURL, getCurrentBaseURL, resetBaseURL } from '@/utils/request'
 import { useMetadataStore } from '@/stores/metadata'
 import { useAuthStore } from '@/stores/auth'
-import {
-  COLLECTOR_DEFAULT_NAV_KEYS,
-  COLLECTOR_NAV_ITEMS,
-  useMobileNavStore,
-  type CollectorNavKey,
-} from '@/stores/mobileNav'
+
 
 const metadataStore = useMetadataStore()
 const authStore = useAuthStore()
-const mobileNavStore = useMobileNavStore()
 
 const formRef = ref<FormInstance>()
 const saving = ref(false)
@@ -140,7 +107,7 @@ const validateURL = (rule: any, value: string, callback: any) => {
       return
     }
     callback()
-  } catch (error) {
+  } catch {
     callback(new Error('请输入有效的 URL 地址，例如：http://127.0.0.1:8000'))
   }
 }
@@ -154,11 +121,6 @@ const formRules: FormRules = {
 const isDefault = computed(() => {
   return formData.value.apiBaseURL === defaultBaseURL.value || formData.value.apiBaseURL === ''
 })
-
-const isMobileNavDefault = computed(() => (
-  mobileNavStore.selectedKeys.length === COLLECTOR_DEFAULT_NAV_KEYS.length &&
-  COLLECTOR_DEFAULT_NAV_KEYS.every(key => mobileNavStore.selectedKeys.includes(key))
-))
 
 const loadCurrentSettings = () => {
   currentBaseURL.value = getCurrentBaseURL()
@@ -192,18 +154,6 @@ const handleReset = () => {
   currentBaseURL.value = defaultBaseURL.value
   metadataStore.clearCache() // 清除元数据缓存
   ElMessage.success('已恢复为默认地址')
-}
-
-const toggleMobileNavItem = (key: CollectorNavKey, checked: boolean | string | number) => {
-  const next = checked
-    ? [...mobileNavStore.selectedKeys, key]
-    : mobileNavStore.selectedKeys.filter(item => item !== key)
-  mobileNavStore.setSelectedKeys(next)
-}
-
-const resetMobileNav = () => {
-  mobileNavStore.resetToDefault()
-  ElMessage.success('底部导航已恢复默认')
 }
 
 onMounted(() => {

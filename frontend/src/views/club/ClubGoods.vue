@@ -190,7 +190,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
+import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
+import { computed, nextTick, onActivated, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown, ArrowUp, Calendar, Check, Delete, Download, Edit, Filter, List, Picture, Plus, Search, WarningFilled } from '@element-plus/icons-vue'
@@ -426,6 +427,19 @@ function setupSentinelObserver() {
 
 watch(sentinelRef, () => { void nextTick(setupSentinelObserver) })
 watch(hasNext, () => { void nextTick(setupSentinelObserver) })
+onActivated(async () => {
+  const workspace = useMobileWorkspaceStore()
+  if (!workspace.clubGoodsChanged) return
+  workspace.clubGoodsChanged = false
+  const previousCount = goods.value.length
+  await loadInitial()
+  let revision = loadRequestId
+  while (goods.value.length < previousCount && nextPage.value !== null && revision === loadRequestId) {
+    await loadMore()
+    if (loadMoreError.value || loadRequestId !== revision + 1) break
+    revision = loadRequestId
+  }
+})
 onMounted(() => { void metadata.fetchThemes(); void loadInitial() })
 onUnmounted(() => { clearSearchTimer(); sentinelObserver?.disconnect() })
 </script>

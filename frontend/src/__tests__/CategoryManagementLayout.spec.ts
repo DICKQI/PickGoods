@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const viewSource = readFileSync(join(process.cwd(), 'src/views/CategoryManagement.vue'), 'utf-8')
+const viewSource = readFileSync(join(process.cwd(), 'src/views/CategoryManagement.vue'), 'utf-8').replace(/\r\n/g, '\n')
 const nodeSource = readFileSync(join(process.cwd(), 'src/components/CategoryMobileNode.vue'), 'utf-8')
 
 function cssRuleBlock(source: string, selector: string) {

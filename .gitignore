@@ -156,3 +156,6 @@ AGENTS.md
 .zcode/
 docs/superpowers/
 dsh-usage/
+
+# Local mobile UI verification screenshots and video
+/frontend/artifacts/

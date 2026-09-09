@@ -29,6 +29,9 @@
           <el-icon><Search /></el-icon>
           <span>搜索</span>
         </el-button>
+        <el-button v-if="authStore.isAdmin && isMobile" class="mobile-inline-create" type="primary" circle aria-label="新增顶级品类" @click="handleAdd">
+          <el-icon><Plus /></el-icon>
+        </el-button>
         <div class="hidden-xs-only">
           <el-button plain @click="expandAll">全部展开</el-button>
         </div>

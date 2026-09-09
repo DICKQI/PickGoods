@@ -41,6 +41,20 @@ describe('useGuziStore', () => {
     vi.useFakeTimers()
   })
 
+  it('refreshes the loaded mobile pages after saving without losing filters', async () => {
+    const store = useGuziStore()
+    store.filters = { ...store.filters, search: '春日' }
+    store.pagination.page = 2
+    vi.mocked(getGoodsList)
+      .mockResolvedValueOnce(makePaginatedResponse([makeGoods('1', 'Updated')], 2, 1, 2))
+      .mockResolvedValueOnce(makePaginatedResponse([makeGoods('2', 'Second')], 2, 2, null))
+    await store.refreshLoadedPages()
+    expect(store.guziList.map(item => item.id)).toEqual(['1', '2'])
+    expect(store.pagination.page).toBe(2)
+    expect(getGoodsList).toHaveBeenNthCalledWith(1, expect.objectContaining({ search: '春日', page: 1 }))
+    expect(getGoodsList).toHaveBeenNthCalledWith(2, expect.objectContaining({ search: '春日', page: 2 }))
+  })
+
   it('初始状态', () => {
     const store = useGuziStore()
     expect(store.guziList).toEqual([])

@@ -1,5 +1,6 @@
 <template>
   <div class="login-container">
+    <RouterLink class="login-service-settings" to="/settings">服务设置</RouterLink>
     <!-- Decorative background shapes (Laser & Gold) -->
     <div class="bg-shape shape-1"></div>
     <div class="bg-shape shape-2"></div>
@@ -1470,4 +1471,8 @@ onBeforeUnmount(() => {
     padding-bottom: 20px;
   }
 }
+</style>
+
+<style scoped>
+.login-service-settings { position: absolute; right: 16px; top: calc(12px + env(safe-area-inset-top)); z-index: 2; padding: 12px; color: var(--primary-gold-dark); }
 </style>

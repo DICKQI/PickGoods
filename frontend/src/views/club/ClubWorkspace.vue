@@ -1,6 +1,6 @@
 <template>
   <div class="club-workspace" :class="{ 'club-workspace--editor': isGoodsEditor }">
-    <header v-if="!isGoodsCreate" class="workspace-header">
+    <header v-if="!isGoodsCreate && (!isMobile || route.name === 'ClubProfile')" class="workspace-header">
       <div class="workspace-identity">
         <el-avatar class="workspace-avatar" :src="authStore.user?.club?.avatar || undefined" :size="52">
           {{ (authStore.user?.club?.name || '社').slice(0, 1) }}
@@ -30,7 +30,10 @@
       </router-link>
     </nav>
     <router-view v-slot="{ Component }">
-      <Transition name="workspace-content" mode="out-in">
+      <KeepAlive v-if="isMobile" :include="['ClubGoods', 'ThemeManagement', 'ClubPopularity']" :max="3">
+        <component :is="Component" :key="route.path" />
+      </KeepAlive>
+      <Transition v-else name="workspace-content" mode="out-in">
         <component :is="Component" :key="route.name" />
       </Transition>
     </router-view>

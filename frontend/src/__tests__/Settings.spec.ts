@@ -4,7 +4,7 @@ import { mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import Settings from '@/views/Settings.vue'
 import { useAuthStore } from '@/stores/auth'
-import { MOBILE_NAV_STORAGE_KEY, useMobileNavStore } from '@/stores/mobileNav'
+
 
 vi.mock('element-plus', async (importOriginal) => {
   const actual = await importOriginal<typeof import('element-plus')>()
@@ -79,34 +79,24 @@ const mountSettings = (accountType?: 'collector' | 'club') => {
   })
 }
 
-describe('Settings mobile navigation preferences', () => {
-  beforeEach(() => {
-    localStorage.clear()
+describe('Settings navigation migration', () => {
+  beforeEach(() => localStorage.clear())
+  it('retires preferences and exposes the project link for every identity', () => {
+    for (const identity of ['collector', 'club', undefined] as const) {
+      const wrapper = mountSettings(identity)
+      expect(wrapper.find('.mobile-nav-settings-card').exists()).toBe(false)
+      expect(wrapper.get('a[href="https://github.com/DICKQI/PickGoods"]').attributes('rel')).toContain('noopener')
+      expect(wrapper.text()).toContain('后端服务配置')
+      wrapper.unmount()
+    }
   })
-
-  it('removes the usage instructions and shows preferences only to collectors', () => {
-    const collector = mountSettings('collector')
-    expect(collector.text()).not.toContain('使用说明')
-    expect(collector.find('.mobile-nav-settings-card').exists()).toBe(true)
-    expect(collector.findAll('.mobile-nav-option')).toHaveLength(6)
-    expect(collector.get('input[aria-label="品类底部导航"]').attributes('checked')).toBeUndefined()
-
-    expect(mountSettings('club').find('.mobile-nav-settings-card').exists()).toBe(false)
-    expect(mountSettings().find('.mobile-nav-settings-card').exists()).toBe(false)
-  })
-
-  it('saves changes immediately and prevents removing the last entry', async () => {
-    const wrapper = mountSettings('collector')
-    const firstCheckbox = wrapper.get('input[aria-label="社团底部导航"]')
-
-    await firstCheckbox.setValue(false)
-
-    expect(useMobileNavStore().selectedKeys).toEqual(['showcase', 'location', 'ipcharacter', 'theme'])
-    expect(localStorage.getItem(MOBILE_NAV_STORAGE_KEY)).toBe('["showcase","location","ipcharacter","theme"]')
-
-    useMobileNavStore().setSelectedKeys(['theme'])
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.get('input[aria-label="主题底部导航"]').attributes('disabled')).toBeDefined()
+  it('does not alter old preferences or unrelated stored settings', () => {
+    localStorage.setItem('pickgoods:mobile-bottom-nav', '["theme"]')
+    localStorage.setItem('unrelated', 'keep')
+    const wrapper = mountSettings()
+    expect(wrapper.text()).toContain('登录账号')
+    expect(localStorage.getItem('pickgoods:mobile-bottom-nav')).toBe('["theme"]')
+    expect(localStorage.getItem('unrelated')).toBe('keep')
+    wrapper.unmount()
   })
 })

@@ -208,6 +208,17 @@ export const useGuziStore = defineStore('guzi', () => {
     _searchGuzi()
   }
 
+  // Revalidate the already loaded window after an editor saves, retaining filters.
+  async function refreshLoadedPages() {
+    const lastPage = pagination.value.page
+    pagination.value.page = 1
+    if (!await _searchGuzi(undefined, true)) return
+    const seq = searchSeq
+    while (pagination.value.page < lastPage && hasMore.value && seq === searchSeq) {
+      if (!await _searchGuzi(undefined, true, true)) break
+    }
+  }
+
   async function loadMore() {
     if (loading.value || loadingMore.value || !hasMore.value) return
     loadingMore.value = true
@@ -287,6 +298,7 @@ export const useGuziStore = defineStore('guzi', () => {
     setPage,
     setPageSize,
     loadMore,
+    refreshLoadedPages,
     setViewMode,
     enterSelectionMode,
     exitSelectionMode,

@@ -2,7 +2,6 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { nextTick } from 'vue'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import Layout from '@/components/Layout.vue'
@@ -103,52 +102,28 @@ const mountDesktopLayout = () => mountLayout({ width: 1197, path: '/theme' })
 const mountMobileLayout = (path: string) => mountLayout({ width: 390, path })
 
 describe('Layout top navigation', () => {
-  it('社团详情仅移动端隐藏顶部栏，返回目录后恢复', async () => {
+  it('replaces the mobile brand bar with detail and tab headers', async () => {
     const wrapper = await mountMobileLayout('/clubs/1')
     expect(wrapper.find('.navbar').exists()).toBe(false)
-    expect(wrapper.get('main').classes()).toContain('no-top-nav')
-    expect(wrapper.get('main').classes()).toContain('mobile-detail-safe-area')
+    expect(wrapper.get('.mobile-page-header').classes()).toContain('is-compact')
     expect(wrapper.get('main').classes()).toContain('has-bottom-nav')
     await wrapper.vm.$router.push('/clubs')
     await flushPromises()
-    expect(wrapper.find('.navbar').exists()).toBe(true)
-    expect(wrapper.get('main').classes()).not.toContain('no-top-nav')
+    expect(wrapper.find('.navbar').exists()).toBe(false)
+    expect(wrapper.get('.mobile-page-header').text()).toContain('社团目录')
     wrapper.unmount()
   })
 
-  it('目录离场期间保留顶部间距，详情入场前释放，导航独立淡出', async () => {
+  it('changes mobile pages without retaining obsolete navbar padding', async () => {
     const wrapper = await mountLayout({ width: 390, path: '/clubs', realRouting: true })
-    const originalGetComputedStyle = window.getComputedStyle.bind(window)
-    vi.spyOn(window, 'getComputedStyle').mockImplementation((element, pseudo) => {
-      const styles = originalGetComputedStyle(element, pseudo)
-      if (element === wrapper.get('main').element) {
-        Object.defineProperty(styles, 'paddingTop', { value: '64px' })
-      }
-      return styles
-    })
     await wrapper.vm.$router.push('/clubs/1')
-    await nextTick()
-    expect(wrapper.find('[data-test="club-directory"]').exists()).toBe(true)
-    expect(wrapper.get('main').element.style.paddingTop).toBe('64px')
-    expect(wrapper.get('.navbar').classes()).toContain('navbar-visibility-leave-active')
-
-    // jsdom has no stylesheet transitions; Vue completes after two animation frames.
-    await new Promise(resolve => setTimeout(resolve, 100))
     await flushPromises()
     expect(wrapper.find('[data-test="club-detail"]').exists()).toBe(true)
-    expect(wrapper.find('[data-test="club-directory"]').exists()).toBe(false)
     expect(wrapper.get('main').element.style.paddingTop).toBe('')
-    expect(wrapper.find('.navbar').exists()).toBe(false)
-
-    vi.restoreAllMocks()
     await wrapper.vm.$router.push('/clubs')
-    await nextTick()
-    expect(wrapper.get('.navbar').classes()).toContain('navbar-visibility-enter-active')
-    await new Promise(resolve => setTimeout(resolve, 100))
     await flushPromises()
     expect(wrapper.find('[data-test="club-directory"]').exists()).toBe(true)
-    expect(wrapper.get('main').classes()).not.toContain('no-top-nav')
-    expect(wrapper.get('main').element.style.paddingTop).toBe('')
+    expect(wrapper.find('.navbar').exists()).toBe(false)
     wrapper.unmount()
   })
 
@@ -197,7 +172,7 @@ describe('Layout top navigation', () => {
   })
 
   it('keeps native navbar, content, and sticky page tabs on one top offset', () => {
-    expect(layoutSource).toContain("<div class=\"layout\" :class=\"{ 'layout-native': isNativePlatform }\">")
+    expect(layoutSource).toContain("'layout-native': isNativePlatform")
     expect(layoutSource).toContain('padding-top: var(--app-navbar-height);')
     expect(layoutSource).not.toContain("getPropertyValue('env(safe-area-inset-top)')")
   })

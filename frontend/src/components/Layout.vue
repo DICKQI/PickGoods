@@ -1,5 +1,5 @@
 <template>
-  <div class="layout" :class="{ 'layout-native': isNativePlatform }">
+  <div class="layout" :class="{ 'layout-native': isNativePlatform, 'mobile-shell': isMobile && mobileMode !== 'standalone', 'mobile-shell-tabs': isMobile && mobileMode === 'tabs', 'mobile-shell-detail': isMobile && mobileMode === 'detail', 'mobile-shell-editor': isMobile && mobileMode === 'editor' }">
     <!-- 顶部导航栏 -->
     <Transition name="navbar-visibility">
       <nav v-if="!hideTopNav" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
@@ -97,26 +97,27 @@
       </nav>
     </Transition>
 
+    <MobilePageHeader v-if="isMobile && mobileMode !== 'standalone'" />
+
     <!-- 主要内容区 -->
-    <main ref="mainContent" class="main-content" :style="{ paddingTop: leavingPagePadding }" :class="{
-      'has-bottom-nav': isMobile && !route.meta.hideBottomNav,
+    <main ref="mainContent" class="main-content" :class="{
+      'has-bottom-nav': showMobileBottomNav,
       'no-top-nav': hideTopNav,
-      'mobile-detail-safe-area': isMobile && route.meta.hideTopNavOnMobile
+      'mobile-detail-safe-area': false
     }">
       <router-view v-slot="{ Component, route }">
-        <Transition :name="pageTransitionName" mode="out-in" @before-enter="releasePagePadding" @after-leave="releasePagePadding">
-          <component
-            :is="Component"
-            :key="pageComponentKey(route)"
-          />
+        <KeepAlive v-if="isMobile" :key="workspace.epoch" :include="isMobile && mobileMode !== 'standalone' ? MOBILE_CACHE_COMPONENTS : []" :max="12">
+          <component :is="Component" :key="pageComponentKey(route)" />
+        </KeepAlive>
+        <Transition v-else :name="route.path.startsWith('/admin') ? 'no-transition' : 'page-fade'" mode="out-in">
+          <component :is="Component" :key="pageComponentKey(route)" />
         </Transition>
       </router-view>
     </main>
 
     <!-- 移动端底部导航栏 -->
     <MobileBottomNav
-      v-if="isMobile && !route.meta.hideBottomNav"
-      :auto-hide-on-scroll="route.path.startsWith('/showcase') && showcaseActiveTab === 'barn'"
+      v-if="showMobileBottomNav"
     />
 
     <!-- 悬浮按钮组（仅云展柜页面展示；统计看板隐藏刷新按钮） -->
@@ -206,6 +207,10 @@
             <span class="mobile-action-icon"><el-icon><Plus /></el-icon></span>
             <span class="mobile-action-label">新增</span>
           </button>
+          <button v-if="showAddFab" type="button" class="mobile-action-item" role="menuitem" aria-label="草稿箱" @click="closeMobileActions(); router.push('/goods/drafts')">
+            <span class="mobile-action-icon"><el-icon><FolderOpened /></el-icon></span>
+            <span class="mobile-action-label">草稿箱</span>
+          </button>
           <button
             v-if="showMultiSelectFab"
             type="button"
@@ -265,6 +270,10 @@ import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { Capacitor } from '@capacitor/core'
 import MobileBottomNav from './MobileBottomNav.vue'
+import MobilePageHeader from './MobilePageHeader.vue'
+import '@/styles/mobileWorkspace.css'
+import { MOBILE_CACHE_COMPONENTS, mobileHeaderMode } from '@/navigation/mobile'
+import { useMobileWorkspace } from '@/composables/useMobileWorkspace'
 import NotificationCenter from './NotificationCenter.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -275,10 +284,11 @@ const guziStore = useGuziStore()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 const { isMobile } = useResponsiveDevice()
+const workspace = useMobileWorkspace(isMobile)
+const mobileMode = computed(() => mobileHeaderMode(route.path))
+const showMobileBottomNav = computed(() => isMobile.value && ['tabs', 'detail'].includes(mobileMode.value) && !route.meta.hideBottomNav)
 const mainContent = ref<HTMLElement | null>(null)
-const leavingPagePadding = ref<string>()
-const releasePagePadding = () => { leavingPagePadding.value = undefined }
-const hideTopNav = computed(() => Boolean(route.meta.hideTopNav || (isMobile.value && route.meta.hideTopNavOnMobile)))
+const hideTopNav = computed(() => Boolean(isMobile.value || route.meta.hideTopNav))
 
 const canUseNotifications = computed(() => authStore.isAuthenticated && authStore.isCollector)
 
@@ -407,16 +417,11 @@ const exitSelectionMode = () => {
   window.dispatchEvent(new CustomEvent('cloud-showcase:selection-exit'))
 }
 
-// 移动端为页面切换添加向上滑入动画，PC 端使用轻量淡入
-// 管理后台页面不应用过渡动画（由 AdminDashboard 内部处理）
-const pageTransitionName = computed(() => {
-  if (route.path.startsWith('/admin')) return 'no-transition'
-  return isMobile.value ? 'page-slide-up' : 'page-fade'
-})
-
 // Nested workspaces own their child navigation. Keep the shell mounted while
 // switching children so only the nested router-view updates its main region.
 const pageComponentKey = (currentRoute: typeof route) => {
+  if (isMobile.value && currentRoute.path === '/showcase') return '/showcase'
+  if (isMobile.value && currentRoute.path.startsWith('/club/')) return '/club'
   if (currentRoute.matched.length > 1) {
     const parentRecord = currentRoute.matched[0]
     const params = Object.entries(currentRoute.params)
@@ -427,13 +432,6 @@ const pageComponentKey = (currentRoute: typeof route) => {
   }
   return currentRoute.meta.preserveOnQueryChange ? currentRoute.path : currentRoute.fullPath
 }
-
-// Route metadata changes before the old page finishes leaving. Freeze its
-// current offset synchronously, then use the destination offset between pages.
-watch(() => pageComponentKey(route), (nextKey, previousKey) => {
-  if (nextKey === previousKey || !mainContent.value) return
-  leavingPagePadding.value = getComputedStyle(mainContent.value).paddingTop
-}, { flush: 'sync' })
 
 const handleRefresh = async () => {
   if (refreshLoading.value) return

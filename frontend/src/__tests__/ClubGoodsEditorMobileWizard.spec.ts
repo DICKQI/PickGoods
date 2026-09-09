@@ -1,3 +1,4 @@
+import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { defineComponent, h } from 'vue'
@@ -101,6 +102,7 @@ async function mountEditor() {
 
 describe('ClubGoodsEditor 移动端新增向导', () => {
   beforeEach(() => {
+    setActivePinia(createPinia())
     vi.clearAllMocks()
     fetchAllMock.mockResolvedValue(undefined)
     fetchIPCharactersMock.mockResolvedValue([])

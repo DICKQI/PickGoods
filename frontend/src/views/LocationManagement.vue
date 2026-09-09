@@ -1633,7 +1633,7 @@ watch(mobileLocationKeyword, (keyword) => {
 watch(
   () => route.query.highlight,
   () => {
-    applyHighlightFromRoute()
+    if (route.path === '/location') applyHighlightFromRoute()
   },
 )
 

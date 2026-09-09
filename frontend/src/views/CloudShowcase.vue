@@ -1,7 +1,7 @@
 <template>
   <div class="cloud-showcase">
     <!-- 顶部 Tab：云展柜 / 谷仓 / 统计 -->
-    <el-tabs v-model="activeTab" class="cloud-tabs">
+    <el-tabs v-if="!isMobile" v-model="activeTab" class="cloud-tabs">
       <el-tab-pane label="展柜" name="showcase" />
       <el-tab-pane label="谷仓" name="barn" />
       <el-tab-pane label="手帐" name="journal" />
@@ -9,12 +9,12 @@
     </el-tabs>
 
     <!-- Tab 内容区域 - 添加过渡动画 -->
-    <Transition name="tab-fade" mode="out-in">
-      <div v-if="activeTab === 'showcase'" key="showcase" class="showcase-section" v-loading="showcaseRefreshing">
+    <div class="workspace-panels">
+      <div v-if="visitedTabs.has('showcase')" v-show="activeTab === 'showcase'" key="showcase" class="showcase-section" v-loading="showcaseRefreshing">
         <ShowcaseManager />
       </div>
 
-      <div v-else-if="activeTab === 'barn'" key="barn" class="barn-section">
+      <div v-if="visitedTabs.has('barn')" v-show="activeTab === 'barn'" key="barn" class="barn-section">
         <div class="barn-discovery" :class="{ 'is-search-expanded': mobileSearchExpanded }">
           <Transition name="mobile-search-expand">
             <div
@@ -269,22 +269,24 @@
         <GoodsDrawer v-model="drawerVisible" :goods-id="selectedGoodsId" />
     </div>
 
-      <div v-else-if="activeTab === 'stats'" key="stats" class="stats-section" v-loading="statsRefreshing">
+      <div v-if="visitedTabs.has('stats')" v-show="activeTab === 'stats'" key="stats" class="stats-section" v-loading="statsRefreshing">
         <StatsDashboard />
       </div>
 
-      <div v-else key="journal" class="journal-section">
+      <div v-if="visitedTabs.has('journal')" v-show="activeTab === 'journal'" key="journal" class="journal-section">
         <JournalWorkspace />
       </div>
-    </Transition>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { ref, computed, nextTick, onMounted, onUnmounted, onActivated, onDeactivated, watch } from 'vue'
+import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close, Search } from '@element-plus/icons-vue'
+import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
+import { useJournalStore } from '@/stores/journal'
 import { useGuziStore } from '@/stores/guzi'
 import { useShowcaseStore } from '@/stores/showcase'
 import SearchBar from '@/components/SearchBar.vue'
@@ -314,6 +316,32 @@ const isCloudShowcaseTab = (value: unknown): value is CloudShowcaseTab =>
   value === 'showcase' || value === 'barn' || value === 'stats' || value === 'journal'
 
 const activeTab = ref<CloudShowcaseTab>(isCloudShowcaseTab(route.query.tab) ? route.query.tab : 'barn')
+
+const visitedTabs = ref(new Set<CloudShowcaseTab>([activeTab.value]))
+const journalStore = useJournalStore()
+const saveJournalBeforeLeaving = async () => {
+  if (activeTab.value !== 'journal' || !journalStore.dirty) return true
+  const saved = await journalStore.saveActivePage({ createVersion: false })
+  if (!saved) ElMessage.warning('手帐尚未保存成功，请保存后再离开')
+  return Boolean(saved)
+}
+onBeforeRouteLeave(saveJournalBeforeLeaving)
+onBeforeRouteUpdate(async to => {
+  if (to.query.tab !== 'journal') return saveJournalBeforeLeaving()
+})
+onActivated(async () => {
+  const workspace = useMobileWorkspaceStore()
+  if (workspace.goodsChanged) {
+    workspace.goodsChanged = false
+    await guziStore.refreshLoadedPages()
+  }
+  window.dispatchEvent(new CustomEvent('cloud-showcase:tab-changed', { detail: { tab: activeTab.value } }))
+})
+onDeactivated(() => {
+  closeMobileFilter()
+  drawerVisible.value = false
+  closeContextMenu()
+})
 
 const drawerVisible = ref(false)
 const selectedGoodsId = ref<string>('')
@@ -847,6 +875,7 @@ const handleResize = () => {
 }
 
 const handleWindowScroll = () => {
+  if (route.path !== '/showcase') return
   const currentScrollY = Math.max(window.scrollY || 0, 0)
 
   if (contextMenuVisible.value) closeContextMenu()
@@ -868,7 +897,7 @@ onMounted(() => {
 
   // 设置无限滚动哨兵观察器
   sentinelObserver = new IntersectionObserver((entries) => {
-    if (entries[0]?.isIntersecting) {
+    if (route.path === '/showcase' && activeTab.value === 'barn' && entries[0]?.isIntersecting) {
       guziStore.loadMore()
     }
   }, {
@@ -921,14 +950,17 @@ onUnmounted(() => {
 watch(
   () => route.query.tab,
   (tab) => {
-    if (!isCloudShowcaseTab(tab) || activeTab.value === tab) return
-    activeTab.value = tab
+    if (route.path !== '/showcase') return
+    const nextTab = isCloudShowcaseTab(tab) ? tab : 'barn'
+    if (activeTab.value === nextTab) return
+    activeTab.value = nextTab
   },
 )
 
 watch(
   () => activeTab.value,
   (tab) => {
+    visitedTabs.value.add(tab)
     closeMobileFilter()
     if (tab !== 'barn') {
       collapseMobileSearch()

@@ -83,6 +83,9 @@
             <el-icon><Search /></el-icon>
             <span>搜索</span>
           </el-button>
+          <el-button v-if="authStore.isAdmin && isMobile" class="mobile-inline-create" type="primary" circle aria-label="新增 / 导入" @click="openMobileAddSheet">
+            <el-icon><Plus /></el-icon>
+          </el-button>
         </div>
         <div class="filter-flex">
           <el-select

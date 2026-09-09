@@ -13,8 +13,11 @@ const getGoodsListMock = vi.hoisted(() => vi.fn())
 const routeQuery = vi.hoisted(() => ({ value: {} as Record<string, unknown> }))
 
 vi.mock('vue-router', () => ({
+  onBeforeRouteLeave: vi.fn(),
+  onBeforeRouteUpdate: vi.fn(),
   useRoute: () => ({
     query: routeQuery.value,
+    path: '/showcase',
   }),
   useRouter: () => ({
     push: routerPush,
@@ -148,18 +151,6 @@ const mountDesktopCloudShowcase = (options: { goodsResults?: GoodsListItem[] } =
   mountCloudShowcase({ ...options, viewport: 'desktop' })
 
 describe('CloudShowcase mobile compact header', () => {
-  function cssRuleBlock(source: string, selector: string) {
-    const start = source.indexOf(selector)
-    expect(start).toBeGreaterThan(-1)
-
-    const open = source.indexOf('{', start)
-    const close = source.indexOf('}', open)
-    expect(open).toBeGreaterThan(start)
-    expect(close).toBeGreaterThan(open)
-
-    return source.slice(open + 1, close)
-  }
-
   beforeEach(() => {
     vi.restoreAllMocks()
     mountedWrappers.splice(0).forEach((wrapper) => wrapper.unmount())
@@ -330,27 +321,10 @@ describe('CloudShowcase mobile compact header', () => {
     }
   })
 
-  it('uses opacity-only mobile tab transitions to prevent zoom-like jitter', () => {
-    const mobileTransitionRule = cssRuleBlock(
-      cloudShowcaseSource,
-      '.tab-fade-enter-active,\n  .tab-fade-leave-active',
-    )
-    const mobileEnterRule = cssRuleBlock(
-      cloudShowcaseSource,
-      '.tab-fade-enter-from,\n  .tab-fade-leave-to',
-    )
-    const mobilePanelRule = cssRuleBlock(
-      cloudShowcaseSource,
-      '.barn-section,\n  .stats-section',
-    )
-
-    expect(mobileTransitionRule).toContain('transition: opacity 0.18s ease;')
-    expect(mobileTransitionRule).toContain('transform: none;')
-    expect(mobileEnterRule).toContain('opacity: 0;')
-    expect(mobileEnterRule).toContain('transform: none;')
-    expect(mobilePanelRule).toContain('width: 100%;')
-    expect(mobilePanelRule).toContain('min-width: 0;')
-    expect(mobilePanelRule).toContain('box-sizing: border-box;')
+  it('retains visited panels without transform animations on their containing block', () => {
+    expect(cloudShowcaseSource).toContain('class="workspace-panels"')
+    expect(cloudShowcaseSource).toContain('v-show="activeTab === \'barn\'"')
+    expect(cloudShowcaseSource).toContain('visitedTabs.value.add(tab)')
   })
 
   it('refreshing on the journal tab triggers journal refresh only', async () => {

@@ -59,14 +59,14 @@ describe('ClubWorkspace 社团工作区导航', () => {
     expect(wrapper.find('.workspace-tabs').exists()).toBe(false)
   })
 
-  it('新增社团谷子时隐藏社团身份头，编辑时仍保留', () => {
+  it('移动端新增和编辑使用公共紧凑页头，隐藏社团身份头', () => {
     routeMock.name = 'ClubGoodsNew'
     const createWrapper = mountWorkspace(390)
     expect(createWrapper.find('.workspace-header').exists()).toBe(false)
 
     routeMock.name = 'ClubGoodsEdit'
     const editWrapper = mountWorkspace(390)
-    expect(editWrapper.find('.workspace-header').exists()).toBe(true)
+    expect(editWrapper.find('.workspace-header').exists()).toBe(false)
   })
 
   it('社团谷子列表页仍显示工作区导航', () => {

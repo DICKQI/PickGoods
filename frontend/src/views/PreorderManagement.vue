@@ -491,6 +491,7 @@ const locatePreorderPage = async (id: string): Promise<number | null> => {
 }
 
 const clearHighlightQuery = () => {
+  if (route.path !== '/preorders') return
   const query = { ...route.query }
   delete query.highlight
   router.replace({ path: route.path, query })
@@ -552,7 +553,7 @@ const resolveHighlight = async () => {
 watch(
   () => route.query.highlight,
   (highlight) => {
-    if (typeof highlight === 'string') resolveHighlight()
+    if (route.path === '/preorders' && typeof highlight === 'string') resolveHighlight()
   }
 )
 

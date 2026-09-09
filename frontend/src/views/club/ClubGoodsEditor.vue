@@ -163,6 +163,7 @@
 </template>
 
 <script setup lang="ts">
+import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { nextTick, onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
@@ -372,6 +373,7 @@ async function save(publicationStatus: ClubEditorPublicationStatus) {
     for (const photoId of removedAdditionalPhotoIds.value) await deleteClubGoodsAdditionalPhoto(id, photoId)
     ElMessage.success(publicationStatus === 'draft' ? '草稿已保存' : '社团谷子已保存')
     isDirty.value = false
+    useMobileWorkspaceStore().clubGoodsChanged = true
     router.push('/club/goods')
   } finally { loading.value = false }
 }

@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
 const sourcePath = join(process.cwd(), 'src/views/IPCharacterManagement.vue')
-const source = readFileSync(sourcePath, 'utf-8')
+const source = readFileSync(sourcePath, 'utf-8').replace(/\r\n/g, '\n')
 
 const cssRuleBlock = (content: string, selector: string) => {
   const start = content.indexOf(selector)

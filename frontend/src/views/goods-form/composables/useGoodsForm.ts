@@ -1,3 +1,4 @@
+import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { ref, computed, type Ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -123,6 +124,7 @@ export function useGoodsForm(deps: GoodsFormDeps) {
     } else {
       ElMessage.success('创建成功')
     }
+    useMobileWorkspaceStore().goodsChanged = true
     router.push({ name: 'CloudShowcase' })
   }
 
@@ -151,7 +153,8 @@ export function useGoodsForm(deps: GoodsFormDeps) {
         await handleAdditionalPhotosUpload(id)
 
         ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
-        router.push({ name: 'CloudShowcase' })
+        useMobileWorkspaceStore().goodsChanged = true
+    router.push({ name: 'CloudShowcase' })
       } else {
         const createPayload: GoodsInput =
           mode === 'publish'
