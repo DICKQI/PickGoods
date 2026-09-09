@@ -1,5 +1,5 @@
 <template>
-  <div class="club-detail-page">
+  <div class="club-detail-page" :class="{ 'is-mobile': isMobile }">
     <el-button text class="back-button" @click="router.push('/clubs')">
       <el-icon><ArrowLeft /></el-icon>
       <span>返回社团目录</span>
@@ -42,7 +42,7 @@
           <span class="club-hero__eyebrow"><el-icon><Shop /></el-icon><span>社团主页</span></span>
           <h1 id="club-title">{{ club.name }}</h1>
           <p class="club-description">{{ club.description || '这个社团还没有填写简介。' }}</p>
-          <p v-if="club.announcement" class="announcement">
+          <p v-if="club.announcement && !isMobile" class="announcement">
             <el-icon><Bell /></el-icon>
             <span>{{ club.announcement }}</span>
           </p>
@@ -73,6 +73,10 @@
             </a>
           </div>
         </div>
+        <p v-if="club.announcement && isMobile" class="announcement club-hero__announcement">
+          <el-icon><Bell /></el-icon>
+          <span>{{ club.announcement }}</span>
+        </p>
       </section>
 
       <section class="detail-layout">
@@ -105,7 +109,7 @@
             </div>
           </dl>
 
-          <p v-if="!platformLinks.length && !club.store_links?.length" class="profile-empty">社团暂未公开更多联系信息。</p>
+          <p v-if="!hasContactDetails" class="profile-empty">社团暂未公开更多联系信息。</p>
         </aside>
 
         <section class="goods-panel" aria-labelledby="goods-title">
@@ -280,9 +284,10 @@
                   <el-tag size="small" effect="plain" type="success">已上架</el-tag>
                   <el-button
                     v-if="!authStore.isClub"
-                    type="primary"
+                    :type="isMobile ? 'default' : 'primary'"
                     size="small"
-                    class="import-button club-import-button brand-add-btn"
+                    class="import-button club-import-button"
+                    :class="{ 'brand-add-btn': !isMobile }"
                     @click.stop="importGoods(item)"
                   >
                     <span class="brand-add-btn__content">
@@ -468,6 +473,10 @@ const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const { isMobile } = useResponsiveDevice()
+const hasContactDetails = computed(() => Boolean(club.value && [
+  club.value.contact_name, club.value.contact_phone, club.value.contact_email,
+  club.value.address, club.value.business_hours,
+].some(value => value?.trim())))
 
 const club = ref<Club | null>(null)
 const goodsItems = ref<ClubGoodsListItem[]>([])
@@ -1138,29 +1147,10 @@ onUnmounted(() => {
 
 .detail-layout {
   display: grid;
-  /* 商品主列表优先，资料卡位于其后 */
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 250px minmax(0, 1fr);
   gap: 24px;
   margin-top: 24px;
 }
-
-@media (min-width: 1360px) {
-  .detail-layout {
-    grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-.goods-panel { order: 1; }
-.profile-panel { order: 2; }
-
-.profile-panel {
-  display: grid;
-  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-  align-items: start;
-  gap: 20px 32px;
-}
-
-.profile-panel .profile-list { grid-column: 2; grid-row: 1 / span 2; }
 
 .profile-panel,
 .goods-panel {
@@ -1177,6 +1167,7 @@ onUnmounted(() => {
 }
 
 .goods-panel {
+  container: club-goods / inline-size;
   padding: 20px;
 }
 
@@ -1316,7 +1307,7 @@ onUnmounted(() => {
 
 .section-heading {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(430px, 620px);
+  grid-template-columns: minmax(0, 1fr);
   align-items: center;
   gap: 18px;
   margin-bottom: 16px;
@@ -1537,12 +1528,12 @@ onUnmounted(() => {
 
 .goods-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
   gap: 16px;
   min-height: 120px;
 }
 
-@media (min-width: 1360px) {
+@container club-goods (min-width: 1000px) {
   .goods-grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
   }
@@ -2120,7 +2111,7 @@ onUnmounted(() => {
   }
 
   .section-heading {
-    grid-template-columns: minmax(0, 1fr) minmax(380px, 1fr);
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .goods-search {
@@ -2143,7 +2134,8 @@ onUnmounted(() => {
     grid-template-columns: 1fr;
   }
 
-  .profile-panel {
+  .profile-panel,
+  .profile-skeleton {
     order: 2;
   }
 
@@ -2185,7 +2177,7 @@ onUnmounted(() => {
   }
 
   .club-hero__copy {
-    text-align: center;
+    text-align: left;
   }
 
   .announcement {
@@ -2319,7 +2311,92 @@ onUnmounted(() => {
   }
 }
 
+.club-hero__copy {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.is-mobile.club-detail-page {
+  padding: 8px 12px 24px;
+}
+
+.is-mobile .back-button {
+  margin-bottom: 8px;
+}
+
+.is-mobile .club-hero {
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 12px;
+  padding: 14px;
+}
+
+.is-mobile .club-hero__avatar {
+  width: 64px;
+  height: 64px;
+  border-radius: 16px;
+  align-self: start;
+}
+
+.is-mobile .club-hero__copy { text-align: left; }
+.is-mobile .club-hero h1 { font-size: 20px; }
+.is-mobile .club-hero__eyebrow { display: none; }
+.is-mobile .club-hero__favorite {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.is-mobile .favorite-button { width: auto; padding: 0 10px; }
+.is-mobile .favorite-button span { display: inline; }
+.is-mobile .club-hero .hero-store-links {
+  width: auto;
+  margin-top: 0;
+  justify-content: flex-start;
+}
+.is-mobile .club-hero__announcement {
+  grid-column: 1 / -1;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.is-mobile .detail-layout { grid-template-columns: minmax(0, 1fr); gap: 16px; margin-top: 16px; }
+.is-mobile .profile-panel, .is-mobile .profile-skeleton { order: 2; display: block; }
+.is-mobile .goods-panel { order: 1; padding: 12px; }
+.is-mobile .goods-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.is-mobile .section-heading { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.is-mobile .goods-toolbar { margin-top: 0; }
+.is-mobile .goods-search { flex: 1 1 0; }
+.is-mobile .goods-card__body { padding: 8px; }
+.is-mobile .goods-card__footer { flex-wrap: wrap; gap: 4px; padding-top: 8px; }
+.is-mobile .import-button {
+  width: 84px;
+  min-height: 32px;
+  margin-left: auto;
+  padding: 0 7px;
+  border: 1px solid rgba(184, 148, 31, 0.3);
+  border-radius: 8px;
+  background: #fbf6e7;
+  color: var(--primary-gold-dark);
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: 600;
+  transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+.is-mobile .import-button:hover, .is-mobile .import-button:active {
+  background: #f5ebc9;
+  border-color: var(--primary-gold-dark);
+}
+.is-mobile .import-button:focus-visible { outline: 2px solid var(--primary-gold-dark); outline-offset: 2px; }
+.is-mobile .import-button .el-icon { font-size: 14px; }
+.is-mobile .goods-card:hover, .is-mobile .goods-card:hover .goods-card__image,
+.is-mobile .store-link:hover { transform: none; }
+
 @media (prefers-reduced-motion: reduce) {
+  .is-mobile .import-button { transition: none; }
+  .goods-card:hover, .goods-card:hover .goods-card__image, .store-link:hover, .back-button:active { transform: none; }
   .back-button,
   .store-link,
   .filter-toggle-button,

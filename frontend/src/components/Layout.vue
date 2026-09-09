@@ -1,107 +1,110 @@
 <template>
   <div class="layout" :class="{ 'layout-native': isNativePlatform }">
     <!-- 顶部导航栏 -->
-    <nav v-if="!route.meta.hideTopNav" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
-      <div class="navbar-content">
-        <div class="brand" @click="goHome">
-          <span class="brand-text">✦ 拾谷 PickGoods</span>
-        </div>
-        <!-- 普通宽度下：直接展示完整菜单 -->
-        <div class="nav-menu" v-if="!isMobile">
-          <el-menu
-            :default-active="activeMenu"
-            mode="horizontal"
-            :ellipsis="false"
-            @select="handleMenuSelect"
-            class="nav-menu-el"
-          >
-            <el-menu-item index="/clubs">
-              <el-icon><Shop /></el-icon>
-              <span>社团</span>
-            </el-menu-item>
-            <template v-if="authStore.isClub">
-              <el-menu-item index="/club/goods">
+    <Transition name="navbar-visibility">
+      <nav v-if="!hideTopNav" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
+        <div class="navbar-content">
+          <div class="brand" @click="goHome">
+            <span class="brand-text">✦ 拾谷 PickGoods</span>
+          </div>
+          <!-- 普通宽度下：直接展示完整菜单 -->
+          <div class="nav-menu" v-if="!isMobile">
+            <el-menu
+              :default-active="activeMenu"
+              mode="horizontal"
+              :ellipsis="false"
+              @select="handleMenuSelect"
+              class="nav-menu-el"
+            >
+              <el-menu-item index="/clubs">
                 <el-icon><Shop /></el-icon>
-                <span>社团工作台</span>
+                <span>社团</span>
               </el-menu-item>
+              <template v-if="authStore.isClub">
+                <el-menu-item index="/club/goods">
+                  <el-icon><Shop /></el-icon>
+                  <span>社团工作台</span>
+                </el-menu-item>
+              </template>
+              <template v-else>
+              <el-menu-item index="/showcase">
+                <el-icon><Grid /></el-icon>
+                <span>云展柜</span>
+              </el-menu-item>
+              <el-menu-item index="/location">
+                <el-icon><FolderOpened /></el-icon>
+                <span>位置</span>
+              </el-menu-item>
+              <el-menu-item index="/ipcharacter">
+                <el-icon><Collection /></el-icon>
+                <span>IP与角色</span>
+              </el-menu-item>
+              <el-menu-item index="/category">
+                <el-icon><Box /></el-icon>
+                <span>品类</span>
+              </el-menu-item>
+              <el-menu-item index="/theme">
+                <el-icon><Star /></el-icon>
+                <span>主题</span>
+              </el-menu-item>
+              <el-menu-item index="/preorders">
+                <el-icon><ShoppingCart /></el-icon>
+                <span>预购</span>
+              </el-menu-item>
+              </template>
+            </el-menu>
+          </div>
+          <!-- 登录/用户与设置 -->
+          <div class="nav-actions">
+            <template v-if="!authStore.isAuthenticated">
+              <el-button text class="login-btn" @click="goToLogin">
+                <span>登录</span>
+              </el-button>
             </template>
-            <template v-else>
-            <el-menu-item index="/showcase">
-              <el-icon><Grid /></el-icon>
-              <span>云展柜</span>
-            </el-menu-item>
-            <el-menu-item index="/location">
-              <el-icon><FolderOpened /></el-icon>
-              <span>位置</span>
-            </el-menu-item>
-            <el-menu-item index="/ipcharacter">
-              <el-icon><Collection /></el-icon>
-              <span>IP与角色</span>
-            </el-menu-item>
-            <el-menu-item index="/category">
-              <el-icon><Box /></el-icon>
-              <span>品类</span>
-            </el-menu-item>
-            <el-menu-item index="/theme">
-              <el-icon><Star /></el-icon>
-              <span>主题</span>
-            </el-menu-item>
-            <el-menu-item index="/preorders">
-              <el-icon><ShoppingCart /></el-icon>
-              <span>预购</span>
-            </el-menu-item>
-            </template>
-          </el-menu>
-        </div>
-        <!-- 登录/用户与设置 -->
-        <div class="nav-actions">
-          <template v-if="!authStore.isAuthenticated">
-            <el-button text class="login-btn" @click="goToLogin">
-              <span>登录</span>
+            <!-- 通知中心只属于吃谷人/管理员；社团账号没有预购通知权限。 -->
+            <NotificationCenter v-if="canUseNotifications" />
+            <el-button
+              v-if="authStore.isAuthenticated"
+              text
+              class="profile-btn"
+              :class="{ 'profile-active': route.path.startsWith('/profile') }"
+              title="个人"
+              aria-label="个人"
+              @click="goToProfile"
+            >
+              <el-icon><User /></el-icon>
             </el-button>
-          </template>
-          <!-- 通知中心只属于吃谷人/管理员；社团账号没有预购通知权限。 -->
-          <NotificationCenter v-if="canUseNotifications" />
-          <el-button
-            v-if="authStore.isAuthenticated"
-            text
-            class="profile-btn"
-            :class="{ 'profile-active': route.path.startsWith('/profile') }"
-            title="个人"
-            aria-label="个人"
-            @click="goToProfile"
-          >
-            <el-icon><User /></el-icon>
-          </el-button>
-          <el-button
-            text
-            class="github-btn"
-            title="GitHub"
-            @click="goToGitHub"
-          >
-            <svg class="github-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
-              <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12 24 5.37 18.63 0 12 0z"/>
-            </svg>
-          </el-button>
-          <el-button
-            text
-            :class="{ 'settings-active': route.path === '/settings' }"
-            @click="goToSettings"
-            class="settings-btn"
-          >
-            <el-icon><Setting /></el-icon>
-          </el-button>
+            <el-button
+              text
+              class="github-btn"
+              title="GitHub"
+              @click="goToGitHub"
+            >
+              <svg class="github-icon" viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                <path d="M12 0C5.37 0 0 5.37 0 12c0 5.3 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61-.546-1.385-1.335-1.755-1.335-1.755-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 21.795 24 17.295 24 12 24 5.37 18.63 0 12 0z"/>
+              </svg>
+            </el-button>
+            <el-button
+              text
+              :class="{ 'settings-active': route.path === '/settings' }"
+              @click="goToSettings"
+              class="settings-btn"
+            >
+              <el-icon><Setting /></el-icon>
+            </el-button>
+          </div>
         </div>
-      </div>
-    </nav>
+      </nav>
+    </Transition>
 
     <!-- 主要内容区 -->
-    <main class="main-content" :class="{
+    <main ref="mainContent" class="main-content" :style="{ paddingTop: leavingPagePadding }" :class="{
       'has-bottom-nav': isMobile && !route.meta.hideBottomNav,
-      'no-top-nav': route.meta.hideTopNav
+      'no-top-nav': hideTopNav,
+      'mobile-detail-safe-area': isMobile && route.meta.hideTopNavOnMobile
     }">
       <router-view v-slot="{ Component, route }">
-        <Transition :name="pageTransitionName" mode="out-in">
+        <Transition :name="pageTransitionName" mode="out-in" @before-enter="releasePagePadding" @after-leave="releasePagePadding">
           <component
             :is="Component"
             :key="pageComponentKey(route)"
@@ -272,6 +275,10 @@ const guziStore = useGuziStore()
 const authStore = useAuthStore()
 const notificationStore = useNotificationStore()
 const { isMobile } = useResponsiveDevice()
+const mainContent = ref<HTMLElement | null>(null)
+const leavingPagePadding = ref<string>()
+const releasePagePadding = () => { leavingPagePadding.value = undefined }
+const hideTopNav = computed(() => Boolean(route.meta.hideTopNav || (isMobile.value && route.meta.hideTopNavOnMobile)))
 
 const canUseNotifications = computed(() => authStore.isAuthenticated && authStore.isCollector)
 
@@ -420,6 +427,13 @@ const pageComponentKey = (currentRoute: typeof route) => {
   }
   return currentRoute.meta.preserveOnQueryChange ? currentRoute.path : currentRoute.fullPath
 }
+
+// Route metadata changes before the old page finishes leaving. Freeze its
+// current offset synchronously, then use the destination offset between pages.
+watch(() => pageComponentKey(route), (nextKey, previousKey) => {
+  if (nextKey === previousKey || !mainContent.value) return
+  leavingPagePadding.value = getComputedStyle(mainContent.value).paddingTop
+}, { flush: 'sync' })
 
 const handleRefresh = async () => {
   if (refreshLoading.value) return
@@ -718,11 +732,27 @@ watch(isMobile, (mobile) => {
   padding-top: 0;
 }
 
+.main-content.no-top-nav.mobile-detail-safe-area {
+  padding-top: var(--app-safe-area-top, env(safe-area-inset-top, 0px));
+}
+
 /* 兼容不支持 safe-area-inset-bottom 的环境 */
 @supports not (padding-bottom: env(safe-area-inset-bottom)) {
   .main-content.has-bottom-nav {
     padding-bottom: 64px;
   }
+}
+
+.navbar-visibility-enter-active,
+.navbar-visibility-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.navbar-visibility-enter-from,
+.navbar-visibility-leave-to {
+  opacity: 0;
+  transform: translateY(-12px);
+  pointer-events: none;
 }
 
 /* 页面过渡动画 */
@@ -1483,5 +1513,13 @@ watch(isMobile, (mobile) => {
       padding-top: var(--app-navbar-height);
     }
   }
+}
+@media (prefers-reduced-motion: reduce) {
+  .navbar-visibility-enter-active, .navbar-visibility-leave-active { transition: none; }
+  .navbar-visibility-enter-from, .navbar-visibility-leave-to { transform: none; }
+  .page-slide-up-enter-active, .page-slide-up-leave-active,
+  .page-fade-enter-active, .page-fade-leave-active { transition: none; }
+  .page-slide-up-enter-from, .page-slide-up-leave-to,
+  .page-fade-enter-from, .page-fade-leave-to { transform: none; }
 }
 </style>

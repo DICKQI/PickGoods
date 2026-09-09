@@ -306,6 +306,25 @@ describe('ClubDetail 社团对外页', () => {
     vi.mocked(clubApi.getClub).mockResolvedValue({ ...club, store_links: [] })
     const wrapper = await mountPage()
     expect(wrapper.find('.hero-store-links').exists()).toBe(false)
+    expect(wrapper.find('.profile-empty').exists()).toBe(false)
+  })
+
+  it('手机公告独占一行，列表按钮不继承全局紫色主按钮主题', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 })
+    const wrapper = await mountPage()
+    expect(wrapper.classes()).toContain('is-mobile')
+    expect(wrapper.findAll('.club-hero .announcement')).toHaveLength(1)
+    expect(wrapper.get('.club-hero__announcement').text()).toContain(club.announcement)
+    expect(wrapper.get('.import-button').classes()).not.toContain('brand-add-btn')
+    wrapper.unmount()
+  })
+
+  it('没有联系资料时即使有店铺链接也展示资料空态', async () => {
+    vi.mocked(clubApi.getClub).mockResolvedValue({
+      ...club, contact_name: '', contact_phone: '', contact_email: '', address: '', business_hours: '',
+    })
+    const wrapper = await mountPage()
+    expect(wrapper.find('.hero-store-links').exists()).toBe(true)
     expect(wrapper.get('.profile-empty').text()).toContain('暂未公开')
   })
 
@@ -323,7 +342,7 @@ describe('ClubDetail 社团对外页', () => {
   })
 
   it('卡片和详情抽屉分别使用适合所在场景的加入谷仓按钮', () => {
-    expect(source).toMatch(/class="import-button club-import-button brand-add-btn"/)
+    expect(source).toContain('class="import-button club-import-button"')
     expect(source).toMatch(/\.club-import-button\s*\{[\s\S]*?width:\s*96px;/)
     expect(source).toMatch(/\.club-import-button\s*\{[\s\S]*?--brand-add-min-height:\s*34px;[\s\S]*?--brand-add-font-size:\s*12px;/)
     expect(detailDrawerSource).toMatch(/class="detail-action__import brand-add-btn"/)
@@ -346,10 +365,10 @@ describe('ClubDetail 社团对外页', () => {
     expect(source).toMatch(/\.section-heading__count\s*\{[\s\S]*?white-space:\s*nowrap;/)
   })
 
-  it('大屏详情页扩展内容宽度并固定展示四列谷子', () => {
+  it('大屏详情页保留资料侧栏并按谷子区域宽度展示四列', () => {
     expect(source).toMatch(/\.club-detail-page\s*\{[\s\S]*?max-width:\s*1680px;/)
-    expect(source).toMatch(/\.detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/)
-    expect(source).toMatch(/@media \(min-width:\s*1360px\)\s*\{[\s\S]*?\.goods-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/)
+    expect(source).toMatch(/\.detail-layout\s*\{[\s\S]*?grid-template-columns:\s*250px minmax\(0,\s*1fr\);/)
+    expect(source).toMatch(/@container club-goods \(min-width:\s*1000px\)\s*\{[\s\S]*?\.goods-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/)
   })
 
   it('社团筛选面板使用谷仓同款高度过渡并带轻微缩放', () => {
