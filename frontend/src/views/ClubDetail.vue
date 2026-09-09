@@ -62,6 +62,16 @@
             <el-icon><StarFilled /></el-icon>
             <span>{{ club.is_favorited ? '已收藏' : '收藏社团' }}</span>
           </el-button>
+          <div v-if="platformLinks.length || club.store_links?.length" class="hero-store-links store-links" aria-label="店铺入口">
+            <a v-for="platform in platformLinks" :key="platform.key" class="store-link store-link--platform" :href="platform.url" target="_blank" rel="noreferrer" :aria-label="`${platform.label}（在新窗口打开）`" :title="`${platform.label}（在新窗口打开）`">
+              <img class="store-link__logo" :src="platform.logo" :alt="`${platform.label} logo`" />
+              <span class="sr-only">{{ platform.label }}</span>
+            </a>
+            <a v-for="link in club.store_links" :key="link.url" class="store-link store-link--custom" :href="link.url" target="_blank" rel="noreferrer" :aria-label="`${link.label}（在新窗口打开）`" :title="`${link.label}（在新窗口打开）`">
+              <el-icon aria-hidden="true"><Link /></el-icon>
+              <span class="sr-only">{{ link.label }}</span>
+            </a>
+          </div>
         </div>
       </section>
 
@@ -95,38 +105,7 @@
             </div>
           </dl>
 
-          <div v-if="platformLinks.length || club.store_links?.length" class="store-links">
-            <h3>店铺入口</h3>
-            <div class="store-links__list">
-              <a
-                v-for="platform in platformLinks"
-                :key="platform.key"
-                class="store-link store-link--platform"
-                :href="platform.url"
-                target="_blank"
-                rel="noreferrer"
-                :aria-label="`${platform.label}（在新窗口打开）`"
-                :title="`${platform.label}（在新窗口打开）`"
-              >
-                <img class="store-link__logo" :src="platform.logo" :alt="`${platform.label} logo`" />
-                <span class="sr-only">{{ platform.label }}</span>
-              </a>
-              <a
-                v-for="link in club.store_links"
-                :key="link.url"
-                class="store-link store-link--custom"
-                :href="link.url"
-                target="_blank"
-                rel="noreferrer"
-                :aria-label="`${link.label}（在新窗口打开）`"
-                :title="`${link.label}（在新窗口打开）`"
-              >
-                <el-icon aria-hidden="true"><Link /></el-icon>
-                <span class="sr-only">{{ link.label }}</span>
-              </a>
-            </div>
-          </div>
-          <p v-else class="profile-empty">社团暂未公开更多联系信息。</p>
+          <p v-if="!platformLinks.length && !club.store_links?.length" class="profile-empty">社团暂未公开更多联系信息。</p>
         </aside>
 
         <section class="goods-panel" aria-labelledby="goods-title">
@@ -1031,6 +1010,24 @@ onUnmounted(() => {
   align-self: center;
 }
 
+.club-hero__favorite > .favorite-count,
+.club-hero__favorite > .favorite-button,
+.club-hero__favorite > .hero-store-links {
+  align-self: center;
+}
+
+.club-hero .hero-store-links {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+  width: auto;
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
+}
+
 .favorite-count {
   display: inline-flex;
   align-items: baseline;
@@ -1141,10 +1138,29 @@ onUnmounted(() => {
 
 .detail-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 250px) minmax(0, 1fr);
+  /* 商品主列表优先，资料卡位于其后 */
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   margin-top: 24px;
 }
+
+@media (min-width: 1360px) {
+  .detail-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.goods-panel { order: 1; }
+.profile-panel { order: 2; }
+
+.profile-panel {
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  align-items: start;
+  gap: 20px 32px;
+}
+
+.profile-panel .profile-list { grid-column: 2; grid-row: 1 / span 2; }
 
 .profile-panel,
 .goods-panel {
@@ -2137,12 +2153,26 @@ onUnmounted(() => {
 }
 
 @media (max-width: 768px) {
+  .profile-panel {
+    display: block;
+  }
+
+  .profile-panel .profile-list {
+    margin-top: 16px;
+  }
+
+  .club-hero .hero-store-links {
+    width: auto;
+    margin-top: 0;
+    justify-content: flex-start;
+  }
+
   .club-detail-page {
     padding: 20px 16px calc(40px + env(safe-area-inset-bottom));
   }
 
   .club-hero {
-    grid-template-columns: 72px minmax(0, 1fr) auto;
+    grid-template-columns: 72px minmax(0, 1fr);
     gap: 12px;
     padding: 18px;
   }
@@ -2154,7 +2184,27 @@ onUnmounted(() => {
     font-size: 26px;
   }
 
-  .club-hero__favorite { min-width: 92px; }
+  .club-hero__copy {
+    text-align: center;
+  }
+
+  .announcement {
+    margin-right: auto;
+    margin-left: auto;
+    text-align: left;
+  }
+
+  .club-hero__favorite {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    min-width: 0;
+  }
+  .club-hero__eyebrow { display: none; }
   .favorite-button span { display: none; }
   .favorite-button { width: 36px; padding: 0; }
 
@@ -2185,8 +2235,6 @@ onUnmounted(() => {
 }
 
 @media (max-width: 600px) {
-  .club-hero { grid-template-columns: 72px minmax(0, 1fr); }
-  .club-hero__favorite { grid-column: 2; grid-row: 2; display: flex; align-items: center; justify-content: flex-start; min-width: 0; }
   .favorite-button span { display: inline; }
   .favorite-button { width: auto; padding: 0 12px; }
 }

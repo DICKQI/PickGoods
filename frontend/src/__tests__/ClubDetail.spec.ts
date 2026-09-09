@@ -305,7 +305,7 @@ describe('ClubDetail 社团对外页', () => {
   it('没有平台入口和其他链接时不渲染店铺区域', async () => {
     vi.mocked(clubApi.getClub).mockResolvedValue({ ...club, store_links: [] })
     const wrapper = await mountPage()
-    expect(wrapper.find('.store-links').exists()).toBe(false)
+    expect(wrapper.find('.hero-store-links').exists()).toBe(false)
     expect(wrapper.get('.profile-empty').text()).toContain('暂未公开')
   })
 
@@ -348,7 +348,7 @@ describe('ClubDetail 社团对外页', () => {
 
   it('大屏详情页扩展内容宽度并固定展示四列谷子', () => {
     expect(source).toMatch(/\.club-detail-page\s*\{[\s\S]*?max-width:\s*1680px;/)
-    expect(source).toMatch(/\.detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(220px,\s*250px\) minmax\(0,\s*1fr\);/)
+    expect(source).toMatch(/\.detail-layout\s*\{[\s\S]*?grid-template-columns:\s*minmax\(0,\s*1fr\);/)
     expect(source).toMatch(/@media \(min-width:\s*1360px\)\s*\{[\s\S]*?\.goods-grid\s*\{[\s\S]*?grid-template-columns:\s*repeat\(4,\s*minmax\(0,\s*1fr\)\);/)
   })
 
