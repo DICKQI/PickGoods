@@ -87,6 +87,11 @@ export function mobileReturnTarget(route: RouteInput): string {
   return '/showcase?tab=barn'
 }
 
+/** 谷仓滚动时底部导航收起，其它页面保持常驻。 */
+export function mobileNavAutoHides(route: RouteInput): boolean {
+  return route.path === '/showcase' && normalizeShowcaseTab(route.query.tab) === 'barn'
+}
+
 // Bounded list/workspace cache: credentials, details and editors never enter it.
 export const MOBILE_CACHE_COMPONENTS = [
   'CloudShowcase', 'ClubDirectory', 'LocationManagement', 'IPCharacterManagement',

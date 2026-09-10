@@ -64,6 +64,13 @@ async function run() {
       report.push(geometry)
       await page.screenshot({ path: path.join(output, `showcase-${width}.png`) })
     }
+    await page.mouse.wheel(0, 600)
+    await page.waitForTimeout(150)
+    assert.equal(await page.locator('.mobile-bottom-nav.is-scroll-hidden').count(), 1)
+    await page.waitForTimeout(700)
+    assert.equal(await page.locator('.mobile-bottom-nav.is-scroll-hidden').count(), 0)
+    await page.evaluate(() => window.scrollTo({ top: 0, behavior: 'instant' }))
+    await page.waitForTimeout(700)
     await page.setViewportSize({ width: 390, height: 844 })
     await page.getByRole('button', { name: '打开快捷操作' }).click()
     await page.getByRole('menuitem', { name: '草稿箱' }).waitFor()

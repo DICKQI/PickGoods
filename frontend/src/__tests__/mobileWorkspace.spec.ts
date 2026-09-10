@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { activeMobileTab, mobileHeaderMode, mobileModule, mobileModules, mobileTabs } from '@/navigation/mobile'
+import { activeMobileTab, mobileHeaderMode, mobileModule, mobileModules, mobileNavAutoHides, mobileTabs } from '@/navigation/mobile'
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { useMobileWorkspace } from '@/composables/useMobileWorkspace'
 import { useAuthStore } from '@/stores/auth'
@@ -26,6 +26,12 @@ describe('mobile workspace route contract', () => {
   it('normalizes malformed showcase links to the barn', () => {
     for (const tab of [undefined, 'nope', ['stats', 'barn']]) expect(activeMobileTab({ path: '/showcase', query: { tab: tab ?? null } })).toBe('barn')
     expect(activeMobileTab({ path: '/showcase', query: { tab: 'journal' } })).toBe('journal')
+  })
+  it('hides the bottom bar on scroll only inside the barn', () => {
+    expect(mobileNavAutoHides({ path: '/showcase', query: {} })).toBe(true)
+    expect(mobileNavAutoHides({ path: '/showcase', query: { tab: 'barn' } })).toBe(true)
+    for (const tab of ['showcase', 'stats', 'journal']) expect(mobileNavAutoHides({ path: '/showcase', query: { tab } })).toBe(false)
+    for (const path of ['/preorders', '/location', '/clubs', '/profile/account']) expect(mobileNavAutoHides({ path, query: {} })).toBe(false)
   })
   it('keeps service settings reachable for anonymous users and isolates club tabs', () => {
     expect(mobileModules({ isClub: false, isAuthenticated: false }).find(item => item.key === 'profile')?.to).toBe('/settings')

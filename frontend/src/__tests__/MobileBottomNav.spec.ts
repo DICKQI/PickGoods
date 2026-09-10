@@ -1,12 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import { nextTick } from 'vue'
 import MobileBottomNav from '@/components/MobileBottomNav.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 
-async function setup(club = false, path = '/showcase') {
+async function setup(club = false, path = '/showcase', autoHideOnScroll = false) {
   const pinia = createPinia()
   setActivePinia(pinia)
   const auth = useAuthStore()
@@ -14,7 +15,7 @@ async function setup(club = false, path = '/showcase') {
   auth.user = { id: 1, username: 'test', role: 'User', account_type: club ? 'club' : 'collector', approval_status: 'approved' }
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }] })
   await router.push(path)
-  const wrapper = mount(MobileBottomNav, { global: { plugins: [pinia, router], stubs: { ElIcon: { template: '<i><slot /></i>' } } } })
+  const wrapper = mount(MobileBottomNav, { props: { autoHideOnScroll }, global: { plugins: [pinia, router], stubs: { ElIcon: { template: '<i><slot /></i>' } } } })
   return { wrapper, router, store: useMobileWorkspaceStore() }
 }
 describe('fixed mobile navigation', () => {
@@ -42,6 +43,49 @@ describe('fixed mobile navigation', () => {
     await flushPromises()
     expect(router.currentRoute.value.path).toBe('/theme')
     expect(wrapper.get('[aria-current="page"]').text()).toBe('整理')
+    wrapper.unmount()
+  })
+  it('hides while the barn scrolls and returns 500ms after scrolling stops', async () => {
+    const { wrapper } = await setup(false, '/showcase?tab=barn', true)
+    vi.useFakeTimers()
+    try {
+      window.dispatchEvent(new Event('touchstart'))
+      window.dispatchEvent(new Event('scroll'))
+      await nextTick()
+      expect(wrapper.classes()).toContain('is-scroll-hidden')
+      vi.advanceTimersByTime(499)
+      await nextTick()
+      expect(wrapper.classes()).toContain('is-scroll-hidden')
+      vi.advanceTimersByTime(1)
+      await nextTick()
+      expect(wrapper.classes()).not.toContain('is-scroll-hidden')
+    } finally {
+      vi.useRealTimers()
+    }
+    wrapper.unmount()
+  })
+  it('ignores the scroll restoration that follows a route change', async () => {
+    const { wrapper, router } = await setup(false, '/showcase?tab=barn', true)
+    window.dispatchEvent(new Event('touchstart'))
+    window.dispatchEvent(new Event('scroll'))
+    await nextTick()
+    expect(wrapper.classes()).toContain('is-scroll-hidden')
+    await router.push('/clubs')
+    await flushPromises()
+    expect(wrapper.classes()).not.toContain('is-scroll-hidden')
+    window.dispatchEvent(new Event('scroll'))
+    await nextTick()
+    expect(wrapper.classes()).not.toContain('is-scroll-hidden')
+    wrapper.unmount()
+  })
+  it('returns immediately when the page stops hiding the bar', async () => {
+    const { wrapper } = await setup(false, '/showcase?tab=barn', true)
+    window.dispatchEvent(new Event('touchstart'))
+    window.dispatchEvent(new Event('scroll'))
+    await nextTick()
+    expect(wrapper.classes()).toContain('is-scroll-hidden')
+    await wrapper.setProps({ autoHideOnScroll: false })
+    expect(wrapper.classes()).not.toContain('is-scroll-hidden')
     wrapper.unmount()
   })
 })

@@ -118,6 +118,7 @@
     <!-- 移动端底部导航栏 -->
     <MobileBottomNav
       v-if="showMobileBottomNav"
+      :auto-hide-on-scroll="autoHideBottomNav"
     />
 
     <!-- 悬浮按钮组（仅云展柜页面展示；统计看板隐藏刷新按钮） -->
@@ -272,7 +273,7 @@ import { Capacitor } from '@capacitor/core'
 import MobileBottomNav from './MobileBottomNav.vue'
 import MobilePageHeader from './MobilePageHeader.vue'
 import '@/styles/mobileWorkspace.css'
-import { MOBILE_CACHE_COMPONENTS, mobileHeaderMode } from '@/navigation/mobile'
+import { MOBILE_CACHE_COMPONENTS, mobileHeaderMode, mobileNavAutoHides } from '@/navigation/mobile'
 import { useMobileWorkspace } from '@/composables/useMobileWorkspace'
 import NotificationCenter from './NotificationCenter.vue'
 import { useNotificationStore } from '@/stores/notification'
@@ -287,6 +288,7 @@ const { isMobile } = useResponsiveDevice()
 const workspace = useMobileWorkspace(isMobile)
 const mobileMode = computed(() => mobileHeaderMode(route.path))
 const showMobileBottomNav = computed(() => isMobile.value && ['tabs', 'detail'].includes(mobileMode.value) && !route.meta.hideBottomNav)
+const autoHideBottomNav = computed(() => mobileNavAutoHides(route))
 const mainContent = ref<HTMLElement | null>(null)
 const hideTopNav = computed(() => Boolean(isMobile.value || route.meta.hideTopNav))
 
