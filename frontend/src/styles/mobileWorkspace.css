@@ -25,6 +25,9 @@
 #app .mobile-shell .settings-container > .header-section,
 #app .mobile-shell .club-page .directory-heading { display: none; }
 #app .mobile-shell .club-workspace > .workspace-header { justify-content: flex-end; margin-bottom: 8px; }
+/* 社团目录没有顶部标签栏，搜索栏顶到页面顶部并铺满整行。 */
+#app .layout.mobile-shell .club-page { padding-top: calc(12px + var(--app-safe-area-top, env(safe-area-inset-top, 0px))); }
+#app .mobile-shell .club-page .directory-header { grid-template-columns: minmax(0, 1fr); }
 #app .mobile-shell .profile-workspace,
 #app .mobile-shell .club-workspace { padding: 12px 12px 24px; }
 #app .layout.mobile-shell .main-content .cloud-showcase { padding-top: 12px; }

@@ -110,7 +110,11 @@ describe('Layout top navigation', () => {
     await wrapper.vm.$router.push('/clubs')
     await flushPromises()
     expect(wrapper.find('.navbar').exists()).toBe(false)
-    expect(wrapper.get('.mobile-page-header').text()).toContain('社团目录')
+    // 社团目录只有单一工作区，不再占用顶部标签栏
+    expect(wrapper.find('.mobile-page-header').exists()).toBe(false)
+    await wrapper.vm.$router.push('/theme')
+    await flushPromises()
+    expect(wrapper.get('.mobile-page-header').text()).toContain('主题')
     wrapper.unmount()
   })
 

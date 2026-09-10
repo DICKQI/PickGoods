@@ -1,5 +1,5 @@
 <template>
-  <header class="mobile-page-header" :class="{ 'is-compact': mode !== 'tabs' }">
+  <header v-if="visible" class="mobile-page-header" :class="{ 'is-compact': mode !== 'tabs' }">
     <template v-if="mode === 'tabs'">
       <nav ref="rail" class="note-rail" aria-label="页面导航">
         <span v-if="tabs.length === 1" class="note-slot"><span class="note-paper is-selected">{{ tabs[0]?.label }}</span></span>
@@ -39,6 +39,8 @@ const module = computed(() => mobileModule(route))
 const mode = computed(() => mobileHeaderMode(route.path))
 const tabs = computed(() => mobileTabs(module.value, auth))
 const selected = computed(() => activeMobileTab(route))
+// 只有单一工作区的模块没有切换价值，不占用顶部标签栏（社团目录）。
+const visible = computed(() => mode.value !== 'tabs' || tabs.value.length > 1)
 const rail = ref<HTMLElement>()
 const papers = new Map<string, HTMLElement>()
 const animations = new Map<HTMLElement, Animation>()
