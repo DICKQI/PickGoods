@@ -322,7 +322,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, reactive, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { RefreshLeft, ArrowDown, List, Close, Top } from '@element-plus/icons-vue'
@@ -634,6 +634,18 @@ const initChart = (el: HTMLDivElement | null): echarts.ECharts | null => {
 const disposeCharts = () => {
   chartInstances.splice(0).forEach((instance) => {
     instance.dispose()
+  })
+}
+
+/**
+ * tooltip 用 appendToBody 挂在 document.body 上（避免被卡片 overflow 裁剪），
+ * 因此页面被隐藏/切走时不会自动消失。移动端点击结束后没有 mouseout，
+ * 必须在离开看板时主动收起，否则提示会残留在其它标签页甚至其它大区上。
+ */
+const hideAllTips = () => {
+  chartInstances.forEach((instance) => {
+    if (instance.isDisposed()) return
+    instance.dispatchAction({ type: 'hideTip' })
   })
 }
 
@@ -1102,16 +1114,19 @@ onMounted(async () => {
   await initMetadata()
   await fetchStats()
   window.addEventListener('resize', handleResize)
+  window.addEventListener('scroll', hideAllTips, { passive: true })
   window.addEventListener('cloud-showcase:stats-refresh', handleStatsRefresh as EventListener)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('resize', handleResize)
+  window.removeEventListener('scroll', hideAllTips)
   window.removeEventListener('cloud-showcase:stats-refresh', handleStatsRefresh as EventListener)
   if (characterStatsSearchTimer) {
     window.clearTimeout(characterStatsSearchTimer)
     characterStatsSearchTimer = undefined
   }
+  hideAllTips()
   disposeCharts()
   restoreBodyOverflowForStatsFilter()
   if (resizeTimer !== null) {
@@ -1123,6 +1138,14 @@ onBeforeUnmount(() => {
     autoFetchTimer = null
   }
 })
+
+// 看板被 KeepAlive 缓存时不会卸载，切标签页 / 跳其它大区必须主动收起 tooltip。
+// 用 router.afterEach 而不是 watch(route)，后者依赖调度队列，标签页会先闪一下残留提示。
+const stopHideTipsOnNavigate = router.afterEach(() => hideAllTips())
+// KeepAlive 停用/激活（含从其它大区返回）时同样清理。
+onDeactivated(() => hideAllTips())
+onActivated(() => hideAllTips())
+onBeforeUnmount(() => stopHideTipsOnNavigate())
 
 watch(
   () => statsData.value,

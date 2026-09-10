@@ -256,7 +256,8 @@ describe('ClubDirectory 社团目录', () => {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     await nextTick()
 
-    expect(wrapper.get('.club-pull-indicator').text()).toContain('释放刷新')
+    const indicatorStyle = wrapper.get('.mobile-pull-indicator').attributes('style')
+    expect(Number(String(indicatorStyle ?? '').match(/height:\s*([\d.]+)px/)?.[1] ?? 0)).toBeGreaterThan(0)
 
     await wrapper.trigger('touchend')
     await flushPromises()

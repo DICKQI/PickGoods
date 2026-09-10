@@ -61,7 +61,9 @@ export function useMobileWorkspace(isMobile: Ref<boolean>) {
   }, { immediate: true, flush: 'post' })
   window.addEventListener('pointerdown', stopRestoring, { passive: true })
   window.addEventListener('wheel', stopRestoring, { passive: true })
-  window.addEventListener('touchstart', stopRestoring, { passive: true })
+  // 捕获阶段：谷子卡片等子元素会在 touchstart 上 stopPropagation，
+  // 冒泡监听收不到「用户开始滑动」，滚动位置恢复会继续把页面拽回去。
+  window.addEventListener('touchstart', stopRestoring, { passive: true, capture: true })
   onBeforeUnmount(() => {
     generation++
     removeGuard()
@@ -69,7 +71,7 @@ export function useMobileWorkspace(isMobile: Ref<boolean>) {
     stopRestoring()
     window.removeEventListener('pointerdown', stopRestoring)
     window.removeEventListener('wheel', stopRestoring)
-    window.removeEventListener('touchstart', stopRestoring)
+    window.removeEventListener('touchstart', stopRestoring, { capture: true })
   })
   return workspace
 }

@@ -142,45 +142,45 @@
       <section
         v-if="isMobile"
         class="preorder-mobile-page"
-        @touchstart="handleTouchStart"
+        @touchstart.capture.passive="handleTouchStart"
         @touchmove="handleTouchMove"
         @touchend="handleTouchEnd"
+        @touchcancel="resetPullRefresh"
       >
-        <div class="preorder-mobile-pull" :style="{ height: pullDistance + 'px' }">
-          <el-icon :class="{ 'is-spinning': isRefreshing }"><Loading /></el-icon>
-          <span>{{ isRefreshing ? '刷新中…' : '下拉刷新' }}</span>
+        <!-- 标题 + 看板 + 状态筛选固定在顶部：真机 WebView 上 sticky 常因祖先包含块失效，改用 fixed + 占位 -->
+        <div class="preorder-mobile-sticky-spacer" :style="{ height: `${stickyHeight}px` }" aria-hidden="true"></div>
+        <div ref="stickyRef" class="preorder-mobile-sticky">
+          <header class="preorder-mobile-header">
+            <h1 class="preorder-mobile-title">预购与尾款提醒</h1>
+          </header>
+
+          <PreorderMobileStats :stats="stats" />
+
+          <PreorderMobileFilterBar
+            v-model:status-filter="statusFilter"
+            v-model:search-keyword="searchKeyword"
+            :total="total"
+            @search="handleSearchInput"
+            @clear="handleSearchClear"
+            @status-change="handleFilterChange"
+          />
         </div>
 
-        <header class="preorder-mobile-header">
-          <h1 class="preorder-mobile-title">预购与尾款提醒</h1>
-        </header>
-
-        <PreorderMobileStats :stats="stats" />
-
-        <PreorderMobileFilterBar
-          v-model:status-filter="statusFilter"
-          v-model:search-keyword="searchKeyword"
-          :total="total"
-          @search="handleSearchInput"
-          @clear="handleSearchClear"
-          @status-change="handleFilterChange"
-        />
+        <!-- 下拉刷新提示固定在“看板 + 筛选”下方：看板区任何时候都不移动，只有提示条把列表顶下去 -->
+        <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
 
         <div v-if="loading" class="preorder-mobile-skeletons">
           <div v-for="n in 3" :key="n" class="preorder-mobile-skeleton"></div>
         </div>
 
         <template v-else>
-          <div class="preorder-mobile-list" :class="{ 'is-switching': switching }" @scroll.passive="handleListScroll">
+          <div class="preorder-mobile-list" :class="{ 'is-switching': switching }">
             <div v-for="item in preorders" :id="'preorder-row-' + item.id" :key="item.id">
               <PreorderMobileCard
-                :ref="setCardRef(item.id)"
                 :item="item"
                 :highlight="item.id === highlightId"
                 @primary="handleMobilePrimary(item)"
                 @menu="openCardMenu(item)"
-                @swipe-action="handleMobileSwipe(item, $event)"
-                @swipe-start="closeAllSwipe(item.id)"
               />
             </div>
           </div>
@@ -369,10 +369,10 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
+import { computed, markRaw, nextTick, onActivated, onMounted, onUnmounted, ref, watch, type Component } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Clock, Close, Delete, Edit, Loading, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
+import { Clock, Close, Delete, Edit, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
 import * as reminderApi from '@/api/reminder'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { usePreorderList } from '@/composables/usePreorderList'
@@ -386,6 +386,7 @@ import PreorderDelayDialog from '@/components/preorder/PreorderDelayDialog.vue'
 import ConvertGoodsForm from '@/components/preorder/ConvertGoodsForm.vue'
 import PreorderMobileStats from '@/components/preorder/PreorderMobileStats.vue'
 import PreorderMobileFilterBar from '@/components/preorder/PreorderMobileFilterBar.vue'
+import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import PreorderMobileCard from '@/components/preorder/PreorderMobileCard.vue'
 import { PREORDER_STATUS_OPTIONS } from '@/utils/preorder'
 import { formatAmount, formatMonth, isDueNow, preorderStatusLabel } from '@/utils/preorder'
@@ -430,41 +431,6 @@ const {
 } = list
 const highlightId = ref<string | null>(null)
 const tableRef = ref()
-
-// ─── 移动端左滑复位：滚动 / 点击非操作区时统一收起所有已展开的滑动操作 ───
-const cardRefs = new Map<string, InstanceType<typeof PreorderMobileCard>>()
-const setCardRef = (id: string) => (el: unknown) => {
-  if (el) {
-    cardRefs.set(id, el as InstanceType<typeof PreorderMobileCard>)
-  } else {
-    cardRefs.delete(id)
-  }
-}
-const closeAllSwipe = (exceptId?: string) => {
-  cardRefs.forEach((card, id) => {
-    if (id !== exceptId) card.closeSwipe()
-  })
-}
-const handleGlobalTouchStart = (e: Event) => {
-  const target = e.target as HTMLElement | null
-  // 点击已露出的“编辑/删除”按钮时不收起，保证操作可点中
-  if (target?.closest('.preorder-mobile-card__swipe-actions')) return
-  closeAllSwipe()
-}
-const handleWindowScroll = () => closeAllSwipe()
-const handleListScroll = () => closeAllSwipe()
-let swipeResetListenersAttached = false
-const syncSwipeResetListeners = (mobile: boolean) => {
-  if (mobile && !swipeResetListenersAttached) {
-    window.addEventListener('scroll', handleWindowScroll, { passive: true })
-    window.addEventListener('touchstart', handleGlobalTouchStart, { passive: true })
-    swipeResetListenersAttached = true
-  } else if (!mobile && swipeResetListenersAttached) {
-    window.removeEventListener('scroll', handleWindowScroll)
-    window.removeEventListener('touchstart', handleGlobalTouchStart)
-    swipeResetListenersAttached = false
-  }
-}
 
 const handlePageChange = (p: number) => {
   page.value = p
@@ -751,20 +717,6 @@ const handleMobilePrimary = (item: Preorder) => {
   }
 }
 
-const handleMobileSwipe = (item: Preorder, key: 'edit' | 'delete') => {
-  if (key === 'edit') {
-    openEdit(item)
-  } else {
-    requestConfirm({
-      title: '删除预购',
-      message: deleteMessage(item),
-      confirmText: '删除',
-      tone: 'danger',
-      action: () => performDelete(item),
-    })
-  }
-}
-
 // ─── 移动端：下拉刷新 ───
 const {
   pullDistance,
@@ -772,12 +724,39 @@ const {
   handleTouchStart,
   handleTouchMove,
   handleTouchEnd,
+  reset: resetPullRefresh,
 } = useMobilePullRefresh({
   enabled: isMobile,
   onRefresh: async () => {
     await Promise.all([refresh(), loadStats()])
   },
 })
+
+// ─── 移动端：固定头（标题 + 看板 + 筛选）高度占位 ───
+// 移动端真正的滚动容器是 document，且祖先里存在 transform / fixed 组合的样式，
+// sticky 在真机 WebView 上经常失效；改为 fixed 钉在顶部标签栏下方，用等高空节点占位。
+const stickyRef = ref<HTMLElement | null>(null)
+const stickyHeight = ref(0)
+let stickyObserver: ResizeObserver | null = null
+
+const syncStickyHeight = () => {
+  const element = stickyRef.value
+  if (!element) {
+    stickyHeight.value = 0
+    return
+  }
+  const next = Math.round(element.getBoundingClientRect().height)
+  if (next !== stickyHeight.value) stickyHeight.value = next
+}
+
+// 看板展开/收起、搜索框展开都会改变固定头高度，占位必须跟着变，否则列表会被遮住或留白。
+const observeStickyHeight = () => {
+  stickyObserver?.disconnect()
+  stickyObserver = null
+  if (typeof ResizeObserver === 'undefined' || !stickyRef.value) return
+  stickyObserver = new ResizeObserver(() => syncStickyHeight())
+  stickyObserver.observe(stickyRef.value)
+}
 
 // ─── 移动端：无限滚动哨兵 ───
 const sentinelRef = ref<HTMLElement | null>(null)
@@ -799,11 +778,10 @@ const setupSentinelObserver = () => {
 
 // 设备断点切换：重置到第一页，避免分页 / 合并语义错乱；
 // 并重建哨兵观察，避免断点往返后观察器仍挂在已卸载的旧 DOM 上
-watch(isMobile, (mobile) => {
+watch(isMobile, () => {
   page.value = 1
   loadInitial()
   nextTick(setupSentinelObserver)
-  syncSwipeResetListeners(mobile)
 })
 
 const goToGoods = (item: Preorder) => {
@@ -828,17 +806,29 @@ const handleConverted = async () => {
 }
 
 onMounted(async () => {
-  syncSwipeResetListeners(isMobile.value)
   loadStats()
   await loadInitial()
   nextTick(setupSentinelObserver)
+  nextTick(() => {
+    syncStickyHeight()
+    observeStickyHeight()
+  })
   // 带 highlight 进入页面（通知跳转 / 刷新）：列表加载完成后尝试定位
   if (route.query.highlight) await resolveHighlight()
 })
 
+// KeepAlive 激活时 DOM 重新插入，固定头高度需要重新测量并重新挂观察器。
+onActivated(() => {
+  nextTick(() => {
+    syncStickyHeight()
+    observeStickyHeight()
+  })
+})
+
 onUnmounted(() => {
-  syncSwipeResetListeners(false)
   sentinelObserver?.disconnect()
+  stickyObserver?.disconnect()
+  stickyObserver = null
   list.clearSearchTimer()
 })
 </script>
@@ -1777,25 +1767,24 @@ onUnmounted(() => {
   min-height: calc(100dvh - 64px - env(safe-area-inset-top));
 }
 
-.preorder-mobile-pull {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  overflow: hidden;
-  color: #9a740b;
-  font-size: 12px;
-  font-weight: 700;
-  transition: height 0.18s ease;
+/* 标题 + 看板 + 状态筛选整体吸顶：滚动列表时始终固定在顶部标签栏下方。 */
+/* fixed 定位：不依赖祖先的滚动容器，真机上也能真正钉在标签栏下方 */
+.preorder-mobile-sticky {
+  position: fixed;
+  top: var(--app-navbar-height, 64px);
+  left: 0;
+  right: 0;
+  z-index: 900;
+  padding: 12px 12px 6px;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+  box-shadow: 0 12px 22px -22px rgba(17, 24, 39, 0.45);
 }
 
-.preorder-mobile-pull .is-spinning {
-  animation: preorder-mobile-spin 1s linear infinite;
-}
-
-@keyframes preorder-mobile-spin {
-  from { transform: rotate(0deg); }
-  to { transform: rotate(360deg); }
+.preorder-mobile-sticky-spacer {
+  pointer-events: none;
 }
 
 .preorder-mobile-header {
@@ -1917,14 +1906,15 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .preorder-page {
-    padding: 12px 12px calc(90px + env(safe-area-inset-bottom));
+    /* 顶部间距由固定头自己的 padding 提供，页面内容从标签栏正下方开始，占位高度才能与固定头严丝合缝。 */
+    padding: 0 12px calc(90px + env(safe-area-inset-bottom));
   }
 }
 
 @supports not (padding: calc(90px + env(safe-area-inset-bottom))) {
   @media (max-width: 768px) {
     .preorder-page {
-      padding: 12px 12px 90px;
+      padding: 0 12px 90px;
     }
   }
 }

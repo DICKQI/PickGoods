@@ -88,4 +88,22 @@ describe('fixed mobile navigation', () => {
     expect(wrapper.classes()).not.toContain('is-scroll-hidden')
     wrapper.unmount()
   })
+
+  // 谷子卡片在 touchstart 上 stopPropagation（@touchstart.stop），
+  // 冒泡监听收不到信号，收起效果会整个失效；捕获阶段必须照常工作。
+  it('still marks user scrolling when a child stops touchstart propagation', async () => {
+    const { wrapper } = await setup(false, '/showcase?tab=barn', true)
+    const card = document.createElement('div')
+    card.addEventListener('touchstart', event => event.stopPropagation())
+    document.body.appendChild(card)
+    try {
+      card.dispatchEvent(new Event('touchstart', { bubbles: true, cancelable: true }))
+      window.dispatchEvent(new Event('scroll'))
+      await nextTick()
+      expect(wrapper.classes()).toContain('is-scroll-hidden')
+    } finally {
+      card.remove()
+      wrapper.unmount()
+    }
+  })
 })

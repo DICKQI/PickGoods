@@ -5,7 +5,12 @@ export type MobileHeaderMode = 'tabs' | 'detail' | 'editor' | 'standalone'
 export interface MobileIdentity { isClub: boolean; isAuthenticated: boolean }
 export interface MobileTab { key: string; label: string; to: string }
 export interface MobileModuleItem { key: MobileModule; label: string; to: string }
+/** 手势切页序列中的一项：所属大区 + 该大区的标签。 */
+export interface MobileSwipeStep { module: MobileModule; key: string; label: string; to: string }
 type RouteInput = Pick<RouteLocationNormalizedLoaded, 'path' | 'query'>
+
+/** 移动端左右滑动手势切页总开关：置 false 时完全不响应手势。 */
+export const MOBILE_SWIPE_ENABLED = true
 
 export const showcaseTabs: MobileTab[] = [
   { key: 'showcase', label: '展柜', to: '/showcase?tab=showcase' },
@@ -74,6 +79,27 @@ export function activeMobileTab(route: RouteInput): string {
   if (route.path === '/showcase') return normalizeShowcaseTab(route.query.tab)
   const segments = route.path.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
+}
+
+/**
+ * 移动端手势切页的扁平序列：按底部大区顺序展开各分区的标签，
+ * 相邻大区在序列里也相邻（例如云展柜首个标签右滑即进入社团目录）。
+ */
+export function mobileSwipeSequence(identity: MobileIdentity): MobileSwipeStep[] {
+  return mobileModules(identity).flatMap(item =>
+    mobileTabs(item.key, identity).map(tab => ({
+      module: item.key,
+      key: tab.key,
+      label: tab.label,
+      to: tab.to,
+    })))
+}
+
+/** 当前路由在序列中的下标；-1 表示该路由不参与手势切页。 */
+export function mobileSwipeStepIndex(steps: MobileSwipeStep[], route: RouteInput): number {
+  const module = mobileModule(route)
+  const key = activeMobileTab(route)
+  return steps.findIndex(step => step.module === module && step.key === key)
 }
 
 export function mobileReturnTarget(route: RouteInput): string {

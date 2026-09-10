@@ -30,20 +30,7 @@
     </header>
 
     <div class="club-page__content">
-      <div
-        v-if="isMobile"
-        class="club-pull-indicator"
-        :class="{ 'is-animating': pullIsAnimating }"
-        :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
-        aria-live="polite"
-        @transitionend="clearPullRefreshAnimation"
-      >
-        <div class="club-pull-indicator__content">
-          <el-icon v-if="isPullRefreshing" class="is-loading"><Loading /></el-icon>
-          <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
-          <span>{{ isPullRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
-        </div>
-      </div>
+      <MobilePullIndicator v-if="isMobile" :distance="pullDistance" :refreshing="isPullRefreshing" />
 
       <section v-loading="loading" class="club-list" aria-live="polite">
       <article
@@ -155,10 +142,11 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { ArrowRight, Link, Loading, Picture, Search, Shop, Top } from '@element-plus/icons-vue'
+import { ArrowRight, Link, Picture, Search, Shop } from '@element-plus/icons-vue'
 import { getClubs } from '@/api/clubs'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import type { Club } from '@/api/types'
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
@@ -248,8 +236,6 @@ async function refreshDirectory() {
 const {
   pullDistance,
   isRefreshing: isPullRefreshing,
-  isAnimating: pullIsAnimating,
-  clearAnimating: clearPullRefreshAnimation,
   handleTouchStart: handlePullStart,
   handleTouchMove: handlePullMove,
   handleTouchEnd: handlePullEnd,
@@ -291,35 +277,6 @@ onMounted(() => {
   margin: 0 auto;
   padding: 32px 28px 64px;
   color: var(--text-dark);
-}
-
-.club-pull-indicator {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  overflow: hidden;
-  color: var(--text-light);
-  pointer-events: none;
-}
-
-.club-pull-indicator.is-animating {
-  transition: height 0.28s ease, opacity 0.2s ease;
-}
-
-.club-pull-indicator__content {
-  display: flex;
-  height: 50px;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding-bottom: 8px;
-  font-size: 13px;
-}
-
-.club-pull-indicator__content .el-icon {
-  color: var(--primary-gold-dark);
-  font-size: 17px;
-  transition: transform 0.22s ease;
 }
 
 .directory-header {
@@ -903,8 +860,6 @@ onMounted(() => {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .club-pull-indicator,
-  .club-pull-indicator__content .el-icon,
   .club-identity__title .el-icon,
   .platform-link,
   .custom-link,

@@ -1,12 +1,18 @@
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { flushPromises, mount } from '@vue/test-utils'
+import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CloudShowcase from '@/views/CloudShowcase.vue'
 import type { GoodsListItem } from '@/api/types'
 
 const cloudShowcaseSource = readFileSync(resolve(process.cwd(), 'src/views/CloudShowcase.vue'), 'utf8')
+
+/** 统一下拉刷新指示器：用内联高度反映当前下拉距离。 */
+const pullIndicatorHeight = (wrapper: VueWrapper) => {
+  const style = wrapper.get('.mobile-pull-indicator').attributes('style')
+  return Number(String(style ?? '').match(/height:\s*([\d.]+)px/)?.[1] ?? 0)
+}
 
 const routerPush = vi.hoisted(() => vi.fn())
 const getGoodsListMock = vi.hoisted(() => vi.fn())
@@ -217,7 +223,7 @@ describe('CloudShowcase mobile compact header', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('[data-test="search-bar"]').exists()).toBe(false)
-    expect(wrapper.get('.pull-indicator').text()).toContain('释放刷新')
+    expect(pullIndicatorHeight(wrapper)).toBeGreaterThan(0)
 
     await pullWrapper.trigger('touchend')
     await flushPromises()
@@ -253,7 +259,7 @@ describe('CloudShowcase mobile compact header', () => {
     await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
     await wrapper.vm.$nextTick()
 
-    expect(wrapper.get('.pull-indicator').text()).toContain('释放刷新')
+    expect(pullIndicatorHeight(wrapper)).toBeGreaterThan(0)
 
     card.dispatchEvent(createTouchEvent('touchend', 160))
     await flushPromises()

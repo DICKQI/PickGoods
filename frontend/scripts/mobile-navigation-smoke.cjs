@@ -28,6 +28,16 @@ async function fixture(context, identity) {
     else if (p.includes('unread-count')) data = { count: 0, unread_count: 0 }
     else if (p.includes('/popularity')) data = { items: [], summary: { total: 0, listed: 0, intended_user_count: 0, acquired_user_count: 0 } }
     else if (p.includes('/preorders/stats')) data = { pending_count: 0, due_this_month: 0, overdue_count: 0, total_deposit: '0', total_balance: '0' }
+    else if (p.includes('/goods/stats')) data = {
+      meta: { top: 5, group_by: 'month', purchase_start: null, purchase_end: null, created_start: null, created_end: null },
+      overview: { goods_count: goods.length, quantity_sum: goods.length, value_sum: '0.00', with_price_count: 0, missing_price_count: 0, with_purchase_date_count: 0, missing_purchase_date_count: 0, with_location_count: 0, missing_location_count: 0, with_main_photo_count: 0, missing_main_photo_count: 0 },
+      distributions: {
+        status: [{ status: 'in_cabinet', label: '在馆', goods_count: goods.length, quantity_sum: goods.length }],
+        is_official: [{ is_official: true, label: '官谷', goods_count: goods.length, quantity_sum: goods.length }],
+        ip_subject_type: [{ ip__subject_type: 1, label: '动画', goods_count: goods.length, quantity_sum: goods.length }],
+        ip_top: [], category_top: [], craft_top: [], character_top: [], monthly_trend: [],
+      },
+    }
     else if (p.includes('/categories')) data = [category]
     else if (p.includes('/ips')) data = [ip]
     else if (p.includes('/characters') || p.includes('/themes') || p.includes('/location/tree') || p.includes('/location/nodes') || p.includes('/goods-crafts')) data = []
@@ -40,7 +50,14 @@ async function run() {
   const browser = await chromium.launch({ headless: true, channel: 'msedge' })
   const report = []
   try {
-    const context = await browser.newContext({ viewport: { width: 390, height: 844 }, recordVideo: { dir: output, size: { width: 390, height: 844 } }, reducedMotion: 'no-preference' })
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+      deviceScaleFactor: 2,
+      recordVideo: { dir: output, size: { width: 390, height: 844 } },
+      reducedMotion: 'no-preference',
+    })
     await fixture(context, 'collector')
     const page = await context.newPage()
     const errors = []
@@ -88,6 +105,75 @@ async function run() {
     await page.waitForTimeout(120)
     await page.getByRole('link', { name: '品类', exact: true }).click()
     await page.waitForTimeout(400)
+    // 手势切页：越过阈值立即切换，页面不跟手，也没有任何轨道元素。
+    // 用真实触摸序列（CDP Input.dispatchTouchEvent），鼠标拖拽会触发图片原生拖放而中断手势。
+    const touchClient = await context.newCDPSession(page)
+    const gestureAt = async (from, to, steps = 6) => {
+      const point = (x, y) => [{ x, y, id: 1, radiusX: 6, radiusY: 6, force: 1 }]
+      await touchClient.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: point(from.x, from.y) })
+      for (let step = 1; step <= steps; step += 1) {
+        await touchClient.send('Input.dispatchTouchEvent', {
+          type: 'touchMove',
+          touchPoints: point(from.x + (to.x - from.x) * step / steps, from.y + (to.y - from.y) * step / steps),
+        })
+        await page.waitForTimeout(16)
+      }
+      await touchClient.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await page.waitForTimeout(500)
+    }
+    const gesture = async (fromRatio, toRatio) => {
+      const box = await page.locator('.main-content').boundingBox()
+      const y = box.y + Math.min(200, box.height / 3)
+      const startX = box.x + box.width * fromRatio
+      const endX = box.x + box.width * toRatio
+      await gestureAt({ x: startX, y }, { x: endX, y })
+    }
+    // 左滑 = 下一个标签（品类 → 主题）
+    await gesture(0.85, 0.15)
+    assert.equal(new URL(page.url()).pathname, '/theme')
+    assert.equal((await page.locator('.note-paper.is-selected').textContent()).trim(), '主题')
+    assert.equal(await page.locator('.mobile-swipe-viewport, .mobile-swipe-track, .mobile-swipe-layer').count(), 0)
+    // 右滑 = 上一个标签（主题 → 品类）
+    await gesture(0.15, 0.85)
+    assert.equal(new URL(page.url()).pathname, '/category')
+    assert.equal((await page.locator('.note-paper.is-selected').textContent()).trim(), '品类')
+    await page.goto(`${base}/showcase?tab=showcase`)
+    await page.locator('.main-content').waitFor()
+    await page.waitForTimeout(400)
+    await gesture(0.15, 0.85)
+    assert.equal(new URL(page.url()).pathname, '/clubs')
+    // 统计看板：手指落在图表 canvas（卡片主体）上同样要能切页，只有自管手势的元素才让路
+    await page.goto(`${base}/showcase?tab=stats`)
+    await page.locator('.chart-container canvas').first().waitFor()
+    await page.waitForTimeout(900)
+    const chartBox = await page.locator('.chart-container canvas').first().boundingBox()
+    await gestureAt({ x: Math.round(chartBox.x + chartBox.width * 0.8), y: Math.round(chartBox.y + chartBox.height * 0.5) }, { x: Math.round(chartBox.x + chartBox.width * 0.1), y: Math.round(chartBox.y + chartBox.height * 0.5) })
+    // 统计是云展柜大区最后一个标签，下一个是整理大区的「位置」
+    assert.equal(new URL(page.url()).pathname, '/location')
+    report.push({ gesture: { withinRegion: '/category -> /theme -> /category', crossRegion: '/showcase -> /clubs', onChartCanvas: '/showcase?tab=stats -> /location' } })
+    // 预购页：标题 + 看板 + 状态筛选用 fixed 钉在标签栏下方，滚动时纹丝不动；
+    // 下拉刷新提示条固定挂在看板下方（而不是盖在看板上方）。
+    await page.goto(`${base}/preorders`)
+    await page.locator('.preorder-mobile-sticky').waitFor()
+    await page.waitForTimeout(500)
+    const preorderHeader = await page.evaluate(() => {
+      const rect = selector => {
+        const element = document.querySelector(selector)
+        if (!element) return null
+        const box = element.getBoundingClientRect()
+        return { top: Math.round(box.top), bottom: Math.round(box.bottom), height: Math.round(box.height) }
+      }
+      return { sticky: rect('.preorder-mobile-sticky'), spacer: rect('.preorder-mobile-sticky-spacer'), indicator: rect('.mobile-pull-indicator') }
+    })
+    assert.ok(preorderHeader.sticky && preorderHeader.spacer && preorderHeader.indicator, JSON.stringify(preorderHeader))
+    assert.equal(preorderHeader.sticky.height, preorderHeader.spacer.height)
+    assert.equal(preorderHeader.indicator.top, preorderHeader.sticky.bottom)
+    await page.mouse.wheel(0, 500)
+    await page.waitForTimeout(400)
+    const stickyAfterScroll = await page.locator('.preorder-mobile-sticky').evaluate(el => Math.round(el.getBoundingClientRect().top))
+    assert.equal(stickyAfterScroll, preorderHeader.sticky.top)
+    assert.ok(await page.locator('.mobile-pull-indicator').count() === 1)
+    report.push({ preorderHeader: { ...preorderHeader, stickyAfterScroll } })
     await page.getByRole('link', { name: '我的', exact: true }).click()
     await page.locator('.account-page').waitFor()
     await page.waitForTimeout(400)
@@ -96,7 +182,11 @@ async function run() {
     await page.getByRole('link', { name: 'GitHub · 项目主页' }).waitFor()
     await page.waitForTimeout(400)
     await page.screenshot({ path: path.join(output, 'settings.png') })
-    await page.getByRole('link', { name: '云展柜', exact: true }).click()
+    // 预购属于云展柜大区，底栏「云展柜」回到该大区最后访问的标签（即当前页），不是固定回谷仓
+    const cloudModuleHref = await page.getByRole('link', { name: '云展柜', exact: true }).first().getAttribute('href')
+    assert.equal(cloudModuleHref, '/preorders')
+    report.push({ bottomNavModuleMemory: cloudModuleHref })
+    await page.goto(`${base}/showcase?tab=barn`)
     await page.locator('.goods-grid article').first().waitFor()
     assert.equal(new URL(page.url()).searchParams.get('tab'), 'barn')
     await page.goto(`${base}/goods/new`)

@@ -63,18 +63,7 @@
           @touchend="handleBarnPullEnd"
           @touchcancel="resetBarnPullRefresh"
         >
-          <div
-            v-if="isMobile"
-            class="pull-indicator"
-            :class="{ 'is-animating': isAnimating }"
-            :style="{ height: `${pullDistance}px`, opacity: pullDistance > 0 ? 1 : 0 }"
-          >
-            <div class="pull-indicator-content">
-              <el-icon v-if="isRefreshing" class="is-loading"><Loading /></el-icon>
-              <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
-              <span>{{ isRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}</span>
-            </div>
-          </div>
+          <MobilePullIndicator v-if="isMobile" :distance="pullDistance" :refreshing="isRefreshing" />
           <div
             class="barn-pull-refresh-content"
             :class="{ 'is-animating': isAnimating }"
@@ -298,6 +287,7 @@ import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
 import JournalWorkspace from '@/components/journal/JournalWorkspace.vue'
+import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
@@ -1007,36 +997,6 @@ watch(mobileFilterVisible, (visible) => {
 
 .barn-pull-refresh-wrapper {
   position: relative;
-}
-
-.pull-indicator {
-  width: 100%;
-  overflow: hidden;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  color: #909399;
-  pointer-events: none;
-}
-
-.pull-indicator.is-animating {
-  transition: height 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
-}
-
-.pull-indicator-content {
-  height: 50px;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding-bottom: 10px;
-  font-size: 14px;
-}
-
-.pull-indicator-content .el-icon {
-  font-size: 18px;
-  transition: transform 0.3s;
 }
 
 .mobile-filter-strip,

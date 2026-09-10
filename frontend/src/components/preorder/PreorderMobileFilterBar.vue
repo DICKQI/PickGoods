@@ -121,17 +121,10 @@ defineExpose({ collapseSearch })
 
 <style scoped>
 .preorder-mobile-filterbar {
-  position: sticky;
-  top: var(--app-navbar-height, 64px);
-  z-index: 900;
-  margin: 10px -12px 0;
-  padding: 8px 12px 6px;
-  background: rgba(255, 255, 255, 0.92);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  /* 吸顶由外层 .preorder-mobile-sticky 统一负责，这里只负责筛选行本身。 */
+  margin: 0;
+  padding: 8px 0 6px;
   border-top: 1px solid rgba(212, 175, 55, 0.12);
-  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
-  box-shadow: 0 8px 18px -18px rgba(17, 24, 39, 0.4);
 }
 
 .preorder-mobile-filterbar__row {

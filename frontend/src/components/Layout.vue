@@ -273,8 +273,16 @@ import { Capacitor } from '@capacitor/core'
 import MobileBottomNav from './MobileBottomNav.vue'
 import MobilePageHeader from './MobilePageHeader.vue'
 import '@/styles/mobileWorkspace.css'
-import { MOBILE_CACHE_COMPONENTS, mobileHeaderMode, mobileNavAutoHides } from '@/navigation/mobile'
+import {
+  MOBILE_CACHE_COMPONENTS,
+  MOBILE_SWIPE_ENABLED,
+  mobileHeaderMode,
+  mobileNavAutoHides,
+  mobileSwipeSequence,
+  mobileSwipeStepIndex,
+} from '@/navigation/mobile'
 import { useMobileWorkspace } from '@/composables/useMobileWorkspace'
+import { useMobileSwipeNav } from '@/composables/useMobileSwipeNav'
 import NotificationCenter from './NotificationCenter.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
@@ -291,6 +299,20 @@ const showMobileBottomNav = computed(() => isMobile.value && ['tabs', 'detail'].
 const autoHideBottomNav = computed(() => mobileNavAutoHides(route))
 const mainContent = ref<HTMLElement | null>(null)
 const hideTopNav = computed(() => Boolean(isMobile.value || route.meta.hideTopNav))
+
+// 移动端左右滑动：越过阈值立即切到序列里的上/下一个标签，跨大区同样连续。
+const swipeSteps = computed(() => mobileSwipeSequence({
+  isClub: authStore.isClub,
+  isAuthenticated: authStore.isAuthenticated,
+}))
+const swipeStepIndex = computed(() => mobileSwipeStepIndex(swipeSteps.value, route))
+useMobileSwipeNav({
+  enabled: () => isMobile.value && mobileMode.value === 'tabs' && MOBILE_SWIPE_ENABLED,
+  surface: mainContent,
+  steps: swipeSteps,
+  currentIndex: swipeStepIndex,
+  navigate: step => { void router.push(step.to) },
+})
 
 const canUseNotifications = computed(() => authStore.isAuthenticated && authStore.isCollector)
 

@@ -105,7 +105,7 @@
       </div>
     </div>
 
-    <div ref="viewportRef" class="journal-canvas-viewport">
+    <div ref="viewportRef" class="journal-canvas-viewport" data-swipe-ignore>
       <v-stage
         ref="stageRef"
         :config="stageConfig"

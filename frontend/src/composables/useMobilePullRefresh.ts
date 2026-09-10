@@ -19,12 +19,17 @@ const getScrollTop = () => (
   0
 )
 
+/** 顶部判定留 2px 容差：真机滚动回弹后常停在 0.5~1px，严格等于 0 会让下拉手势整段失效。 */
+const SCROLL_TOP_TOLERANCE = 2
+
 export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
   const startY = ref(0)
   const pullDistance = ref(0)
   const isRefreshing = ref(false)
   const isDragging = ref(false)
   const isAnimating = ref(false)
+  /** 本次触摸是否仍在跟踪（起点可能在页面中部，滚到顶部后依旧可以接上下拉）。 */
+  const isTracking = ref(false)
 
   let rafId = 0
   let pendingDistance = 0
@@ -55,6 +60,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
     pullDistance.value = 0
     startY.value = 0
     isDragging.value = false
+    isTracking.value = false
   }
 
   const clearAnimating = () => {
@@ -64,25 +70,41 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
   const handleTouchStart = (e: TouchEvent) => {
     if (!isEnabled() || isRefreshing.value || isBlocked()) return
 
-    if (getScrollTop() > 0) {
-      reset()
-      return
-    }
-
     const firstTouch = e.touches?.[0]
     if (!firstTouch) return
 
-    isDragging.value = true
-    isAnimating.value = false
+    flushRaf()
     startY.value = firstTouch.clientY
+    isTracking.value = true
+    // 起点不在顶部也继续跟踪：页面滚回顶部后继续下拉同样算刷新手势。
+    isDragging.value = getScrollTop() <= SCROLL_TOP_TOLERANCE
+    pullDistance.value = 0
+    isAnimating.value = false
   }
 
   const handleTouchMove = (e: TouchEvent) => {
-    if (!isEnabled() || isRefreshing.value || isBlocked() || !isDragging.value || startY.value === 0) return
-    if (getScrollTop() > 0) return
+    if (!isEnabled() || isRefreshing.value || isBlocked() || !isTracking.value) return
 
     const firstTouch = e.touches?.[0]
     if (!firstTouch) return
+
+    if (getScrollTop() > SCROLL_TOP_TOLERANCE) {
+      // 还没滚到顶部：整段交还给原生滚动，并清掉已产生的位移
+      startY.value = 0
+      if (pullDistance.value !== 0) {
+        flushRaf()
+        pullDistance.value = 0
+      }
+      return
+    }
+
+    if (!isDragging.value || startY.value === 0) {
+      // 手势途中才滚到顶部：从当前位置重新锚定，避免位移从页面中段开始累计
+      isDragging.value = true
+      startY.value = firstTouch.clientY
+      return
+    }
+
     const distance = firstTouch.clientY - startY.value
 
     if (distance > 0) {
@@ -104,6 +126,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
   const handleTouchEnd = async () => {
     flushRaf()
     isDragging.value = false
+    isTracking.value = false
     if (!isEnabled() || isRefreshing.value || isBlocked()) {
       reset()
       return

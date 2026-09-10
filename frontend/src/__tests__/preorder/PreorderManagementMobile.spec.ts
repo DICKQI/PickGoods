@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
 import { computed, defineComponent, nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
@@ -52,6 +54,8 @@ vi.mock('@/api/reminder', () => ({
 
 import { getPreorderStats, listPreorderDelays, listPreorders, markPreorderPaid } from '@/api/reminder'
 import type { Preorder } from '@/api/types'
+
+const pageSource = readFileSync(resolve(process.cwd(), 'src/views/PreorderManagement.vue'), 'utf8')
 
 const makePreorder = (id: string, overrides: Partial<Preorder> = {}): Preorder => ({
   id,
@@ -158,6 +162,34 @@ describe('PreorderManagement 移动端', () => {
     expect(wrapper.find('.preorder-mobile-card').exists()).toBe(true)
     expect(wrapper.find('.el-table-stub').exists()).toBe(false)
     expect(wrapper.find('.preorder-mobile-fab').exists()).toBe(true)
+  })
+
+  it('看板区固定在顶部且不随下拉位移，刷新提示渲染在看板下方', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    const sticky = wrapper.find('.preorder-mobile-sticky')
+    const spacer = wrapper.find('.preorder-mobile-sticky-spacer')
+    const indicator = wrapper.find('.mobile-pull-indicator')
+
+    expect(sticky.exists()).toBe(true)
+    expect(spacer.exists()).toBe(true)
+    expect(indicator.exists()).toBe(true)
+    // 占位高度由固定头实测高度驱动（jsdom 量到 0，这里只验证绑定仍在）
+    expect(spacer.attributes('style')).toContain('height:')
+    // 固定头不再跟随下拉位移：位置完全交给 CSS
+    expect(sticky.attributes('style')).toBeUndefined()
+    // 提示条必须在固定头之后（视觉上位于看板 + 筛选下方）
+    expect(
+      sticky.element.compareDocumentPosition(indicator.element) & Node.DOCUMENT_POSITION_FOLLOWING
+    ).toBeTruthy()
+    // 固定头钉在顶部标签栏下方，页面顶部间距改由固定头自己的 padding 提供
+    expect(pageSource).toMatch(/\.preorder-mobile-sticky \{[^}]*position: fixed;[^}]*top: var\(--app-navbar-height, 64px\);/)
+    // 下拉手势从捕获阶段起手，页面滚动回顶部后继续下拉也能触发刷新
+    expect(pageSource).toContain('@touchstart.capture.passive="handleTouchStart"')
+    expect(pageSource).toContain('@touchcancel="resetPullRefresh"')
+    expect(pageSource).toContain("padding: 0 12px calc(90px + env(safe-area-inset-bottom));")
   })
 
   it('新增 FAB 打开底部抽屉表单', async () => {
@@ -311,55 +343,13 @@ describe('PreorderManagement 移动端', () => {
     expect(getPreorderStats).toHaveBeenCalledTimes(2)
   })
 
-  it('左滑删除打开底部确认面板', async () => {
+  it('移动端卡片不渲染左滑操作按钮', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
     const { wrapper } = await mountPage()
     await flushPromises()
 
-    const card = wrapper.find('.preorder-mobile-card')
-    await card.trigger('touchstart', {
-      touches: [{ clientX: 200, clientY: 100 }],
-      changedTouches: [{ clientX: 200, clientY: 100 }],
-    })
-    await card.trigger('touchmove', {
-      touches: [{ clientX: 90, clientY: 102 }],
-      changedTouches: [{ clientX: 90, clientY: 102 }],
-    })
-    await card.trigger('touchend', {
-      touches: [],
-      changedTouches: [{ clientX: 90, clientY: 102 }],
-    })
-    await wrapper.find('.preorder-mobile-card__swipe-btn.is-delete').trigger('click')
-    await flushPromises()
-
-    expect(wrapper.text()).toContain('确定删除「流萤手办」？相关通知将一并删除。')
-  })
-
-  it('列表滚动时收起已展开的左滑操作', async () => {
-    vi.mocked(listPreorders).mockResolvedValue(
-      paginated([makePreorder('p-1'), makePreorder('p-2', { name: '第二个手办' })])
-    )
-    const { wrapper } = await mountPage()
-    await flushPromises()
-
-    const firstCard = wrapper.findAll('.preorder-mobile-card')[0]!
-    await firstCard.trigger('touchstart', {
-      touches: [{ clientX: 200, clientY: 100 }],
-      changedTouches: [{ clientX: 200, clientY: 100 }],
-    })
-    await firstCard.trigger('touchmove', {
-      touches: [{ clientX: 90, clientY: 102 }],
-      changedTouches: [{ clientX: 90, clientY: 102 }],
-    })
-    await firstCard.trigger('touchend', {
-      touches: [],
-      changedTouches: [{ clientX: 90, clientY: 102 }],
-    })
-    expect(firstCard.attributes('style')).toContain('translateX(-144px)')
-
-    await wrapper.find('.preorder-mobile-list').trigger('scroll')
-    await nextTick()
-    expect(wrapper.findAll('.preorder-mobile-card')[0]!.attributes('style')).toContain('translateX(0px)')
+    expect(wrapper.find('.preorder-mobile-card__swipe-actions').exists()).toBe(false)
+    expect(wrapper.find('.preorder-mobile-card__swipe-btn').exists()).toBe(false)
   })
 
   it('断点往返后无限滚动哨兵仍可加载更多', async () => {

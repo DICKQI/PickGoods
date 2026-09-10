@@ -62,12 +62,14 @@ watch(() => route.fullPath, () => {
 })
 
 window.addEventListener('scroll', handleScroll, { passive: true })
-USER_SCROLL_EVENTS.forEach(type => window.addEventListener(type, markUserScrolling, { passive: true }))
+// 捕获阶段：谷子卡片等子元素会在 touchstart 上 stopPropagation，
+// 冒泡到 window 的监听就收不到「用户在滑动」的信号，滚动收起会整个失效。
+USER_SCROLL_EVENTS.forEach(type => window.addEventListener(type, markUserScrolling, { passive: true, capture: true }))
 
 onUnmounted(() => {
   revealNav()
   window.removeEventListener('scroll', handleScroll)
-  USER_SCROLL_EVENTS.forEach(type => window.removeEventListener(type, markUserScrolling))
+  USER_SCROLL_EVENTS.forEach(type => window.removeEventListener(type, markUserScrolling, { capture: true }))
 })
 </script>
 <style scoped>
@@ -82,3 +84,4 @@ onUnmounted(() => {
 .nav-selection-pill { display: block; height: 100%; width: calc(100% / var(--module-count)); border-radius: 14px; background: linear-gradient(180deg, #d4af3724, #d4af3705); transform: translateX(calc(var(--active-index) * 100%)); transition: transform 280ms cubic-bezier(.22, 1, .36, 1); }
 @media (prefers-reduced-motion: reduce) { .nav-selection-pill, .nav-item, .mobile-bottom-nav { transition: none; } }
 </style>
+

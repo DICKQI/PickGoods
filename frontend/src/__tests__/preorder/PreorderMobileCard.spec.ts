@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import PreorderMobileCard from '@/components/preorder/PreorderMobileCard.vue'
 import type { Preorder } from '@/api/types'
@@ -35,21 +34,6 @@ const mountCard = (item: Preorder, extraProps: Record<string, unknown> = {}) =>
       },
     },
   })
-
-const swipe = async (wrapper: ReturnType<typeof mountCard>) => {
-  await wrapper.find('.preorder-mobile-card').trigger('touchstart', {
-    touches: [{ clientX: 200, clientY: 100 }],
-    changedTouches: [{ clientX: 200, clientY: 100 }],
-  })
-  await wrapper.find('.preorder-mobile-card').trigger('touchmove', {
-    touches: [{ clientX: 100, clientY: 102 }],
-    changedTouches: [{ clientX: 100, clientY: 102 }],
-  })
-  await wrapper.find('.preorder-mobile-card').trigger('touchend', {
-    touches: [],
-    changedTouches: [{ clientX: 100, clientY: 102 }],
-  })
-}
 
 describe('PreorderMobileCard', () => {
   it('pending 卡片渲染主操作与金额信息', () => {
@@ -103,23 +87,11 @@ describe('PreorderMobileCard', () => {
     expect(wrapper.text()).not.toContain('未知')
   })
 
-  it('左滑露出编辑/删除并 emit swipeAction', async () => {
+  it('移动端卡片不再渲染左滑操作（避免与左右切页手势冲突）', () => {
     const wrapper = mountCard(makePreorder())
-    await swipe(wrapper)
-    const article = wrapper.find('.preorder-mobile-card')
-    expect(article.attributes('style')).toContain('translateX(-144px)')
-    expect(wrapper.emitted('swipeStart')).toHaveLength(1)
-    await wrapper.find('.preorder-mobile-card__swipe-btn.is-edit').trigger('click')
-    expect(wrapper.emitted('swipeAction')?.[0]).toEqual(['edit'])
-  })
-
-  it('closeSwipe 复位左滑状态', async () => {
-    const wrapper = mountCard(makePreorder())
-    await swipe(wrapper)
-    expect(wrapper.find('.preorder-mobile-card').attributes('style')).toContain('translateX(-144px)')
-    ;(wrapper.vm as unknown as { closeSwipe: () => void }).closeSwipe()
-    await nextTick()
-    expect(wrapper.find('.preorder-mobile-card').attributes('style')).toContain('translateX(0px)')
+    expect(wrapper.find('.preorder-mobile-card__swipe-actions').exists()).toBe(false)
+    expect(wrapper.find('.preorder-mobile-card__swipe-btn').exists()).toBe(false)
+    expect(wrapper.find('.preorder-mobile-card').attributes('style')).toBeUndefined()
   })
 
   it('高亮 prop 渲染高亮 class', () => {

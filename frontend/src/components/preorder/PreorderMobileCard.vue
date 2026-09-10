@@ -1,23 +1,9 @@
 <template>
   <div class="preorder-mobile-card-shell">
-    <div class="preorder-mobile-card__swipe-actions">
-      <button type="button" class="preorder-mobile-card__swipe-btn is-edit" @click="$emit('swipeAction', 'edit')">
-        编辑
-      </button>
-      <button type="button" class="preorder-mobile-card__swipe-btn is-delete" @click="$emit('swipeAction', 'delete')">
-        删除
-      </button>
-    </div>
-
     <article
       class="preorder-mobile-card"
-      :class="{ 'is-highlight': highlight, 'is-due': dueNow, 'is-dragging': isSwipeDragging }"
-      :style="{ transform: `translateX(${offsetX}px)` }"
+      :class="{ 'is-highlight': highlight, 'is-due': dueNow }"
       :data-status="item.status"
-      @touchstart="onTouchStart"
-      @touchmove="onTouchMove"
-      @touchend="onTouchEnd"
-      @touchcancel="onTouchEnd"
     >
       <header class="preorder-mobile-card__head">
         <h3 class="preorder-mobile-card__name">{{ item.name }}</h3>
@@ -92,11 +78,9 @@ const props = defineProps<{
   highlight?: boolean
 }>()
 
-const emit = defineEmits<{
+defineEmits<{
   primary: []
   menu: []
-  swipeAction: [key: 'edit' | 'delete']
-  swipeStart: []
 }>()
 
 const statusLabel = preorderStatusLabel
@@ -117,68 +101,6 @@ const primaryAction = computed(() => {
   }
 })
 
-// ─── 左滑手势：露出「编辑 / 删除」───
-const SWIPE_ACTIONS_WIDTH = 144
-const offsetX = ref(0)
-const isSwipeDragging = ref(false)
-let startX = 0
-let startY = 0
-let dragging = false
-let horizontalIntent = false
-
-const touchPoint = (e: TouchEvent) => e.touches?.[0] ?? e.changedTouches?.[0]
-
-const onTouchStart = (e: TouchEvent) => {
-  emit('swipeStart')
-  const point = touchPoint(e)
-  if (!point) return
-  startX = point.clientX
-  startY = point.clientY
-  dragging = true
-  horizontalIntent = false
-}
-
-const onTouchMove = (e: TouchEvent) => {
-  if (!dragging) return
-  const point = touchPoint(e)
-  if (!point) return
-  const dx = point.clientX - startX
-  const dy = point.clientY - startY
-
-  if (!horizontalIntent) {
-    if (Math.abs(dx) < 10 && Math.abs(dy) < 10) return
-    if (Math.abs(dy) >= Math.abs(dx)) {
-      dragging = false // 纵向滚动，放弃手势
-      offsetX.value = snapOffset(offsetX.value)
-      isSwipeDragging.value = false
-      return
-    }
-    horizontalIntent = true
-    isSwipeDragging.value = true
-  }
-
-  if (e.cancelable) e.preventDefault()
-  const base = offsetX.value < 0 ? -SWIPE_ACTIONS_WIDTH : 0
-  const next = Math.min(0, Math.max(-SWIPE_ACTIONS_WIDTH, base + dx))
-  offsetX.value = next
-}
-
-const snapOffset = (value: number) => (value <= -SWIPE_ACTIONS_WIDTH / 2 ? -SWIPE_ACTIONS_WIDTH : 0)
-
-const onTouchEnd = () => {
-  if (!dragging && !horizontalIntent) return
-  dragging = false
-  horizontalIntent = false
-  isSwipeDragging.value = false
-  offsetX.value = snapOffset(offsetX.value)
-}
-
-/** 供父组件在滚动/点击其他区域时统一复位左滑状态 */
-const closeSwipe = () => {
-  offsetX.value = 0
-}
-
-defineExpose({ closeSwipe })
 </script>
 
 <style scoped>
@@ -187,31 +109,6 @@ defineExpose({ closeSwipe })
   border-radius: 14px;
   overflow: hidden;
   background: #f3efe4;
-}
-
-.preorder-mobile-card__swipe-actions {
-  position: absolute;
-  inset: 0 0 0 auto;
-  width: 144px;
-  display: grid;
-  grid-template-columns: 72px 72px;
-}
-
-.preorder-mobile-card__swipe-btn {
-  border: none;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 800;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.preorder-mobile-card__swipe-btn.is-edit {
-  background: linear-gradient(135deg, #d4af37, #b8941f);
-}
-
-.preorder-mobile-card__swipe-btn.is-delete {
-  background: linear-gradient(135deg, #f56c6c, #dc2626);
 }
 
 .preorder-mobile-card {
@@ -225,10 +122,6 @@ defineExpose({ closeSwipe })
   transition: transform 0.16s ease-out;
   touch-action: pan-y;
   -webkit-tap-highlight-color: transparent;
-}
-
-.preorder-mobile-card.is-dragging {
-  transition: none;
 }
 
 .preorder-mobile-card::before {

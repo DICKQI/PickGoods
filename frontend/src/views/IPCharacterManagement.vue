@@ -284,22 +284,7 @@
         @touchend="handleTouchEnd"
       >
         <!-- 下拉加载提示区 -->
-        <div
-          class="pull-indicator"
-          :style="{
-            height: `${pullDistance}px`,
-            opacity: pullDistance > 0 ? 1 : 0,
-            transition: isDragging ? 'none' : 'height 0.3s cubic-bezier(0.25, 0.8, 0.5, 1)'
-          }"
-        >
-          <div class="indicator-content">
-            <el-icon v-if="isRefreshing" class="is-loading"><Loading /></el-icon>
-            <el-icon v-else :style="{ transform: `rotate(${pullDistance > 50 ? 180 : 0}deg)` }"><Top /></el-icon>
-            <span class="indicator-text">
-              {{ isRefreshing ? '正在刷新...' : (pullDistance > 50 ? '释放刷新' : '下拉刷新') }}
-            </span>
-          </div>
-        </div>
+        <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
 
         <!-- 内容区域 -->
         <!-- 修改点：遍历 sortedIpList，保持顺序一致 -->
@@ -1321,7 +1306,6 @@ import {
   ArrowDown,
   Collection,
   Link,
-  Top,
   Picture,
   Minus,
 } from '@element-plus/icons-vue'
@@ -1332,6 +1316,7 @@ import { useMetadataStore } from '@/stores/metadata'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
+import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import {
   getIPList,
   getIPDetail,
@@ -3093,38 +3078,6 @@ const handleBGMSyncClose = () => {
   flex-direction: column;
   gap: 14px;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
-}
-
-/* 下拉刷新相关样式 */
-.pull-indicator {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-}
-
-.indicator-content {
-  height: 50px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-size: 14px;
-  color: #909399;
-  padding-bottom: 10px;
-  width: 100%;
-}
-
-.indicator-content .el-icon {
-  font-size: 18px;
-  transition: transform 0.3s;
-}
-
-.indicator-text {
-  font-size: 14px;
-  color: #909399;
 }
 
 .ip-card-item {
