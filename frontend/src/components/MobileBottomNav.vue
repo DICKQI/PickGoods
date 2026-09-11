@@ -30,25 +30,55 @@ const activeIndex = computed(() => Math.max(0, items.value.findIndex(item => ite
 const icons = { clubs: Shop, showcase: Grid, organize: FolderOpened, workbench: Grid, profile: User }
 
 const SCROLL_STOP_DELAY = 500
+// 连续向下滚动累计满该时长才收起，避免轻滑一下就把导航藏起来。
+const SCROLL_HIDE_DELAY = 300
+// 相邻两次向下滚动间隔超过该值视为中断，重新开始计时。
+const SCROLL_CONTINUITY_GAP = 120
 const isScrollHidden = ref(false)
 let scrollStopTimer: number | null = null
 // 只有用户自己滑动才收起；路由切换后的滚动位置恢复不能触发。
 let userScrolling = false
+// 方向基准：挂载与路由切换时同步为当前滚动位置，避免恢复滚动被当成下滑。
+let lastScrollTop = window.scrollY
+let downStreakStart: number | null = null
+let lastDownAt = 0
 const USER_SCROLL_EVENTS = ['touchstart', 'wheel', 'keydown'] as const
 const markUserScrolling = () => { userScrolling = true }
+
+function clearDownStreak() {
+  downStreakStart = null
+  lastDownAt = 0
+}
 
 function revealNav() {
   if (scrollStopTimer !== null) {
     window.clearTimeout(scrollStopTimer)
     scrollStopTimer = null
   }
+  clearDownStreak()
   isScrollHidden.value = false
 }
 
 function handleScroll() {
+  const scrollTop = window.scrollY
+  const delta = scrollTop - lastScrollTop
+  lastScrollTop = scrollTop
+
   if (!props.autoHideOnScroll || !userScrolling) return
 
-  isScrollHidden.value = true
+  // 向上回看：立刻恢复，方便随时切 Tab。
+  if (delta < 0) {
+    revealNav()
+    return
+  }
+
+  if (delta > 0) {
+    const now = Date.now()
+    if (downStreakStart === null || now - lastDownAt > SCROLL_CONTINUITY_GAP) downStreakStart = now
+    lastDownAt = now
+    if (now - downStreakStart >= SCROLL_HIDE_DELAY) isScrollHidden.value = true
+  }
+
   if (scrollStopTimer !== null) window.clearTimeout(scrollStopTimer)
   scrollStopTimer = window.setTimeout(revealNav, SCROLL_STOP_DELAY)
 }
@@ -58,6 +88,8 @@ watch(() => props.autoHideOnScroll, enabled => {
 })
 watch(() => route.fullPath, () => {
   userScrolling = false
+  clearDownStreak()
+  lastScrollTop = window.scrollY
   revealNav()
 })
 
@@ -84,4 +116,3 @@ onUnmounted(() => {
 .nav-selection-pill { display: block; height: 100%; width: calc(100% / var(--module-count)); border-radius: 14px; background: linear-gradient(180deg, #d4af3724, #d4af3705); transform: translateX(calc(var(--active-index) * 100%)); transition: transform 280ms cubic-bezier(.22, 1, .36, 1); }
 @media (prefers-reduced-motion: reduce) { .nav-selection-pill, .nav-item, .mobile-bottom-nav { transition: none; } }
 </style>
-
