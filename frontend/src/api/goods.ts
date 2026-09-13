@@ -12,6 +12,8 @@ import type {
   CharacterStatsResponse,
   OcrResult,
   ClassifyResult,
+  GoodsImageMatchFeedbackPayload,
+  GoodsImageMatchResult,
 } from './types'
 
 // 获取谷子列表
@@ -149,4 +151,24 @@ export function classifyGoodsImage(file: File) {
   return request.post<ClassifyResult>('/api/goods/classify-image/', formData, {
     suppressGlobalError: true,
   })
+}
+
+/** 上传照片，与当前用户谷仓内主图进行视觉匹配。 */
+export function matchGoodsImage(file: File, signal?: AbortSignal) {
+  const formData = new FormData()
+  formData.append('image', file)
+  return request.post<GoodsImageMatchResult>('/api/goods/match-image/', formData, {
+    signal,
+    timeout: 60000,
+    suppressGlobalError: true,
+  })
+}
+
+/** 记录用户对本次匹配结果的轻量反馈。 */
+export function submitGoodsImageMatchFeedback(payload: GoodsImageMatchFeedbackPayload) {
+  return request.post<{ detail: string; feedback: 'confirmed' | 'rejected'; goods_id: string | null }>(
+    '/api/goods/match-feedback/',
+    payload,
+    { suppressGlobalError: true },
+  )
 }

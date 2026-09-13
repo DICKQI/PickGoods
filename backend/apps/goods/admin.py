@@ -5,6 +5,8 @@ from .models import (
     Character,
     Goods,
     GoodsCraft,
+    GoodsImageFingerprint,
+    GoodsImageMatchAttempt,
     GuziImage,
     IP,
     IPKeyword,
@@ -74,6 +76,51 @@ class GoodsCraftAdmin(admin.ModelAdmin):
     search_fields = ("name",)
     ordering = ("order", "id")
     readonly_fields = ("created_at", "updated_at")
+
+
+@admin.register(GoodsImageFingerprint)
+class GoodsImageFingerprintAdmin(admin.ModelAdmin):
+    list_display = ("goods", "algorithm_version", "embedding_dim", "updated_at")
+    list_filter = ("algorithm_version",)
+    search_fields = ("goods__name", "goods__user__username")
+    readonly_fields = (
+        "goods",
+        "phash",
+        "embedding",
+        "embedding_dim",
+        "algorithm_version",
+        "source_name",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-updated_at",)
+
+
+@admin.register(GoodsImageMatchAttempt)
+class GoodsImageMatchAttemptAdmin(admin.ModelAdmin):
+    list_display = (
+        "id",
+        "user",
+        "decision",
+        "top_score",
+        "feedback",
+        "confirmed_goods",
+        "created_at",
+    )
+    list_filter = ("decision", "feedback", "algorithm_version", "created_at")
+    search_fields = ("user__username", "confirmed_goods__name")
+    readonly_fields = (
+        "id",
+        "user",
+        "decision",
+        "algorithm_version",
+        "top_score",
+        "top_margin",
+        "candidate_results",
+        "created_at",
+        "updated_at",
+    )
+    ordering = ("-created_at",)
 
 
 class GuziImageInline(admin.TabularInline):

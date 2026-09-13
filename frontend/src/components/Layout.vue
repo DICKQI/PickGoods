@@ -208,6 +208,17 @@
             <span class="mobile-action-icon"><el-icon><Plus /></el-icon></span>
             <span class="mobile-action-label">新增</span>
           </button>
+          <button
+            v-if="showAddFab"
+            type="button"
+            class="mobile-action-item"
+            role="menuitem"
+            aria-label="拍图找谷子"
+            @click="handleMobileImageMatch"
+          >
+            <span class="mobile-action-icon"><el-icon><Camera /></el-icon></span>
+            <span class="mobile-action-label">拍图找谷子</span>
+          </button>
           <button v-if="showAddFab" type="button" class="mobile-action-item" role="menuitem" aria-label="草稿箱" @click="closeMobileActions(); router.push('/goods/drafts')">
             <span class="mobile-action-icon"><el-icon><FolderOpened /></el-icon></span>
             <span class="mobile-action-label">草稿箱</span>
@@ -266,7 +277,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Plus, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart, Shop, User } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Plus, Camera, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart, Shop, User } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { Capacitor } from '@capacitor/core'
@@ -422,6 +433,11 @@ const handleFabScrollDim = (() => {
 const handleMobileAdd = () => {
   closeMobileActions()
   goToAdd()
+}
+
+const handleMobileImageMatch = () => {
+  closeMobileActions()
+  window.dispatchEvent(new CustomEvent('cloud-showcase:image-match'))
 }
 
 const handleMobileSelectionEnter = () => {

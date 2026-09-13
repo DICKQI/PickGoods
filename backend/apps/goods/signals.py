@@ -1,7 +1,9 @@
 from django.core.files.storage import default_storage
-from django.db.models.signals import post_delete, pre_save
+from django.db import transaction
+from django.db.models.signals import post_delete, post_save, pre_save
 from django.dispatch import receiver
 
+from .image_match.indexing import schedule_fingerprint_refresh
 from .models import Character, Goods
 
 
@@ -81,3 +83,9 @@ def delete_old_main_photo_on_update(sender, instance, **kwargs):
         if storage.exists(name):
             storage.delete(name)
 
+
+@receiver(post_save, sender=Goods, dispatch_uid="goods_refresh_image_match_fingerprint")
+def refresh_goods_image_match_fingerprint(sender, instance, **kwargs):
+    """主图可能有变化时，在事务提交后刷新视觉匹配指纹。"""
+    goods_id = instance.pk
+    transaction.on_commit(lambda: schedule_fingerprint_refresh(goods_id))

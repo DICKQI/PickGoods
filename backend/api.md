@@ -1850,6 +1850,65 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 ---
 
+### 4.9 谷仓主图视觉匹配
+
+- **URL**：`POST /api/goods/match-image/`
+- **限流**：`20/minute`
+- **说明**：上传一张谷子照片，仅与当前用户在馆/出街中的主图比较；查询图片不写入媒体目录。
+
+#### 请求体（multipart/form-data）
+
+| 字段名 | 类型 | 必填 | 说明 |
+| ------ | ---- | ---- | ---- |
+| `image` | file | 是 | JPG/PNG/WebP，最大 10MB、2000 万像素 |
+
+#### 响应示例
+
+```json
+{
+  "decision": "candidates",
+  "match": null,
+  "candidates": [
+    {
+      "goods": {
+        "id": "e246a4b5-8c95-4b29-9f5d-67b268d2c079",
+        "name": "流萤纪念吧唧",
+        "main_photo": "/media/goods/main/example.jpg"
+      },
+      "score": 0.91,
+      "confidence": "medium"
+    }
+  ],
+  "attempt_id": "f9f8afb0-fbc2-4fb0-b5bf-34b7021a64ec",
+  "algorithm_version": "dinov2-small-int8-v1"
+}
+```
+
+`decision` 取值：
+
+- `matched`：高置信同款，`match` 为主匹配结果。
+- `candidates`：最多 3 个视觉候选，需要用户确认。
+- `not_found`：没有达到候选阈值的结果。
+
+#### 反馈接口
+
+- **URL**：`POST /api/goods/match-feedback/`
+- **请求体**：
+
+```json
+{
+  "attempt_id": "f9f8afb0-fbc2-4fb0-b5bf-34b7021a64ec",
+  "outcome": "confirmed",
+  "goods_id": "e246a4b5-8c95-4b29-9f5d-67b268d2c079"
+}
+```
+
+`outcome=confirmed` 时 `goods_id` 必填，且必须属于本次候选；`outcome=rejected` 表示候选均不匹配。反馈接口不接收或保存查询图片。
+
+模型缺失或损坏时两个接口返回 `503 goods_image_match_unavailable`；图片无法解码时返回 `422 invalid_image`。
+
+---
+
 ## 五、基础数据 API（CRUD 完整接口）
 
 用于管理基础数据（IP作品、角色、品类）的完整 CRUD 接口。建议在应用启动时预加载列表数据并缓存到前端状态管理（Pinia/Vuex）。

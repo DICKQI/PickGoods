@@ -407,3 +407,34 @@ class GoodsImageClassifyResponseSerializer(serializers.Serializer):
     confidence = serializers.FloatField()
     suggestions = serializers.ListField(child=serializers.DictField())
     detail = serializers.CharField(required=False)
+
+
+class GoodsImageMatchRequestSerializer(serializers.Serializer):
+    """谷子主图视觉匹配请求。"""
+
+    image = serializers.ImageField(required=True)
+
+    def validate_image(self, value):
+        max_size = 10 * 1024 * 1024
+        if value.size > max_size:
+            raise serializers.ValidationError("图片大小不能超过 10MB")
+        return value
+
+
+class GoodsImageMatchCandidateSerializer(serializers.Serializer):
+    goods = GoodsListSerializer(read_only=True)
+    score = serializers.FloatField()
+    confidence = serializers.ChoiceField(choices=["high", "medium", "low"])
+
+
+class GoodsImageMatchFeedbackSerializer(serializers.Serializer):
+    attempt_id = serializers.UUIDField(required=True)
+    outcome = serializers.ChoiceField(choices=["confirmed", "rejected"])
+    goods_id = serializers.UUIDField(required=False)
+
+    def validate(self, attrs):
+        if attrs["outcome"] == "confirmed" and not attrs.get("goods_id"):
+            raise serializers.ValidationError(
+                {"goods_id": "确认命中时必须提供 goods_id"}
+            )
+        return attrs

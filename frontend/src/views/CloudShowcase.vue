@@ -22,7 +22,18 @@
               class="search-section"
               :class="{ 'search-section--mobile': isMobile }"
             >
-              <SearchBar />
+              <div class="barn-search-row">
+                <SearchBar />
+                <button
+                  v-if="!isMobile"
+                  type="button"
+                  class="image-match-trigger"
+                  @click="imageMatcherVisible = true"
+                >
+                  <el-icon><Camera /></el-icon>
+                  <span>拍图找谷子</span>
+                </button>
+              </div>
             </div>
           </Transition>
 
@@ -256,6 +267,10 @@
 
         <!-- 详情抽屉 - 放在 barn-section 内，但位于下拉刷新容器之外 -->
         <GoodsDrawer v-model="drawerVisible" :goods-id="selectedGoodsId" />
+        <GoodsImageMatcher
+          v-model="imageMatcherVisible"
+          @open-goods="handleImageMatchGoodsOpen"
+        />
     </div>
 
       <div v-if="visitedTabs.has('stats')" v-show="activeTab === 'stats'" key="stats" class="stats-section" v-loading="statsRefreshing">
@@ -273,7 +288,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, onActivated, onDeactivated, watch } from 'vue'
 import { onBeforeRouteLeave, onBeforeRouteUpdate, useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowLeft, ArrowRight, Delete, Edit, Top, Loading, List, Close, Search } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Camera, Delete, Edit, Top, Loading, List, Close, Search } from '@element-plus/icons-vue'
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { useJournalStore } from '@/stores/journal'
 import { useGuziStore } from '@/stores/guzi'
@@ -283,6 +298,7 @@ import FilterPanel from '@/components/FilterPanel.vue'
 import GoodsCard from '@/components/GoodsCard.vue'
 import MobileGoodsCard from '@/components/MobileGoodsCard.vue'
 import GoodsDrawer from '@/components/GoodsDrawer.vue'
+import GoodsImageMatcher from '@/components/GoodsImageMatcher.vue'
 import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
@@ -335,6 +351,7 @@ onDeactivated(() => {
 
 const drawerVisible = ref(false)
 const selectedGoodsId = ref<string>('')
+const imageMatcherVisible = ref(false)
 const multiDisplayVisible = ref(false)
 
 const contextMenuVisible = ref(false)
@@ -481,6 +498,18 @@ const handleCardClick = (goods: GoodsListItem) => {
   }
   selectedGoodsId.value = goods.id
   drawerVisible.value = true
+}
+
+const handleImageMatchGoodsOpen = (goodsId: string) => {
+  imageMatcherVisible.value = false
+  selectedGoodsId.value = goodsId
+  drawerVisible.value = true
+}
+
+const handleMobileImageMatch = () => {
+  if (activeTab.value === 'barn') {
+    imageMatcherVisible.value = true
+  }
 }
 
 const handleCardSelect = (goods: GoodsListItem) => {
@@ -911,6 +940,7 @@ onMounted(() => {
   window.addEventListener('cloud-showcase:selection-enter', handleSelectionEnter as EventListener)
   window.addEventListener('cloud-showcase:selection-confirm', handleSelectionConfirm as EventListener)
   window.addEventListener('cloud-showcase:selection-exit', handleSelectionExit as EventListener)
+  window.addEventListener('cloud-showcase:image-match', handleMobileImageMatch as EventListener)
 })
 
 onUnmounted(() => {
@@ -924,6 +954,7 @@ onUnmounted(() => {
   window.removeEventListener('cloud-showcase:selection-enter', handleSelectionEnter as EventListener)
   window.removeEventListener('cloud-showcase:selection-confirm', handleSelectionConfirm as EventListener)
   window.removeEventListener('cloud-showcase:selection-exit', handleSelectionExit as EventListener)
+  window.removeEventListener('cloud-showcase:image-match', handleMobileImageMatch as EventListener)
   if (statsRefreshCompleteHandler) {
     window.removeEventListener('cloud-showcase:stats-refresh-complete', statsRefreshCompleteHandler)
   }
@@ -989,6 +1020,44 @@ watch(mobileFilterVisible, (visible) => {
 
 .search-section {
   margin-bottom: 24px;
+}
+
+.barn-search-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.barn-search-row :deep(.search-bar) {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.image-match-trigger {
+  flex: 0 0 auto;
+  min-height: 40px;
+  padding: 0 18px;
+  border: 1px solid rgba(212, 175, 55, 0.48);
+  border-radius: 12px;
+  background: linear-gradient(135deg, rgba(212, 175, 55, 0.18), rgba(234, 205, 163, 0.3));
+  color: var(--primary-gold-dark);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.image-match-trigger:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary-gold);
+  box-shadow: 0 7px 18px rgba(212, 175, 55, 0.19);
 }
 
 .barn-discovery {

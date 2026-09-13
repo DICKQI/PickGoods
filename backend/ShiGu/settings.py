@@ -180,6 +180,9 @@ REST_FRAMEWORK = {
         "goods_search": "60/minute",
         # OCR 识别接口限流
         "ocr": "20/minute",
+        # 谷子主图匹配与反馈
+        "goods_image_match": "20/minute",
+        "goods_match_feedback": "60/minute",
         # 公开手帐页读取接口限流，避免匿名 token 枚举和异常流量
         "journal_public": "60/minute",
         # 社团公开读取、收藏、管理和导入接口
@@ -199,6 +202,38 @@ REST_FRAMEWORK = {
     # 指定使用的 Schema 类
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
+
+
+# ==================== 谷子主图视觉匹配 ====================
+
+GOODS_IMAGE_MATCH_MODEL_PATH = os.environ.get(
+    "GOODS_IMAGE_MATCH_MODEL_PATH",
+    str(BASE_DIR / "models" / "goods_match" / "model_quantized.onnx"),
+)
+GOODS_IMAGE_MATCH_MODEL_THREADS = int(
+    os.environ.get("GOODS_IMAGE_MATCH_MODEL_THREADS", "4")
+)
+GOODS_IMAGE_MATCH_PHASH_DISTANCE_MAX = int(
+    os.environ.get("GOODS_IMAGE_MATCH_PHASH_DISTANCE_MAX", "6")
+)
+GOODS_IMAGE_MATCH_EMBEDDING_MIN = float(
+    os.environ.get("GOODS_IMAGE_MATCH_EMBEDDING_MIN", "0.94")
+)
+GOODS_IMAGE_MATCH_MARGIN_MIN = float(
+    os.environ.get("GOODS_IMAGE_MATCH_MARGIN_MIN", "0.03")
+)
+GOODS_IMAGE_MATCH_CANDIDATE_MIN = float(
+    os.environ.get("GOODS_IMAGE_MATCH_CANDIDATE_MIN", "0.84")
+)
+GOODS_IMAGE_MATCH_RERANK_LIMIT = int(
+    os.environ.get("GOODS_IMAGE_MATCH_RERANK_LIMIT", "8")
+)
+GOODS_IMAGE_MATCH_PATCH_TOP_K = int(
+    os.environ.get("GOODS_IMAGE_MATCH_PATCH_TOP_K", "16")
+)
+GOODS_IMAGE_MATCH_PATCH_WEIGHT = float(
+    os.environ.get("GOODS_IMAGE_MATCH_PATCH_WEIGHT", "0.35")
+)
 
 # JWT 配置
 JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)

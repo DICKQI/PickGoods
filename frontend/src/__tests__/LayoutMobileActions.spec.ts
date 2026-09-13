@@ -98,13 +98,23 @@ describe('Layout mobile action menu', () => {
     expect(sheet.attributes('aria-label')).toBe('首页快捷操作')
 
     const actions = sheet.findAll('.mobile-action-item')
-    expect(actions).toHaveLength(3)
+    expect(actions).toHaveLength(4)
     expect(actions.map((action) => action.attributes('aria-label'))).toEqual([
       '新增谷子',
+      '拍图找谷子',
       '草稿箱',
       '进入批量展示',
     ])
     expect(actions.map((action) => action.text()).join(' ')).not.toContain('刷新')
+
+    const imageMatchListener = vi.fn()
+    window.addEventListener('cloud-showcase:image-match', imageMatchListener)
+    const imageMatchAction = actions[1]
+    expect(imageMatchAction).toBeDefined()
+    await imageMatchAction?.trigger('click')
+    expect(imageMatchListener).toHaveBeenCalledTimes(1)
+    expect(fab.attributes('aria-expanded')).toBe('false')
+    window.removeEventListener('cloud-showcase:image-match', imageMatchListener)
   })
 
   it('uses the mobile action tray on a 1200 x 2670 coarse pointer portrait viewport', async () => {

@@ -758,6 +758,29 @@ export interface GoodsDuplicateResponse {
   candidates: GoodsDuplicateCandidate[]
 }
 
+export type GoodsImageMatchConfidence = 'high' | 'medium' | 'low'
+export type GoodsImageMatchDecision = 'matched' | 'candidates' | 'not_found'
+
+export interface GoodsImageMatchCandidate {
+  goods: GoodsListItem
+  score: number
+  confidence: GoodsImageMatchConfidence
+}
+
+export interface GoodsImageMatchResult {
+  decision: GoodsImageMatchDecision
+  match: GoodsImageMatchCandidate | null
+  candidates: GoodsImageMatchCandidate[]
+  attempt_id: string
+  algorithm_version: string
+}
+
+export interface GoodsImageMatchFeedbackPayload {
+  attempt_id: string
+  outcome: 'confirmed' | 'rejected'
+  goods_id?: string
+}
+
 // ==================== OCR 识别 ====================
 
 export interface OcrSuggestionItem {

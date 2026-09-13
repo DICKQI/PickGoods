@@ -126,6 +126,10 @@ const mountCloudShowcase = async ({
         GoodsCard: { template: '<article class="goods-card-stub" @touchstart.stop />' },
         MobileGoodsCard: { template: '<article class="mobile-goods-card-stub" @touchstart.stop />' },
         GoodsDrawer: { template: '<aside />' },
+        GoodsImageMatcher: {
+          props: ['modelValue'],
+          template: '<div v-if="modelValue" data-test="goods-image-matcher" />',
+        },
         GoodsMultiDisplayDialog: { template: '<aside />' },
         StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
         JournalWorkspace: { template: '<section data-test="journal-workspace" />' },
@@ -331,6 +335,24 @@ describe('CloudShowcase mobile compact header', () => {
     expect(cloudShowcaseSource).toContain('class="workspace-panels"')
     expect(cloudShowcaseSource).toContain('v-show="activeTab === \'barn\'"')
     expect(cloudShowcaseSource).toContain('visitedTabs.value.add(tab)')
+  })
+
+  it('exposes image matching from both desktop and mobile barn controls', () => {
+    expect(cloudShowcaseSource).toContain('import GoodsImageMatcher')
+    expect(cloudShowcaseSource).toContain('class="image-match-trigger"')
+    expect(cloudShowcaseSource).not.toContain('class="mobile-image-match-trigger"')
+    expect(cloudShowcaseSource).toContain("cloud-showcase:image-match")
+    expect(cloudShowcaseSource).toContain('@open-goods="handleImageMatchGoodsOpen"')
+  })
+
+  it('opens the image matcher when the mobile action menu emits its event', async () => {
+    const wrapper = await mountMobileCloudShowcase()
+
+    expect(wrapper.find('[data-test="goods-image-matcher"]').exists()).toBe(false)
+    window.dispatchEvent(new CustomEvent('cloud-showcase:image-match'))
+    await flushPromises()
+
+    expect(wrapper.find('[data-test="goods-image-matcher"]').exists()).toBe(true)
   })
 
   it('refreshing on the journal tab triggers journal refresh only', async () => {

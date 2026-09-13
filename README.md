@@ -10,6 +10,7 @@
 
 - 记录谷子名称、IP、角色、品类、工艺、主题、价格、数量、状态和入手日期。
 - 支持主图、附加图片、图片裁剪、图片品类识别和订单截图 OCR 批量录入。
+- 支持在谷仓拍摄或上传照片，与当前用户在馆/出街中的主图做同款视觉匹配。
 - 新建时检测疑似重复记录，由用户选择新建或合并。
 - 支持草稿、官谷/同人、在柜/在途/已售等业务状态。
 
@@ -174,6 +175,9 @@ python manage.py seed_all_test_data
 python manage.py seed_category_shape_types
 python manage.py rebalance_goods_order
 python manage.py download_ocr_models
+python manage.py download_goods_match_model
+python manage.py rebuild_goods_image_index
+python manage.py prune_goods_match_attempts
 ```
 
 ## 主要入口
@@ -195,13 +199,14 @@ python manage.py download_ocr_models
 ## API 模块
 
 - `/api/auth/`：注册、登录、当前用户和登出。
-- `/api/goods/`：谷子 CRUD、检索、统计、图片、排序和品类识别。
+- `/api/goods/`：谷子 CRUD、检索、统计、图片、排序、品类识别和拍图匹配。
 - `/api/ips/`、`/api/characters/`、`/api/categories/`、`/api/themes/`：公共元数据。
 - `/api/showcases/`：展柜、展柜谷子和公开/私有列表。
 - `/api/journals/`、`/api/journal-pages/`：手帐本、页面、版本和公开分享。
 - `/api/location/`：位置树、摘要、节点移动和谷子归位。
 - `/api/bgm/`：Bangumi 搜索与角色同步。
 - `/api/ocr/recognize/`：订单截图 OCR。
+- `/api/goods/match-image/`、`/api/goods/match-feedback/`：谷仓主图视觉匹配与反馈。
 - `/api/admin/`：管理员用户、工艺和 BGM 同步管理。
 
 完整接口说明参见 [backend/api.md](backend/api.md) 和 [backend/admin_api.md](backend/admin_api.md)。

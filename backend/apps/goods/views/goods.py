@@ -30,18 +30,32 @@ from decimal import Decimal
 
 from django.core.cache import cache
 
-from ..models import Category, Character, Goods, GuziImage
+from ..models import (
+    Category,
+    Character,
+    Goods,
+    GoodsImageMatchAttempt,
+    GuziImage,
+)
 from apps.location.models import StorageNode
 from ..serializers import (
     GoodsDetailSerializer,
     GoodsDuplicateCandidateSerializer,
     GoodsImageClassifyRequestSerializer,
+    GoodsImageMatchCandidateSerializer,
+    GoodsImageMatchFeedbackSerializer,
+    GoodsImageMatchRequestSerializer,
     GoodsListSerializer,
     GoodsMoveSerializer,
 )
+from ..image_match import (
+    InvalidImageError,
+    ModelUnavailableError,
+    match_goods_image,
+)
 from ..utils import compress_image
 from ..similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
-from core.permissions import IsOwnerOnly, is_admin
+from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 
 
 def _is_draft_status(value):
@@ -1519,6 +1533,153 @@ class GoodsViewSet(viewsets.ModelViewSet):
         if shape_type == "unknown":
             response_data["detail"] = "图片中没有足够稳定的单一主体轮廓，请手动选择品类"
         return Response(response_data)
+
+    def _serialize_match_candidate(self, candidate):
+        if candidate is None:
+            return None
+        serializer = GoodsImageMatchCandidateSerializer(
+            {
+                "goods": candidate.goods,
+                "score": candidate.score,
+                "confidence": candidate.confidence,
+            },
+            context=self.get_serializer_context(),
+        )
+        return serializer.data
+
+    @action(
+        detail=False,
+        methods=["POST"],
+        url_path="match-image",
+        parser_classes=[MultiPartParser, FormParser],
+        permission_classes=[IsAuthenticated, IsCollectorAccount],
+        throttle_classes=[ScopedRateThrottle],
+        throttle_scope="goods_image_match",
+    )
+    def match_image(self, request):
+        """上传照片，在当前用户主图中匹配同款谷子。"""
+        req_serializer = GoodsImageMatchRequestSerializer(data=request.data)
+        if not req_serializer.is_valid():
+            return Response(
+                req_serializer.errors,
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        image_file = req_serializer.validated_data["image"]
+        try:
+            image_bytes = image_file.read()
+            outcome = match_goods_image(request.user, image_bytes)
+        except InvalidImageError as exc:
+            return Response(
+                {"detail": str(exc), "code": "invalid_image"},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        except ModelUnavailableError as exc:
+            return Response(
+                {
+                    "detail": str(exc),
+                    "code": "goods_image_match_unavailable",
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+        finally:
+            image_file.close()
+
+        match_data = self._serialize_match_candidate(outcome.match)
+        candidates_data = [
+            self._serialize_match_candidate(candidate)
+            for candidate in outcome.candidates
+        ]
+        all_candidates = [
+            candidate
+            for candidate in (outcome.match, *outcome.candidates)
+            if candidate is not None
+        ]
+        attempt = GoodsImageMatchAttempt.objects.create(
+            user=request.user,
+            decision=outcome.decision,
+            algorithm_version=outcome.algorithm_version,
+            top_score=outcome.top_score,
+            top_margin=outcome.top_margin,
+            candidate_results=[
+                {
+                    "goods_id": str(candidate.goods.pk),
+                    "score": candidate.score,
+                    "confidence": candidate.confidence,
+                }
+                for candidate in all_candidates
+            ],
+        )
+
+        return Response(
+            {
+                "decision": outcome.decision,
+                "match": match_data,
+                "candidates": candidates_data,
+                "attempt_id": str(attempt.pk),
+                "algorithm_version": outcome.algorithm_version,
+            },
+            status=status.HTTP_200_OK,
+        )
+
+    @action(
+        detail=False,
+        methods=["POST"],
+        url_path="match-feedback",
+        permission_classes=[IsAuthenticated, IsCollectorAccount],
+        throttle_classes=[ScopedRateThrottle],
+        throttle_scope="goods_match_feedback",
+    )
+    def match_feedback(self, request):
+        """记录用户对识别结果的轻量反馈；不接收查询图片。"""
+        serializer = GoodsImageMatchFeedbackSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        attempt = GoodsImageMatchAttempt.objects.filter(
+            pk=serializer.validated_data["attempt_id"],
+            user=request.user,
+        ).first()
+        if attempt is None:
+            return Response(
+                {"detail": "识别记录不存在或已过期"},
+                status=status.HTTP_404_NOT_FOUND,
+            )
+
+        outcome = serializer.validated_data["outcome"]
+        confirmed_goods = None
+        if outcome == GoodsImageMatchAttempt.FEEDBACK_CONFIRMED:
+            goods_id = str(serializer.validated_data["goods_id"])
+            candidate_ids = {
+                str(item.get("goods_id"))
+                for item in attempt.candidate_results
+                if isinstance(item, dict)
+            }
+            if goods_id not in candidate_ids:
+                return Response(
+                    {"detail": "该谷子不在本次识别候选中"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            confirmed_goods = Goods.objects.filter(
+                pk=goods_id,
+                user=request.user,
+                status__in=("in_cabinet", "outdoor"),
+            ).first()
+            if confirmed_goods is None:
+                return Response(
+                    {"detail": "确认的谷子不存在或已不在当前谷仓范围"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        attempt.feedback = outcome
+        attempt.confirmed_goods = confirmed_goods
+        attempt.save(update_fields=["feedback", "confirmed_goods", "updated_at"])
+        return Response(
+            {
+                "detail": "反馈已记录",
+                "feedback": attempt.feedback,
+                "goods_id": str(confirmed_goods.pk) if confirmed_goods else None,
+            },
+            status=status.HTTP_200_OK,
+        )
 
     def _order_by_ids(self, qs, id_list):
         """

@@ -57,6 +57,7 @@
 - OpenCV、NumPy 和 Pillow 用于图片预处理。
 - OCR 接口和谷子检索接口配置独立限流。
 - 谷子图片可调用品类分类逻辑，结合品类形状种子推荐品类。
+- DINOv2-small 量化 ONNX 与 pHash 用于在馆/出街主图的本地视觉匹配；查询图片不落盘。
 
 ## 技术栈
 
@@ -67,7 +68,7 @@
 | 认证 | 自实现 JWT HS256 |
 | 数据库 | SQLite |
 | API 文档 | drf-spectacular、Swagger UI、Redoc |
-| 图片 | Pillow、OpenCV、NumPy |
+| 图片 | Pillow、OpenCV、NumPy、ONNX Runtime |
 | OCR | PaddlePaddle 3、PaddleOCR 3 |
 | 文本匹配 | jieba、RapidFuzz |
 | 调度 | APScheduler 3 |
@@ -199,6 +200,8 @@ Authorization: Bearer <token>
 | 路径 | 说明 |
 | --- | --- |
 | `/api/goods/` | 谷子 CRUD、检索、统计、图片、排序、去重和分类 |
+| `/api/goods/match-image/` | 当前用户谷仓主图视觉匹配 |
+| `/api/goods/match-feedback/` | 图片匹配结果反馈 |
 | `/api/ips/` | IP、关键词、Bangumi 绑定和同步 |
 | `/api/characters/` | 角色 CRUD 与筛选 |
 | `/api/categories/` | 树形品类、数量和排序 |
@@ -267,6 +270,15 @@ python manage.py rebalance_goods_order
 
 # 下载 OCR 模型
 python manage.py download_ocr_models
+
+# 下载并校验谷子图片匹配模型
+python manage.py download_goods_match_model
+
+# 首次部署或模型升级后重建主图指纹
+python manage.py rebuild_goods_image_index
+
+# 清理超过 180 天的识别分数与反馈元数据（不含查询图片）
+python manage.py prune_goods_match_attempts
 ```
 
 ## 测试
