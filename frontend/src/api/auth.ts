@@ -26,6 +26,18 @@ export function updateCurrentAccount(data: AccountUpdatePayload) {
   return request.patch<UserInfo>('/api/auth/me/', data, { suppressGlobalError: true })
 }
 
+/** 上传当前用户头像。 */
+export function uploadCurrentUserAvatar(file: File) {
+  const form = new FormData()
+  form.append('avatar', file)
+  return request.post<UserInfo>('/api/auth/me/avatar/', form, { suppressGlobalError: true })
+}
+
+/** 删除当前用户头像并恢复默认首字母头像。 */
+export function removeCurrentUserAvatar() {
+  return request.delete<UserInfo>('/api/auth/me/avatar/', { suppressGlobalError: true })
+}
+
 /** 登出（需携带 Token，成功后前端清除本地 Token） */
 export function logout() {
   return request.delete('/api/auth/logout/')

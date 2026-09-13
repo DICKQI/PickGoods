@@ -4,7 +4,7 @@
       <div>
         <p class="profile-eyebrow">PERSONAL SPACE</p>
         <h1>个人中心</h1>
-        <p class="profile-subtitle">{{ authStore.user?.username || '当前账号' }}</p>
+        <p class="profile-subtitle">管理账号资料、收藏与偏好设置</p>
       </div>
     </header>
 
@@ -45,7 +45,7 @@ const authStore = useAuthStore()
 
 .profile-header h1 {
   margin: 0;
-  font-size: 30px;
+  font-size: 28px;
   line-height: 1.25;
 }
 

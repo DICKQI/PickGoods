@@ -17,6 +17,7 @@ export interface UserInfo {
   role: 'User' | 'Admin' | string
   account_type: 'collector' | 'club' | string
   approval_status: 'pending' | 'approved' | string
+  avatar?: string | null
   club?: { id: number; name: string; avatar?: string | null } | null
 }
 

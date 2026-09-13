@@ -38,7 +38,6 @@
 #app .mobile-shell .character-stats-page .hero-panel > .back-button,
 #app .mobile-shell .goods-drafts > .header-section,
 #app .mobile-shell .goods-form-header .goods-form-title,
-#app .mobile-shell .account-heading,
 #app .mobile-shell .clubs-heading > div,
 #app .mobile-shell .club-workspace .section-title > div:first-child,
 #app .mobile-shell .category-management-container > .header-section > .title-wrapper,
@@ -77,7 +76,6 @@
 
 #app .mobile-shell .note-actions .notification-badge { transform: translateY(3px); }
 
-#app .mobile-shell .account-page .account-list { margin-top: 0; }
 #app .mobile-shell .club-workspace .theme-management-container { padding: 0; }
 #app .mobile-shell .mobile-theme-workbench { position: relative; }
 #app .mobile-shell .mobile-theme-workbench > .header-section { position: absolute; top: 0; right: 0; margin: 0; }
