@@ -16,7 +16,8 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --build",
     "lint": "eslint . --fix --cache",
-    "deploy": "pnpm build && node deploy.cjs"
+    "deploy": "pnpm build && node deploy.cjs",
+    "build:apk:debug": "powershell -ExecutionPolicy Bypass -File scripts/build-debug-apk.ps1"
   },
   "dependencies": {
     "@capacitor-community/http": "^1.4.1",

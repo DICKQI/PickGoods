@@ -119,6 +119,7 @@ npx pnpm@9.15.4 preview
 - `lint` 带有 `--fix`，会直接修改可自动修复的文件。
 - `test:unit` 默认进入 Vitest 监听模式；CI 或一次性验证可追加 `--run`。
 - `deploy` 会先构建，再执行本地 `deploy.cjs` SFTP 上传脚本。
+- `build:apk:debug` 会构建并同步 Web 资源，自动准备 Java 21 并输出 Debug APK 到 `artifacts/`。
 
 ## 项目结构
 

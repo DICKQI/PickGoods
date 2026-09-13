@@ -50,7 +50,7 @@ export default config;
 
 需要安装：
 
-- JDK 17 或更新的兼容版本
+- JDK 21（Capacitor Android 8 的源码兼容级别要求 Java 21）
 - Android Studio
 - Android SDK、Build Tools、Platform Tools
 - 可选：Android Emulator
@@ -59,7 +59,7 @@ Windows 常见环境变量：
 
 ```powershell
 ANDROID_HOME=C:\Users\YourUsername\AppData\Local\Android\Sdk
-JAVA_HOME=C:\Program Files\Java\jdk-17
+JAVA_HOME=C:\Program Files\Java\jdk-21
 PATH=%PATH%;%ANDROID_HOME%\platform-tools;%ANDROID_HOME%\tools
 ```
 
@@ -112,6 +112,37 @@ pnpm exec cap run android -l --external
 - 真机后端地址不能使用 `localhost`，请使用电脑局域网 IP 或测试域名
 
 ## 构建 APK / AAB
+
+### 一键构建 Debug APK
+
+仓库提供 Windows PowerShell 脚本：
+
+```powershell
+pnpm run build:apk:debug
+```
+
+脚本会自动执行：
+
+1. `pnpm install --frozen-lockfile`
+2. `pnpm build`
+3. `pnpm exec cap sync android`
+4. 检查并补回 `MainActivity.java` 的 WebView 滚动设置
+5. 查找 Java 21；未找到时下载便携版 Temurin JDK 21
+6. 执行 `gradlew assembleDebug`
+7. 将 APK 复制到 `frontend/artifacts/PickGoods-v<版本>-debug.apk`
+8. 输出 APK 大小和 SHA-256
+
+首次执行且本机没有 Java 21 时，会下载约 205MB 的 JDK 到被忽略的 `frontend/.cache/android-build-tools/`。
+
+可选参数：
+
+```powershell
+pnpm run build:apk:debug -- -SkipInstall
+pnpm run build:apk:debug -- -SkipWebBuild
+pnpm run build:apk:debug -- -JavaHome "C:\path\to\jdk-21"
+```
+
+### 手动构建
 
 生成原生项目后，可在 Android Studio 中：
 
