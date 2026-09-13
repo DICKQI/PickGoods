@@ -1,4 +1,5 @@
 from django.conf import settings
+from django.core.files.storage import default_storage
 from django.http import HttpResponse
 from django.urls import reverse
 from django.utils import timezone
@@ -7,9 +8,13 @@ from captcha.views import captcha_image as render_captcha_image
 from drf_spectacular.types import OpenApiTypes
 from drf_spectacular.utils import OpenApiResponse, extend_schema
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes, throttle_classes
+from rest_framework.decorators import api_view, parser_classes, permission_classes, throttle_classes
+from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
+
+from apps.goods.utils import compress_image
+from core.permissions import IsCollectorAccount
 
 from .models import User
 from .throttling import (
@@ -25,9 +30,32 @@ from .serializers import (
     RegisterSerializer,
     TokenResponseSerializer,
     AccountUpdateSerializer,
+    UserAvatarUploadSerializer,
     UserMeSerializer,
     build_token_response,
 )
+
+
+def serialize_current_user(user, request):
+    avatar = user.avatar.url if user.avatar else None
+    if avatar and request:
+        avatar = request.build_absolute_uri(avatar)
+    payload = {
+        "id": user.id,
+        "username": getattr(user, "username", ""),
+        "role": getattr(getattr(user, "role", None), "name", None),
+        "account_type": user.account_type,
+        "approval_status": user.approval_status,
+        "avatar": avatar,
+        "club": None,
+    }
+    club = getattr(user, "club_profile", None)
+    if club is not None:
+        club_avatar = club.avatar.url if club.avatar else None
+        if club_avatar and request:
+            club_avatar = request.build_absolute_uri(club_avatar)
+        payload["club"] = {"id": club.id, "name": club.name, "avatar": club_avatar}
+    return UserMeSerializer(payload).data
 
 @extend_schema(
     tags=["Auth"],
@@ -185,21 +213,47 @@ def me(request):
         serializer = AccountUpdateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
-    payload = {
-        "id": user.id,
-        "username": getattr(user, "username", ""),
-        "role": getattr(getattr(user, "role", None), "name", None),
-        "account_type": user.account_type,
-        "approval_status": user.approval_status,
-        "club": None,
-    }
-    club = getattr(user, "club_profile", None)
-    if club is not None:
-        avatar = club.avatar.url if club.avatar else None
-        if avatar and request:
-            avatar = request.build_absolute_uri(avatar)
-        payload["club"] = {"id": club.id, "name": club.name, "avatar": avatar}
-    return Response(UserMeSerializer(payload).data, status=status.HTTP_200_OK)
+    return Response(serialize_current_user(user, request), status=status.HTTP_200_OK)
+
+
+@extend_schema(
+    methods=["POST"],
+    tags=["Auth"],
+    summary="修改当前用户头像",
+    request=UserAvatarUploadSerializer,
+    responses={
+        200: OpenApiResponse(UserMeSerializer, description="头像已更新"),
+        400: OpenApiResponse(description="头像文件无效或超过 5MB"),
+        403: OpenApiResponse(description="社团账号不能使用个人头像"),
+    },
+)
+@extend_schema(
+    methods=["DELETE"],
+    tags=["Auth"],
+    summary="恢复当前用户默认头像",
+    responses={
+        200: OpenApiResponse(UserMeSerializer, description="已恢复默认头像"),
+        403: OpenApiResponse(description="社团账号不能使用个人头像"),
+    },
+)
+@api_view(["POST", "DELETE"])
+@permission_classes([IsCollectorAccount])
+@parser_classes([MultiPartParser, FormParser])
+def avatar(request):
+    user = request.user
+    old_name = user.avatar.name if user.avatar else ""
+    if request.method == "POST":
+        serializer = UserAvatarUploadSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        image = serializer.validated_data["avatar"]
+        user.avatar = compress_image(image, max_size_kb=300) or image
+    else:
+        user.avatar = None
+    user.save(update_fields=["avatar", "updated_at"])
+    new_name = user.avatar.name if user.avatar else ""
+    if old_name and old_name != new_name and default_storage.exists(old_name):
+        default_storage.delete(old_name)
+    return Response(serialize_current_user(user, request), status=status.HTTP_200_OK)
 
 
 @extend_schema(

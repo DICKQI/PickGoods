@@ -140,7 +140,17 @@ class UserMeSerializer(serializers.Serializer):
     role = serializers.CharField()
     account_type = serializers.CharField()
     approval_status = serializers.CharField()
+    avatar = serializers.CharField(allow_null=True, required=False)
     club = serializers.DictField(allow_null=True, required=False)
+
+
+class UserAvatarUploadSerializer(serializers.Serializer):
+    avatar = serializers.ImageField()
+
+    def validate_avatar(self, value):
+        if value.size > 5 * 1024 * 1024:
+            raise serializers.ValidationError("头像文件不能超过 5MB")
+        return value
 
 
 class AccountUpdateSerializer(serializers.Serializer):

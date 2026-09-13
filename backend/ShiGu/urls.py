@@ -78,6 +78,7 @@ urlpatterns = [
     path("api/auth/register/", user_views.register, name="auth-register"),
     path("api/auth/login/", user_views.login, name="auth-login"),
     path("api/auth/me/", user_views.me, name="auth-me"),
+    path("api/auth/me/avatar/", user_views.avatar, name="auth-avatar"),
     path("api/auth/logout/", user_views.logout, name="auth-logout"),
     path("api/clubs/", ClubViewSet.as_view({"get": "list"}), name="clubs-list"),
     path("api/clubs/me/", ClubViewSet.as_view({"get": "me", "patch": "me"}), name="club-me"),

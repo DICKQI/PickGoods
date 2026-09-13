@@ -32,6 +32,7 @@ class User(models.Model):
     )
     username = models.CharField(max_length=150, unique=True, db_index=True, verbose_name="用户名")
     password = models.CharField(max_length=255, verbose_name="密码哈希")
+    avatar = models.ImageField(upload_to="users/avatars/", null=True, blank=True, verbose_name="用户头像")
     role = models.ForeignKey(
         Role,
         on_delete=models.PROTECT,

@@ -1,11 +1,16 @@
+import os
+import tempfile
 from datetime import timedelta
+from io import BytesIO
 from unittest.mock import patch
 
 from captcha.models import CaptchaStore
 from django.conf import settings
 from django.core.cache import cache
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase, override_settings
 from django.utils import timezone
+from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
@@ -437,6 +442,124 @@ class MeViewTestCase(TestCase):
         self.assertEqual(club_user.username, "club-renamed")
         self.assertFalse(club_user.check_password("pass123"))
         self.assertTrue(club_user.check_password("clubpass456"))
+
+
+class UserAvatarViewTestCase(TestCase):
+    """POST/DELETE /api/auth/me/avatar/"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name="User")
+        self.user = User.objects.create(username="avatar-user", role=self.role)
+        self.user.set_password("pass123")
+        self.user.save()
+        self.media_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.media_dir.cleanup)
+        self.media_override = override_settings(MEDIA_ROOT=self.media_dir.name)
+        self.media_override.enable()
+        self.addCleanup(self.media_override.disable)
+
+    def image_file(self, name="avatar.png", size=(32, 32), image_format="PNG"):
+        data = BytesIO()
+        Image.new("RGB", size, color="#d4af37").save(data, format=image_format)
+        data.seek(0)
+        content_type = "image/png" if image_format == "PNG" else f"image/{image_format.lower()}"
+        return SimpleUploadedFile(name, data.read(), content_type=content_type)
+
+    def test_me_returns_null_avatar_without_upload(self):
+        self.client.force_authenticate(self.user)
+        response = self.client.get("/api/auth/me/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIsNone(response.json()["avatar"])
+
+    def test_upload_replace_and_delete_avatar_cleans_old_files(self):
+        self.client.force_authenticate(self.user)
+        first = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": self.image_file("first.png")},
+            format="multipart",
+        )
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertIn("/media/users/avatars/first", first.json()["avatar"])
+        self.user.refresh_from_db()
+        first_name = self.user.avatar.name
+        first_path = self.user.avatar.path
+
+        second = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": self.image_file("second.png")},
+            format="multipart",
+        )
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertFalse(os.path.exists(first_path))
+        self.user.refresh_from_db()
+        second_path = self.user.avatar.path
+        self.assertNotEqual(first_name, self.user.avatar.name)
+        self.assertTrue(os.path.exists(second_path))
+
+        removed = self.client.delete("/api/auth/me/avatar/")
+        self.assertEqual(removed.status_code, status.HTTP_200_OK)
+        self.assertIsNone(removed.json()["avatar"])
+        self.user.refresh_from_db()
+        self.assertFalse(self.user.avatar)
+        self.assertFalse(os.path.exists(second_path))
+
+    def test_upload_rejects_invalid_and_oversized_files(self):
+        self.client.force_authenticate(self.user)
+        invalid = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": SimpleUploadedFile("avatar.txt", b"not-an-image", content_type="text/plain")},
+            format="multipart",
+        )
+        self.assertEqual(invalid.status_code, status.HTTP_400_BAD_REQUEST)
+
+        large = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": self.image_file("large.bmp", size=(2500, 2500), image_format="BMP")},
+            format="multipart",
+        )
+        self.assertEqual(large.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertIn("5MB", str(large.json()))
+
+    def test_admin_can_upload_personal_avatar(self):
+        admin_role, _ = Role.objects.get_or_create(name="Admin")
+        admin = User.objects.create(username="avatar-admin", role=admin_role)
+        self.client.force_authenticate(admin)
+
+        response = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": self.image_file("admin.png")},
+            format="multipart",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertIn("/media/users/avatars/admin", response.json()["avatar"])
+
+    def test_club_account_cannot_use_personal_avatar_endpoints(self):
+        club_user = User.objects.create(
+            username="club-avatar-user",
+            role=self.role,
+            account_type=User.ACCOUNT_TYPE_CLUB,
+        )
+        self.client.force_authenticate(club_user)
+        upload = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": self.image_file()},
+            format="multipart",
+        )
+        removed = self.client.delete("/api/auth/me/avatar/")
+        self.assertEqual(upload.status_code, status.HTTP_403_FORBIDDEN)
+        self.assertEqual(removed.status_code, status.HTTP_403_FORBIDDEN)
+
+    def test_avatar_endpoints_require_authentication(self):
+        upload = self.client.post(
+            "/api/auth/me/avatar/",
+            {"avatar": self.image_file()},
+            format="multipart",
+        )
+        removed = self.client.delete("/api/auth/me/avatar/")
+        self.assertIn(upload.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
+        self.assertIn(removed.status_code, [status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN])
 
 
 class LogoutViewTestCase(TestCase):
