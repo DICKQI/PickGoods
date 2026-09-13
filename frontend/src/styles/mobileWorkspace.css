@@ -27,6 +27,18 @@
 #app .layout.mobile-journal-editor .journal-section {
   margin: 0;
 }
+#app .layout.mobile-preorder-page {
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+#app .layout.mobile-preorder-page > .main-content {
+  flex: 1 1 auto;
+  height: auto;
+  min-height: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
 #app .layout.mobile-shell > .main-content { padding-top: 0; }
 #app .layout.mobile-shell-editor > .main-content { padding-bottom: 0; }
 #app .mobile-shell .cloud-tabs,

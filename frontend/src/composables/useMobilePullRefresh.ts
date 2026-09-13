@@ -6,6 +6,7 @@ interface UseMobilePullRefreshOptions {
   enabled: MaybeRef<boolean>
   blocked?: MaybeRef<boolean> | (() => boolean)
   onRefresh: () => Promise<void> | void
+  getScrollTop?: () => number
   maxPull?: number
   triggerDistance?: number
   resistance?: number
@@ -40,6 +41,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
   const resetDelay = options.resetDelay ?? 500
 
   const isEnabled = () => unref(options.enabled)
+  const readScrollTop = () => options.getScrollTop?.() ?? getScrollTop()
   const isBlocked = () => {
     if (!options.blocked) return false
     return typeof options.blocked === 'function'
@@ -77,7 +79,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
     startY.value = firstTouch.clientY
     isTracking.value = true
     // 起点不在顶部也继续跟踪：页面滚回顶部后继续下拉同样算刷新手势。
-    isDragging.value = getScrollTop() <= SCROLL_TOP_TOLERANCE
+    isDragging.value = readScrollTop() <= SCROLL_TOP_TOLERANCE
     pullDistance.value = 0
     isAnimating.value = false
   }
@@ -88,7 +90,7 @@ export function useMobilePullRefresh(options: UseMobilePullRefreshOptions) {
     const firstTouch = e.touches?.[0]
     if (!firstTouch) return
 
-    if (getScrollTop() > SCROLL_TOP_TOLERANCE) {
+    if (readScrollTop() > SCROLL_TOP_TOLERANCE) {
       // 还没滚到顶部：整段交还给原生滚动，并清掉已产生的位移
       startY.value = 0
       if (pullDistance.value !== 0) {

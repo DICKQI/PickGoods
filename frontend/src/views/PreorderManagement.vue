@@ -142,63 +142,95 @@
       <section
         v-if="isMobile"
         class="preorder-mobile-page"
-        @touchstart.capture.passive="handleTouchStart"
-        @touchmove="handleTouchMove"
-        @touchend="handleTouchEnd"
-        @touchcancel="resetPullRefresh"
+        :style="{
+          '--preorder-mobile-expanded-height': `${expandedContentHeight}px`,
+          '--preorder-mobile-scroll-compensation': `${scrollCompensationHeight}px`,
+        }"
       >
-        <!-- 标题 + 看板 + 状态筛选固定在顶部：真机 WebView 上 sticky 常因祖先包含块失效，改用 fixed + 占位 -->
-        <div class="preorder-mobile-sticky-spacer" :style="{ height: `${stickyHeight}px` }" aria-hidden="true"></div>
-        <div ref="stickyRef" class="preorder-mobile-sticky">
+        <!-- 标题区在滚动容器之外，收缩时只挤压列表视口，不会覆盖列表内容。 -->
+        <div
+          ref="stickyRef"
+          class="preorder-mobile-sticky"
+          :class="{ 'is-compact': isCompact }"
+          :data-compact="isCompact ? 'true' : 'false'"
+        >
           <header class="preorder-mobile-header">
             <h1 class="preorder-mobile-title">预购与尾款提醒</h1>
+            <span class="preorder-mobile-compact-filter" data-test="preorder-compact-filter">
+              {{ currentStatusLabel }}
+            </span>
           </header>
 
-          <PreorderMobileStats :stats="stats" />
+          <div
+            class="preorder-mobile-expanded"
+            :aria-hidden="isCompact ? 'true' : 'false'"
+            :inert="isCompact"
+          >
+            <div ref="expandedContentRef" class="preorder-mobile-expanded-inner">
+              <PreorderMobileStats :stats="stats" />
 
-          <PreorderMobileFilterBar
-            v-model:status-filter="statusFilter"
-            v-model:search-keyword="searchKeyword"
-            :total="total"
-            @search="handleSearchInput"
-            @clear="handleSearchClear"
-            @status-change="handleFilterChange"
-          />
-        </div>
-
-        <!-- 下拉刷新提示固定在“看板 + 筛选”下方：看板区任何时候都不移动，只有提示条把列表顶下去 -->
-        <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
-
-        <div v-if="loading" class="preorder-mobile-skeletons">
-          <div v-for="n in 3" :key="n" class="preorder-mobile-skeleton"></div>
-        </div>
-
-        <template v-else>
-          <div class="preorder-mobile-list" :class="{ 'is-switching': switching }">
-            <div v-for="item in preorders" :id="'preorder-row-' + item.id" :key="item.id">
-              <PreorderMobileCard
-                :item="item"
-                :highlight="item.id === highlightId"
-                @primary="handleMobilePrimary(item)"
-                @menu="openCardMenu(item)"
+              <PreorderMobileFilterBar
+                v-model:status-filter="statusFilter"
+                v-model:search-keyword="searchKeyword"
+                :total="total"
+                @search="handleSearchInput"
+                @clear="handleSearchClear"
+                @status-change="handleFilterChange"
               />
             </div>
           </div>
-          <el-empty
-            v-if="!switching && preorders.length === 0"
-            :description="emptyText"
-            :image-size="88"
-          >
-            <el-button type="primary" class="preorder-mobile-empty-btn" @click="openCreate">新增预购</el-button>
-          </el-empty>
-          <div ref="sentinelRef" class="preorder-mobile-sentinel" :class="{ 'is-hidden': !hasNext }">
-            <span v-if="hasNext && !loadError">加载中…</span>
+        </div>
+
+        <div
+          ref="mobileScrollRef"
+          class="preorder-mobile-scroll"
+          role="region"
+          aria-label="预购列表"
+          tabindex="0"
+          @touchstart.capture.passive="handleTouchStart"
+          @touchmove="handleTouchMove"
+          @touchend="handleTouchEnd"
+          @touchcancel="resetPullRefresh"
+        >
+          <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
+
+          <div v-if="loading" class="preorder-mobile-skeletons">
+            <div v-for="n in 3" :key="n" class="preorder-mobile-skeleton"></div>
           </div>
-          <div v-if="!hasNext && preorders.length > 0" class="preorder-mobile-end">没有更多了</div>
-          <button v-if="loadError" type="button" class="preorder-mobile-retry" @click="loadMore">
-            加载失败，点击重试
-          </button>
-        </template>
+
+          <template v-else>
+            <div class="preorder-mobile-list" :class="{ 'is-switching': switching }">
+              <div v-for="item in preorders" :id="'preorder-row-' + item.id" :key="item.id">
+                <PreorderMobileCard
+                  :item="item"
+                  :highlight="item.id === highlightId"
+                  @primary="handleMobilePrimary(item)"
+                  @menu="openCardMenu(item)"
+                />
+              </div>
+            </div>
+            <el-empty
+              v-if="!switching && preorders.length === 0"
+              :description="emptyText"
+              :image-size="88"
+            >
+              <el-button type="primary" class="preorder-mobile-empty-btn" @click="openCreate">新增预购</el-button>
+            </el-empty>
+            <div ref="sentinelRef" class="preorder-mobile-sentinel" :class="{ 'is-hidden': !hasNext }">
+              <span v-if="hasNext && !loadError">加载中…</span>
+            </div>
+            <div v-if="!hasNext && preorders.length > 0" class="preorder-mobile-end">没有更多了</div>
+            <button v-if="loadError" type="button" class="preorder-mobile-retry" @click="loadMore">
+              加载失败，点击重试
+            </button>
+          </template>
+
+          <!--
+            标题收缩时会增大列表视口。同步补足等高的滚动缓冲，避免浏览器把
+            scrollTop 钳制到 0 后误判为“回到顶部”，造成展开/收缩反复抖动。
+          -->
+          <div class="preorder-mobile-collapse-spacer" aria-hidden="true"></div>
+        </div>
       </section>
 
       <!-- 移动端：新增预购 FAB -->
@@ -429,6 +461,9 @@ const {
   handleSearchClear,
   loadUntilId,
 } = list
+const currentStatusLabel = computed(() => (
+  STATUS_OPTIONS.find(option => option.value === statusFilter.value)?.label || '全部'
+))
 const highlightId = ref<string | null>(null)
 const tableRef = ref()
 
@@ -718,6 +753,7 @@ const handleMobilePrimary = (item: Preorder) => {
 }
 
 // ─── 移动端：下拉刷新 ───
+const mobileScrollRef = ref<HTMLElement | null>(null)
 const {
   pullDistance,
   isRefreshing,
@@ -727,36 +763,69 @@ const {
   reset: resetPullRefresh,
 } = useMobilePullRefresh({
   enabled: isMobile,
+  getScrollTop: () => mobileScrollRef.value?.scrollTop ?? 0,
   onRefresh: async () => {
     await Promise.all([refresh(), loadStats()])
   },
 })
 
-// ─── 移动端：固定头（标题 + 看板 + 筛选）高度占位 ───
-// 移动端真正的滚动容器是 document，且祖先里存在 transform / fixed 组合的样式，
-// sticky 在真机 WebView 上经常失效；改为 fixed 钉在顶部标签栏下方，用等高空节点占位。
+// ─── 移动端：标题区固定，列表使用独立滚动容器 ───
+// 标题放在滚动容器之外，收缩时只调整自身高度；列表无法进入标题下面，也就不需要 fixed 覆盖。
+const isCompact = ref(false)
 const stickyRef = ref<HTMLElement | null>(null)
-const stickyHeight = ref(0)
-let stickyObserver: ResizeObserver | null = null
+const expandedContentRef = ref<HTMLElement | null>(null)
+const expandedContentHeight = ref(240)
+const stickyExpandedHeight = ref(0)
+const stickyCompactHeight = 54
+const scrollCompensationHeight = computed(() => (
+  Math.max(0, stickyExpandedHeight.value - stickyCompactHeight)
+))
+const COMPACT_TRIGGER_DISTANCE = 64
+const COMPACT_RESTORE_DISTANCE = 2
+let compactHeaderFrame = 0
+let compactTransitionTimer = 0
+let compactTransitionLocked = false
+let expandedContentObserver: ResizeObserver | null = null
 
-const syncStickyHeight = () => {
-  const element = stickyRef.value
-  if (!element) {
-    stickyHeight.value = 0
-    return
-  }
-  const next = Math.round(element.getBoundingClientRect().height)
-  if (next !== stickyHeight.value) stickyHeight.value = next
+const syncCompactState = () => {
+  compactHeaderFrame = 0
+  const scrollTop = mobileScrollRef.value?.scrollTop ?? 0
+  if (!isCompact.value && scrollTop > COMPACT_TRIGGER_DISTANCE) isCompact.value = true
+  else if (isCompact.value && scrollTop <= COMPACT_RESTORE_DISTANCE) isCompact.value = false
 }
 
-// 看板展开/收起、搜索框展开都会改变固定头高度，占位必须跟着变，否则列表会被遮住或留白。
-const observeStickyHeight = () => {
-  stickyObserver?.disconnect()
-  stickyObserver = null
-  if (typeof ResizeObserver === 'undefined' || !stickyRef.value) return
-  stickyObserver = new ResizeObserver(() => syncStickyHeight())
-  stickyObserver.observe(stickyRef.value)
+const scheduleCompactStateSync = () => {
+  if (compactHeaderFrame) return
+  compactHeaderFrame = window.requestAnimationFrame(syncCompactState)
 }
+
+const syncExpandedGeometry = () => {
+  // 收缩过程中冻结真实内容高度，避免把动画中的裁切高度再次写回 CSS 变量。
+  if (isCompact.value || compactTransitionLocked) return
+  const contentHeight = expandedContentRef.value?.getBoundingClientRect().height ?? 0
+  const stickyHeight = stickyRef.value?.getBoundingClientRect().height ?? 0
+  if (contentHeight > 0) expandedContentHeight.value = Math.ceil(contentHeight)
+  if (stickyHeight > 0) stickyExpandedHeight.value = Math.ceil(stickyHeight)
+}
+
+const observeExpandedContent = () => {
+  expandedContentObserver?.disconnect()
+  expandedContentObserver = null
+  syncExpandedGeometry()
+  if (typeof ResizeObserver === 'undefined' || !expandedContentRef.value) return
+  expandedContentObserver = new ResizeObserver(syncExpandedGeometry)
+  expandedContentObserver.observe(expandedContentRef.value)
+}
+
+watch(isCompact, (compact) => {
+  compactTransitionLocked = true
+  if (compactTransitionTimer) window.clearTimeout(compactTransitionTimer)
+  compactTransitionTimer = window.setTimeout(() => {
+    compactTransitionTimer = 0
+    compactTransitionLocked = false
+    if (!compact) nextTick(syncExpandedGeometry)
+  }, 300)
+})
 
 // ─── 移动端：无限滚动哨兵 ───
 const sentinelRef = ref<HTMLElement | null>(null)
@@ -771,7 +840,7 @@ const setupSentinelObserver = () => {
         loadMore()
       }
     },
-    { rootMargin: '200px 0px' }
+    { root: mobileScrollRef.value, rootMargin: '200px 0px' }
   )
   sentinelObserver.observe(sentinelRef.value)
 }
@@ -781,7 +850,17 @@ const setupSentinelObserver = () => {
 watch(isMobile, () => {
   page.value = 1
   loadInitial()
-  nextTick(setupSentinelObserver)
+  nextTick(() => {
+    if (!isMobile.value) {
+      expandedContentObserver?.disconnect()
+      expandedContentObserver = null
+      return
+    }
+    setupSentinelObserver()
+    observeExpandedContent()
+    syncCompactState()
+    mobileScrollRef.value?.addEventListener('scroll', scheduleCompactStateSync, { passive: true })
+  })
 })
 
 const goToGoods = (item: Preorder) => {
@@ -810,9 +889,10 @@ onMounted(async () => {
   await loadInitial()
   nextTick(setupSentinelObserver)
   nextTick(() => {
-    syncStickyHeight()
-    observeStickyHeight()
+    observeExpandedContent()
+    syncCompactState()
   })
+  mobileScrollRef.value?.addEventListener('scroll', scheduleCompactStateSync, { passive: true })
   // 带 highlight 进入页面（通知跳转 / 刷新）：列表加载完成后尝试定位
   if (route.query.highlight) await resolveHighlight()
 })
@@ -820,15 +900,18 @@ onMounted(async () => {
 // KeepAlive 激活时 DOM 重新插入，固定头高度需要重新测量并重新挂观察器。
 onActivated(() => {
   nextTick(() => {
-    syncStickyHeight()
-    observeStickyHeight()
+    observeExpandedContent()
+    syncCompactState()
   })
 })
 
 onUnmounted(() => {
   sentinelObserver?.disconnect()
-  stickyObserver?.disconnect()
-  stickyObserver = null
+  expandedContentObserver?.disconnect()
+  expandedContentObserver = null
+  mobileScrollRef.value?.removeEventListener('scroll', scheduleCompactStateSync)
+  if (compactHeaderFrame) window.cancelAnimationFrame(compactHeaderFrame)
+  if (compactTransitionTimer) window.clearTimeout(compactTransitionTimer)
   list.clearSearchTimer()
 })
 </script>
@@ -1764,45 +1847,171 @@ onUnmounted(() => {
 
 /* ─── 移动端：页面骨架 / 卡片列表 / FAB / 刷新指示 ─── */
 .preorder-mobile-page {
-  min-height: calc(100dvh - 64px - env(safe-area-inset-top));
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: calc(100dvh - var(--app-navbar-height, calc(44px + env(safe-area-inset-top, 0px))));
+  min-height: 0;
+  overflow: hidden;
 }
 
-/* 标题 + 看板 + 状态筛选整体吸顶：滚动列表时始终固定在顶部标签栏下方。 */
-/* fixed 定位：不依赖祖先的滚动容器，真机上也能真正钉在标签栏下方 */
+/* 标题在滚动容器之外：收缩和展开只改变列表视口，不会覆盖卡片内容。 */
 .preorder-mobile-sticky {
-  position: fixed;
-  top: var(--app-navbar-height, 64px);
-  left: 0;
-  right: 0;
-  z-index: 900;
-  padding: 12px 12px 6px;
-  background: rgba(255, 255, 255, 0.96);
+  position: relative;
+  z-index: 2;
+  flex: none;
+  margin-top: 6px;
+  padding: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.97);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
-  box-shadow: 0 12px 22px -22px rgba(17, 24, 39, 0.45);
+  box-shadow: 0 14px 28px -24px rgba(17, 24, 39, 0.48);
+  overflow: hidden;
+  overflow-anchor: none;
+  transition:
+    padding 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    border-radius 0.24s ease,
+    background-color 0.2s ease,
+    box-shadow 0.2s ease;
 }
 
-.preorder-mobile-sticky-spacer {
-  pointer-events: none;
+.preorder-mobile-sticky.is-compact {
+  padding: 7px 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.99);
+  box-shadow: 0 10px 24px -18px rgba(17, 24, 39, 0.4);
+}
+
+.preorder-mobile-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  overflow-anchor: none;
+  -webkit-overflow-scrolling: touch;
+  padding-top: 12px;
+  padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+  transition: padding-top 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.preorder-mobile-scroll:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.72);
+  outline-offset: -2px;
 }
 
 .preorder-mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
   padding: 4px 2px 10px;
+  transition: padding 0.24s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .preorder-mobile-title {
+  min-width: 0;
   margin: 0;
   font-size: 20px;
   font-weight: 800;
   color: #2f2a20;
+  transition: font-size 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.preorder-mobile-compact-filter {
+  max-width: 0;
+  overflow: hidden;
+  flex: none;
+  padding: 0;
+  border: 1px solid rgba(212, 175, 55, 0.34);
+  border-radius: 999px;
+  color: #8a650b;
+  background: rgba(212, 175, 55, 0.1);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  opacity: 0;
+  transform: translateY(4px) scale(0.92);
+  transition:
+    max-width 0.24s cubic-bezier(0.22, 1, 0.36, 1),
+    padding 0.24s ease,
+    opacity 0.16s ease,
+    transform 0.24s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.preorder-mobile-expanded {
+  max-height: var(--preorder-mobile-expanded-height, 240px);
+  min-width: 0;
+  overflow: hidden;
+  opacity: 1;
+  transform: translateY(0) scaleY(1);
+  transform-origin: top center;
+  visibility: visible;
+  will-change: max-height, opacity, transform;
+  transition:
+    max-height 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.2s ease,
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0s;
+}
+
+.preorder-mobile-sticky.is-compact .preorder-mobile-header {
+  min-height: 38px;
+  padding: 0;
+}
+
+.preorder-mobile-sticky.is-compact .preorder-mobile-title {
+  overflow: hidden;
+  font-size: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preorder-mobile-sticky.is-compact .preorder-mobile-compact-filter {
+  max-width: 42%;
+  padding: 7px 10px;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.preorder-mobile-sticky.is-compact .preorder-mobile-expanded {
+  max-height: 0;
+  opacity: 0;
+  transform: translateY(-8px) scaleY(0.97);
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    max-height 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 0.18s ease,
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    visibility 0s linear 0.26s;
+}
+
+/*
+  收缩时视口增加多少，滚动内容就补多少。这样 scrollTop 不会被钳制到顶部，
+  用户真正滚回顶部后才恢复展开，避免动画途中反复切换状态。
+*/
+.preorder-mobile-collapse-spacer {
+  height: 0;
+  pointer-events: none;
+}
+
+.preorder-mobile-sticky.is-compact + .preorder-mobile-scroll .preorder-mobile-collapse-spacer {
+  height: var(--preorder-mobile-scroll-compensation, 200px);
+}
+
+.preorder-mobile-sticky.is-compact + .preorder-mobile-scroll {
+  padding-top: 80px;
 }
 
 .preorder-mobile-list {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  margin-top: 10px;
+  margin-top: 0;
   transition: opacity 0.2s ease;
 }
 
@@ -1906,20 +2115,36 @@ onUnmounted(() => {
 
 @media (max-width: 768px) {
   .preorder-page {
-    /* 顶部间距由固定头自己的 padding 提供，页面内容从标签栏正下方开始，占位高度才能与固定头严丝合缝。 */
-    padding: 0 12px calc(90px + env(safe-area-inset-bottom));
+    height: 100%;
+    padding: 0 12px;
+    overflow: hidden;
+  }
+
+  .preorder-page-inner {
+    height: 100%;
   }
 }
 
 @supports not (padding: calc(90px + env(safe-area-inset-bottom))) {
   @media (max-width: 768px) {
     .preorder-page {
-      padding: 0 12px 90px;
+      height: 100%;
+      padding: 0 12px;
     }
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .preorder-mobile-sticky,
+  .preorder-mobile-header,
+  .preorder-mobile-title,
+  .preorder-mobile-compact-filter,
+  .preorder-mobile-expanded,
+  .preorder-mobile-collapse-spacer,
+  .preorder-mobile-scroll {
+    transition: none;
+  }
+
   .preorder-mobile-skeleton {
     animation: none;
   }

@@ -1,5 +1,5 @@
 <template>
-  <div class="layout" :class="{ 'layout-native': isNativePlatform, 'mobile-shell': isMobile && mobileMode !== 'standalone', 'mobile-shell-tabs': isMobile && mobileMode === 'tabs', 'mobile-shell-detail': isMobile && mobileMode === 'detail', 'mobile-shell-editor': isMobile && mobileMode === 'editor', 'mobile-journal-editor': mobileJournalEditor }">
+  <div class="layout" :class="{ 'layout-native': isNativePlatform, 'mobile-shell': isMobile && mobileMode !== 'standalone', 'mobile-shell-tabs': isMobile && mobileMode === 'tabs', 'mobile-shell-detail': isMobile && mobileMode === 'detail', 'mobile-shell-editor': isMobile && mobileMode === 'editor', 'mobile-journal-editor': mobileJournalEditor, 'mobile-preorder-page': mobilePreorderPage }">
     <!-- 顶部导航栏 -->
     <Transition name="navbar-visibility">
       <nav v-if="!hideTopNav" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
@@ -308,6 +308,7 @@ const { isMobile } = useResponsiveDevice()
 const workspace = useMobileWorkspace(isMobile)
 const mobileMode = computed(() => mobileHeaderMode(route.path))
 const mobileJournalEditor = computed(() => isMobile.value && isMobileJournalEditor(route))
+const mobilePreorderPage = computed(() => isMobile.value && route.path === '/preorders')
 const showMobileBottomNav = computed(() => isMobile.value && !mobileJournalEditor.value && ['tabs', 'detail'].includes(mobileMode.value) && !route.meta.hideBottomNav)
 const autoHideBottomNav = computed(() => mobileNavAutoHides(route))
 const mainContent = ref<HTMLElement | null>(null)

@@ -59,14 +59,18 @@ Pull requests should include a summary, verification commands, linked issue or c
 - el-drawer 内部 DOM（`.el-overlay`/`.el-drawer`/`.el-drawer__body`）不携带组件的 scoped 属性，SFC 里 `:deep(.el-drawer__body)` 永远命中不了，body 会保持 EP 默认 `padding:20px; overflow:auto`（多出滚动条、布局塌陷）。必须用 `:global(.组件专属类名 .el-drawer__body)` 覆盖（ClubDetail/LocationManagement 已是此模式；GoodsDrawer 仍是失效的 `:deep` 写法，待迁移）。
 - 移动端打开抽屉锁 body 滚动时，不要用 `transform: translateY(-scrollTop)` 保留滚动位置：transform 会把 body 变成 fixed 后代（el-overlay 遮罩、抽屉）的包含块，遮罩和抽屉会随页面滚动整体偏移、无法贴住视口。应改用 `position: fixed; top: -scrollTop px`。
 
-## 移动端滚动收缩标题（JournalLibrary）
+## 移动端滚动收缩标题（JournalLibrary / 预购页）
 
-- 手帐列表的“我的手帐”标题使用 `position: sticky`。sticky 的 `top` 必须始终保持为 `calc(var(--app-navbar-height) + 6px)`，展开态和收缩态不要切换不同的 `top`，否则顶部会产生跳动。
-- 收缩状态由标题前的 1px 哨兵元素判断，不要直接用 `window.scrollY` 判断并同时播放高度动画。高度动画会改变文档布局和滚动位置，容易形成“收缩后触发展开、展开后再次触发收缩”的反馈抖动。
-- 进入收缩态：哨兵顶部到达顶部标签栏底部后触发。恢复展开：只有页面实际回到 `scrollTop <= 2` 时才触发，不能在中间滚动位置恢复，以免来回切换。
+- 手帐列表的“我的手帐”标题使用 `position: sticky`；预购页使用“标题区固定 + 列表独立滚动”的 flex 布局，标题必须放在滚动容器之外，列表不能进入标题下面。两种实现都固定保留约 6px 的顶部标签间距，展开态和收缩态不要切换不同的 `top`，否则顶部会产生跳动。
+- 预购页列表必须使用独立滚动容器，并把 `useMobilePullRefresh` 的 `getScrollTop` 指向该容器。无限滚动 `IntersectionObserver` 的 `root` 也必须指向同一容器，不能继续依赖 `window` 滚动。
+- 预购页标题收缩会同时增大列表视口。列表末尾必须同步补足与展开区等高的透明滚动缓冲；否则浏览器会把 `scrollTop` 钳制到 0，误触发展开并形成反复抖动。
+- 独立滚动容器会在顶边裁切部分卡片，视觉上容易被误判为标题遮挡。预购页普通态保持约 12px 间距，紧凑态保留约 80px 顶部缓冲，避免标题收缩时首张卡片边框被裁掉。
+- 手帐 sticky 方案使用标题前的 1px 哨兵元素判断收缩；不要直接用 `window.scrollY` 判断并同时播放高度动画，否则高度动画会改变文档布局和滚动位置，形成反馈抖动。预购页因标题不在滚动容器内，可以直接读取列表容器的 `scrollTop`。
+- 进入收缩态：手帐由哨兵到达顶部标签栏底部触发，预购由列表容器滚动超过 `64px` 触发。恢复展开：只有实际回到滚动顶部 `scrollTop <= 2` 时才触发，不能在中间滚动位置恢复。
 - 滚动监听使用 `requestAnimationFrame` 合并更新；标题设置 `overflow-anchor: none`，避免浏览器滚动锚定介入高度动画。
 - 动画只改变 `min-height`、`padding`、`margin`、`opacity` 和字号；保留 `prefers-reduced-motion` 分支。
-- `JournalLibrary.spec.ts` 必须覆盖向下滚动后收缩、中间位置保持收缩、回到顶部后展开，以及哨兵判定的滞回行为。
+- 手帐列表紧凑态保留标题和手帐数量；预购页紧凑态只保留页面标题和当前状态筛选名，隐藏的展开内容需设置 `aria-hidden` 并保持组件内部状态不丢失。
+- `JournalLibrary.spec.ts` 与 `PreorderManagementMobile.spec.ts` 必须覆盖向下滚动后收缩、中间位置保持收缩、回到顶部后展开、筛选名同步和哨兵判定的滞回行为。
 
 ## Android APK 构建流程与坑
 

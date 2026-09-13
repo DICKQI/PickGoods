@@ -146,6 +146,7 @@ const mountPage = async (query: Record<string, string> = {}) => {
 describe('PreorderManagement 移动端', () => {
   beforeEach(() => {
     mobileState.value = true
+    Object.defineProperty(window, 'scrollY', { configurable: true, value: 0 })
     vi.clearAllMocks()
   })
 
@@ -164,32 +165,81 @@ describe('PreorderManagement 移动端', () => {
     expect(wrapper.find('.preorder-mobile-fab').exists()).toBe(true)
   })
 
-  it('看板区固定在顶部且不随下拉位移，刷新提示渲染在看板下方', async () => {
+  it('标题区位于独立滚动容器之外，刷新提示渲染在列表上方', async () => {
     vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
     const { wrapper } = await mountPage()
     await flushPromises()
 
     const sticky = wrapper.find('.preorder-mobile-sticky')
-    const spacer = wrapper.find('.preorder-mobile-sticky-spacer')
+    const scroll = wrapper.find('.preorder-mobile-scroll')
     const indicator = wrapper.find('.mobile-pull-indicator')
 
     expect(sticky.exists()).toBe(true)
-    expect(spacer.exists()).toBe(true)
+    expect(scroll.exists()).toBe(true)
     expect(indicator.exists()).toBe(true)
-    // 占位高度由固定头实测高度驱动（jsdom 量到 0，这里只验证绑定仍在）
-    expect(spacer.attributes('style')).toContain('height:')
-    // 固定头不再跟随下拉位移：位置完全交给 CSS
     expect(sticky.attributes('style')).toBeUndefined()
-    // 提示条必须在固定头之后（视觉上位于看板 + 筛选下方）
+    // 标题区在滚动容器之前，列表滚动时不会进入标题下面。
     expect(
-      sticky.element.compareDocumentPosition(indicator.element) & Node.DOCUMENT_POSITION_FOLLOWING
+      sticky.element.compareDocumentPosition(scroll.element) & Node.DOCUMENT_POSITION_FOLLOWING
     ).toBeTruthy()
-    // 固定头钉在顶部标签栏下方，页面顶部间距改由固定头自己的 padding 提供
-    expect(pageSource).toMatch(/\.preorder-mobile-sticky \{[^}]*position: fixed;[^}]*top: var\(--app-navbar-height, 64px\);/)
-    // 下拉手势从捕获阶段起手，页面滚动回顶部后继续下拉也能触发刷新
+    expect(pageSource).toMatch(/\.preorder-mobile-sticky \{[^}]*position: relative;/)
+    expect(pageSource).toMatch(/\.preorder-mobile-scroll \{[^}]*overflow-y: auto;/)
+    expect(pageSource).toMatch(/\.preorder-mobile-scroll \{[^}]*padding-top: 12px;/)
+    expect(pageSource).toMatch(/\.preorder-mobile-expanded \{[^}]*max-height: var\(--preorder-mobile-expanded-height/)
+    expect(pageSource).toContain('.preorder-mobile-collapse-spacer')
+    expect(wrapper.find('.preorder-mobile-collapse-spacer').exists()).toBe(true)
+    expect(pageSource).toMatch(/\.preorder-mobile-sticky\.is-compact \+ \.preorder-mobile-scroll \{[^}]*padding-top: 80px;/)
+    // 下拉手势监听在独立滚动容器上。
     expect(pageSource).toContain('@touchstart.capture.passive="handleTouchStart"')
     expect(pageSource).toContain('@touchcancel="resetPullRefresh"')
-    expect(pageSource).toContain("padding: 0 12px calc(90px + env(safe-area-inset-bottom));")
+    expect(pageSource).toContain('getScrollTop: () => mobileScrollRef.value?.scrollTop ?? 0')
+  })
+
+  it('向下滚动后收缩为标题和当前筛选名，中间保持收缩并在回顶后展开', async () => {
+    vi.mocked(listPreorders).mockResolvedValue(paginated([makePreorder('p-1')]))
+    const { wrapper } = await mountPage()
+    await flushPromises()
+
+    const sticky = wrapper.get('.preorder-mobile-sticky')
+    const scroll = wrapper.get('.preorder-mobile-scroll').element as HTMLElement
+    const compactFilter = wrapper.get('[data-test="preorder-compact-filter"]')
+    const expanded = wrapper.get('.preorder-mobile-expanded')
+    const flushFrame = async () => {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      await nextTick()
+    }
+
+    scroll.scrollTop = 56
+    scroll.dispatchEvent(new Event('scroll'))
+    await flushFrame()
+
+    expect(sticky.classes()).not.toContain('is-compact')
+    expect(sticky.attributes('data-compact')).toBe('false')
+
+    scroll.scrollTop = 80
+    scroll.dispatchEvent(new Event('scroll'))
+    await flushFrame()
+
+    expect(sticky.classes()).toContain('is-compact')
+    expect(sticky.attributes('data-compact')).toBe('true')
+    expect(compactFilter.text()).toBe('全部')
+    expect(expanded.attributes('aria-hidden')).toBe('true')
+
+    scroll.scrollTop = 24
+    scroll.dispatchEvent(new Event('scroll'))
+    await flushFrame()
+    expect(sticky.classes()).toContain('is-compact')
+
+    const paidChip = wrapper.findAll('.preorder-mobile-filterbar__chip')[2]!
+    await paidChip.trigger('click')
+    await flushPromises()
+    expect(compactFilter.text()).toBe('已补款')
+
+    scroll.scrollTop = 0
+    scroll.dispatchEvent(new Event('scroll'))
+    await flushFrame()
+    expect(sticky.classes()).not.toContain('is-compact')
+    expect(expanded.attributes('aria-hidden')).toBe('false')
   })
 
   it('新增 FAB 打开底部抽屉表单', async () => {
@@ -321,19 +371,19 @@ describe('PreorderManagement 移动端', () => {
     await flushPromises()
     expect(listPreorders).toHaveBeenCalledTimes(1)
 
-    const page = wrapper.find('.preorder-mobile-page')
-    await page.trigger('touchstart', {
+    const scroll = wrapper.find('.preorder-mobile-scroll')
+    await scroll.trigger('touchstart', {
       touches: [{ clientX: 100, clientY: 120 }],
       changedTouches: [{ clientX: 100, clientY: 120 }],
     })
-    await page.trigger('touchmove', {
+    await scroll.trigger('touchmove', {
       touches: [{ clientX: 100, clientY: 320 }],
       changedTouches: [{ clientX: 100, clientY: 320 }],
     })
     // 与 useMobilePullRefresh 现有测试一致：先冲刷 rAF，再结束手势
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
     await nextTick()
-    await page.trigger('touchend', {
+    await scroll.trigger('touchend', {
       touches: [],
       changedTouches: [{ clientX: 100, clientY: 320 }],
     })
