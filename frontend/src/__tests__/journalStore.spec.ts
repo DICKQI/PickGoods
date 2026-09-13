@@ -193,6 +193,30 @@ describe('useJournalStore', () => {
     expect(store.dirty).toBe(false)
   })
 
+  it('reloads the server page before discarding local changes', async () => {
+    const serverPage = {
+      ...firstPage,
+      content: textContent('server-text', 'Server'),
+      revision: 2,
+    }
+    vi.mocked(getJournalPage).mockResolvedValue(serverPage)
+    const store = useJournalStore()
+    store.pages = [{
+      ...firstPage,
+      content: textContent('local-text', 'Local'),
+    }]
+    store.activePageId = 'page-1'
+    store.updateActivePageContent(textContent('local-2', 'Local changed'))
+    expect(store.dirty).toBe(true)
+
+    const discarded = await store.discardActivePageChanges()
+
+    expect(discarded).toBe(true)
+    expect(getJournalPage).toHaveBeenCalledWith('page-1')
+    expect(store.activePage?.content).toEqual(serverPage.content)
+    expect(store.dirty).toBe(false)
+  })
+
   it('loads and restores page versions', async () => {
     const restoredPage: JournalPage = {
       ...firstPage,

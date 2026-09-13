@@ -387,6 +387,23 @@ export const useJournalStore = defineStore('journal', () => {
     }
   }
 
+  const discardActivePageChanges = async () => {
+    const pageId = activePageId.value
+    if (!pageId) {
+      dirty.value = false
+      return true
+    }
+    error.value = null
+    try {
+      await fetchPageDetail(pageId)
+      dirty.value = false
+      return true
+    } catch (e: any) {
+      error.value = e?.message || '载入服务器版本失败'
+      return false
+    }
+  }
+
   const uploadPreview = async (file: File) => {
     if (!activePageId.value) return null
     const saved = await uploadJournalPagePreview(activePageId.value, file)
@@ -481,6 +498,7 @@ export const useJournalStore = defineStore('journal', () => {
     updateActivePageSettings,
     updateActivePageBackground,
     saveActivePage,
+    discardActivePageChanges,
     uploadPreview,
     uploadBookCover,
     createPublicShare,

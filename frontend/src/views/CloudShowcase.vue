@@ -328,7 +328,13 @@ const journalStore = useJournalStore()
 const saveJournalBeforeLeaving = async () => {
   if (activeTab.value !== 'journal' || !journalStore.dirty) return true
   const saved = await journalStore.saveActivePage({ createVersion: false })
-  if (!saved) ElMessage.warning('手帐尚未保存成功，请保存后再离开')
+  if (!saved) {
+    if (isMobile.value) {
+      window.dispatchEvent(new CustomEvent('cloud-showcase:journal-exit-blocked'))
+    } else {
+      ElMessage.warning('手帐尚未保存成功，请保存后再离开')
+    }
+  }
   return Boolean(saved)
 }
 onBeforeRouteLeave(saveJournalBeforeLeaving)
