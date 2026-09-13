@@ -1,5 +1,5 @@
 <template>
-  <div class="layout" :class="{ 'layout-native': isNativePlatform, 'mobile-shell': isMobile && mobileMode !== 'standalone', 'mobile-shell-tabs': isMobile && mobileMode === 'tabs', 'mobile-shell-detail': isMobile && mobileMode === 'detail', 'mobile-shell-editor': isMobile && mobileMode === 'editor' }">
+  <div class="layout" :class="{ 'layout-native': isNativePlatform, 'mobile-shell': isMobile && mobileMode !== 'standalone', 'mobile-shell-tabs': isMobile && mobileMode === 'tabs', 'mobile-shell-detail': isMobile && mobileMode === 'detail', 'mobile-shell-editor': isMobile && mobileMode === 'editor', 'mobile-journal-editor': mobileJournalEditor }">
     <!-- 顶部导航栏 -->
     <Transition name="navbar-visibility">
       <nav v-if="!hideTopNav" class="navbar" :class="{ 'navbar-native': isNativePlatform }">
@@ -97,7 +97,7 @@
       </nav>
     </Transition>
 
-    <MobilePageHeader v-if="isMobile && mobileMode !== 'standalone'" />
+    <MobilePageHeader v-if="isMobile && mobileMode !== 'standalone' && !mobileJournalEditor" />
 
     <!-- 主要内容区 -->
     <main ref="mainContent" class="main-content" :class="{
@@ -287,6 +287,7 @@ import '@/styles/mobileWorkspace.css'
 import {
   MOBILE_CACHE_COMPONENTS,
   MOBILE_SWIPE_ENABLED,
+  isMobileJournalEditor,
   mobileHeaderMode,
   mobileNavAutoHides,
   mobileSwipeSequence,
@@ -306,7 +307,8 @@ const notificationStore = useNotificationStore()
 const { isMobile } = useResponsiveDevice()
 const workspace = useMobileWorkspace(isMobile)
 const mobileMode = computed(() => mobileHeaderMode(route.path))
-const showMobileBottomNav = computed(() => isMobile.value && ['tabs', 'detail'].includes(mobileMode.value) && !route.meta.hideBottomNav)
+const mobileJournalEditor = computed(() => isMobile.value && isMobileJournalEditor(route))
+const showMobileBottomNav = computed(() => isMobile.value && !mobileJournalEditor.value && ['tabs', 'detail'].includes(mobileMode.value) && !route.meta.hideBottomNav)
 const autoHideBottomNav = computed(() => mobileNavAutoHides(route))
 const mainContent = ref<HTMLElement | null>(null)
 const hideTopNav = computed(() => Boolean(isMobile.value || route.meta.hideTopNav))
@@ -318,7 +320,7 @@ const swipeSteps = computed(() => mobileSwipeSequence({
 }))
 const swipeStepIndex = computed(() => mobileSwipeStepIndex(swipeSteps.value, route))
 useMobileSwipeNav({
-  enabled: () => isMobile.value && mobileMode.value === 'tabs' && MOBILE_SWIPE_ENABLED,
+  enabled: () => isMobile.value && !mobileJournalEditor.value && mobileMode.value === 'tabs' && MOBILE_SWIPE_ENABLED,
   surface: mainContent,
   steps: swipeSteps,
   currentIndex: swipeStepIndex,

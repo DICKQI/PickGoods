@@ -5,6 +5,28 @@
 #app .layout.mobile-shell-detail, #app .layout.mobile-shell-editor {
   --app-navbar-height: calc(56px + var(--app-safe-area-top, env(safe-area-inset-top, 0px)));
 }
+#app .layout.mobile-journal-editor {
+  --app-navbar-height: 0px;
+  height: 100dvh;
+  overflow: hidden;
+}
+#app .layout.mobile-journal-editor > .main-content {
+  min-height: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  overflow: hidden;
+}
+#app .layout.mobile-journal-editor .cloud-showcase {
+  width: 100%;
+  max-width: none;
+  min-height: 0;
+  height: 100%;
+  padding: 0;
+  margin: 0;
+}
+#app .layout.mobile-journal-editor .journal-section {
+  margin: 0;
+}
 #app .layout.mobile-shell > .main-content { padding-top: 0; }
 #app .layout.mobile-shell-editor > .main-content { padding-bottom: 0; }
 #app .mobile-shell .cloud-tabs,

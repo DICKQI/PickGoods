@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import { defineComponent, ref } from 'vue'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { activeMobileTab, mobileHeaderMode, mobileModule, mobileModules, mobileNavAutoHides, mobileTabs } from '@/navigation/mobile'
+import { activeMobileTab, isMobileJournalEditor, mobileHeaderMode, mobileModule, mobileModules, mobileNavAutoHides, mobileTabs } from '@/navigation/mobile'
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { useMobileWorkspace } from '@/composables/useMobileWorkspace'
 import { useAuthStore } from '@/stores/auth'
@@ -26,6 +26,13 @@ describe('mobile workspace route contract', () => {
   it('normalizes malformed showcase links to the barn', () => {
     for (const tab of [undefined, 'nope', ['stats', 'barn']]) expect(activeMobileTab({ path: '/showcase', query: { tab: tab ?? null } })).toBe('barn')
     expect(activeMobileTab({ path: '/showcase', query: { tab: 'journal' } })).toBe('journal')
+  })
+  it('uses immersive shell only for the mobile journal editor', () => {
+    expect(isMobileJournalEditor({ path: '/showcase', query: { tab: 'journal' } })).toBe(true)
+    for (const tab of ['showcase', 'barn', 'stats', undefined]) {
+      expect(isMobileJournalEditor({ path: '/showcase', query: { tab: tab ?? null } })).toBe(false)
+    }
+    expect(isMobileJournalEditor({ path: '/preorders', query: {} })).toBe(false)
   })
   it('hides the bottom bar on scroll only inside the barn', () => {
     expect(mobileNavAutoHides({ path: '/showcase', query: {} })).toBe(true)

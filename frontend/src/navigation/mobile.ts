@@ -22,6 +22,10 @@ export const showcaseTabs: MobileTab[] = [
 export const normalizeShowcaseTab = (value: unknown) =>
   typeof value === 'string' && ['showcase', 'barn', 'journal', 'stats'].includes(value) ? value : 'barn'
 
+/** 手帐使用独立的沉浸式移动编辑器，隐藏全局页签与底部导航。 */
+export const isMobileJournalEditor = (route: RouteInput) =>
+  route.path === '/showcase' && normalizeShowcaseTab(route.query.tab) === 'journal'
+
 export function mobileModule(route: RouteInput): MobileModule {
   const path = route.path
   if (path === '/clubs' || path.startsWith('/clubs/')) return 'clubs'

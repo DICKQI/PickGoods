@@ -196,6 +196,16 @@ describe('Layout top navigation', () => {
     expect(wrapper.find('.app-version').exists()).toBe(false)
   })
 
+  it('uses the immersive shell only for the mobile journal editor', async () => {
+    const wrapper = await mountMobileLayout('/showcase?tab=journal')
+
+    expect(wrapper.get('.layout').classes()).toContain('mobile-journal-editor')
+    expect(wrapper.find('.mobile-page-header').exists()).toBe(false)
+    expect(wrapper.findComponent({ name: 'MobileBottomNav' }).exists()).toBe(false)
+    expect(wrapper.get('main').classes()).not.toContain('has-bottom-nav')
+    wrapper.unmount()
+  })
+
   it('shows the app version badge on the mobile login page', async () => {
     const wrapper = await mountMobileLayout('/login')
 
