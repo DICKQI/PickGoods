@@ -1,6 +1,6 @@
 <template>
-  <div class="journal-canvas-shell">
-    <div class="journal-canvas-toolbar">
+  <div class="journal-canvas-shell" :class="{ 'is-mobile': mobile }">
+    <div v-if="!mobile" class="journal-canvas-toolbar">
       <div class="toolbar-tools" aria-label="画布工具">
         <el-tooltip content="选择" placement="bottom">
           <el-button size="small" :type="tool === 'select' ? 'primary' : 'default'" @click="tool = 'select'">
@@ -105,7 +105,12 @@
       </div>
     </div>
 
-    <div ref="viewportRef" class="journal-canvas-viewport" data-swipe-ignore>
+    <div
+      ref="viewportRef"
+      class="journal-canvas-viewport"
+      :class="{ 'is-mobile': mobile }"
+      data-swipe-ignore
+    >
       <v-stage
         ref="stageRef"
         :config="stageConfig"
@@ -197,7 +202,8 @@
       <el-button size="small" @click="setZoom(zoomLevel - 0.1)">-</el-button>
       <span>{{ Math.round(zoomLevel * 100) }}%</span>
       <el-button size="small" @click="setZoom(zoomLevel + 0.1)">+</el-button>
-      <small>用方向键慢慢挪位置，按住 Shift 就能快速移动啦~</small>
+      <el-button v-if="mobile" size="small" @click="resetViewport">适应</el-button>
+      <small v-if="!mobile">用方向键慢慢挪位置，按住 Shift 就能快速移动啦~</small>
     </div>
   </div>
 </template>
@@ -228,8 +234,10 @@ const props = withDefaults(defineProps<{
   height: number
   background: string
   backgroundStyle?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  mobile?: boolean
 }>(), {
   backgroundStyle: 'plain',
+  mobile: false,
 })
 
 const emit = defineEmits<{
@@ -259,6 +267,12 @@ const eraserWidth = ref(20)
 const eraserPointer = ref<{ x: number; y: number } | null>(null)
 const zoomLevel = ref(1)
 const canvasOffset = ref({ x: 0, y: 0 })
+let mobileTouchGestureActive = false
+let mobileTouchStartDistance = 0
+let mobileTouchStartZoom = 1
+let mobileTouchStartMidpoint = { x: 0, y: 0 }
+let mobileTouchStartScroll = { left: 0, top: 0 }
+let mobileGestureEndedAt = 0
 const imageCache = new Map<string, HTMLImageElement>()
 const nodeRefs = new Map<string, any>()
 const undoStack = ref<JournalPageContent[]>([])
@@ -461,6 +475,8 @@ const resolveGoodsImage = (goods: GoodsListItem) => goods.main_photo || ''
 
 const addGoodsSticker = (goods: GoodsListItem, src = resolveGoodsImage(goods)) => {
   if (!src) return
+  const stickerWidth = 260
+  const stickerHeight = 260
   const layer: JournalStickerLayer = {
     id: createLayerId('sticker'),
     type: 'sticker',
@@ -472,10 +488,10 @@ const addGoodsSticker = (goods: GoodsListItem, src = resolveGoodsImage(goods)) =
       type: 'sticker',
       goods_id: goods.id,
       src,
-      x: Math.round(props.width * 0.34),
-      y: Math.round(props.height * 0.24),
-      width: 260,
-      height: 260,
+      x: Math.round(props.mobile ? (props.width - stickerWidth) / 2 : props.width * 0.34),
+      y: Math.round(props.mobile ? (props.height - stickerHeight) / 2 : props.height * 0.24),
+      width: stickerWidth,
+      height: stickerHeight,
       rotation: 0,
     }],
   }
@@ -485,6 +501,8 @@ const addGoodsSticker = (goods: GoodsListItem, src = resolveGoodsImage(goods)) =
 
 const addLocalSticker = (payload: { name: string; src: string; source?: 'decor' | 'upload' }) => {
   if (!payload.src) return
+  const stickerWidth = payload.source === 'decor' ? 220 : 280
+  const stickerHeight = payload.source === 'decor' ? 180 : 280
   const layer: JournalStickerLayer = {
     id: createLayerId('sticker'),
     type: 'sticker',
@@ -496,10 +514,10 @@ const addLocalSticker = (payload: { name: string; src: string; source?: 'decor' 
       type: 'sticker',
       goods_id: '',
       src: payload.src,
-      x: Math.round(props.width * 0.32),
-      y: Math.round(props.height * 0.22),
-      width: payload.source === 'decor' ? 220 : 280,
-      height: payload.source === 'decor' ? 180 : 280,
+      x: Math.round(props.mobile ? (props.width - stickerWidth) / 2 : props.width * 0.32),
+      y: Math.round(props.mobile ? (props.height - stickerHeight) / 2 : props.height * 0.22),
+      width: stickerWidth,
+      height: stickerHeight,
       rotation: 0,
     }],
   }
@@ -580,10 +598,90 @@ const setZoom = (zoom: number) => {
   zoomLevel.value = Math.min(3, Math.max(0.2, Number(zoom) || 1))
 }
 
+const resetViewport = () => {
+  zoomLevel.value = 1
+  canvasOffset.value = { x: 0, y: 0 }
+  nextTick(() => {
+    if (!viewportRef.value) return
+    viewportRef.value.scrollLeft = 0
+    viewportRef.value.scrollTop = 0
+  })
+}
+
 const panCanvas = (deltaX: number, deltaY: number) => {
   canvasOffset.value = {
     x: Math.round(canvasOffset.value.x + (Number(deltaX) || 0)),
     y: Math.round(canvasOffset.value.y + (Number(deltaY) || 0)),
+  }
+}
+
+const touchDistance = (touches: TouchList) => {
+  const first = touches[0]
+  const second = touches[1]
+  if (!first || !second) return 0
+  return Math.hypot(second.clientX - first.clientX, second.clientY - first.clientY)
+}
+
+const touchMidpoint = (touches: TouchList) => {
+  const first = touches[0]
+  const second = touches[1]
+  if (!first || !second) return { x: 0, y: 0 }
+  return {
+    x: (first.clientX + second.clientX) / 2,
+    y: (first.clientY + second.clientY) / 2,
+  }
+}
+
+const handleMobileTouchStart = (event: TouchEvent) => {
+  if (!props.mobile || event.touches.length < 2 || !viewportRef.value) return
+  handlePointerEnd()
+  mobileTouchGestureActive = true
+  mobileTouchStartDistance = Math.max(1, touchDistance(event.touches))
+  mobileTouchStartZoom = zoomLevel.value
+  mobileTouchStartMidpoint = touchMidpoint(event.touches)
+  mobileTouchStartScroll = {
+    left: viewportRef.value.scrollLeft,
+    top: viewportRef.value.scrollTop,
+  }
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+const handleMobileTouchMove = (event: TouchEvent) => {
+  const viewport = viewportRef.value
+  if (!props.mobile || !mobileTouchGestureActive || event.touches.length < 2 || !viewport) return
+  event.preventDefault()
+  event.stopPropagation()
+
+  const midpoint = touchMidpoint(event.touches)
+  const distance = Math.max(1, touchDistance(event.touches))
+  const ratio = distance / mobileTouchStartDistance
+  const nextZoom = Math.min(3, Math.max(0.2, mobileTouchStartZoom * ratio))
+  const rect = viewport.getBoundingClientRect()
+  const startFocusX = mobileTouchStartMidpoint.x - rect.left
+  const startFocusY = mobileTouchStartMidpoint.y - rect.top
+
+  setZoom(nextZoom)
+  nextTick(() => {
+    if (!viewportRef.value) return
+    const currentFocusX = midpoint.x - rect.left
+    const currentFocusY = midpoint.y - rect.top
+    viewportRef.value.scrollLeft = Math.max(
+      0,
+      (mobileTouchStartScroll.left + startFocusX) * (nextZoom / mobileTouchStartZoom) - currentFocusX,
+    )
+    viewportRef.value.scrollTop = Math.max(
+      0,
+      (mobileTouchStartScroll.top + startFocusY) * (nextZoom / mobileTouchStartZoom) - currentFocusY,
+    )
+  })
+}
+
+const handleMobileTouchEnd = (event: TouchEvent) => {
+  if (!props.mobile) return
+  if (event.touches.length < 2 && mobileTouchGestureActive) {
+    mobileTouchGestureActive = false
+    mobileGestureEndedAt = Date.now()
   }
 }
 
@@ -1191,6 +1289,7 @@ const handlePointerLeave = () => {
 }
 
 const handleStageClick = (event: any) => {
+  if (Date.now() - mobileGestureEndedAt < 350) return
   if (event?.target === event?.target?.getStage?.()) {
     setSelectedLayerIds([])
   }
@@ -1520,15 +1619,24 @@ watch(tool, (mode) => {
 
 onMounted(() => {
   window.addEventListener('keydown', handleKeydown)
+  viewportRef.value?.addEventListener('touchstart', handleMobileTouchStart, { capture: true, passive: false })
+  viewportRef.value?.addEventListener('touchmove', handleMobileTouchMove, { capture: true, passive: false })
+  viewportRef.value?.addEventListener('touchend', handleMobileTouchEnd, { capture: true, passive: true })
+  viewportRef.value?.addEventListener('touchcancel', handleMobileTouchEnd, { capture: true, passive: true })
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', handleKeydown)
+  viewportRef.value?.removeEventListener('touchstart', handleMobileTouchStart, { capture: true })
+  viewportRef.value?.removeEventListener('touchmove', handleMobileTouchMove, { capture: true })
+  viewportRef.value?.removeEventListener('touchend', handleMobileTouchEnd, { capture: true })
+  viewportRef.value?.removeEventListener('touchcancel', handleMobileTouchEnd, { capture: true })
   imageCache.clear()
   nodeRefs.clear()
 })
 
 defineExpose({
+  tool,
   layers: layersForPanel,
   selectedLayer,
   selectedItem,
@@ -1563,6 +1671,7 @@ defineExpose({
   zoomLevel,
   canvasOffset,
   setZoom,
+  resetViewport,
   panCanvas,
   canUndo,
   canRedo,
@@ -1757,5 +1866,45 @@ defineExpose({
   text-align: center;
   color: var(--text-dark);
   font-weight: 700;
+}
+
+.journal-canvas-shell.is-mobile {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  gap: 0;
+}
+
+.journal-canvas-viewport.is-mobile {
+  flex: 1;
+  min-height: 0;
+  padding: 8px;
+  border-radius: 0;
+  overscroll-behavior: contain;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.journal-canvas-shell.is-mobile .journal-zoom-controls {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 5;
+  min-height: 40px;
+  padding: 4px;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.12);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.journal-canvas-shell.is-mobile .journal-zoom-controls :deep(.el-button) {
+  min-width: 40px;
+  height: 36px;
+  padding: 0 10px;
+  border-radius: 999px;
 }
 </style>

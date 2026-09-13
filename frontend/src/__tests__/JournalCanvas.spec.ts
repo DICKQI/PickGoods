@@ -175,6 +175,34 @@ describe('JournalCanvas', () => {
     expect(wrapper.find('.toolbar-brush').text()).toContain('橡皮 · 20px')
   })
 
+  it('uses the compact mobile canvas, centers inserted assets, and supports pinch zoom', async () => {
+    const wrapper = mountCanvas(emptyContent, { mobile: true })
+    expect(wrapper.find('.journal-canvas-toolbar').exists()).toBe(false)
+    expect(wrapper.get('.journal-canvas-shell').classes()).toContain('is-mobile')
+
+    wrapper.vm.addGoodsSticker(goods)
+    const inserted = latestContent(wrapper).layers[0]!.items[0]
+    expect(inserted).toMatchObject({
+      x: (1080 - 260) / 2,
+      y: (1440 - 260) / 2,
+    })
+
+    const viewport = wrapper.get('.journal-canvas-viewport').element
+    const touchEvent = (type: string, touches: Array<{ clientX: number; clientY: number }>) => {
+      const event = new Event(type, { bubbles: true, cancelable: true })
+      Object.defineProperty(event, 'touches', { value: touches })
+      return event
+    }
+    viewport.dispatchEvent(touchEvent('touchstart', [{ clientX: 100, clientY: 100 }, { clientX: 200, clientY: 100 }]))
+    viewport.dispatchEvent(touchEvent('touchmove', [{ clientX: 80, clientY: 100 }, { clientX: 220, clientY: 100 }]))
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.zoomLevel).toBeCloseTo(1.4)
+
+    wrapper.vm.resetViewport()
+    await wrapper.vm.$nextTick()
+    expect(wrapper.vm.zoomLevel).toBe(1)
+  })
+
   it('adds text layers and drawing strokes without mutating the original content object', () => {
     const wrapper = mountCanvas(emptyContent)
 
