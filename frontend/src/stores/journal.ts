@@ -21,10 +21,13 @@ import {
 } from '@/api/journal'
 import type { JournalBook, JournalPage, JournalPageContent, JournalPageVersion, JournalPublicShare } from '@/api/types'
 import { emptyJournalContent } from '@/utils/journalContent'
+import { useAuthStore } from '@/stores/auth'
 
 const emptyContent = (): JournalPageContent => emptyJournalContent()
+const LAST_PAGE_STORAGE_PREFIX = 'journal:last-page:'
 
 export const useJournalStore = defineStore('journal', () => {
+  const authStore = useAuthStore()
   const books = ref<JournalBook[]>([])
   const pages = ref<JournalPage[]>([])
   const activeBookId = ref<string | null>(null)
@@ -44,13 +47,32 @@ export const useJournalStore = defineStore('journal', () => {
 
   const activeBook = computed(() => books.value.find(book => book.id === activeBookId.value) || null)
   const activePage = computed(() => pages.value.find(page => page.id === activePageId.value) || null)
+  const lastPageStorageKey = computed(() => (
+    `${LAST_PAGE_STORAGE_PREFIX}${authStore.user?.id ?? 'anonymous'}`
+  ))
 
-  const setActiveBook = async (bookId: string) => {
+  const readLastPageMap = (): Record<string, string> => {
+    if (typeof localStorage === 'undefined') return {}
+    try {
+      const parsed = JSON.parse(localStorage.getItem(lastPageStorageKey.value) || '{}')
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, string> : {}
+    } catch {
+      return {}
+    }
+  }
+
+  const rememberPage = (bookId: string | null, pageId: string | null) => {
+    if (!bookId || !pageId || typeof localStorage === 'undefined') return
+    const next = { ...readLastPageMap(), [bookId]: pageId }
+    localStorage.setItem(lastPageStorageKey.value, JSON.stringify(next))
+  }
+
+  const setActiveBook = async (bookId: string, preferredPageId?: string | null) => {
     if (dirty.value) {
       await saveActivePage()
     }
     activeBookId.value = bookId
-    await fetchPages(bookId)
+    await fetchPages(bookId, preferredPageId)
   }
 
   const setActivePage = async (pageId: string) => {
@@ -64,6 +86,7 @@ export const useJournalStore = defineStore('journal', () => {
       await fetchPageDetail(pageId)
     }
     dirty.value = false
+    rememberPage(activeBookId.value, pageId)
     await fetchVersions(pageId)
   }
 
@@ -73,46 +96,62 @@ export const useJournalStore = defineStore('journal', () => {
     return page
   }
 
-  const fetchBooks = async () => {
-    if (loading.value) return
+  const fetchBookSummaries = async (options: { preserveOnError?: boolean } = {}) => {
+    if (loading.value) return false
     loading.value = true
     error.value = null
     try {
       const data = await getJournalBooks({ page: 1, page_size: 100 })
       books.value = data.results || []
-      if (books.value.length > 0) {
-        const nextBook = activeBookId.value && books.value.some(book => book.id === activeBookId.value)
-          ? activeBookId.value
-          : books.value[0]!.id
-        await setActiveBook(nextBook)
-      } else {
-        activeBookId.value = null
-        activePageId.value = null
+      return true
+    } catch (e: any) {
+      error.value = e?.message || '加载手帐失败'
+      if (!options.preserveOnError) {
+        books.value = []
         pages.value = []
         versions.value = []
       }
-    } catch (e: any) {
-      error.value = e?.message || '加载手帐失败'
-      books.value = []
-      pages.value = []
-      versions.value = []
+      return false
     } finally {
       loading.value = false
     }
   }
 
-  const fetchPages = async (bookId = activeBookId.value) => {
+  const refreshBookSummaries = async () => fetchBookSummaries({ preserveOnError: true })
+
+  const fetchBooks = async () => {
+    const loaded = await fetchBookSummaries()
+    if (!loaded) return false
+    if (books.value.length > 0) {
+      const nextBook = activeBookId.value && books.value.some(book => book.id === activeBookId.value)
+        ? activeBookId.value
+        : books.value[0]!.id
+      await setActiveBook(nextBook)
+    } else {
+      activeBookId.value = null
+      activePageId.value = null
+      pages.value = []
+      versions.value = []
+    }
+    return true
+  }
+
+  const fetchPages = async (bookId = activeBookId.value, preferredPageId?: string | null) => {
     if (!bookId) return
     pageLoading.value = true
     error.value = null
     try {
       const data = await getJournalPages(bookId, { fields: 'summary' })
       pages.value = data
-      activePageId.value = data[0]?.id || null
+      const rememberedPageId = preferredPageId || readLastPageMap()[bookId]
+      activePageId.value = data.some(page => page.id === rememberedPageId)
+        ? rememberedPageId!
+        : data[0]?.id || null
       dirty.value = false
       if (activePageId.value) {
         const firstPage = data.find(page => page.id === activePageId.value)
         if (!firstPage?.content) await fetchPageDetail(activePageId.value)
+        rememberPage(bookId, activePageId.value)
         await fetchVersions(activePageId.value)
       } else {
         versions.value = []
@@ -213,6 +252,7 @@ export const useJournalStore = defineStore('journal', () => {
       pages.value = [...pages.value, page]
       activePageId.value = page.id
       dirty.value = false
+      rememberPage(activeBookId.value, page.id)
       await fetchVersions(page.id)
       return page
     } catch (e: any) {
@@ -234,6 +274,7 @@ export const useJournalStore = defineStore('journal', () => {
       pages.value = nextPages
       if (activePageId.value === pageId) {
         activePageId.value = nextPages[deletingIndex]?.id || nextPages[deletingIndex - 1]?.id || null
+        rememberPage(activeBookId.value, activePageId.value)
         if (activePageId.value) {
           await fetchVersions(activePageId.value)
         } else {
@@ -258,6 +299,7 @@ export const useJournalStore = defineStore('journal', () => {
       pages.value = [...pages.value, duplicated].sort((a, b) => a.page_no - b.page_no)
       activePageId.value = duplicated.id
       dirty.value = false
+      rememberPage(activeBookId.value, duplicated.id)
       await fetchVersions(duplicated.id)
       return duplicated
     } catch (e: any) {
@@ -438,6 +480,7 @@ export const useJournalStore = defineStore('journal', () => {
       pages.value = pages.value.map(page => (page.id === restored.id ? restored : page))
       activePageId.value = restored.id
       dirty.value = false
+      rememberPage(activeBookId.value, restored.id)
       await fetchVersions(restored.id)
       return restored
     } catch (e: any) {
@@ -480,6 +523,8 @@ export const useJournalStore = defineStore('journal', () => {
     saveQueued,
     activeBook,
     activePage,
+    fetchBookSummaries,
+    refreshBookSummaries,
     fetchBooks,
     fetchPages,
     fetchVersions,

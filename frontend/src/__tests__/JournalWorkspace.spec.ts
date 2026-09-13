@@ -24,6 +24,8 @@ const journalStore = reactive({
   activePageId: '',
   activeBook: null as any,
   activePage: null as JournalPage | null,
+  fetchBookSummaries: vi.fn(async () => true),
+  refreshBookSummaries: vi.fn(async () => true),
   fetchBooks: vi.fn(),
   createBook: vi.fn(),
   setActiveBook: vi.fn(),
@@ -91,7 +93,7 @@ vi.mock('@/components/journal/JournalCanvas.vue', () => ({
   },
 }))
 
-const mountWorkspace = ({ mobile = false }: { mobile?: boolean } = {}) => {
+const mountWorkspace = ({ mobile = false, bookId = '' }: { mobile?: boolean; bookId?: string } = {}) => {
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
     value: mobile ? 390 : 1197,
@@ -105,6 +107,7 @@ const mountWorkspace = ({ mobile = false }: { mobile?: boolean } = {}) => {
     routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
   })
   return mount(JournalWorkspace, {
+    props: { bookId },
     global: {
       plugins: [router],
       stubs: {
@@ -168,6 +171,8 @@ describe('JournalWorkspace', () => {
     journalStore.dirty = false
     journalStore.activePage = null
     journalStore.activeBook = null
+    journalStore.activeBookId = ''
+    journalStore.activePageId = ''
     journalStore.books = []
     journalStore.pages = []
     canvasState.layers = []
@@ -175,6 +180,11 @@ describe('JournalWorkspace', () => {
     canvasState.selectedItem = null
     canvasState.selectedLayerIds = []
     journalStore.fetchBooks.mockClear()
+    journalStore.fetchBookSummaries.mockClear()
+    journalStore.refreshBookSummaries.mockClear()
+    journalStore.setActiveBook.mockClear()
+    journalStore.setActivePage.mockClear()
+    journalStore.createBook.mockClear()
     journalStore.updateActivePageBackground.mockClear()
     journalStore.fetchPageDetail.mockClear()
     journalStore.fetchVersions.mockClear()
@@ -432,6 +442,21 @@ describe('JournalWorkspace', () => {
     await wrapper.findAll('.journal-mobile-toolbar button')[1]!.trigger('click')
     expect(canvasState.setTool).toHaveBeenCalledWith('draw')
     expect(wrapper.find('.journal-mobile-brush-context').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('loads the requested book when opened from the journal library', async () => {
+    journalStore.books = [{
+      id: 'book-1',
+      title: '旅行手帐',
+      cover_image: null,
+      page_count: 1,
+    }]
+    const wrapper = mountWorkspace({ mobile: true, bookId: 'book-1' })
+    await flushPromises()
+
+    expect(journalStore.fetchBookSummaries).not.toHaveBeenCalled()
+    expect(journalStore.setActiveBook).toHaveBeenCalledWith('book-1')
     wrapper.unmount()
   })
 

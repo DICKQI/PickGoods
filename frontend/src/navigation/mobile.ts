@@ -22,9 +22,12 @@ export const showcaseTabs: MobileTab[] = [
 export const normalizeShowcaseTab = (value: unknown) =>
   typeof value === 'string' && ['showcase', 'barn', 'journal', 'stats'].includes(value) ? value : 'barn'
 
-/** 手帐使用独立的沉浸式移动编辑器，隐藏全局页签与底部导航。 */
+/** 只有明确打开某本手帐时才进入沉浸式编辑器，手帐标签本身展示列表。 */
 export const isMobileJournalEditor = (route: RouteInput) =>
-  route.path === '/showcase' && normalizeShowcaseTab(route.query.tab) === 'journal'
+  route.path === '/showcase'
+  && normalizeShowcaseTab(route.query.tab) === 'journal'
+  && typeof route.query.book === 'string'
+  && route.query.book.length > 0
 
 export function mobileModule(route: RouteInput): MobileModule {
   const path = route.path

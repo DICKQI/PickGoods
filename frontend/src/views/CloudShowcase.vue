@@ -278,7 +278,12 @@
       </div>
 
       <div v-if="visitedTabs.has('journal')" v-show="activeTab === 'journal'" key="journal" class="journal-section">
-        <JournalWorkspace />
+        <JournalLibrary
+          v-if="isMobile && !mobileJournalBookId"
+          @open-book="openJournalBook"
+          @create-book="createJournalBook"
+        />
+        <JournalWorkspace v-else :book-id="isMobile ? mobileJournalBookId : undefined" />
       </div>
     </div>
   </div>
@@ -302,6 +307,7 @@ import GoodsImageMatcher from '@/components/GoodsImageMatcher.vue'
 import GoodsMultiDisplayDialog from '@/components/GoodsMultiDisplayDialog.vue'
 import StatsDashboard from '@/components/StatsDashboard.vue'
 import ShowcaseManager from '@/components/ShowcaseManager.vue'
+import JournalLibrary from '@/components/journal/JournalLibrary.vue'
 import JournalWorkspace from '@/components/journal/JournalWorkspace.vue'
 import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import { getContextMenuPosition } from '@/utils/contextMenuPosition'
@@ -322,6 +328,9 @@ const isCloudShowcaseTab = (value: unknown): value is CloudShowcaseTab =>
   value === 'showcase' || value === 'barn' || value === 'stats' || value === 'journal'
 
 const activeTab = ref<CloudShowcaseTab>(isCloudShowcaseTab(route.query.tab) ? route.query.tab : 'barn')
+const mobileJournalBookId = computed(() => (
+  isMobile.value && typeof route.query.book === 'string' ? route.query.book : ''
+))
 
 const visitedTabs = ref(new Set<CloudShowcaseTab>([activeTab.value]))
 const journalStore = useJournalStore()
@@ -337,9 +346,40 @@ const saveJournalBeforeLeaving = async () => {
   }
   return Boolean(saved)
 }
+
+const openJournalBook = async (bookId: string) => {
+  await journalStore.setActiveBook(bookId)
+  await router.push({
+    path: '/showcase',
+    query: { tab: 'journal', book: bookId },
+  })
+}
+
+const createJournalBook = async () => {
+  try {
+    const result = await ElMessageBox.prompt('给这本手帐起个名字', '新建手帐', {
+      confirmButtonText: '创建',
+      cancelButtonText: '取消',
+      inputValue: '我的手帐',
+      inputPattern: /\S+/,
+      inputErrorMessage: '请输入手帐名称',
+    })
+    const created = await journalStore.createBook(result.value.trim())
+    if (!created) return
+    await router.push({
+      path: '/showcase',
+      query: { tab: 'journal', book: created.id },
+    })
+  } catch {
+    // user cancelled
+  }
+}
+
 onBeforeRouteLeave(saveJournalBeforeLeaving)
 onBeforeRouteUpdate(async to => {
-  if (to.query.tab !== 'journal') return saveJournalBeforeLeaving()
+  const leavingJournal = to.query.tab !== 'journal'
+  const leavingMobileEditor = Boolean(mobileJournalBookId.value) && !to.query.book
+  if (leavingJournal || leavingMobileEditor) return saveJournalBeforeLeaving()
 })
 onActivated(async () => {
   const workspace = useMobileWorkspaceStore()

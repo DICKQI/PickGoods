@@ -28,7 +28,8 @@ describe('mobile workspace route contract', () => {
     expect(activeMobileTab({ path: '/showcase', query: { tab: 'journal' } })).toBe('journal')
   })
   it('uses immersive shell only for the mobile journal editor', () => {
-    expect(isMobileJournalEditor({ path: '/showcase', query: { tab: 'journal' } })).toBe(true)
+    expect(isMobileJournalEditor({ path: '/showcase', query: { tab: 'journal', book: 'book-1' } })).toBe(true)
+    expect(isMobileJournalEditor({ path: '/showcase', query: { tab: 'journal' } })).toBe(false)
     for (const tab of ['showcase', 'barn', 'stats', undefined]) {
       expect(isMobileJournalEditor({ path: '/showcase', query: { tab: tab ?? null } })).toBe(false)
     }

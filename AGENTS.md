@@ -59,6 +59,15 @@ Pull requests should include a summary, verification commands, linked issue or c
 - el-drawer 内部 DOM（`.el-overlay`/`.el-drawer`/`.el-drawer__body`）不携带组件的 scoped 属性，SFC 里 `:deep(.el-drawer__body)` 永远命中不了，body 会保持 EP 默认 `padding:20px; overflow:auto`（多出滚动条、布局塌陷）。必须用 `:global(.组件专属类名 .el-drawer__body)` 覆盖（ClubDetail/LocationManagement 已是此模式；GoodsDrawer 仍是失效的 `:deep` 写法，待迁移）。
 - 移动端打开抽屉锁 body 滚动时，不要用 `transform: translateY(-scrollTop)` 保留滚动位置：transform 会把 body 变成 fixed 后代（el-overlay 遮罩、抽屉）的包含块，遮罩和抽屉会随页面滚动整体偏移、无法贴住视口。应改用 `position: fixed; top: -scrollTop px`。
 
+## 移动端滚动收缩标题（JournalLibrary）
+
+- 手帐列表的“我的手帐”标题使用 `position: sticky`。sticky 的 `top` 必须始终保持为 `calc(var(--app-navbar-height) + 6px)`，展开态和收缩态不要切换不同的 `top`，否则顶部会产生跳动。
+- 收缩状态由标题前的 1px 哨兵元素判断，不要直接用 `window.scrollY` 判断并同时播放高度动画。高度动画会改变文档布局和滚动位置，容易形成“收缩后触发展开、展开后再次触发收缩”的反馈抖动。
+- 进入收缩态：哨兵顶部到达顶部标签栏底部后触发。恢复展开：只有页面实际回到 `scrollTop <= 2` 时才触发，不能在中间滚动位置恢复，以免来回切换。
+- 滚动监听使用 `requestAnimationFrame` 合并更新；标题设置 `overflow-anchor: none`，避免浏览器滚动锚定介入高度动画。
+- 动画只改变 `min-height`、`padding`、`margin`、`opacity` 和字号；保留 `prefers-reduced-motion` 分支。
+- `JournalLibrary.spec.ts` 必须覆盖向下滚动后收缩、中间位置保持收缩、回到顶部后展开，以及哨兵判定的滞回行为。
+
 ## Android APK 构建流程与坑
 
 - 文档流程：`pnpm build` → `npx cap sync android` → `android/gradlew.bat assembleDebug`，产物在 `android/app/build/outputs/apk/debug/app-debug.apk`。

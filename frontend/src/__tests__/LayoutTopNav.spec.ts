@@ -197,12 +197,20 @@ describe('Layout top navigation', () => {
   })
 
   it('uses the immersive shell only for the mobile journal editor', async () => {
-    const wrapper = await mountMobileLayout('/showcase?tab=journal')
+    const wrapper = await mountMobileLayout('/showcase?tab=journal&book=book-1')
 
     expect(wrapper.get('.layout').classes()).toContain('mobile-journal-editor')
     expect(wrapper.find('.mobile-page-header').exists()).toBe(false)
     expect(wrapper.findComponent({ name: 'MobileBottomNav' }).exists()).toBe(false)
     expect(wrapper.get('main').classes()).not.toContain('has-bottom-nav')
+    wrapper.unmount()
+  })
+
+  it('keeps the normal mobile shell for the journal library', async () => {
+    const wrapper = await mountMobileLayout('/showcase?tab=journal')
+
+    expect(wrapper.get('.layout').classes()).not.toContain('mobile-journal-editor')
+    expect(wrapper.findComponent({ name: 'MobileBottomNav' }).exists()).toBe(true)
     wrapper.unmount()
   })
 

@@ -132,6 +132,7 @@ const mountCloudShowcase = async ({
         },
         GoodsMultiDisplayDialog: { template: '<aside />' },
         StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
+        JournalLibrary: { template: '<section data-test="journal-library" />' },
         JournalWorkspace: { template: '<section data-test="journal-workspace" />' },
         ShowcaseManager: { template: '<section />' },
         'el-alert': { template: '<div />' },
@@ -301,7 +302,18 @@ describe('CloudShowcase mobile compact header', () => {
 
     const wrapper = await mountMobileCloudShowcase()
 
+    expect(wrapper.find('[data-test="journal-library"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(false)
+    expect(wrapper.find('.barn-section').exists()).toBe(false)
+  })
+
+  it('opens the immersive journal editor when a book is selected', async () => {
+    routeQuery.value = { tab: 'journal', book: 'book-1' }
+
+    const wrapper = await mountMobileCloudShowcase()
+
     expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(true)
+    expect(wrapper.find('[data-test="journal-library"]').exists()).toBe(false)
     expect(wrapper.find('.barn-section').exists()).toBe(false)
   })
 

@@ -866,7 +866,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   ArrowLeft,
@@ -902,9 +902,13 @@ import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 
 const journalStore = useJournalStore()
 const router = useRouter()
+const route = useRoute()
 const { isMobile } = useResponsiveDevice()
 const canvasRef = ref<InstanceType<typeof JournalCanvas> | null>(null)
 const fallbackContent: JournalPageContent = { version: 2, layers: [] }
+const props = withDefaults(defineProps<{ bookId?: string }>(), {
+  bookId: '',
+})
 type BackgroundStyle = 'plain' | 'dot' | 'line' | 'grid' | 'note'
 type SizePreset = 'journal' | 'square' | 'a4' | 'phone'
 type MobileJournalPanel = 'pages' | 'materials' | 'layers' | 'versions' | 'more' | null
@@ -1020,6 +1024,12 @@ const openMobilePanel = (panel: Exclude<MobileJournalPanel, null>) => {
 
 const selectMobileBook = async (bookId: string) => {
   await journalStore.setActiveBook(bookId)
+  if (props.bookId && bookId !== props.bookId) {
+    await router.replace({
+      path: '/showcase',
+      query: { ...route.query, tab: 'journal', book: bookId },
+    })
+  }
   if (isMobile.value) closeMobilePanel()
 }
 
@@ -1081,7 +1091,7 @@ const openMobileReader = () => {
 const leaveMobileJournal = () => {
   closeMobilePanel()
   if (window.history.state?.back) router.back()
-  else void router.push('/showcase?tab=barn')
+  else void router.push('/showcase?tab=journal')
 }
 
 const handleMobileBack = async () => {
@@ -1710,8 +1720,31 @@ const handleJournalRefresh = async () => {
   }
 }
 
+const initializeJournal = async () => {
+  if (isMobile.value && props.bookId) {
+    if (journalStore.activeBookId === props.bookId && journalStore.activePageId) return
+    if (journalStore.books.length === 0) {
+      await journalStore.fetchBookSummaries()
+    }
+    if (journalStore.books.some(book => book.id === props.bookId)) {
+      await journalStore.setActiveBook(props.bookId)
+    } else if (!journalStore.error) {
+      await router.replace('/showcase?tab=journal')
+    }
+    return
+  }
+  await journalStore.fetchBooks()
+}
+
+watch(
+  [() => props.bookId, isMobile],
+  () => {
+    void initializeJournal()
+  },
+  { immediate: true },
+)
+
 onMounted(() => {
-  journalStore.fetchBooks()
   window.addEventListener('click', closeContextMenus)
   window.addEventListener('scroll', closeContextMenus, true)
   window.addEventListener('resize', closeContextMenus)

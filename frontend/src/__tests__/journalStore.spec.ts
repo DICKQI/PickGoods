@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useJournalStore } from '@/stores/journal'
+import { useAuthStore } from '@/stores/auth'
 import type { JournalBook, JournalPage, JournalPageContent, JournalPageVersion } from '@/api/types'
 
 vi.mock('@/api/journal', () => ({
@@ -94,7 +95,64 @@ const firstVersion: JournalPageVersion = {
 describe('useJournalStore', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
+    localStorage.clear()
     vi.clearAllMocks()
+  })
+
+  it('refreshes book summaries without dropping the current list on failure', async () => {
+    const store = useJournalStore()
+    store.books = [book]
+    vi.mocked(getJournalBooks).mockRejectedValueOnce(new Error('网络错误'))
+
+    const refreshed = await store.refreshBookSummaries()
+
+    expect(refreshed).toBe(false)
+    expect(store.books).toEqual([book])
+    expect(store.error).toBe('网络错误')
+  })
+
+  it('restores the last page for the current user and falls back when it is gone', async () => {
+    const auth = useAuthStore()
+    auth.user = {
+      id: 7,
+      username: 'collector',
+      role: 'User',
+      account_type: 'collector',
+      approval_status: 'approved',
+    }
+    const secondPage = {
+      ...firstPage,
+      id: 'page-2',
+      title: '第 2 页',
+      page_no: 2,
+      content: undefined,
+    }
+    localStorage.setItem('journal:last-page:7', JSON.stringify({ 'book-1': 'page-2' }))
+    vi.mocked(getJournalPages).mockResolvedValue([firstPage, secondPage])
+    vi.mocked(getJournalPage).mockResolvedValue({
+      ...secondPage,
+      content: textContent('page-2-content', '第二页'),
+    })
+    vi.mocked(getJournalPageVersions).mockResolvedValue({
+      count: 0,
+      page: 1,
+      page_size: 50,
+      next: null,
+      previous: null,
+      results: [],
+    })
+    const store = useJournalStore()
+    store.books = [book]
+
+    await store.setActiveBook('book-1')
+
+    expect(store.activePageId).toBe('page-2')
+    expect(getJournalPage).toHaveBeenCalledWith('page-2')
+
+    localStorage.setItem('journal:last-page:7', JSON.stringify({ 'book-1': 'deleted-page' }))
+    await store.setActiveBook('book-1')
+
+    expect(store.activePageId).toBe('page-1')
   })
 
   it('loads books and selects the first book page', async () => {
