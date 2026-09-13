@@ -15,7 +15,10 @@
           @click="close"
         />
         <Transition name="base-bottom-sheet-panel" appear>
-          <section class="base-bottom-sheet__panel">
+          <section
+            class="base-bottom-sheet__panel"
+            :class="`base-bottom-sheet__panel--${size}`"
+          >
             <div class="base-bottom-sheet__handle" aria-hidden="true"></div>
             <header class="base-bottom-sheet__header">
               <div class="base-bottom-sheet__heading">
@@ -50,11 +53,14 @@
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Close } from '@element-plus/icons-vue'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   modelValue: boolean
   title: string
   subtitle?: string
-}>()
+  size?: 'auto' | 'half' | 'full'
+}>(), {
+  size: 'full',
+})
 
 const emit = defineEmits<{
   'update:modelValue': [value: boolean]
@@ -130,8 +136,6 @@ onBeforeUnmount(() => {
   bottom: 0;
   display: flex;
   flex-direction: column;
-  max-height: min(92dvh, 760px);
-  height: min(92dvh, 760px);
   padding: 8px 0 0;
   border-radius: 20px 20px 0 0;
   background: rgba(255, 255, 255, 0.98);
@@ -139,6 +143,21 @@ onBeforeUnmount(() => {
   box-shadow:
     0 -18px 42px rgba(15, 23, 42, 0.18),
     0 -2px 12px rgba(212, 175, 55, 0.08);
+}
+
+.base-bottom-sheet__panel--full {
+  height: min(92dvh, 760px);
+  max-height: min(92dvh, 760px);
+}
+
+.base-bottom-sheet__panel--half {
+  height: min(72dvh, 640px);
+  max-height: min(72dvh, 640px);
+}
+
+.base-bottom-sheet__panel--auto {
+  height: auto;
+  max-height: min(92dvh, 760px);
 }
 
 .base-bottom-sheet__handle {

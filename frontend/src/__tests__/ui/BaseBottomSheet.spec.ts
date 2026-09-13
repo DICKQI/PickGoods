@@ -77,4 +77,15 @@ describe('BaseBottomSheet', () => {
     expect(document.body.querySelector('.sheet-body-content')?.textContent).toBe('正文')
     expect(document.body.querySelector('.sheet-footer-btn')?.textContent).toBe('保存')
   })
+
+  it('supports auto, half, and full panel sizes with full as the default', async () => {
+    const wrapper = mountSheet()
+    expect(document.body.querySelector('.base-bottom-sheet__panel')?.classList).toContain('base-bottom-sheet__panel--full')
+
+    await wrapper.setProps({ size: 'half' })
+    expect(document.body.querySelector('.base-bottom-sheet__panel')?.classList).toContain('base-bottom-sheet__panel--half')
+
+    await wrapper.setProps({ size: 'auto' })
+    expect(document.body.querySelector('.base-bottom-sheet__panel')?.classList).toContain('base-bottom-sheet__panel--auto')
+  })
 })

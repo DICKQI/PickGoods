@@ -2,6 +2,7 @@ import { mount, flushPromises } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { nextTick, reactive } from 'vue'
 import { ElMessageBox } from 'element-plus'
+import { createMemoryHistory, createRouter } from 'vue-router'
 import JournalWorkspace from '@/components/journal/JournalWorkspace.vue'
 import type { JournalBook, JournalLayer, JournalPage } from '@/api/types'
 
@@ -29,6 +30,7 @@ const journalStore = reactive({
   createPage: vi.fn(),
   setActivePage: vi.fn(),
   saveActivePage: vi.fn(),
+  discardActivePageChanges: vi.fn(async () => true),
   uploadPreview: vi.fn(),
   uploadBookCover: vi.fn(),
   createPublicShare: vi.fn(),
@@ -79,7 +81,7 @@ const canvasState = reactive({
 vi.mock('@/components/journal/JournalCanvas.vue', () => ({
   default: {
     name: 'JournalCanvas',
-    props: ['modelValue', 'width', 'height', 'background', 'backgroundStyle'],
+    props: ['modelValue', 'width', 'height', 'background', 'backgroundStyle', 'mobile'],
     emits: ['update:modelValue'],
     setup(_props: unknown, { expose }: any) {
       expose(canvasState)
@@ -89,10 +91,28 @@ vi.mock('@/components/journal/JournalCanvas.vue', () => ({
   },
 }))
 
-const mountWorkspace = () => mount(JournalWorkspace, {
-  global: {
-    stubs: {
+const mountWorkspace = ({ mobile = false }: { mobile?: boolean } = {}) => {
+  Object.defineProperty(window, 'innerWidth', {
+    configurable: true,
+    value: mobile ? 390 : 1197,
+  })
+  Object.defineProperty(navigator, 'maxTouchPoints', {
+    configurable: true,
+    value: mobile ? 5 : 0,
+  })
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }],
+  })
+  return mount(JournalWorkspace, {
+    global: {
+      plugins: [router],
+      stubs: {
       JournalGoodsPicker: true,
+      BaseBottomSheet: {
+        props: ['modelValue', 'title', 'subtitle', 'size'],
+        template: '<section v-if="modelValue" class="bottom-sheet-stub" :data-title="title"><slot /></section>',
+      },
       'el-alert': true,
       'el-button': {
         emits: ['click'],
@@ -109,9 +129,38 @@ const mountWorkspace = () => mount(JournalWorkspace, {
       'el-skeleton': true,
       'el-tab-pane': { template: '<section><slot /></section>' },
       'el-tabs': { template: '<div><slot /></div>' },
+      },
     },
-  },
-})
+  })
+}
+
+const setActivePageFixture = () => {
+  journalStore.books = [{
+    id: 'book-1',
+    title: '旅行手帐',
+    cover_image: null,
+    page_count: 1,
+  }]
+  journalStore.activeBookId = 'book-1'
+  journalStore.activeBook = journalStore.books[0]
+  journalStore.activePageId = 'page-1'
+  journalStore.pages = [{
+    id: 'page-1',
+    book: 'book-1',
+    title: '第 1 页',
+    page_no: 1,
+    width: 1080,
+    height: 1440,
+    background: '#fffaf0',
+    background_style: 'plain',
+    content: { version: 2, layers: [] },
+    revision: 1,
+    preview_image: null,
+    created_at: '2026-06-26T00:00:00Z',
+    updated_at: '2026-06-26T00:00:00Z',
+  }]
+  journalStore.activePage = journalStore.pages[0]!
+}
 
 describe('JournalWorkspace', () => {
   beforeEach(() => {
@@ -130,6 +179,8 @@ describe('JournalWorkspace', () => {
     journalStore.fetchPageDetail.mockClear()
     journalStore.fetchVersions.mockClear()
     journalStore.saveActivePage.mockClear()
+    journalStore.discardActivePageChanges.mockClear()
+    canvasState.setTool.mockClear()
     canvasState.alignSelectedLayers.mockClear()
     canvasState.distributeSelectedLayers.mockClear()
     canvasState.toggleLayerLock.mockClear()
@@ -365,6 +416,64 @@ describe('JournalWorkspace', () => {
     expect(completed).toContain('cloud-showcase:journal-refresh-complete')
 
     window.removeEventListener('cloud-showcase:journal-refresh-complete', listener)
+    wrapper.unmount()
+  })
+
+  it('renders the immersive mobile editor with high-frequency tools', async () => {
+    setActivePageFixture()
+    const wrapper = mountWorkspace({ mobile: true })
+    await nextTick()
+
+    expect(wrapper.find('.journal-mobile-header').exists()).toBe(true)
+    expect(wrapper.find('.journal-mobile-toolbar').exists()).toBe(true)
+    expect(wrapper.findAll('.journal-mobile-toolbar button')).toHaveLength(6)
+    expect(wrapper.find('.journal-topbar').exists()).toBe(false)
+
+    await wrapper.findAll('.journal-mobile-toolbar button')[1]!.trigger('click')
+    expect(canvasState.setTool).toHaveBeenCalledWith('draw')
+    expect(wrapper.find('.journal-mobile-brush-context').exists()).toBe(true)
+    wrapper.unmount()
+  })
+
+  it('opens the mobile page and inspector panels without mounting desktop columns', async () => {
+    setActivePageFixture()
+    const wrapper = mountWorkspace({ mobile: true })
+    await nextTick()
+
+    await wrapper.get('.journal-mobile-page-switch').trigger('click')
+    expect(wrapper.get('.journal-sidebar').classes()).toContain('is-mobile-open')
+
+    await wrapper.get('.journal-mobile-sheet-backdrop').trigger('click')
+    const materialButton = wrapper.findAll('.journal-mobile-toolbar button')[4]!
+    await materialButton.trigger('click')
+    expect(wrapper.get('.journal-side-panel').classes()).toContain('is-mobile-open')
+    wrapper.unmount()
+  })
+
+  it('keeps the mobile editor open when an exit save fails', async () => {
+    setActivePageFixture()
+    journalStore.dirty = true
+    journalStore.saveActivePage.mockResolvedValueOnce(null)
+    const wrapper = mountWorkspace({ mobile: true })
+    await nextTick()
+
+    await wrapper.get('button[aria-label="返回"]').trigger('click')
+    await flushPromises()
+
+    expect(journalStore.saveActivePage).toHaveBeenCalledWith({ createVersion: false })
+    expect(wrapper.get('.bottom-sheet-stub').attributes('data-title')).toBe('保存失败')
+    wrapper.unmount()
+  })
+
+  it('opens the mobile exit recovery sheet when the route guard blocks leaving', async () => {
+    setActivePageFixture()
+    const wrapper = mountWorkspace({ mobile: true })
+    await nextTick()
+
+    window.dispatchEvent(new CustomEvent('cloud-showcase:journal-exit-blocked'))
+    await nextTick()
+
+    expect(wrapper.get('.bottom-sheet-stub').attributes('data-title')).toBe('保存失败')
     wrapper.unmount()
   })
 })

@@ -1,5 +1,5 @@
 <template>
-  <aside class="journal-goods-picker">
+  <aside class="journal-goods-picker" :class="{ 'is-mobile': mobile }">
     <div class="picker-header">
       <strong>谷子素材</strong>
       <div class="picker-tabs" role="tablist" aria-label="素材类型">
@@ -128,8 +128,10 @@ const props = withDefaults(defineProps<{
   categoryId?: number
   themeId?: number
   onlyWithImage?: boolean
+  mobile?: boolean
 }>(), {
   onlyWithImage: true,
+  mobile: false,
 })
 
 const keyword = ref('')
@@ -458,5 +460,59 @@ onMounted(() => {
   align-items: center;
   justify-content: center;
   color: #94a3b8;
+}
+
+.journal-goods-picker.is-mobile {
+  gap: 14px;
+}
+
+.journal-goods-picker.is-mobile .picker-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  gap: 10px;
+  padding: 2px 0 10px;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.journal-goods-picker.is-mobile .picker-header > strong {
+  display: none;
+}
+
+.journal-goods-picker.is-mobile .picker-tab {
+  min-height: 40px;
+  font-size: 13px;
+}
+
+.journal-goods-picker.is-mobile .picker-grid,
+.journal-goods-picker.is-mobile .decor-sticker-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+.journal-goods-picker.is-mobile .picker-item,
+.journal-goods-picker.is-mobile .decor-sticker-item {
+  min-height: 122px;
+  padding: 6px;
+}
+
+.journal-goods-picker.is-mobile .recent-goods-item {
+  width: 72px;
+}
+
+.journal-goods-picker.is-mobile .recent-goods-item img,
+.journal-goods-picker.is-mobile .recent-goods-item .picker-placeholder {
+  width: 58px;
+  height: 58px;
+}
+
+@media (max-width: 360px) {
+  .journal-goods-picker.is-mobile .picker-grid,
+  .journal-goods-picker.is-mobile .decor-sticker-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

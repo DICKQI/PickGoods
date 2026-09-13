@@ -1,6 +1,54 @@
 <template>
-  <section class="journal-workspace" data-test="journal-workspace">
-    <header class="journal-topbar">
+  <section
+    class="journal-workspace"
+    :class="{ 'journal-workspace--mobile': isMobile, 'has-mobile-context': showMobilePaintContext }"
+    data-test="journal-workspace"
+  >
+    <header v-if="isMobile" class="journal-mobile-header">
+      <button class="journal-mobile-icon-btn" type="button" aria-label="返回" @click="handleMobileBack">
+        <el-icon><ArrowLeft /></el-icon>
+      </button>
+      <button class="journal-mobile-page-switch" type="button" @click="openMobilePanel('pages')">
+        <strong>{{ journalStore.activeBook?.title || '新建手帐' }}</strong>
+        <span>
+          <i class="journal-status-dot" :class="statusInfo.className" aria-hidden="true" />
+          {{ mobilePageLabel }} · {{ statusInfo.text }}
+        </span>
+      </button>
+      <div class="journal-mobile-header-actions">
+        <button
+          class="journal-mobile-icon-btn"
+          type="button"
+          aria-label="撤销"
+          :disabled="!canvasCanUndo"
+          @click="canvasRef?.undo()"
+        >
+          <el-icon><RefreshLeft /></el-icon>
+        </button>
+        <button
+          class="journal-mobile-icon-btn"
+          type="button"
+          aria-label="重做"
+          :disabled="!canvasCanRedo"
+          @click="canvasRef?.redo()"
+        >
+          <el-icon><RefreshRight /></el-icon>
+        </button>
+        <button
+          class="journal-mobile-save-btn"
+          type="button"
+          :disabled="!journalStore.activePage || journalStore.saving"
+          @click="savePage"
+        >
+          {{ journalStore.saving ? '保存中' : '保存' }}
+        </button>
+        <button class="journal-mobile-icon-btn" type="button" aria-label="更多" @click="openMobilePanel('more')">
+          <el-icon><MoreFilled /></el-icon>
+        </button>
+      </div>
+    </header>
+
+    <header v-if="!isMobile" class="journal-topbar">
       <div class="journal-heading">
         <h2>手帐</h2>
         <span class="journal-status" :class="statusInfo.className">
@@ -59,11 +107,30 @@
     </div>
 
     <div class="journal-layout">
-      <aside class="journal-sidebar">
+      <aside
+        class="journal-sidebar"
+        :class="{ 'is-mobile-open': mobilePanel === 'pages' }"
+      >
+        <div v-if="isMobile" class="journal-mobile-sheet-handle" aria-hidden="true" />
+        <div v-if="isMobile" class="journal-mobile-sheet-heading">
+          <div>
+            <strong>手帐与页面</strong>
+            <small>{{ journalStore.books.length }} 本 · {{ journalStore.pages.length }} 页</small>
+          </div>
+          <button class="journal-mobile-sheet-close" type="button" aria-label="关闭" @click="closeMobilePanel">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
         <div class="sidebar-section">
           <div class="sidebar-title">
             <strong>手帐本</strong>
-            <span>{{ journalStore.books.length }}</span>
+            <span>
+              {{ journalStore.books.length }}
+              <el-button v-if="isMobile" text size="small" @click="createBook">
+                <el-icon><Plus /></el-icon>
+                新建
+              </el-button>
+            </span>
           </div>
           <div v-if="journalStore.books.length === 0 && !journalStore.loading" class="empty-mini">
             还没有手帐
@@ -74,7 +141,7 @@
             class="book-row"
             :class="{ 'is-active': book.id === journalStore.activeBookId }"
             type="button"
-            @click="journalStore.setActiveBook(book.id)"
+            @click="selectMobileBook(book.id)"
             @contextmenu.prevent="openBookContextMenu($event, book.id)"
           >
             <img v-if="book.cover_image" class="book-cover-thumb" :src="book.cover_image" alt="" />
@@ -97,8 +164,8 @@
             class="page-row"
             :class="{ 'is-active': page.id === journalStore.activePageId }"
             type="button"
-            draggable="true"
-            @click="journalStore.setActivePage(page.id)"
+            :draggable="!isMobile"
+            @click="selectMobilePage(page.id)"
             @contextmenu.prevent="openPageContextMenu($event, page.id)"
             @dragstart="handlePageDragStart(page.id)"
             @dragover.prevent
@@ -121,6 +188,31 @@
           <el-icon class="el-icon--left"><Delete /></el-icon>
           删除当前手帐
         </el-button>
+
+        <div v-if="isMobile && journalStore.activeBook" class="journal-mobile-page-actions">
+          <div class="journal-mobile-action-group">
+            <strong>当前手帐</strong>
+            <div>
+              <el-button size="small" @click="coverInputRef?.click()">设置封面</el-button>
+              <el-button size="small" @click="renameBookById(journalStore.activeBook.id)">重命名</el-button>
+              <el-button size="small" type="danger" plain @click="deleteBook">删除</el-button>
+            </div>
+          </div>
+          <div v-if="journalStore.activePage" class="journal-mobile-action-group">
+            <strong>当前页面</strong>
+            <div>
+              <el-button size="small" :disabled="activePageIndex <= 0" @click="moveMobilePage(-1)">上移</el-button>
+              <el-button
+                size="small"
+                :disabled="activePageIndex < 0 || activePageIndex >= journalStore.pages.length - 1"
+                @click="moveMobilePage(1)"
+              >下移</el-button>
+              <el-button size="small" @click="renamePageById(journalStore.activePage.id)">重命名</el-button>
+              <el-button size="small" @click="duplicatePageById(journalStore.activePage.id)">复制</el-button>
+              <el-button size="small" type="danger" plain @click="deletePage(journalStore.activePage.id)">删除</el-button>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <Teleport to="body">
@@ -179,6 +271,7 @@
         <JournalCanvas
           v-else
           ref="canvasRef"
+          :mobile="isMobile"
           :model-value="journalStore.activePage.content || fallbackContent"
           :width="journalStore.activePage.width"
           :height="journalStore.activePage.height"
@@ -188,10 +281,24 @@
         />
       </main>
 
-      <aside class="journal-side-panel">
+      <aside
+        class="journal-side-panel"
+        :class="{ 'is-mobile-open': showMobileInspector }"
+      >
+        <div v-if="isMobile" class="journal-mobile-sheet-handle" aria-hidden="true" />
+        <div v-if="isMobile" class="journal-mobile-sheet-heading">
+          <div>
+            <strong>{{ mobileInspectorTitle }}</strong>
+            <small>页面、素材与图层工具</small>
+          </div>
+          <button class="journal-mobile-sheet-close" type="button" aria-label="关闭" @click="closeMobilePanel">
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
         <el-tabs v-model="sideTab" stretch>
           <el-tab-pane label="素材" name="goods">
             <JournalGoodsPicker
+              :mobile="isMobile"
               @insert-goods="insertGoods"
               @insert-decor-sticker="insertDecorSticker"
               @insert-local-image="insertLocalImage"
@@ -564,9 +671,187 @@
         </el-tabs>
       </aside>
     </div>
+
+    <button
+      v-if="isMobile && mobilePanel"
+      class="journal-mobile-sheet-backdrop"
+      type="button"
+      aria-label="关闭面板"
+      @click="closeMobilePanel"
+    />
+
+    <div
+      v-if="isMobile"
+      class="journal-mobile-dock"
+      :class="{ 'has-context': showMobilePaintContext }"
+    >
+      <div v-if="showMobilePaintContext" class="journal-mobile-brush-context">
+        <template v-if="mobileTool === 'draw'">
+          <label class="journal-mobile-color-control">
+            <span>颜色</span>
+            <input type="color" :value="mobileBrushColor" aria-label="画笔颜色" @input="handleMobileBrushColor" />
+          </label>
+          <div class="journal-mobile-brush-presets" aria-label="画笔类型">
+            <button
+              v-for="preset in mobileBrushPresets"
+              :key="preset.type"
+              type="button"
+              :class="{ 'is-active': mobileBrushType === preset.type }"
+              @click="setMobileBrushType(preset.type)"
+            >
+              {{ preset.label }}
+            </button>
+          </div>
+        </template>
+        <label class="journal-mobile-width-control">
+          <span>{{ mobileTool === 'erase' ? '橡皮' : '粗细' }}</span>
+          <input
+            type="range"
+            :min="mobileTool === 'erase' ? 4 : 2"
+            :max="mobileTool === 'erase' ? 80 : 28"
+            :value="mobileTool === 'erase' ? mobileEraserWidth : mobileBrushWidth"
+            @input="handleMobileBrushWidth"
+          />
+          <strong>{{ mobileTool === 'erase' ? mobileEraserWidth : mobileBrushWidth }}px</strong>
+        </label>
+      </div>
+
+      <nav class="journal-mobile-toolbar" aria-label="手帐工具">
+        <button
+          type="button"
+          :class="{ 'is-active': mobileTool === 'select' }"
+          :aria-pressed="mobileTool === 'select'"
+          @click="setMobileTool('select')"
+        >
+          <el-icon><Pointer /></el-icon>
+          <span>选择</span>
+        </button>
+        <button
+          type="button"
+          :class="{ 'is-active': mobileTool === 'draw' }"
+          :aria-pressed="mobileTool === 'draw'"
+          :disabled="!journalStore.activePage"
+          @click="setMobileTool('draw')"
+        >
+          <el-icon><EditPen /></el-icon>
+          <span>画笔</span>
+        </button>
+        <button
+          type="button"
+          :class="{ 'is-active': mobileTool === 'erase' }"
+          :aria-pressed="mobileTool === 'erase'"
+          :disabled="!journalStore.activePage"
+          @click="setMobileTool('erase')"
+        >
+          <el-icon><Brush /></el-icon>
+          <span>橡皮</span>
+        </button>
+        <button
+          type="button"
+          :disabled="!journalStore.activePage"
+          @click="handleMobileAddText"
+        >
+          <el-icon><Document /></el-icon>
+          <span>文字</span>
+        </button>
+        <button
+          type="button"
+          :disabled="!journalStore.activePage"
+          @click="openMobileInspector('goods')"
+        >
+          <el-icon><Picture /></el-icon>
+          <span>素材</span>
+        </button>
+        <button
+          type="button"
+          :disabled="!journalStore.activePage"
+          @click="openMobileInspector('layers')"
+        >
+          <el-icon><Grid /></el-icon>
+          <span>图层</span>
+        </button>
+      </nav>
+    </div>
+
+    <BaseBottomSheet
+      v-model="mobileMoreOpen"
+      title="更多"
+      subtitle="导出、分享、页面维护与版本"
+      size="auto"
+    >
+      <div class="journal-mobile-more">
+        <section class="journal-mobile-more-section">
+          <div class="journal-mobile-more-title">
+            <strong>导出倍率</strong>
+            <div class="journal-mobile-segmented">
+              <button
+                v-for="scale in [1, 2, 3]"
+                :key="scale"
+                type="button"
+                :class="{ 'is-active': exportScale === scale }"
+                @click="exportScale = scale"
+              >{{ scale }}x</button>
+            </div>
+          </div>
+          <div class="journal-mobile-more-grid">
+            <button type="button" :disabled="!journalStore.activePage" @click="runMobileMore(downloadCurrentPage)">
+              <el-icon><Download /></el-icon>
+              <span>导出图片</span>
+            </button>
+            <button type="button" :disabled="!journalStore.activePage" @click="runMobileMore(downloadLongImage)">
+              <el-icon><DocumentChecked /></el-icon>
+              <span>导出长图</span>
+            </button>
+            <button type="button" :disabled="!journalStore.activePage" @click="runMobileMore(downloadShareImage)">
+              <el-icon><Share /></el-icon>
+              <span>分享图</span>
+            </button>
+            <button type="button" :disabled="!journalStore.activePage" @click="runMobileMore(createPublicShare)">
+              <el-icon><Link /></el-icon>
+              <span>公开链接</span>
+            </button>
+          </div>
+        </section>
+        <section class="journal-mobile-more-section">
+          <div class="journal-mobile-more-list">
+            <button type="button" :disabled="journalStore.pages.length === 0" @click="openMobileReader">
+              <el-icon><View /></el-icon>
+              <span>读者模式</span>
+            </button>
+            <button type="button" :disabled="!journalStore.activePage" @click="runMobileMore(exportPreview)">
+              <el-icon><Picture /></el-icon>
+              <span>更新缩略图</span>
+            </button>
+            <button type="button" :disabled="!journalStore.activeBook" @click="runMobileMore(() => coverInputRef?.click())">
+              <el-icon><Camera /></el-icon>
+              <span>设置封面</span>
+            </button>
+            <button type="button" :disabled="!journalStore.activePage" @click="openMobileInspector('versions')">
+              <el-icon><RefreshLeft /></el-icon>
+              <span>版本历史</span>
+            </button>
+          </div>
+        </section>
+      </div>
+    </BaseBottomSheet>
+
+    <BaseBottomSheet
+      v-model="mobileExitSheet"
+      title="保存失败"
+      subtitle="当前修改尚未写入服务器"
+      size="auto"
+    >
+      <div class="journal-mobile-exit">
+        <p>{{ journalStore.error || '请检查网络后重试。' }}</p>
+        <el-button type="primary" :loading="exitSaving" @click="retryMobileExit">重试保存</el-button>
+        <el-button :disabled="exitSaving" @click="discardMobileExit">放弃修改并退出</el-button>
+        <el-button text :disabled="exitSaving" @click="mobileExitSheet = false">继续编辑</el-button>
+      </div>
+    </BaseBottomSheet>
+
     <div v-if="readerMode" class="reader-overlay">
       <button class="reader-close" type="button" @click="readerMode = false">关闭</button>
-      <button class="reader-nav" type="button" :disabled="readerIndex <= 0" @click="readerIndex -= 1">上一页</button>
+      <button class="reader-nav reader-nav--prev" type="button" :disabled="readerIndex <= 0" @click="readerIndex -= 1">上一页</button>
       <div class="reader-page">
         <img v-if="readerPage?.preview_image" :src="readerPage.preview_image" alt="" />
         <div v-else class="reader-placeholder" :style="{ background: readerPage?.background || '#fffaf0' }">
@@ -574,27 +859,72 @@
         </div>
         <strong>{{ readerPage?.title }}</strong>
       </div>
-      <button class="reader-nav" type="button" :disabled="readerIndex >= journalStore.pages.length - 1" @click="readerIndex += 1">下一页</button>
+      <button class="reader-nav reader-nav--next" type="button" :disabled="readerIndex >= journalStore.pages.length - 1" @click="readerIndex += 1">下一页</button>
     </div>
   </section>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, DocumentChecked, Download, Hide, Lock, Plus, Unlock, View } from '@element-plus/icons-vue'
+import {
+  ArrowLeft,
+  Brush,
+  Camera,
+  Close,
+  Delete,
+  Document,
+  DocumentChecked,
+  Download,
+  EditPen,
+  Grid,
+  Hide,
+  Link,
+  Lock,
+  MoreFilled,
+  Picture,
+  Plus,
+  Pointer,
+  RefreshLeft,
+  RefreshRight,
+  Share,
+  Unlock,
+  View,
+} from '@element-plus/icons-vue'
 import { useJournalStore } from '@/stores/journal'
+import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
 import JournalCanvas from './JournalCanvas.vue'
 import JournalGoodsPicker from './JournalGoodsPicker.vue'
 import type { GoodsListItem, JournalLayer, JournalPageContent, JournalShapeItem, JournalStickerItem, JournalTextItem } from '@/api/types'
 import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 
 const journalStore = useJournalStore()
+const router = useRouter()
+const { isMobile } = useResponsiveDevice()
 const canvasRef = ref<InstanceType<typeof JournalCanvas> | null>(null)
 const fallbackContent: JournalPageContent = { version: 2, layers: [] }
 type BackgroundStyle = 'plain' | 'dot' | 'line' | 'grid' | 'note'
 type SizePreset = 'journal' | 'square' | 'a4' | 'phone'
+type MobileJournalPanel = 'pages' | 'materials' | 'layers' | 'versions' | 'more' | null
+type MobileBrushType = 'pencil' | 'pen' | 'watercolor' | 'marker' | 'highlighter'
 const sideTab = ref('goods')
+const mobilePanel = ref<MobileJournalPanel>(null)
+const mobileExitSheet = ref(false)
+const exitSaving = ref(false)
+const mobileTool = ref<'select' | 'draw' | 'erase'>('select')
+const mobileBrushColor = ref('#8e7dff')
+const mobileBrushWidth = ref(8)
+const mobileEraserWidth = ref(20)
+const mobileBrushType = ref<MobileBrushType>('pen')
+const mobileBrushPresets: Array<{ type: MobileBrushType; label: string }> = [
+  { type: 'pencil', label: '铅笔' },
+  { type: 'pen', label: '钢笔' },
+  { type: 'watercolor', label: '水彩' },
+  { type: 'marker', label: '马克笔' },
+  { type: 'highlighter', label: '荧光' },
+]
 const coverInputRef = ref<HTMLInputElement | null>(null)
 const exportScale = ref(2)
 const readerMode = ref(false)
@@ -632,6 +962,36 @@ const statusInfo = computed(() => {
   if (journalStore.activePage) return { text: statusText.value, className: 'is-saved' }
   return { text: statusText.value, className: 'is-idle' }
 })
+const mobilePageLabel = computed(() => {
+  const page = journalStore.activePage
+  if (!page) return '还没有页面'
+  const index = journalStore.pages.findIndex(item => item.id === page.id)
+  return `第 ${index >= 0 ? index + 1 : page.page_no} / ${journalStore.pages.length} 页`
+})
+const activePageIndex = computed(() => (
+  journalStore.pages.findIndex(page => page.id === journalStore.activePageId)
+))
+const showMobilePaintContext = computed(() => (
+  isMobile.value && (mobileTool.value === 'draw' || mobileTool.value === 'erase')
+))
+const showMobileInspector = computed(() => (
+  mobilePanel.value === 'materials'
+  || mobilePanel.value === 'layers'
+  || mobilePanel.value === 'versions'
+))
+const mobileInspectorTitle = computed(() => {
+  if (sideTab.value === 'goods') return '素材'
+  if (sideTab.value === 'versions') return '版本历史'
+  return '图层与页面'
+})
+const mobileMoreOpen = computed({
+  get: () => mobilePanel.value === 'more',
+  set: (visible: boolean) => {
+    mobilePanel.value = visible ? 'more' : null
+  },
+})
+const canvasCanUndo = computed(() => Boolean(canvasRef.value?.canUndo))
+const canvasCanRedo = computed(() => Boolean(canvasRef.value?.canRedo))
 const readerPage = computed(() => journalStore.pages[readerIndex.value] || journalStore.activePage)
 const activeSizePreset = computed<SizePreset>(() => {
   const page = journalStore.activePage
@@ -646,6 +1006,125 @@ const textAlignOptions = [
   { label: '中', value: 'center' },
   { label: '右', value: 'right' },
 ]
+
+const closeMobilePanel = () => {
+  mobilePanel.value = null
+}
+
+const openMobilePanel = (panel: Exclude<MobileJournalPanel, null>) => {
+  if (panel === 'pages') {
+    closeContextMenus()
+  }
+  mobilePanel.value = panel
+}
+
+const selectMobileBook = async (bookId: string) => {
+  await journalStore.setActiveBook(bookId)
+  if (isMobile.value) closeMobilePanel()
+}
+
+const selectMobilePage = async (pageId: string) => {
+  await journalStore.setActivePage(pageId)
+  if (isMobile.value) closeMobilePanel()
+}
+
+const openMobileInspector = (tab: 'goods' | 'layers' | 'versions') => {
+  sideTab.value = tab
+  openMobilePanel(tab === 'goods' ? 'materials' : tab === 'versions' ? 'versions' : 'layers')
+}
+
+const setMobileTool = (tool: 'select' | 'draw' | 'erase') => {
+  mobileTool.value = tool
+  canvasRef.value?.setTool(tool)
+}
+
+const handleMobileBrushColor = (event: Event) => {
+  const color = (event.target as HTMLInputElement).value
+  mobileBrushColor.value = color
+  canvasRef.value?.selectPaletteColor(color)
+}
+
+const setMobileBrushType = (type: MobileBrushType) => {
+  mobileBrushType.value = type
+  canvasRef.value?.setBrushType(type)
+}
+
+const handleMobileBrushWidth = (event: Event) => {
+  const width = Number((event.target as HTMLInputElement).value)
+  if (mobileTool.value === 'erase') {
+    mobileEraserWidth.value = width
+    canvasRef.value?.setEraserWidth(width)
+    return
+  }
+  mobileBrushWidth.value = width
+  canvasRef.value?.setBrushWidth(width)
+}
+
+const handleMobileAddText = () => {
+  if (!journalStore.activePage) return
+  closeMobilePanel()
+  mobileTool.value = 'select'
+  canvasRef.value?.setTool('select')
+  canvasRef.value?.addTextLayer()
+}
+
+const runMobileMore = (action: () => void | Promise<void>) => {
+  closeMobilePanel()
+  void action()
+}
+
+const openMobileReader = () => {
+  closeMobilePanel()
+  readerMode.value = true
+}
+
+const leaveMobileJournal = () => {
+  closeMobilePanel()
+  if (window.history.state?.back) router.back()
+  else void router.push('/showcase?tab=barn')
+}
+
+const handleMobileBack = async () => {
+  if (journalStore.dirty) {
+    const saved = await journalStore.saveActivePage({ createVersion: false })
+    if (!saved) {
+      mobileExitSheet.value = true
+      return
+    }
+  }
+  leaveMobileJournal()
+}
+
+const handleJournalExitBlocked = () => {
+  if (isMobile.value) mobileExitSheet.value = true
+}
+
+const retryMobileExit = async () => {
+  exitSaving.value = true
+  try {
+    const saved = await journalStore.saveActivePage({ createVersion: false })
+    if (!saved) return
+    mobileExitSheet.value = false
+    leaveMobileJournal()
+  } finally {
+    exitSaving.value = false
+  }
+}
+
+const discardMobileExit = async () => {
+  exitSaving.value = true
+  try {
+    const discarded = await journalStore.discardActivePageChanges()
+    if (!discarded) {
+      ElMessage.error(journalStore.error || '无法载入服务器版本，请稍后重试')
+      return
+    }
+    mobileExitSheet.value = false
+    leaveMobileJournal()
+  } finally {
+    exitSaving.value = false
+  }
+}
 
 const createBook = async () => {
   try {
@@ -726,9 +1205,7 @@ const closeBookContextMenu = () => {
   bookContextMenuPositioned.value = false
 }
 
-const renameContextBook = async () => {
-  const bookId = bookContextMenu.value.bookId
-  closeBookContextMenu()
+const renameBookById = async (bookId: string) => {
   const book = journalStore.books.find(item => item.id === bookId)
   if (!book) return
   try {
@@ -744,6 +1221,12 @@ const renameContextBook = async () => {
   } catch {
     // user cancelled
   }
+}
+
+const renameContextBook = async () => {
+  const bookId = bookContextMenu.value.bookId
+  closeBookContextMenu()
+  await renameBookById(bookId)
 }
 
 const deletePage = async (pageId: string) => {
@@ -795,9 +1278,7 @@ const confirmDeleteContextPage = async () => {
   await deletePage(pageId)
 }
 
-const renameContextPage = async () => {
-  const pageId = pageContextMenu.value.pageId
-  closePageContextMenu()
+const renamePageById = async (pageId: string) => {
   const page = journalStore.pages.find(item => item.id === pageId)
   if (!page) return
   try {
@@ -815,11 +1296,21 @@ const renameContextPage = async () => {
   }
 }
 
+const renameContextPage = async () => {
+  const pageId = pageContextMenu.value.pageId
+  closePageContextMenu()
+  await renamePageById(pageId)
+}
+
+const duplicatePageById = async (pageId: string) => {
+  const duplicated = await journalStore.duplicatePage(pageId)
+  if (duplicated) ElMessage.success('页面已复制')
+}
+
 const duplicateContextPage = async () => {
   const pageId = pageContextMenu.value.pageId
   closePageContextMenu()
-  const duplicated = await journalStore.duplicatePage(pageId)
-  if (duplicated) ElMessage.success('页面已复制')
+  await duplicatePageById(pageId)
 }
 
 const handlePageDragStart = (pageId: string) => {
@@ -837,6 +1328,17 @@ const handlePageDrop = async (targetPageId: string) => {
   const [moved] = ids.splice(fromIndex, 1)
   if (!moved) return
   ids.splice(toIndex, 0, moved)
+  await journalStore.reorderPages(ids)
+}
+
+const moveMobilePage = async (direction: -1 | 1) => {
+  const index = activePageIndex.value
+  const targetIndex = index + direction
+  if (index < 0 || targetIndex < 0 || targetIndex >= journalStore.pages.length) return
+  const ids = journalStore.pages.map(page => page.id)
+  const [moved] = ids.splice(index, 1)
+  if (!moved) return
+  ids.splice(targetIndex, 0, moved)
   await journalStore.reorderPages(ids)
 }
 
@@ -1006,14 +1508,17 @@ const restoreVersion = async (versionId: string) => {
 
 const insertGoods = (goods: GoodsListItem) => {
   canvasRef.value?.addGoodsSticker(goods)
+  closeMobilePanel()
 }
 
 const insertDecorSticker = (sticker: { id: string; name: string; src: string }) => {
   canvasRef.value?.addLocalSticker({ name: sticker.name, src: sticker.src, source: 'decor' })
+  closeMobilePanel()
 }
 
 const insertLocalImage = (payload: { name: string; src: string }) => {
   canvasRef.value?.addLocalSticker({ name: payload.name, src: payload.src, source: 'upload' })
+  closeMobilePanel()
 }
 
 const downloadBlob = (blob: Blob, filename: string) => {
@@ -1211,6 +1716,7 @@ onMounted(() => {
   window.addEventListener('scroll', closeContextMenus, true)
   window.addEventListener('resize', closeContextMenus)
   window.addEventListener('cloud-showcase:journal-refresh', handleJournalRefresh)
+  window.addEventListener('cloud-showcase:journal-exit-blocked', handleJournalExitBlocked)
 })
 
 onBeforeUnmount(() => {
@@ -1218,6 +1724,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('scroll', closeContextMenus, true)
   window.removeEventListener('resize', closeContextMenus)
   window.removeEventListener('cloud-showcase:journal-refresh', handleJournalRefresh)
+  window.removeEventListener('cloud-showcase:journal-exit-blocked', handleJournalExitBlocked)
   if (autoSaveTimer !== null) {
     window.clearTimeout(autoSaveTimer)
     autoSaveTimer = null
@@ -1798,74 +2305,653 @@ onBeforeUnmount(() => {
   }
 }
 
-@media (max-width: 768px) {
-  .journal-topbar {
-    align-items: stretch;
-    flex-direction: column;
-    padding: 12px;
-  }
+.journal-workspace--mobile {
+  --journal-mobile-dock-height: calc(68px + env(safe-area-inset-bottom, 0px));
+  position: fixed;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+  background: var(--bg-gray);
+}
 
-  .journal-actions {
-    position: fixed;
-    left: 8px;
-    right: 8px;
-    bottom: 8px;
-    z-index: 20;
-    justify-content: flex-start;
-    padding: 8px;
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.96);
-    box-shadow: 0 -10px 32px rgba(15, 23, 42, 0.12);
-    overflow-x: auto;
-  }
+.journal-workspace--mobile.has-mobile-context {
+  --journal-mobile-dock-height: calc(116px + env(safe-area-inset-bottom, 0px));
+}
 
-  .journal-actions :deep(.el-button) {
-    flex: 0 0 auto;
-  }
+.journal-mobile-header {
+  position: relative;
+  z-index: 20;
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+  min-height: calc(56px + var(--app-safe-area-top, env(safe-area-inset-top, 0px)));
+  padding: var(--app-safe-area-top, env(safe-area-inset-top, 0px)) 8px 0;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.16);
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 1px 0 rgba(148, 163, 184, 0.08);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
 
-  .journal-create-btn {
-    --brand-add-padding-y: 9px;
-    --brand-add-padding-x: 14px;
-    --brand-add-font-size: 13px;
-    --brand-add-min-height: 36px;
-  }
+.journal-mobile-icon-btn,
+.journal-mobile-save-btn,
+.journal-mobile-page-switch {
+  border: 0;
+  background: transparent;
+  color: var(--text-dark);
+  -webkit-tap-highlight-color: transparent;
+}
 
-  .journal-create-btn--hero {
-    --brand-add-padding-y: 11px;
-    --brand-add-padding-x: 20px;
-    --brand-add-font-size: 14px;
-    --brand-add-min-height: 44px;
-  }
+.journal-mobile-icon-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
 
-  .journal-layout {
-    min-height: 0;
-    grid-template-columns: 1fr;
-    padding-bottom: 86px;
-  }
+.journal-mobile-icon-btn:active:not(:disabled),
+.journal-mobile-save-btn:active:not(:disabled) {
+  background: rgba(212, 175, 55, 0.12);
+}
 
-  .journal-sidebar {
-    display: grid;
-    grid-template-columns: 1fr;
-  }
+.journal-mobile-icon-btn:disabled,
+.journal-mobile-save-btn:disabled {
+  opacity: 0.36;
+}
 
-  .journal-sidebar,
-  .journal-side-panel {
-    max-height: 44vh;
-    overflow: auto;
-  }
+.journal-mobile-page-switch {
+  min-width: 0;
+  min-height: 48px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 2px;
+  text-align: left;
+}
 
-  .journal-side-panel {
-    position: sticky;
-    bottom: 74px;
-    z-index: 6;
-    box-shadow: 0 -12px 32px rgba(15, 23, 42, 0.12);
-  }
+.journal-mobile-page-switch strong,
+.journal-mobile-page-switch span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .reader-overlay {
-    grid-template-columns: 1fr;
-    gap: 10px;
-    padding: 56px 16px 20px;
+.journal-mobile-page-switch strong {
+  font-size: 15px;
+}
+
+.journal-mobile-page-switch span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-light);
+  font-size: 11px;
+}
+
+.journal-mobile-page-switch .journal-status-dot.is-saved {
+  background: #22c55e;
+}
+
+.journal-mobile-page-switch .journal-status-dot.is-dirty {
+  background: #f59e0b;
+}
+
+.journal-mobile-page-switch .journal-status-dot.is-saving {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(142, 125, 255, 0.24);
+  border-top-color: #8e7dff;
+  background: transparent;
+  animation: journal-status-spin 0.8s linear infinite;
+}
+
+.journal-mobile-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.journal-mobile-save-btn {
+  min-width: 54px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 12px;
+  color: #fff;
+  background: linear-gradient(135deg, var(--primary-gold), var(--primary-gold-dark));
+  font-size: 13px;
+  font-weight: 800;
+  box-shadow: 0 6px 16px rgba(212, 175, 55, 0.22);
+}
+
+.journal-layout {
+  flex: 1;
+  min-height: 0;
+  display: block;
+  padding: 0 0 var(--journal-mobile-dock-height);
+}
+
+.journal-workspace--mobile .journal-editor {
+  height: 100%;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.journal-workspace--mobile .journal-loading,
+.journal-workspace--mobile .journal-empty {
+  height: 100%;
+  min-height: 0;
+}
+
+.journal-workspace--mobile .journal-error {
+  position: absolute;
+  top: calc(60px + var(--app-safe-area-top, env(safe-area-inset-top, 0px)));
+  left: 8px;
+  right: 8px;
+  z-index: 30;
+}
+
+.journal-mobile-dock {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2100;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.97);
+  box-shadow: 0 -8px 28px rgba(15, 23, 42, 0.1);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}
+
+.journal-mobile-toolbar {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 2px;
+  min-height: 64px;
+  padding: 5px 6px calc(5px + env(safe-area-inset-bottom, 0px));
+}
+
+.journal-mobile-toolbar button {
+  min-width: 0;
+  min-height: 52px;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: var(--text-light);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  font-size: 11px;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.journal-mobile-toolbar button .el-icon {
+  font-size: 21px;
+}
+
+.journal-mobile-toolbar button.is-active {
+  color: var(--primary-gold-dark);
+  background: rgba(212, 175, 55, 0.12);
+  font-weight: 800;
+}
+
+.journal-mobile-toolbar button:disabled {
+  opacity: 0.32;
+}
+
+.journal-mobile-brush-context {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  overflow-x: auto;
+}
+
+.journal-mobile-color-control,
+.journal-mobile-width-control {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.journal-mobile-color-control input {
+  width: 38px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: transparent;
+}
+
+.journal-mobile-width-control input {
+  width: 92px;
+}
+
+.journal-mobile-width-control strong {
+  min-width: 34px;
+  color: var(--text-dark);
+  font-size: 11px;
+}
+
+.journal-mobile-brush-presets {
+  display: inline-flex;
+  gap: 5px;
+}
+
+.journal-mobile-brush-presets button {
+  min-width: 48px;
+  min-height: 34px;
+  padding: 0 8px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  background: #fff;
+  color: var(--text-light);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.journal-mobile-brush-presets button.is-active {
+  border-color: rgba(212, 175, 55, 0.52);
+  color: var(--primary-gold-dark);
+  background: rgba(212, 175, 55, 0.1);
+  font-weight: 800;
+}
+
+.journal-mobile-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  border: 0;
+  background: rgba(15, 23, 42, 0.26);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+.journal-workspace--mobile .journal-sidebar,
+.journal-workspace--mobile .journal-side-panel {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2300;
+  width: 100%;
+  max-height: min(82dvh, 720px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 8px 14px calc(18px + env(safe-area-inset-bottom, 0px));
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-bottom: 0;
+  border-radius: 20px 20px 0 0;
+  background: rgba(255, 255, 255, 0.99);
+  box-shadow: 0 -18px 44px rgba(15, 23, 42, 0.18);
+  transform: translateY(105%);
+  visibility: hidden;
+  pointer-events: none;
+  transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), visibility 0.24s;
+}
+
+.journal-workspace--mobile .journal-side-panel {
+  max-height: min(90dvh, 780px);
+}
+
+.journal-workspace--mobile .journal-sidebar.is-mobile-open,
+.journal-workspace--mobile .journal-side-panel.is-mobile-open {
+  transform: translateY(0);
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.journal-mobile-sheet-handle {
+  width: 38px;
+  height: 4px;
+  margin: 2px auto 10px;
+  border-radius: 999px;
+  background: rgba(51, 51, 51, 0.14);
+}
+
+.journal-mobile-sheet-heading {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 0 12px;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.14);
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.journal-mobile-sheet-heading > div {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.journal-mobile-sheet-heading strong {
+  font-size: 18px;
+}
+
+.journal-mobile-sheet-heading small {
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.journal-mobile-sheet-close {
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 50%;
+  background: #fff;
+  color: var(--text-light);
+  display: inline-grid;
+  place-items: center;
+}
+
+.journal-workspace--mobile .journal-sidebar .sidebar-section:first-of-type,
+.journal-workspace--mobile .journal-sidebar .sidebar-section:nth-of-type(2) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.journal-workspace--mobile .journal-sidebar .sidebar-section:nth-of-type(2) {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.journal-workspace--mobile .journal-sidebar .sidebar-title,
+.journal-workspace--mobile .journal-sidebar .empty-mini {
+  grid-column: 1 / -1;
+}
+
+.journal-workspace--mobile .book-row {
+  min-height: 58px;
+}
+
+.journal-workspace--mobile .delete-book-btn {
+  display: none;
+}
+
+.journal-workspace--mobile .page-row {
+  min-height: 132px;
+  padding: 76px 7px 7px;
+  justify-content: flex-end;
+  gap: 3px;
+  text-align: center;
+}
+
+.journal-workspace--mobile .page-thumb {
+  left: 50%;
+  top: 7px;
+  width: calc(100% - 14px);
+  height: 64px;
+  transform: translateX(-50%);
+  border-radius: 9px;
+}
+
+.journal-workspace--mobile .page-row span,
+.journal-workspace--mobile .page-row small {
+  width: 100%;
+  text-align: center;
+}
+
+.journal-workspace--mobile .page-row small {
+  font-size: 10px;
+}
+
+.journal-mobile-page-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.journal-mobile-action-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.journal-mobile-action-group > strong {
+  font-size: 13px;
+}
+
+.journal-mobile-action-group > div {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.journal-mobile-action-group :deep(.el-button) {
+  min-height: 40px;
+  margin-left: 0 !important;
+}
+
+.journal-workspace--mobile .journal-side-panel :deep(.el-tabs__header) {
+  position: sticky;
+  top: 72px;
+  z-index: 3;
+  margin: 0 0 14px;
+  padding-top: 4px;
+  background: rgba(255, 255, 255, 0.98);
+}
+
+.journal-workspace--mobile .journal-side-panel :deep(.el-tabs__item) {
+  min-height: 44px;
+  font-size: 14px;
+}
+
+.journal-workspace--mobile .panel-section {
+  gap: 14px;
+}
+
+.journal-workspace--mobile .control-row {
+  grid-template-columns: 68px minmax(0, 1fr);
+  min-height: 44px;
+  font-size: 13px;
+}
+
+.journal-workspace--mobile .control-row :deep(.el-input-number),
+.journal-workspace--mobile .control-row :deep(.el-select) {
+  width: 100%;
+}
+
+.journal-workspace--mobile .layer-row {
+  min-height: 58px;
+}
+
+.journal-workspace--mobile .layer-inline-actions button {
+  width: 44px;
+  height: 44px;
+}
+
+.journal-workspace--mobile .segmented-inline button {
+  min-height: 40px;
+}
+
+.journal-workspace--mobile .version-list {
+  max-height: none;
+}
+
+.journal-mobile-more {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.journal-mobile-more-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.journal-mobile-more-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.journal-mobile-more-title > strong {
+  font-size: 14px;
+}
+
+.journal-mobile-segmented {
+  display: inline-grid;
+  grid-template-columns: repeat(3, 48px);
+  gap: 4px;
+  padding: 3px;
+  border-radius: 12px;
+  background: var(--secondary-gray);
+}
+
+.journal-mobile-segmented button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.journal-mobile-segmented button.is-active {
+  color: var(--primary-gold-dark);
+  background: #fff;
+  font-weight: 800;
+  box-shadow: var(--shadow-sm);
+}
+
+.journal-mobile-more-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.journal-mobile-more-grid button,
+.journal-mobile-more-list button {
+  min-height: 52px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--text-dark);
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0 14px;
+  text-align: left;
+}
+
+.journal-mobile-more-grid button .el-icon,
+.journal-mobile-more-list button .el-icon {
+  color: var(--primary-gold-dark);
+  font-size: 19px;
+}
+
+.journal-mobile-more-grid button:disabled,
+.journal-mobile-more-list button:disabled {
+  opacity: 0.38;
+}
+
+.journal-mobile-more-list {
+  display: grid;
+  gap: 8px;
+}
+
+.journal-mobile-exit {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.journal-mobile-exit p {
+  margin: 0 0 4px;
+  color: var(--text-light);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.journal-mobile-exit :deep(.el-button) {
+  min-height: 46px;
+  margin-left: 0;
+  border-radius: 12px;
+}
+
+.journal-workspace--mobile .reader-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2600;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 10px;
+  padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(14px + env(safe-area-inset-bottom, 0px));
+}
+
+.journal-workspace--mobile .reader-close {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: 14px;
+}
+
+.journal-workspace--mobile .reader-page {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-height: 0;
+  padding-top: 48px;
+}
+
+.journal-workspace--mobile .reader-page img,
+.journal-workspace--mobile .reader-placeholder {
+  max-width: 100%;
+  max-height: 68dvh;
+}
+
+.journal-workspace--mobile .reader-nav {
+  min-height: 46px;
+}
+
+.journal-workspace--mobile .reader-nav--prev {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.journal-workspace--mobile .reader-nav--next {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-workspace--mobile .journal-sidebar,
+  .journal-workspace--mobile .journal-side-panel {
+    transition: none;
   }
 }
 </style>
