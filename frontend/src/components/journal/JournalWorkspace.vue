@@ -1,9 +1,17 @@
 <template>
   <section
     class="journal-workspace"
-    :class="{ 'journal-workspace--mobile': isMobile, 'has-mobile-context': showMobilePaintContext }"
+    :class="{
+      'journal-workspace--mobile': isMobile,
+      'journal-workspace--desktop': !isMobile,
+      'is-compact-desktop': compactDesktop,
+      'has-mobile-context': showMobilePaintContext,
+      'has-desktop-inspector': desktopInspectorOpen,
+    }"
     data-test="journal-workspace"
   >
+    <input ref="coverInputRef" class="sr-only-input" type="file" accept="image/*" @change="handleCoverUpload" />
+
     <header v-if="isMobile" class="journal-mobile-header">
       <button class="journal-mobile-icon-btn" type="button" aria-label="返回" @click="handleMobileBack">
         <el-icon><ArrowLeft /></el-icon>
@@ -48,57 +56,124 @@
       </div>
     </header>
 
-    <header v-if="!isMobile" class="journal-topbar">
-      <div class="journal-heading">
-        <h2>手帐</h2>
-        <span class="journal-status" :class="statusInfo.className">
-          <i class="journal-status-dot" aria-hidden="true" />
-          {{ statusInfo.text }}
-        </span>
+    <header v-else class="journal-topbar journal-desktop-topbar">
+      <div class="journal-desktop-topbar__identity">
+        <button class="journal-desktop-back" type="button" @click="handleDesktopBack">
+          <el-icon><ArrowLeft /></el-icon>
+          <span>手帐库</span>
+        </button>
+        <span class="journal-desktop-topbar__divider" aria-hidden="true" />
+        <div class="journal-heading">
+          <h2>{{ journalStore.activeBook?.title || '手帐' }}</h2>
+          <span class="journal-status" :class="statusInfo.className">
+            {{ mobilePageLabel }}
+            <i class="journal-status-dot" :class="statusInfo.className" aria-hidden="true" />
+            {{ statusInfo.text }}
+          </span>
+        </div>
       </div>
-      <div class="journal-actions">
-        <input ref="coverInputRef" class="sr-only-input" type="file" accept="image/*" @change="handleCoverUpload" />
+
+      <div class="journal-desktop-actions">
         <el-button
-          v-if="journalStore.books.length > 0"
-          data-test="journal-create-book-top"
-          class="brand-add-btn brand-add-btn--compact journal-create-btn"
-          :loading="journalStore.saving"
-          @click="createBook"
+          v-if="compactDesktop"
+          class="journal-desktop-panel-toggle"
+          :type="desktopInspectorOpen ? 'primary' : 'default'"
+          @click="desktopInspectorOpen = !desktopInspectorOpen"
         >
-          <el-icon class="el-icon--left"><Plus /></el-icon>
-          新手帐
+          面板
         </el-button>
-        <el-button :disabled="!journalStore.activeBook" @click="coverInputRef?.click()">
-          设置封面
+        <el-button
+          circle
+          aria-label="撤销"
+          :disabled="!canvasCanUndo"
+          @click="canvasRef?.undo()"
+        >
+          <el-icon><RefreshLeft /></el-icon>
         </el-button>
-        <el-button :disabled="!journalStore.activePage" :loading="journalStore.saving" @click="savePage">
+        <el-button
+          circle
+          aria-label="重做"
+          :disabled="!canvasCanRedo"
+          @click="canvasRef?.redo()"
+        >
+          <el-icon><RefreshRight /></el-icon>
+        </el-button>
+        <el-button
+          type="primary"
+          class="journal-desktop-save"
+          :loading="journalStore.saving"
+          :disabled="!journalStore.activePage"
+          @click="savePage"
+        >
           <el-icon class="el-icon--left"><DocumentChecked /></el-icon>
           保存
         </el-button>
-        <el-select v-model="exportScale" class="export-scale-select" size="small" :disabled="!journalStore.activePage" aria-label="导出倍率">
-          <el-option label="1x" :value="1" />
-          <el-option label="2x" :value="2" />
-          <el-option label="3x" :value="3" />
-        </el-select>
-        <el-button :disabled="!journalStore.activePage" @click="downloadCurrentPage">
-          导出图片
-        </el-button>
-        <el-button :disabled="!journalStore.activePage" @click="downloadLongImage">
-          导出长图
-        </el-button>
-        <el-button :disabled="!journalStore.activePage" @click="downloadShareImage">
-          分享图
-        </el-button>
-        <el-button :disabled="!journalStore.activePage" @click="createPublicShare">
-          公开链接
-        </el-button>
-        <el-button :disabled="journalStore.pages.length === 0" @click="readerMode = true">
-          读者模式
-        </el-button>
-        <el-button type="primary" class="btn-accent" :disabled="!journalStore.activePage" @click="exportPreview">
-          <el-icon class="el-icon--left"><Download /></el-icon>
-          更新缩略图
-        </el-button>
+        <el-popover
+          v-model:visible="desktopMoreOpen"
+          placement="bottom-end"
+          trigger="click"
+          :width="324"
+          popper-class="journal-desktop-more-popper"
+        >
+          <template #reference>
+            <el-button class="journal-desktop-more-trigger">
+              <el-icon class="el-icon--left"><MoreFilled /></el-icon>
+              <span class="journal-desktop-more-label">更多</span>
+            </el-button>
+          </template>
+          <div class="journal-desktop-more">
+            <section>
+              <div class="journal-desktop-more__title">导出当前页</div>
+              <label class="journal-desktop-more__scale">
+                <span>倍率</span>
+                <el-select v-model="exportScale" size="small" :disabled="!journalStore.activePage">
+                  <el-option label="1x" :value="1" />
+                  <el-option label="2x" :value="2" />
+                  <el-option label="3x" :value="3" />
+                </el-select>
+              </label>
+              <div class="journal-desktop-more__grid">
+                <button type="button" :disabled="!journalStore.activePage" @click="runDesktopMore(downloadCurrentPage)">
+                  <el-icon><Download /></el-icon>
+                  导出图片
+                </button>
+                <button type="button" :disabled="!journalStore.activePage" @click="runDesktopMore(downloadLongImage)">
+                  <el-icon><DocumentChecked /></el-icon>
+                  导出长图
+                </button>
+                <button type="button" :disabled="!journalStore.activePage" @click="runDesktopMore(downloadShareImage)">
+                  <el-icon><Share /></el-icon>
+                  分享图
+                </button>
+                <button type="button" :disabled="!journalStore.activePage" @click="runDesktopMore(createPublicShare)">
+                  <el-icon><Link /></el-icon>
+                  公开链接
+                </button>
+              </div>
+            </section>
+            <section>
+              <div class="journal-desktop-more__title">预览与管理</div>
+              <div class="journal-desktop-more__list">
+                <button type="button" :disabled="journalStore.pages.length === 0" @click="runDesktopMore(openDesktopReader)">
+                  <el-icon><View /></el-icon>
+                  读者模式
+                </button>
+                <button type="button" :disabled="!journalStore.activePage" @click="runDesktopMore(exportPreview)">
+                  <el-icon><Picture /></el-icon>
+                  更新缩略图
+                </button>
+                <button type="button" :disabled="!journalStore.activeBook" @click="runDesktopMore(() => coverInputRef?.click())">
+                  <el-icon><Camera /></el-icon>
+                  设置封面
+                </button>
+                <button class="is-danger" type="button" :disabled="!journalStore.activeBook" @click="runDesktopMore(deleteBook)">
+                  <el-icon><Delete /></el-icon>
+                  删除当前手帐
+                </button>
+              </div>
+            </section>
+          </div>
+        </el-popover>
       </div>
     </header>
 
@@ -109,8 +184,16 @@
     <div class="journal-layout">
       <aside
         class="journal-sidebar"
-        :class="{ 'is-mobile-open': mobilePanel === 'pages' }"
+        :class="{
+          'is-mobile-open': mobilePanel === 'pages',
+          'is-desktop-static': !compactDesktop,
+        }"
       >
+        <div v-if="!isMobile" class="journal-desktop-sidebar-heading">
+          <p>JOURNAL NAVIGATION</p>
+          <strong>手帐与页面</strong>
+          <small>{{ journalStore.books.length }} 本 · {{ journalStore.pages.length }} 页</small>
+        </div>
         <div v-if="isMobile" class="journal-mobile-sheet-handle" aria-hidden="true" />
         <div v-if="isMobile" class="journal-mobile-sheet-heading">
           <div>
@@ -283,8 +366,25 @@
 
       <aside
         class="journal-side-panel"
-        :class="{ 'is-mobile-open': showMobileInspector }"
+        :class="{
+          'is-mobile-open': showMobileInspector,
+          'is-desktop-open': compactDesktop && desktopInspectorOpen,
+        }"
       >
+        <div v-if="!isMobile" class="journal-desktop-inspector-heading">
+          <div>
+            <p>INSPECTOR</p>
+            <strong>素材与图层</strong>
+          </div>
+          <button
+            v-if="compactDesktop"
+            type="button"
+            aria-label="关闭面板"
+            @click="desktopInspectorOpen = false"
+          >
+            <el-icon><Close /></el-icon>
+          </button>
+        </div>
         <div v-if="isMobile" class="journal-mobile-sheet-handle" aria-hidden="true" />
         <div v-if="isMobile" class="journal-mobile-sheet-heading">
           <div>
@@ -670,6 +770,13 @@
           </el-tab-pane>
         </el-tabs>
       </aside>
+      <button
+        v-if="compactDesktop && desktopInspectorOpen"
+        class="journal-desktop-panel-backdrop"
+        type="button"
+        aria-label="关闭面板"
+        @click="desktopInspectorOpen = false"
+      />
     </div>
 
     <button
@@ -903,7 +1010,7 @@ import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 const journalStore = useJournalStore()
 const router = useRouter()
 const route = useRoute()
-const { isMobile } = useResponsiveDevice()
+const { isMobile, viewportWidth } = useResponsiveDevice()
 const canvasRef = ref<InstanceType<typeof JournalCanvas> | null>(null)
 const fallbackContent: JournalPageContent = { version: 2, layers: [] }
 const props = withDefaults(defineProps<{ bookId?: string }>(), {
@@ -933,6 +1040,8 @@ const coverInputRef = ref<HTMLInputElement | null>(null)
 const exportScale = ref(2)
 const readerMode = ref(false)
 const readerIndex = ref(0)
+const desktopMoreOpen = ref(false)
+const desktopInspectorOpen = ref(false)
 const pageContextMenu = ref({
   visible: false,
   pageId: '',
@@ -975,6 +1084,7 @@ const mobilePageLabel = computed(() => {
 const activePageIndex = computed(() => (
   journalStore.pages.findIndex(page => page.id === journalStore.activePageId)
 ))
+const compactDesktop = computed(() => !isMobile.value && viewportWidth.value < 1100)
 const showMobilePaintContext = computed(() => (
   isMobile.value && (mobileTool.value === 'draw' || mobileTool.value === 'erase')
 ))
@@ -1083,9 +1193,31 @@ const runMobileMore = (action: () => void | Promise<void>) => {
   void action()
 }
 
+const runDesktopMore = (action: () => void | Promise<void>) => {
+  desktopMoreOpen.value = false
+  void action()
+}
+
 const openMobileReader = () => {
   closeMobilePanel()
   readerMode.value = true
+}
+
+const openDesktopReader = () => {
+  readerMode.value = true
+}
+
+const handleDesktopBack = () => {
+  desktopMoreOpen.value = false
+  desktopInspectorOpen.value = false
+  void router.push({ path: '/showcase', query: { tab: 'journal' } })
+}
+
+const handleDesktopKeydown = (event: KeyboardEvent) => {
+  if (event.key === 'Escape' && compactDesktop.value) {
+    desktopInspectorOpen.value = false
+    desktopMoreOpen.value = false
+  }
 }
 
 const leaveMobileJournal = () => {
@@ -1721,7 +1853,7 @@ const handleJournalRefresh = async () => {
 }
 
 const initializeJournal = async () => {
-  if (isMobile.value && props.bookId) {
+  if (props.bookId) {
     if (journalStore.activeBookId === props.bookId && journalStore.activePageId) return
     if (journalStore.books.length === 0) {
       await journalStore.fetchBookSummaries()
@@ -1729,7 +1861,7 @@ const initializeJournal = async () => {
     if (journalStore.books.some(book => book.id === props.bookId)) {
       await journalStore.setActiveBook(props.bookId)
     } else if (!journalStore.error) {
-      await router.replace('/showcase?tab=journal')
+      await router.replace({ path: '/showcase', query: { tab: 'journal' } })
     }
     return
   }
@@ -1739,6 +1871,8 @@ const initializeJournal = async () => {
 watch(
   [() => props.bookId, isMobile],
   () => {
+    desktopInspectorOpen.value = false
+    desktopMoreOpen.value = false
     void initializeJournal()
   },
   { immediate: true },
@@ -1748,6 +1882,7 @@ onMounted(() => {
   window.addEventListener('click', closeContextMenus)
   window.addEventListener('scroll', closeContextMenus, true)
   window.addEventListener('resize', closeContextMenus)
+  window.addEventListener('keydown', handleDesktopKeydown)
   window.addEventListener('cloud-showcase:journal-refresh', handleJournalRefresh)
   window.addEventListener('cloud-showcase:journal-exit-blocked', handleJournalExitBlocked)
 })
@@ -1756,6 +1891,7 @@ onBeforeUnmount(() => {
   window.removeEventListener('click', closeContextMenus)
   window.removeEventListener('scroll', closeContextMenus, true)
   window.removeEventListener('resize', closeContextMenus)
+  window.removeEventListener('keydown', handleDesktopKeydown)
   window.removeEventListener('cloud-showcase:journal-refresh', handleJournalRefresh)
   window.removeEventListener('cloud-showcase:journal-exit-blocked', handleJournalExitBlocked)
   if (autoSaveTimer !== null) {
@@ -2984,6 +3120,354 @@ onBeforeUnmount(() => {
 @media (prefers-reduced-motion: reduce) {
   .journal-workspace--mobile .journal-sidebar,
   .journal-workspace--mobile .journal-side-panel {
+    transition: none;
+  }
+}
+
+/* PC workbench */
+.journal-workspace--desktop {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  gap: 12px;
+}
+
+.journal-workspace--desktop .journal-desktop-topbar {
+  flex: 0 0 auto;
+  min-height: 58px;
+  padding: 8px 12px;
+  border-color: rgba(212, 175, 55, 0.2);
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 88% 0, rgba(162, 155, 254, 0.1), transparent 30%),
+    rgba(255, 255, 255, 0.96);
+  box-shadow: var(--shadow-sm);
+}
+
+.journal-desktop-topbar__identity {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.journal-desktop-back {
+  min-height: 36px;
+  padding: 0 11px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-dark);
+  background: rgba(255, 255, 255, 0.84);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.journal-desktop-back:hover {
+  color: var(--primary-gold-dark);
+  border-color: rgba(212, 175, 55, 0.45);
+  background: rgba(212, 175, 55, 0.08);
+}
+
+.journal-desktop-topbar__divider {
+  width: 1px;
+  height: 30px;
+  flex: none;
+  background: rgba(148, 163, 184, 0.24);
+}
+
+.journal-workspace--desktop .journal-heading {
+  min-width: 0;
+}
+
+.journal-workspace--desktop .journal-heading h2 {
+  overflow: hidden;
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-workspace--desktop .journal-heading span {
+  margin-top: 2px;
+}
+
+.journal-desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: none;
+}
+
+.journal-desktop-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
+}
+
+.journal-desktop-save {
+  min-width: 86px;
+}
+
+.journal-desktop-more {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 4px;
+}
+
+.journal-desktop-more section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.journal-desktop-more section + section {
+  padding-top: 13px;
+  border-top: 1px solid rgba(148, 163, 184, 0.16);
+}
+
+.journal-desktop-more__title {
+  color: var(--text-dark);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.journal-desktop-more__scale {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.journal-desktop-more__scale :deep(.el-select) {
+  width: 86px;
+}
+
+.journal-desktop-more__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+}
+
+.journal-desktop-more__list {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.journal-desktop-more__grid button,
+.journal-desktop-more__list button {
+  min-height: 37px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 10px;
+  color: var(--text-dark);
+  background: #fff;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journal-desktop-more__grid button {
+  justify-content: center;
+}
+
+.journal-desktop-more__grid button:hover,
+.journal-desktop-more__list button:hover {
+  color: var(--primary-gold-dark);
+  border-color: rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.07);
+}
+
+.journal-desktop-more__list button.is-danger {
+  color: var(--el-color-danger);
+}
+
+.journal-desktop-more__grid button:disabled,
+.journal-desktop-more__list button:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+.journal-workspace--desktop .journal-layout {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr) 320px;
+  gap: 12px;
+  align-items: stretch;
+}
+
+.journal-workspace--desktop .journal-sidebar,
+.journal-workspace--desktop .journal-side-panel,
+.journal-workspace--desktop .journal-editor {
+  height: 100%;
+  min-height: 0;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+}
+
+.journal-workspace--desktop .journal-sidebar,
+.journal-workspace--desktop .journal-side-panel {
+  padding: 14px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.journal-workspace--desktop .journal-editor {
+  padding: 10px;
+  display: flex;
+  overflow: hidden;
+}
+
+.journal-desktop-sidebar-heading,
+.journal-desktop-inspector-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.journal-desktop-sidebar-heading p,
+.journal-desktop-inspector-heading p {
+  color: var(--primary-gold-dark);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.journal-desktop-sidebar-heading strong,
+.journal-desktop-inspector-heading strong {
+  color: var(--text-dark);
+  font-size: 16px;
+}
+
+.journal-desktop-sidebar-heading small {
+  color: var(--text-light);
+  font-size: 11px;
+}
+
+.journal-desktop-inspector-heading {
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.journal-desktop-inspector-heading > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.journal-desktop-inspector-heading button {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  color: var(--text-light);
+  background: rgba(148, 163, 184, 0.1);
+  cursor: pointer;
+}
+
+.journal-workspace--desktop .journal-sidebar .sidebar-section:first-of-type {
+  padding: 12px;
+  border: 1px solid rgba(212, 175, 55, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 251, 240, 0.62);
+}
+
+.journal-workspace--desktop .book-row {
+  min-height: 50px;
+}
+
+.journal-workspace--desktop .page-row {
+  min-height: 66px;
+}
+
+.journal-workspace--desktop .page-row.is-active,
+.journal-workspace--desktop .book-row.is-active {
+  border-color: rgba(212, 175, 55, 0.62);
+  background: rgba(212, 175, 55, 0.09);
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.12) inset;
+}
+
+.journal-workspace--desktop .journal-side-panel :deep(.el-tabs__header) {
+  margin: 0 0 14px;
+}
+
+.journal-desktop-panel-backdrop {
+  display: none;
+}
+
+@media (max-width: 1099px) and (min-width: 769px) {
+  .journal-workspace--desktop .journal-layout {
+    grid-template-columns: 240px minmax(0, 1fr);
+  }
+
+  .journal-workspace--desktop .journal-side-panel {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 6;
+    width: min(360px, 86%);
+    height: auto;
+    padding: 14px;
+    visibility: hidden;
+    box-shadow: -18px 0 40px rgba(15, 23, 42, 0.16);
+    transform: translateX(calc(100% + 18px));
+    transition: transform 0.22s ease, visibility 0.22s ease;
+  }
+
+  .journal-workspace--desktop .journal-side-panel.is-desktop-open {
+    visibility: visible;
+    transform: translateX(0);
+  }
+
+  .journal-desktop-panel-backdrop {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: block;
+    border: 0;
+    background: rgba(15, 23, 42, 0.18);
+    cursor: default;
+  }
+}
+
+@media (max-width: 850px) and (min-width: 769px) {
+  .journal-desktop-back span,
+  .journal-desktop-more-label {
+    display: none;
+  }
+
+  .journal-desktop-actions {
+    gap: 5px;
+  }
+}
+
+@media (min-width: 1100px) and (max-width: 1260px) {
+  .journal-workspace--desktop .journal-layout {
+    grid-template-columns: 230px minmax(0, 1fr) 290px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-workspace--desktop .journal-side-panel {
     transition: none;
   }
 }

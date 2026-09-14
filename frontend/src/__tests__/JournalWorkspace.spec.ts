@@ -93,10 +93,18 @@ vi.mock('@/components/journal/JournalCanvas.vue', () => ({
   },
 }))
 
-const mountWorkspace = ({ mobile = false, bookId = '' }: { mobile?: boolean; bookId?: string } = {}) => {
+const mountWorkspace = ({
+  mobile = false,
+  bookId = '',
+  width,
+}: {
+  mobile?: boolean
+  bookId?: string
+  width?: number
+} = {}) => {
   Object.defineProperty(window, 'innerWidth', {
     configurable: true,
-    value: mobile ? 390 : 1197,
+    value: width ?? (mobile ? 390 : 1197),
   })
   Object.defineProperty(navigator, 'maxTouchPoints', {
     configurable: true,
@@ -127,6 +135,11 @@ const mountWorkspace = ({ mobile = false, bookId = '' }: { mobile?: boolean; boo
       'el-input': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div class="input-stub" />' },
       'el-input-number': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div class="input-number-stub" />' },
       'el-option': { template: '<option><slot /></option>' },
+      'el-popover': {
+        props: ['modelValue'],
+        emits: ['update:visible'],
+        template: '<div class="popover-stub"><slot name="reference" /><slot /></div>',
+      },
       'el-select': { props: ['modelValue'], emits: ['update:modelValue'], template: '<select><slot /></select>' },
       'el-slider': { props: ['modelValue'], emits: ['update:modelValue'], template: '<div />' },
       'el-skeleton': true,
@@ -292,18 +305,19 @@ describe('JournalWorkspace', () => {
     expect(canvasState.toggleLayerLock).toHaveBeenCalledWith('sticker-1')
   })
 
-  it('shows only the empty-state create entry when there is no active page', async () => {
+  it('shows the empty-state create entry when there is no active page', async () => {
     const wrapper = mountWorkspace()
     await nextTick()
 
     const emptyCreateButton = wrapper.get('[data-test="journal-create-book-empty"]')
 
-    expect(wrapper.find('[data-test="journal-create-book-top"]').exists()).toBe(false)
     expect(emptyCreateButton.classes()).toContain('brand-add-btn')
     expect(emptyCreateButton.classes()).toContain('brand-add-btn--hero')
+    expect(wrapper.find('.journal-desktop-sidebar-heading').exists()).toBe(true)
+    expect(wrapper.find('.journal-desktop-inspector-heading').exists()).toBe(true)
   })
 
-  it('shows only the top create entry after a book page is active', async () => {
+  it('renders the desktop workbench around an active book page', async () => {
     journalStore.books = [{
       id: 'book-1',
       title: '旅行手帐',
@@ -328,14 +342,16 @@ describe('JournalWorkspace', () => {
       created_at: '2026-06-26T00:00:00Z',
       updated_at: '2026-06-26T00:00:00Z',
     }
+    journalStore.pages = [journalStore.activePage]
 
     const wrapper = mountWorkspace()
     await nextTick()
 
-    const topCreateButton = wrapper.get('[data-test="journal-create-book-top"]')
-
-    expect(topCreateButton.classes()).toContain('brand-add-btn')
-    expect(topCreateButton.classes()).toContain('brand-add-btn--compact')
+    expect(wrapper.get('.journal-desktop-topbar').text()).toContain('旅行手帐')
+    expect(wrapper.get('.journal-desktop-topbar').text()).toContain('第 1 / 1 页')
+    expect(wrapper.find('.journal-sidebar').exists()).toBe(true)
+    expect(wrapper.find('.journal-editor').exists()).toBe(true)
+    expect(wrapper.find('.journal-side-panel').exists()).toBe(true)
     expect(wrapper.find('[data-test="journal-create-book-empty"]').exists()).toBe(false)
   })
 
@@ -346,36 +362,37 @@ describe('JournalWorkspace', () => {
     await wrapper.get('[data-test="journal-create-book-empty"]').trigger('click')
 
     expect(journalStore.createBook).toHaveBeenCalledTimes(1)
+  })
 
-    journalStore.books = [{
-      id: 'book-1',
-      title: '旅行手帐',
-      cover_image: '/media/journals/covers/a.png',
-      page_count: 1,
-    }]
-    journalStore.activeBookId = 'book-1'
-    journalStore.activeBook = journalStore.books[0]
-    journalStore.activePageId = 'page-1'
-    journalStore.activePage = {
-      id: 'page-1',
-      book: 'book-1',
-      title: '第 1 页',
-      page_no: 1,
-      width: 1080,
-      height: 1440,
-      background: '#fffaf0',
-      background_style: 'plain',
-      content: { version: 2, layers: [] },
-      revision: 1,
-      preview_image: null,
-      created_at: '2026-06-26T00:00:00Z',
-      updated_at: '2026-06-26T00:00:00Z',
-    }
+  it('opens the desktop more panel and its reader action', async () => {
+    setActivePageFixture()
+    const wrapper = mountWorkspace()
     await nextTick()
 
-    await wrapper.get('[data-test="journal-create-book-top"]').trigger('click')
+    expect(wrapper.get('.journal-desktop-more').text()).toContain('导出图片')
+    expect(wrapper.get('.journal-desktop-more').text()).toContain('设置封面')
 
-    expect(journalStore.createBook).toHaveBeenCalledTimes(2)
+    const readerButton = wrapper.findAll('.journal-desktop-more__list button')
+      .find(button => button.text().includes('读者模式'))
+    expect(readerButton).toBeTruthy()
+    await readerButton!.trigger('click')
+
+    expect(wrapper.find('.reader-overlay').exists()).toBe(true)
+  })
+
+  it('turns the compact desktop inspector into a dismissible drawer', async () => {
+    setActivePageFixture()
+    const wrapper = mountWorkspace({ width: 1024 })
+    await nextTick()
+
+    expect(wrapper.get('.journal-workspace').classes()).toContain('is-compact-desktop')
+    await wrapper.get('.journal-desktop-panel-toggle').trigger('click')
+
+    expect(wrapper.get('.journal-side-panel').classes()).toContain('is-desktop-open')
+    expect(wrapper.find('.journal-desktop-panel-backdrop').exists()).toBe(true)
+
+    await wrapper.get('.journal-desktop-panel-backdrop').trigger('click')
+    expect(wrapper.get('.journal-side-panel').classes()).not.toContain('is-desktop-open')
   })
 
   it('responds to the journal refresh event by reloading the current page', async () => {
@@ -457,6 +474,22 @@ describe('JournalWorkspace', () => {
 
     expect(journalStore.fetchBookSummaries).not.toHaveBeenCalled()
     expect(journalStore.setActiveBook).toHaveBeenCalledWith('book-1')
+    wrapper.unmount()
+  })
+
+  it('loads a requested book in the desktop workbench from summaries', async () => {
+    journalStore.books = [{
+      id: 'book-1',
+      title: '旅行手帐',
+      cover_image: null,
+      page_count: 1,
+    }]
+    const wrapper = mountWorkspace({ bookId: 'book-1' })
+    await flushPromises()
+
+    expect(journalStore.fetchBookSummaries).not.toHaveBeenCalled()
+    expect(journalStore.setActiveBook).toHaveBeenCalledWith('book-1')
+    expect(wrapper.get('.journal-workspace').classes()).toContain('journal-workspace--desktop')
     wrapper.unmount()
   })
 

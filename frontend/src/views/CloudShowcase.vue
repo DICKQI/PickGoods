@@ -1,5 +1,15 @@
 <template>
-  <div class="cloud-showcase">
+  <div
+    class="cloud-showcase"
+    :class="{ 'is-journal-editor': isJournalEditor }"
+  >
+    <input
+      ref="journalCoverInputRef"
+      class="sr-only-input"
+      type="file"
+      accept="image/*"
+      @change="handleJournalCoverUpload"
+    />
     <!-- 顶部 Tab：云展柜 / 谷仓 / 统计 -->
     <el-tabs v-if="!isMobile" v-model="activeTab" class="cloud-tabs">
       <el-tab-pane label="展柜" name="showcase" />
@@ -277,13 +287,23 @@
         <StatsDashboard />
       </div>
 
-      <div v-if="visitedTabs.has('journal')" v-show="activeTab === 'journal'" key="journal" class="journal-section">
+      <div
+        v-if="visitedTabs.has('journal')"
+        v-show="activeTab === 'journal'"
+        key="journal"
+        class="journal-section"
+        :class="{ 'is-journal-editor': isJournalEditor }"
+      >
         <JournalLibrary
-          v-if="isMobile && !mobileJournalBookId"
+          v-if="!journalBookId"
+          :variant="isMobile ? 'mobile' : 'desktop'"
           @open-book="openJournalBook"
           @create-book="createJournalBook"
+          @rename-book="renameJournalBook"
+          @change-cover="changeJournalCover"
+          @delete-book="deleteJournalBook"
         />
-        <JournalWorkspace v-else :book-id="isMobile ? mobileJournalBookId : undefined" />
+        <JournalWorkspace v-else :book-id="journalBookId" />
       </div>
     </div>
   </div>
@@ -313,7 +333,7 @@ import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
-import type { GoodsListItem } from '@/api/types'
+import type { GoodsListItem, JournalBook } from '@/api/types'
 import { deleteGoods, getGoodsList, moveGoods } from '@/api/goods'
 
 const router = useRouter()
@@ -328,12 +348,15 @@ const isCloudShowcaseTab = (value: unknown): value is CloudShowcaseTab =>
   value === 'showcase' || value === 'barn' || value === 'stats' || value === 'journal'
 
 const activeTab = ref<CloudShowcaseTab>(isCloudShowcaseTab(route.query.tab) ? route.query.tab : 'barn')
-const mobileJournalBookId = computed(() => (
-  isMobile.value && typeof route.query.book === 'string' ? route.query.book : ''
+const journalBookId = computed(() => (
+  typeof route.query.book === 'string' ? route.query.book : ''
 ))
+const isJournalEditor = computed(() => activeTab.value === 'journal' && Boolean(journalBookId.value))
 
 const visitedTabs = ref(new Set<CloudShowcaseTab>([activeTab.value]))
 const journalStore = useJournalStore()
+const journalCoverInputRef = ref<HTMLInputElement | null>(null)
+const journalCoverBookId = ref('')
 const saveJournalBeforeLeaving = async () => {
   if (activeTab.value !== 'journal' || !journalStore.dirty) return true
   const saved = await journalStore.saveActivePage({ createVersion: false })
@@ -353,6 +376,7 @@ const openJournalBook = async (bookId: string) => {
     path: '/showcase',
     query: { tab: 'journal', book: bookId },
   })
+  window.scrollTo({ top: 0, behavior: 'auto' })
 }
 
 const createJournalBook = async () => {
@@ -370,6 +394,51 @@ const createJournalBook = async () => {
       path: '/showcase',
       query: { tab: 'journal', book: created.id },
     })
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  } catch {
+    // user cancelled
+  }
+}
+
+const renameJournalBook = async (book: JournalBook) => {
+  try {
+    const result = await ElMessageBox.prompt('给这本手帐起个新名字', '重命名手帐', {
+      confirmButtonText: '保存',
+      cancelButtonText: '取消',
+      inputValue: book.title,
+      inputPattern: /\S+/,
+      inputErrorMessage: '请输入手帐名称',
+    })
+    await journalStore.renameBook(book.id, result.value.trim())
+  } catch {
+    // user cancelled
+  }
+}
+
+const changeJournalCover = (book: JournalBook) => {
+  journalCoverBookId.value = book.id
+  journalCoverInputRef.value?.click()
+}
+
+const handleJournalCoverUpload = async (event: Event) => {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  const bookId = journalCoverBookId.value
+  if (file && bookId) {
+    await journalStore.uploadBookCover(bookId, file)
+  }
+  journalCoverBookId.value = ''
+  input.value = ''
+}
+
+const deleteJournalBook = async (book: JournalBook) => {
+  try {
+    await ElMessageBox.confirm(`确认删除《${book.title}》吗？`, '删除手帐', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+    })
+    await journalStore.removeBook(book.id)
   } catch {
     // user cancelled
   }
@@ -378,8 +447,8 @@ const createJournalBook = async () => {
 onBeforeRouteLeave(saveJournalBeforeLeaving)
 onBeforeRouteUpdate(async to => {
   const leavingJournal = to.query.tab !== 'journal'
-  const leavingMobileEditor = Boolean(mobileJournalBookId.value) && !to.query.book
-  if (leavingJournal || leavingMobileEditor) return saveJournalBeforeLeaving()
+  const leavingJournalEditor = Boolean(journalBookId.value) && !to.query.book
+  if (leavingJournal || leavingJournalEditor) return saveJournalBeforeLeaving()
 })
 onActivated(async () => {
   const workspace = useMobileWorkspaceStore()
@@ -1064,6 +1133,19 @@ watch(mobileFilterVisible, (visible) => {
   min-height: calc(100vh - 64px); /* 减去导航栏高度 */
 }
 
+.cloud-showcase.is-journal-editor {
+  min-height: 0;
+  padding-bottom: 20px;
+}
+
+.sr-only-input {
+  position: fixed;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .search-section {
   margin-bottom: 24px;
 }
@@ -1187,6 +1269,11 @@ watch(mobileFilterVisible, (visible) => {
 .stats-section,
 .journal-section {
   margin-top: 16px;
+}
+
+.journal-section.is-journal-editor {
+  height: calc(100dvh - var(--app-navbar-height, 64px) - 114px);
+  min-height: 560px;
 }
 
 .showcase-section {

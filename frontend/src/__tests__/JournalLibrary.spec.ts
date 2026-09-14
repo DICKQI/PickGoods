@@ -38,7 +38,8 @@ const books: JournalBook[] = [
   },
 ]
 
-const mountLibrary = () => mount(JournalLibrary, {
+const mountLibrary = (variant: 'mobile' | 'desktop' = 'mobile') => mount(JournalLibrary, {
+  props: { variant },
   global: {
     stubs: {
       MobilePullIndicator: { props: ['distance', 'refreshing'], template: '<div class="pull-indicator-stub" />' },
@@ -50,6 +51,19 @@ const mountLibrary = () => mount(JournalLibrary, {
         props: ['src', 'alt'],
         template: '<img class="image-stub" :src="src" :alt="alt" />',
       },
+      'el-dropdown': {
+        emits: ['command'],
+        template: `
+          <div class="dropdown-stub">
+            <slot />
+            <button class="dropdown-command" data-command="rename" @click="$emit('command', 'rename')">重命名</button>
+            <button class="dropdown-command" data-command="cover" @click="$emit('command', 'cover')">更换封面</button>
+            <button class="dropdown-command" data-command="delete" @click="$emit('command', 'delete')">删除</button>
+          </div>
+        `,
+      },
+      'el-dropdown-menu': { template: '<div><slot /></div>' },
+      'el-dropdown-item': { template: '<span><slot /></span>' },
     },
   },
 })
@@ -100,6 +114,36 @@ describe('JournalLibrary', () => {
     expect(wrapper.get('.empty-stub').text()).toContain('还没有手帐')
     await wrapper.get('[data-test="journal-library-create"]').trigger('click')
     expect(wrapper.emitted('createBook')).toHaveLength(1)
+    wrapper.unmount()
+  })
+
+  it('renders the desktop library header and cover grid without mobile-only controls', async () => {
+    journalStore.books = books
+    const wrapper = mountLibrary('desktop')
+    await flushPromises()
+
+    expect(wrapper.get('.journal-library').classes()).toContain('journal-library--desktop')
+    expect(wrapper.get('.journal-library__desktop-header').text()).toContain('我的手帐')
+    expect(wrapper.get('[data-test="journal-library-create-desktop"]').text()).toContain('新建手帐')
+    expect(wrapper.findAll('.journal-book-card')).toHaveLength(2)
+    expect(wrapper.find('.journal-library__fab').exists()).toBe(false)
+    expect(wrapper.find('.journal-library__header').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('emits desktop book management actions from the card menu', async () => {
+    journalStore.books = books
+    const wrapper = mountLibrary('desktop')
+    await flushPromises()
+
+    const commands = wrapper.findAll('.dropdown-command')
+    await commands[0]!.trigger('click')
+    await commands[1]!.trigger('click')
+    await commands[2]!.trigger('click')
+
+    expect(wrapper.emitted('renameBook')?.[0]).toEqual([books[0]])
+    expect(wrapper.emitted('changeCover')?.[0]).toEqual([books[0]])
+    expect(wrapper.emitted('deleteBook')?.[0]).toEqual([books[0]])
     wrapper.unmount()
   })
 

@@ -108,7 +108,13 @@
     <div
       ref="viewportRef"
       class="journal-canvas-viewport"
-      :class="{ 'is-mobile': mobile }"
+      :class="{
+        'is-mobile': mobile,
+        'is-panning': panning,
+        'is-drawing-tool': tool === 'draw' || tool === 'erase' || tool === 'eyedropper',
+      }"
+      @mousedown.middle.prevent
+      @auxclick.middle.prevent
       data-swipe-ignore
     >
       <v-stage
@@ -125,65 +131,103 @@
         @tap="handleStageClick"
       >
         <v-layer>
-          <v-rect :config="{ id: 'journal-background', x: 0, y: 0, width, height, fill: background }" />
-
-          <template v-for="(line, lineIndex) in backgroundPattern.lines" :key="`bg-line-${lineIndex}`">
-            <v-line :config="{ points: line.points, stroke: line.stroke, strokeWidth: 1, listening: false, perfectDrawEnabled: false }" />
-          </template>
-          <template v-for="(dot, dotIndex) in backgroundPattern.dots" :key="`bg-dot-${dotIndex}`">
-            <v-circle :config="{ x: dot.x, y: dot.y, radius: 1.6, fill: 'rgba(120, 120, 140, 0.28)', listening: false, perfectDrawEnabled: false }" />
-          </template>
-
-          <template v-for="layer in sortedLayers" :key="layer.id">
-            <template v-for="item in layer.items" :key="item.id">
-              <v-image
-                v-if="item.type === 'sticker' && layer.type === 'sticker'"
-                :ref="setNodeRef(layer.id)"
-                :config="imageConfig(layer, item)"
-                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
-                @tap="selectLayer(layer.id)"
-                @dragend="handleDragEnd($event, layer.id)"
-                @transformend="handleTransformEnd($event, layer.id)"
-              />
-              <v-text
-                v-else-if="item.type === 'text' && layer.type === 'text'"
-                :ref="setNodeRef(layer.id)"
-                :config="textConfig(layer, item)"
-                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
-                @tap="selectLayer(layer.id)"
-                @dblclick="editTextLayer(layer.id)"
-                @dbltap="editTextLayer(layer.id)"
-                @dragend="handleDragEnd($event, layer.id)"
-                @transformend="handleTransformEnd($event, layer.id)"
-              />
-              <v-line v-else-if="item.type === 'stroke' && layer.type === 'draw'" :config="drawConfig(layer, item)" />
+          <v-group :config="worldConfig">
+            <v-group ref="pageGroupRef">
               <v-rect
-                v-else-if="item.type === 'shape' && item.shape_type === 'rect'"
-                :ref="setNodeRef(layer.id)"
-                :config="rectShapeConfig(layer, item)"
-                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
-                @tap="selectLayer(layer.id)"
-                @dragend="handleDragEnd($event, layer.id)"
-                @transformend="handleTransformEnd($event, layer.id)"
+                :config="{
+                  id: 'journal-background',
+                  x: canvasBounds.x,
+                  y: canvasBounds.y,
+                  width: canvasBounds.width,
+                  height: canvasBounds.height,
+                  fill: background,
+                  shadowColor: 'rgba(15, 23, 42, 0.18)',
+                  shadowBlur: 18,
+                  shadowOffsetX: 0,
+                  shadowOffsetY: 10,
+                }"
               />
-              <v-circle
-                v-else-if="item.type === 'shape' && item.shape_type === 'circle'"
-                :ref="setNodeRef(layer.id)"
-                :config="circleShapeConfig(layer, item)"
-                @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
-                @tap="selectLayer(layer.id)"
-                @dragend="handleDragEnd($event, layer.id)"
-                @transformend="handleTransformEnd($event, layer.id)"
+
+              <template v-for="(line, lineIndex) in backgroundPattern.lines" :key="`bg-line-${lineIndex}`">
+                <v-line :config="{ points: line.points, stroke: line.stroke, strokeWidth: 1, listening: false, perfectDrawEnabled: false }" />
+              </template>
+              <template v-for="(dot, dotIndex) in backgroundPattern.dots" :key="`bg-dot-${dotIndex}`">
+                <v-circle :config="{ x: dot.x, y: dot.y, radius: 1.6, fill: 'rgba(120, 120, 140, 0.28)', listening: false, perfectDrawEnabled: false }" />
+              </template>
+
+              <v-rect
+                v-if="canvasExpanded && !exporting"
+                :config="{
+                  id: 'journal-page-boundary',
+                  x: 0,
+                  y: 0,
+                  width,
+                  height,
+                  stroke: 'rgba(184, 148, 31, 0.42)',
+                  strokeWidth: 1,
+                  dash: [8, 6],
+                  listening: false,
+                  perfectDrawEnabled: false,
+                }"
               />
+
+              <template v-for="layer in sortedLayers" :key="layer.id">
+                <template v-for="item in layer.items" :key="item.id">
+                  <v-image
+                    v-if="item.type === 'sticker' && layer.type === 'sticker'"
+                    :ref="setNodeRef(layer.id)"
+                    :config="imageConfig(layer, item)"
+                    @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
+                    @tap="selectLayer(layer.id)"
+                    @dragmove="handleLayerDragMove"
+                    @dragend="handleDragEnd($event, layer.id)"
+                    @transformend="handleTransformEnd($event, layer.id)"
+                  />
+                  <v-text
+                    v-else-if="item.type === 'text' && layer.type === 'text'"
+                    :ref="setNodeRef(layer.id)"
+                    :config="textConfig(layer, item)"
+                    @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
+                    @tap="selectLayer(layer.id)"
+                    @dblclick="editTextLayer(layer.id)"
+                    @dbltap="editTextLayer(layer.id)"
+                    @dragmove="handleLayerDragMove"
+                    @dragend="handleDragEnd($event, layer.id)"
+                    @transformend="handleTransformEnd($event, layer.id)"
+                  />
+                  <v-line v-else-if="item.type === 'stroke' && layer.type === 'draw'" :config="drawConfig(layer, item)" />
+                  <v-rect
+                    v-else-if="item.type === 'shape' && item.shape_type === 'rect'"
+                    :ref="setNodeRef(layer.id)"
+                    :config="rectShapeConfig(layer, item)"
+                    @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
+                    @tap="selectLayer(layer.id)"
+                    @dragmove="handleLayerDragMove"
+                    @dragend="handleDragEnd($event, layer.id)"
+                    @transformend="handleTransformEnd($event, layer.id)"
+                  />
+                  <v-circle
+                    v-else-if="item.type === 'shape' && item.shape_type === 'circle'"
+                    :ref="setNodeRef(layer.id)"
+                    :config="circleShapeConfig(layer, item)"
+                    @click="selectLayer(layer.id, Boolean($event?.evt?.shiftKey))"
+                    @tap="selectLayer(layer.id)"
+                    @dragmove="handleLayerDragMove"
+                    @dragend="handleDragEnd($event, layer.id)"
+                    @transformend="handleTransformEnd($event, layer.id)"
+                  />
+                </template>
+              </template>
+
+              <v-transformer v-if="selectedLayerId && !exporting" ref="transformerRef" :config="{ rotateEnabled: true }" />
+            </v-group>
+
+            <template v-for="(guide, guideIndex) in activeGuides" :key="`guide-${guideIndex}`">
+              <v-line :config="guideConfig(guide)" />
             </template>
-          </template>
 
-          <template v-for="(guide, guideIndex) in activeGuides" :key="`guide-${guideIndex}`">
-            <v-line :config="guideConfig(guide)" />
-          </template>
-
-          <v-transformer v-if="selectedLayerId && !exporting" ref="transformerRef" :config="{ rotateEnabled: true }" />
-          <v-circle v-if="eraserPreviewConfig.visible && !exporting" :config="eraserPreviewConfig" />
+            <v-circle v-if="eraserPreviewConfig.visible && !exporting" :config="eraserPreviewConfig" />
+          </v-group>
         </v-layer>
       </v-stage>
       <textarea
@@ -203,13 +247,14 @@
       <span>{{ Math.round(zoomLevel * 100) }}%</span>
       <el-button size="small" @click="setZoom(zoomLevel + 0.1)">+</el-button>
       <el-button v-if="mobile" size="small" @click="resetViewport">适应</el-button>
-      <small v-if="!mobile">用方向键慢慢挪位置，按住 Shift 就能快速移动啦~</small>
+      <small v-if="!mobile">拖动空白处或按住中键平移；Ctrl+滚轮缩放</small>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import Konva from 'konva'
 import { Brush, Delete, Document, EditPen, Pointer } from '@element-plus/icons-vue'
 import type {
   GoodsListItem,
@@ -252,8 +297,11 @@ type LayerPatch = Partial<JournalLayer> & Record<string, unknown>
 type Point2D = [number, number]
 
 const stageRef = ref<any>(null)
+const pageGroupRef = ref<any>(null)
 const transformerRef = ref<any>(null)
 const viewportRef = ref<HTMLElement | null>(null)
+const viewportSize = ref({ width: 760, height: 520 })
+let viewportResizeObserver: ResizeObserver | null = null
 const tool = ref<ToolMode>('select')
 const selectedLayerId = ref<string | null>(null)
 const selectedLayerIds = ref<string[]>([])
@@ -263,15 +311,16 @@ const brushType = ref<JournalBrushType>('pen')
 const brushOpacity = ref(1)
 const drawing = ref(false)
 const erasing = ref(false)
+const panning = ref(false)
 const eraserWidth = ref(20)
 const eraserPointer = ref<{ x: number; y: number } | null>(null)
 const zoomLevel = ref(1)
-const canvasOffset = ref({ x: 0, y: 0 })
+const canvasOffset = ref({ x: 12, y: 12 })
 let mobileTouchGestureActive = false
 let mobileTouchStartDistance = 0
 let mobileTouchStartZoom = 1
 let mobileTouchStartMidpoint = { x: 0, y: 0 }
-let mobileTouchStartScroll = { left: 0, top: 0 }
+let mobileTouchStartOffset = { x: 0, y: 0 }
 let mobileGestureEndedAt = 0
 const imageCache = new Map<string, HTMLImageElement>()
 const nodeRefs = new Map<string, any>()
@@ -352,18 +401,131 @@ const layersForPanel = computed(() =>
   [...localContent.value.layers].sort((a, b) => b.z_index - a.z_index).map(cloneJournalLayer),
 )
 
-const scale = computed(() => {
-  const maxWidth = viewportRef.value?.clientWidth ? viewportRef.value.clientWidth - 24 : 760
-  return Math.min(3, Math.max(0.2, maxWidth / props.width) * zoomLevel.value)
+const CANVAS_CONTENT_PADDING = 24
+
+const getRotatedBounds = (
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  rotation = 0,
+) => {
+  const radians = rotation * Math.PI / 180
+  const cos = Math.cos(radians)
+  const sin = Math.sin(radians)
+  const corners = ([
+    [0, 0],
+    [width, 0],
+    [width, height],
+    [0, height],
+  ] as Array<[number, number]>).map(([cornerX, cornerY]) => ({
+    x: x + cornerX * cos - cornerY * sin,
+    y: y + cornerX * sin + cornerY * cos,
+  }))
+  const xs = corners.map(point => point.x)
+  const ys = corners.map(point => point.y)
+  const minX = Math.min(...xs)
+  const minY = Math.min(...ys)
+  const maxX = Math.max(...xs)
+  const maxY = Math.max(...ys)
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  }
+}
+
+const getLayerRect = (layer: JournalLayer) => {
+  const rects = layer.items.flatMap((item) => {
+    if (item.type === 'stroke') {
+      if (item.points.length < 2) return []
+      const xs = item.points.filter((_, index) => index % 2 === 0)
+      const ys = item.points.filter((_, index) => index % 2 === 1)
+      const padding = item.stroke_width / 2
+      const minX = Math.min(...xs) - padding
+      const minY = Math.min(...ys) - padding
+      const maxX = Math.max(...xs) + padding
+      const maxY = Math.max(...ys) + padding
+      return [{ x: minX, y: minY, width: maxX - minX, height: maxY - minY }]
+    }
+
+    if (item.type === 'text') {
+      const longestLine = Math.max(1, ...item.text.split('\n').map(line => line.length))
+      const textWidth = item.width || Math.max(item.font_size, longestLine * item.font_size * 0.95)
+      const lineCount = Math.max(1, item.text.split('\n').length)
+      const textHeight = item.font_size * (item.line_height || 1.25) * lineCount
+      return [getRotatedBounds(item.x, item.y, textWidth, textHeight, item.rotation)]
+    }
+
+    return [getRotatedBounds(item.x, item.y, item.width, item.height, item.rotation)]
+  })
+
+  if (rects.length === 0) return { x: 0, y: 0, width: 0, height: 0 }
+  const minX = Math.min(...rects.map(rect => rect.x))
+  const minY = Math.min(...rects.map(rect => rect.y))
+  const maxX = Math.max(...rects.map(rect => rect.x + rect.width))
+  const maxY = Math.max(...rects.map(rect => rect.y + rect.height))
+  return { x: minX, y: minY, width: maxX - minX, height: maxY - minY }
+}
+
+const canvasBounds = computed(() => {
+  let minX = 0
+  let minY = 0
+  let maxX = props.width
+  let maxY = props.height
+
+  localContent.value.layers.forEach((layer) => {
+    if (layer.visible === false) return
+    const rect = getLayerRect(layer)
+    if (rect.width <= 0 && rect.height <= 0) return
+    minX = Math.min(minX, rect.x - CANVAS_CONTENT_PADDING)
+    minY = Math.min(minY, rect.y - CANVAS_CONTENT_PADDING)
+    maxX = Math.max(maxX, rect.x + rect.width + CANVAS_CONTENT_PADDING)
+    maxY = Math.max(maxY, rect.y + rect.height + CANVAS_CONTENT_PADDING)
+  })
+
+  const x = Math.floor(minX)
+  const y = Math.floor(minY)
+  return {
+    x,
+    y,
+    width: Math.ceil(maxX - x),
+    height: Math.ceil(maxY - y),
+  }
 })
 
-const stageConfig = computed(() => ({
-  width: props.width * scale.value,
-  height: props.height * scale.value,
-  scaleX: scale.value,
-  scaleY: scale.value,
+const canvasExpanded = computed(() => (
+  canvasBounds.value.x !== 0
+  || canvasBounds.value.y !== 0
+  || canvasBounds.value.width !== props.width
+  || canvasBounds.value.height !== props.height
+))
+
+const PAGE_MARGIN = 12
+const MIN_ZOOM = 0.2
+const MAX_ZOOM = 3
+
+const baseScale = computed(() => {
+  const width = Math.max(1, viewportSize.value.width - PAGE_MARGIN * 2)
+  return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, width / props.width))
+})
+
+const scale = computed(() => Math.min(
+  MAX_ZOOM,
+  Math.max(MIN_ZOOM, baseScale.value * zoomLevel.value),
+))
+
+const worldConfig = computed(() => ({
   x: canvasOffset.value.x,
   y: canvasOffset.value.y,
+  scaleX: scale.value,
+  scaleY: scale.value,
+}))
+
+const stageConfig = computed(() => ({
+  width: Math.max(1, viewportSize.value.width),
+  height: Math.max(1, viewportSize.value.height),
 }))
 
 const backgroundPattern = computed(() => {
@@ -378,21 +540,28 @@ const backgroundPattern = computed(() => {
   const lineColor = 'rgba(120, 120, 140, 0.16)'
   const lines: Array<{ points: number[]; stroke: string }> = []
   const dots: Array<{ x: number; y: number }> = []
+  const bounds = canvasBounds.value
+  const firstGridX = Math.ceil(bounds.x / gap) * gap
+  const firstGridY = Math.ceil(bounds.y / gap) * gap
+  const startX = firstGridX <= bounds.x ? firstGridX + gap : firstGridX
+  const startY = firstGridY <= bounds.y ? firstGridY + gap : firstGridY
+  const endX = bounds.x + bounds.width
+  const endY = bounds.y + bounds.height
 
   if (style === 'dot') {
-    for (let y = gap; y < props.height; y += gap) {
-      for (let x = gap; x < props.width; x += gap) {
+    for (let y = startY; y < endY; y += gap) {
+      for (let x = startX; x < endX; x += gap) {
         dots.push({ x, y })
       }
     }
   } else if (style === 'grid') {
-    for (let x = gap; x < props.width; x += gap) lines.push({ points: [x, 0, x, props.height], stroke: lineColor })
-    for (let y = gap; y < props.height; y += gap) lines.push({ points: [0, y, props.width, y], stroke: lineColor })
+    for (let x = startX; x < endX; x += gap) lines.push({ points: [x, bounds.y, x, endY], stroke: lineColor })
+    for (let y = startY; y < endY; y += gap) lines.push({ points: [bounds.x, y, endX, y], stroke: lineColor })
   } else if (style === 'line' || style === 'note') {
-    for (let y = gap; y < props.height; y += gap) lines.push({ points: [0, y, props.width, y], stroke: lineColor })
+    for (let y = startY; y < endY; y += gap) lines.push({ points: [bounds.x, y, endX, y], stroke: lineColor })
     if (style === 'note') {
       const margin = Math.round(props.width * 0.12)
-      lines.push({ points: [margin, 0, margin, props.height], stroke: 'rgba(220, 120, 120, 0.32)' })
+      lines.push({ points: [margin, bounds.y, margin, endY], stroke: 'rgba(220, 120, 120, 0.32)' })
     }
   }
   return { lines, dots }
@@ -594,24 +763,117 @@ const selectPaletteColor = (color: string) => {
   recentColors.value = [color, ...recentColors.value.filter(item => item.toLowerCase() !== color.toLowerCase())].slice(0, 8)
 }
 
+const clampZoom = (zoom: number) => (
+  Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Number(zoom) || 1))
+)
+
+const getViewportRect = () => {
+  const rect = viewportRef.value?.getBoundingClientRect()
+  if (rect?.width && rect.height) return rect
+  return {
+    left: 0,
+    top: 0,
+    width: viewportSize.value.width,
+    height: viewportSize.value.height,
+  } as DOMRect
+}
+
+const zoomAtPoint = (zoom: number, point: { x: number; y: number }) => {
+  const nextZoom = clampZoom(zoom)
+  const currentScale = scale.value
+  const nextScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, baseScale.value * nextZoom))
+  const worldX = (point.x - canvasOffset.value.x) / currentScale
+  const worldY = (point.y - canvasOffset.value.y) / currentScale
+
+  zoomLevel.value = nextZoom
+  canvasOffset.value = {
+    x: point.x - worldX * nextScale,
+    y: point.y - worldY * nextScale,
+  }
+}
+
 const setZoom = (zoom: number) => {
-  zoomLevel.value = Math.min(3, Math.max(0.2, Number(zoom) || 1))
+  const rect = getViewportRect()
+  zoomAtPoint(zoom, {
+    x: rect.width / 2,
+    y: rect.height / 2,
+  })
+}
+
+const handleWheel = (event: WheelEvent) => {
+  if (!event.ctrlKey && !event.metaKey) return
+  event.preventDefault()
+  const rect = getViewportRect()
+  const unit = event.deltaMode === 1
+    ? 16
+    : event.deltaMode === 2
+      ? rect.height
+      : 1
+  const delta = event.deltaY * unit
+  zoomAtPoint(zoomLevel.value * Math.exp(-delta * 0.002), {
+    x: event.clientX - rect.left,
+    y: event.clientY - rect.top,
+  })
 }
 
 const resetViewport = () => {
+  panning.value = false
   zoomLevel.value = 1
-  canvasOffset.value = { x: 0, y: 0 }
-  nextTick(() => {
-    if (!viewportRef.value) return
-    viewportRef.value.scrollLeft = 0
-    viewportRef.value.scrollTop = 0
-  })
+  canvasOffset.value = { x: PAGE_MARGIN, y: PAGE_MARGIN }
 }
 
 const panCanvas = (deltaX: number, deltaY: number) => {
   canvasOffset.value = {
     x: Math.round(canvasOffset.value.x + (Number(deltaX) || 0)),
     y: Math.round(canvasOffset.value.y + (Number(deltaY) || 0)),
+  }
+}
+
+const EDGE_AUTOPAN_THRESHOLD = 48
+const EDGE_AUTOPAN_SPEED = 16
+let autoPanFrame = 0
+let autoPanVelocity = { x: 0, y: 0 }
+
+const stopLayerAutoPan = () => {
+  autoPanVelocity = { x: 0, y: 0 }
+  if (autoPanFrame) {
+    window.cancelAnimationFrame(autoPanFrame)
+    autoPanFrame = 0
+  }
+}
+
+const runLayerAutoPan = () => {
+  autoPanFrame = 0
+  if (autoPanVelocity.x === 0 && autoPanVelocity.y === 0) return
+  panCanvas(autoPanVelocity.x, autoPanVelocity.y)
+  autoPanFrame = window.requestAnimationFrame(runLayerAutoPan)
+}
+
+const edgePanSpeed = (position: number, size: number) => {
+  const clamped = Math.min(size, Math.max(0, position))
+  if (clamped < EDGE_AUTOPAN_THRESHOLD) {
+    return -Math.ceil((1 - clamped / EDGE_AUTOPAN_THRESHOLD) * EDGE_AUTOPAN_SPEED)
+  }
+  if (clamped > size - EDGE_AUTOPAN_THRESHOLD) {
+    return Math.ceil((1 - (size - clamped) / EDGE_AUTOPAN_THRESHOLD) * EDGE_AUTOPAN_SPEED)
+  }
+  return 0
+}
+
+const handleLayerDragMove = () => {
+  if (props.mobile) {
+    stopLayerAutoPan()
+    return
+  }
+  const position = getStage()?.getPointerPosition?.()
+  if (!position) return
+  autoPanVelocity = {
+    x: edgePanSpeed(position.x, viewportSize.value.width),
+    y: edgePanSpeed(position.y, viewportSize.value.height),
+  }
+  if (!autoPanFrame && (autoPanVelocity.x !== 0 || autoPanVelocity.y !== 0)) {
+    panCanvas(autoPanVelocity.x, autoPanVelocity.y)
+    autoPanFrame = window.requestAnimationFrame(runLayerAutoPan)
   }
 }
 
@@ -635,14 +897,16 @@ const touchMidpoint = (touches: TouchList) => {
 const handleMobileTouchStart = (event: TouchEvent) => {
   if (!props.mobile || event.touches.length < 2 || !viewportRef.value) return
   handlePointerEnd()
+  const rect = getViewportRect()
+  const midpoint = touchMidpoint(event.touches)
   mobileTouchGestureActive = true
   mobileTouchStartDistance = Math.max(1, touchDistance(event.touches))
   mobileTouchStartZoom = zoomLevel.value
-  mobileTouchStartMidpoint = touchMidpoint(event.touches)
-  mobileTouchStartScroll = {
-    left: viewportRef.value.scrollLeft,
-    top: viewportRef.value.scrollTop,
+  mobileTouchStartMidpoint = {
+    x: midpoint.x - rect.left,
+    y: midpoint.y - rect.top,
   }
+  mobileTouchStartOffset = { ...canvasOffset.value }
   event.preventDefault()
   event.stopPropagation()
 }
@@ -653,28 +917,25 @@ const handleMobileTouchMove = (event: TouchEvent) => {
   event.preventDefault()
   event.stopPropagation()
 
-  const midpoint = touchMidpoint(event.touches)
+  const rect = viewport.getBoundingClientRect()
+  const rawMidpoint = touchMidpoint(event.touches)
+  const midpoint = {
+    x: rawMidpoint.x - rect.left,
+    y: rawMidpoint.y - rect.top,
+  }
   const distance = Math.max(1, touchDistance(event.touches))
   const ratio = distance / mobileTouchStartDistance
-  const nextZoom = Math.min(3, Math.max(0.2, mobileTouchStartZoom * ratio))
-  const rect = viewport.getBoundingClientRect()
-  const startFocusX = mobileTouchStartMidpoint.x - rect.left
-  const startFocusY = mobileTouchStartMidpoint.y - rect.top
+  const nextZoom = clampZoom(mobileTouchStartZoom * ratio)
+  const startScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, baseScale.value * mobileTouchStartZoom))
+  const nextScale = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, baseScale.value * nextZoom))
+  const worldX = (mobileTouchStartMidpoint.x - mobileTouchStartOffset.x) / startScale
+  const worldY = (mobileTouchStartMidpoint.y - mobileTouchStartOffset.y) / startScale
 
-  setZoom(nextZoom)
-  nextTick(() => {
-    if (!viewportRef.value) return
-    const currentFocusX = midpoint.x - rect.left
-    const currentFocusY = midpoint.y - rect.top
-    viewportRef.value.scrollLeft = Math.max(
-      0,
-      (mobileTouchStartScroll.left + startFocusX) * (nextZoom / mobileTouchStartZoom) - currentFocusX,
-    )
-    viewportRef.value.scrollTop = Math.max(
-      0,
-      (mobileTouchStartScroll.top + startFocusY) * (nextZoom / mobileTouchStartZoom) - currentFocusY,
-    )
-  })
+  zoomLevel.value = nextZoom
+  canvasOffset.value = {
+    x: midpoint.x - worldX * nextScale,
+    y: midpoint.y - worldY * nextScale,
+  }
 }
 
 const handleMobileTouchEnd = (event: TouchEvent) => {
@@ -869,11 +1130,8 @@ const pasteLayer = () => {
 }
 
 const getLayerBounds = (layer: JournalLayer) => {
-  const item = layer.items[0]
-  if (item?.type === 'sticker') return { width: item.width, height: item.height }
-  if (item?.type === 'text') return { width: 0, height: item.font_size }
-  if (item?.type === 'shape') return { width: item.width, height: item.height }
-  return { width: 0, height: 0 }
+  const rect = getLayerRect(layer)
+  return { width: rect.width, height: rect.height }
 }
 
 const alignSelectedLayer = (direction: AlignDirection) => {
@@ -984,7 +1242,11 @@ const getSnapPosition = (layerId: string, position: { x: number; y: number }, th
     nextY = yGuide
     guides.push({ axis: 'y', value: yGuide })
   }
-  return { x: nextX, y: nextY, guides }
+  return {
+    x: Math.min(100000, Math.max(-100000, nextX)),
+    y: Math.min(100000, Math.max(-100000, nextY)),
+    guides,
+  }
 }
 
 const distanceToSegment = (
@@ -1222,8 +1484,8 @@ const getPointer = () => {
   const position = stage?.getPointerPosition?.()
   if (!position) return null
   return {
-    x: Math.round(position.x / scale.value),
-    y: Math.round(position.y / scale.value),
+    x: Math.round((position.x - canvasOffset.value.x) / scale.value),
+    y: Math.round((position.y - canvasOffset.value.y) / scale.value),
   }
 }
 
@@ -1233,7 +1495,58 @@ const updateEraserPointer = () => {
   return pointer
 }
 
+let panStartClient = { x: 0, y: 0 }
+let panStartOffset = { x: 0, y: 0 }
+let panMoved = false
+let suppressStageClick = false
+
+const getClientPoint = (event: any) => {
+  const source = event?.evt
+  if (!source) return null
+  if (typeof source.clientX === 'number' && typeof source.clientY === 'number') {
+    return { x: source.clientX, y: source.clientY }
+  }
+  const touch = source.touches?.[0]
+  return touch
+    ? { x: touch.clientX, y: touch.clientY }
+    : null
+}
+
+const isBackgroundPointer = (event: any) => {
+  const target = event?.target
+  if (!target) return true
+  const stage = target.getStage?.()
+  return target === stage || target.id?.() === 'journal-background'
+}
+
+const beginCanvasPan = (event: any) => {
+  const point = getClientPoint(event)
+  if (!point) return false
+  panning.value = true
+  panMoved = false
+  suppressStageClick = false
+  panStartClient = point
+  panStartOffset = { ...canvasOffset.value }
+  event?.evt?.preventDefault?.()
+  return true
+}
+
 const handlePointerStart = (event: any) => {
+  const mouseButton = event?.evt?.button
+  if (!props.mobile && mouseButton === 1) {
+    beginCanvasPan(event)
+    return
+  }
+  if (
+    !props.mobile
+    && tool.value === 'select'
+    && (typeof mouseButton !== 'number' || mouseButton === 0)
+    && isBackgroundPointer(event)
+  ) {
+    beginCanvasPan(event)
+    return
+  }
+
   const pointer = tool.value === 'erase' ? updateEraserPointer() : getPointer()
   if (!pointer) return
   if (tool.value === 'eyedropper') {
@@ -1255,6 +1568,20 @@ const handlePointerStart = (event: any) => {
 }
 
 const handlePointerMove = (event: any) => {
+  if (panning.value) {
+    const point = getClientPoint(event)
+    if (!point) return
+    const deltaX = point.x - panStartClient.x
+    const deltaY = point.y - panStartClient.y
+    if (Math.abs(deltaX) > 2 || Math.abs(deltaY) > 2) panMoved = true
+    canvasOffset.value = {
+      x: Math.round(panStartOffset.x + deltaX),
+      y: Math.round(panStartOffset.y + deltaY),
+    }
+    event?.evt?.preventDefault?.()
+    return
+  }
+
   if (tool.value === 'erase') {
     const pointer = updateEraserPointer()
     if (!erasing.value) return
@@ -1278,6 +1605,13 @@ const handlePointerMove = (event: any) => {
 }
 
 const handlePointerEnd = () => {
+  stopLayerAutoPan()
+  if (panning.value) {
+    panning.value = false
+    suppressStageClick = panMoved
+    activeGuides.value = []
+    return
+  }
   drawing.value = false
   erasing.value = false
   activeGuides.value = []
@@ -1289,6 +1623,10 @@ const handlePointerLeave = () => {
 }
 
 const handleStageClick = (event: any) => {
+  if (suppressStageClick) {
+    suppressStageClick = false
+    return
+  }
   if (Date.now() - mobileGestureEndedAt < 350) return
   if (event?.target === event?.target?.getStage?.()) {
     setSelectedLayerIds([])
@@ -1309,6 +1647,7 @@ const selectLayer = (id: string, additive = false) => {
 }
 
 const handleDragEnd = (event: any, id: string) => {
+  stopLayerAutoPan()
   const node = event.target
   const snapped = getSnapPosition(id, { x: Math.round(node.x()), y: Math.round(node.y()) })
   activeGuides.value = snapped.guides
@@ -1495,31 +1834,54 @@ const guideConfig = (guide: { axis: 'x' | 'y'; value: number }) => ({
   listening: false,
 })
 
-const exportPngBlob = async (pixelRatio = 1): Promise<Blob | null> => {
-  const stage = getStage()
+const renderPageDataUrl = async (pixelRatio = 1): Promise<string | null> => {
   exporting.value = true
   await nextTick()
+  let exportStage: Konva.Stage | null = null
+  let exportContainer: HTMLDivElement | null = null
   try {
+    const pageGroup = pageGroupRef.value?.getNode?.()
+    if (!pageGroup) return null
     const ratio = Math.min(3, Math.max(1, Math.round(Number(pixelRatio) || 1)))
-    const dataUrl = stage?.toDataURL?.({ pixelRatio: ratio })
-    if (!dataUrl) return null
-    const response = await fetch(dataUrl)
-    return response.blob()
+    exportContainer = document.createElement('div')
+    exportContainer.style.position = 'fixed'
+    exportContainer.style.left = '-100000px'
+    exportContainer.style.top = '0'
+    exportContainer.style.pointerEvents = 'none'
+    document.body.appendChild(exportContainer)
+
+    exportStage = new Konva.Stage({
+      container: exportContainer,
+      width: props.width,
+      height: props.height,
+    })
+    const exportLayer = new Konva.Layer()
+    exportLayer.add(pageGroup.clone({
+      x: 0,
+      y: 0,
+      scaleX: 1,
+      scaleY: 1,
+      rotation: 0,
+    }))
+    exportStage.add(exportLayer)
+    exportLayer.draw()
+    return exportStage.toDataURL({ pixelRatio: ratio })
   } finally {
+    exportStage?.destroy()
+    exportContainer?.remove()
     exporting.value = false
   }
 }
 
-const exportPngDataUrl = async (pixelRatio = 1): Promise<string | null> => {
-  const stage = getStage()
-  exporting.value = true
-  await nextTick()
-  try {
-    const ratio = Math.min(3, Math.max(1, Math.round(Number(pixelRatio) || 1)))
-    return stage?.toDataURL?.({ pixelRatio: ratio }) || null
-  } finally {
-    exporting.value = false
-  }
+const exportPngDataUrl = async (pixelRatio = 1): Promise<string | null> => (
+  renderPageDataUrl(pixelRatio)
+)
+
+const exportPngBlob = async (pixelRatio = 1): Promise<Blob | null> => {
+  const dataUrl = await renderPageDataUrl(pixelRatio)
+  if (!dataUrl) return null
+  const response = await fetch(dataUrl)
+  return response.blob()
 }
 
 const handleKeydown = (event: KeyboardEvent) => {
@@ -1617,20 +1979,48 @@ watch(tool, (mode) => {
   }
 })
 
+watch(
+  () => [props.width, props.height],
+  () => {
+    resetViewport()
+  },
+)
+
+const syncViewportSize = () => {
+  const element = viewportRef.value
+  if (!element) return
+  viewportSize.value = {
+    width: Math.max(1, element.clientWidth || 760),
+    height: Math.max(1, element.clientHeight || 520),
+  }
+}
+
 onMounted(() => {
+  syncViewportSize()
   window.addEventListener('keydown', handleKeydown)
-  viewportRef.value?.addEventListener('touchstart', handleMobileTouchStart, { capture: true, passive: false })
-  viewportRef.value?.addEventListener('touchmove', handleMobileTouchMove, { capture: true, passive: false })
-  viewportRef.value?.addEventListener('touchend', handleMobileTouchEnd, { capture: true, passive: true })
-  viewportRef.value?.addEventListener('touchcancel', handleMobileTouchEnd, { capture: true, passive: true })
+  const viewport = viewportRef.value
+  viewport?.addEventListener('touchstart', handleMobileTouchStart, { capture: true, passive: false })
+  viewport?.addEventListener('touchmove', handleMobileTouchMove, { capture: true, passive: false })
+  viewport?.addEventListener('touchend', handleMobileTouchEnd, { capture: true, passive: true })
+  viewport?.addEventListener('touchcancel', handleMobileTouchEnd, { capture: true, passive: true })
+  viewport?.addEventListener('wheel', handleWheel, { passive: false })
+  if (viewport && typeof ResizeObserver !== 'undefined') {
+    viewportResizeObserver = new ResizeObserver(syncViewportSize)
+    viewportResizeObserver.observe(viewport)
+  }
 })
 
 onBeforeUnmount(() => {
+  stopLayerAutoPan()
+  viewportResizeObserver?.disconnect()
+  viewportResizeObserver = null
   window.removeEventListener('keydown', handleKeydown)
-  viewportRef.value?.removeEventListener('touchstart', handleMobileTouchStart, { capture: true })
-  viewportRef.value?.removeEventListener('touchmove', handleMobileTouchMove, { capture: true })
-  viewportRef.value?.removeEventListener('touchend', handleMobileTouchEnd, { capture: true })
-  viewportRef.value?.removeEventListener('touchcancel', handleMobileTouchEnd, { capture: true })
+  const viewport = viewportRef.value
+  viewport?.removeEventListener('touchstart', handleMobileTouchStart, { capture: true })
+  viewport?.removeEventListener('touchmove', handleMobileTouchMove, { capture: true })
+  viewport?.removeEventListener('touchend', handleMobileTouchEnd, { capture: true })
+  viewport?.removeEventListener('touchcancel', handleMobileTouchEnd, { capture: true })
+  viewport?.removeEventListener('wheel', handleWheel)
   imageCache.clear()
   nodeRefs.clear()
 })
@@ -1654,6 +2044,8 @@ defineExpose({
   selectPaletteColor,
   addShapeLayer,
   backgroundPattern,
+  canvasBounds,
+  canvasExpanded,
   pickColorAtPoint,
   activeGuides,
   currentBrushLabel,
@@ -1669,10 +2061,18 @@ defineExpose({
   eraserPointer,
   eraserPreviewConfig,
   zoomLevel,
+  viewportSize,
   canvasOffset,
+  panning,
+  worldConfig,
+  stageConfig,
+  scale,
+  getPointer,
   setZoom,
   resetViewport,
   panCanvas,
+  handleLayerDragMove,
+  handlePointerEnd,
   canUndo,
   canRedo,
   undo,
@@ -1707,6 +2107,11 @@ defineExpose({
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.journal-canvas-shell:not(.is-mobile) {
+  flex: 1;
+  min-height: 0;
 }
 
 .journal-canvas-toolbar {
@@ -1817,8 +2222,8 @@ defineExpose({
 .journal-canvas-viewport {
   position: relative;
   min-width: 0;
-  overflow: auto;
-  padding: 12px;
+  overflow: hidden;
+  padding: 0;
   border-radius: 8px;
   background:
     linear-gradient(45deg, rgba(148, 163, 184, 0.12) 25%, transparent 25%),
@@ -1829,9 +2234,23 @@ defineExpose({
   background-position: 0 0, 0 11px, 11px -11px, -11px 0;
 }
 
+.journal-canvas-shell:not(.is-mobile) .journal-canvas-viewport {
+  flex: 1;
+  min-height: 0;
+  cursor: grab;
+}
+
+.journal-canvas-shell:not(.is-mobile) .journal-canvas-viewport.is-drawing-tool {
+  cursor: crosshair;
+}
+
+.journal-canvas-shell:not(.is-mobile) .journal-canvas-viewport.is-panning {
+  cursor: grabbing;
+  user-select: none;
+}
+
 .journal-canvas-viewport :deep(.konvajs-content) {
-  margin: 0 auto;
-  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+  margin: 0;
 }
 
 .text-inline-editor {

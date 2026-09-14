@@ -8,6 +8,31 @@ vi.mock('vue-konva', () => ({
   VueKonva: {},
 }))
 
+const konvaMocks = vi.hoisted(() => ({
+  toDataURL: vi.fn(() => 'data:image/png;base64,ZmFrZQ=='),
+  destroy: vi.fn(),
+  stageCtor: vi.fn(),
+}))
+
+vi.mock('konva', () => ({
+  default: {
+    Stage: vi.fn(function StageMock(config: unknown) {
+      konvaMocks.stageCtor(config)
+      return {
+        add: vi.fn(),
+        toDataURL: konvaMocks.toDataURL,
+        destroy: konvaMocks.destroy,
+      }
+    }),
+    Layer: vi.fn(function LayerMock() {
+      return {
+        add: vi.fn(),
+        draw: vi.fn(),
+      }
+    }),
+  },
+}))
+
 const emptyContent = {
   version: 2,
   layers: [],
@@ -45,15 +70,12 @@ const textLayer = (id: string, text: string, zIndex: number, x = 0, y = 0) => ({
 })
 
 let pointerPosition = { x: 0, y: 0 }
-let stageToDataURL = vi.fn(() => 'data:image/png;base64,ZmFrZQ==')
-
 const StageStub = {
   emits: ['mousedown', 'mousemove', 'mouseup', 'mouseleave', 'touchstart', 'touchmove', 'touchend', 'click', 'tap'],
   setup(_props: unknown, { emit, slots, expose }: any) {
     expose({
       getNode: () => ({
         getPointerPosition: () => pointerPosition,
-        toDataURL: stageToDataURL,
       }),
     })
     const emitPointer = (eventName: string, event: Event) => emit(eventName, { evt: event })
@@ -82,6 +104,17 @@ const mountCanvas = (modelValue = emptyContent, extraProps: Record<string, unkno
     stubs: {
       'v-stage': StageStub,
       'v-layer': { template: '<div class="layer-stub"><slot /></div>' },
+      'v-group': {
+        props: ['config'],
+        setup(_props: unknown, { slots, expose }: any) {
+          expose({
+            getNode: () => ({
+              clone: vi.fn(() => ({ id: 'export-page-group' })),
+            }),
+          })
+          return () => h('div', { class: 'group-stub' }, slots.default?.())
+        },
+      },
       'v-rect': { template: '<div class="rect-stub" />' },
       'v-image': { template: '<div class="image-stub" />' },
       'v-line': { props: ['config'], template: '<div class="line-stub" />' },
@@ -110,7 +143,9 @@ const findToolButton = (wrapper: ReturnType<typeof mountCanvas>, label: string) 
 describe('JournalCanvas', () => {
   beforeEach(() => {
     pointerPosition = { x: 0, y: 0 }
-    stageToDataURL = vi.fn(() => 'data:image/png;base64,ZmFrZQ==')
+    konvaMocks.toDataURL.mockClear()
+    konvaMocks.destroy.mockClear()
+    konvaMocks.stageCtor.mockClear()
   })
 
   it('adds a goods sticker as one logical sticker layer containing one sticker item', async () => {
@@ -158,6 +193,48 @@ describe('JournalCanvas', () => {
     })
   })
 
+  it('extends the visible canvas around out-of-page content but not hidden layers', () => {
+    const outsideSticker = {
+      id: 'sticker-outside',
+      type: 'sticker',
+      name: '外侧贴纸',
+      opacity: 1,
+      z_index: 1,
+      items: [{
+        id: 'sticker-outside-item',
+        type: 'sticker',
+        goods_id: 'goods-1',
+        src: '/media/goods/main/a.png',
+        x: 1100,
+        y: -100,
+        width: 260,
+        height: 260,
+        rotation: 0,
+      }],
+    }
+    const wrapper = mountCanvas({ version: 2, layers: [outsideSticker] } as JournalPageContent)
+
+    expect(wrapper.vm.canvasExpanded).toBe(true)
+    expect(wrapper.vm.canvasBounds).toEqual({
+      x: 0,
+      y: -124,
+      width: 1384,
+      height: 1564,
+    })
+
+    const hiddenWrapper = mountCanvas({
+      version: 2,
+      layers: [{ ...outsideSticker, visible: false }],
+    } as JournalPageContent)
+    expect(hiddenWrapper.vm.canvasExpanded).toBe(false)
+    expect(hiddenWrapper.vm.canvasBounds).toEqual({
+      x: 0,
+      y: 0,
+      width: 1080,
+      height: 1440,
+    })
+  })
+
   it('groups the toolbar, adds semantic tooltips, and keeps tool status in the toolbar', async () => {
     const wrapper = mountCanvas(emptyContent)
 
@@ -201,6 +278,110 @@ describe('JournalCanvas', () => {
     wrapper.vm.resetViewport()
     await wrapper.vm.$nextTick()
     expect(wrapper.vm.zoomLevel).toBe(1)
+  })
+
+  it('pans the canvas when dragging the blank background with the select tool', async () => {
+    const wrapper = mountCanvas(emptyContent)
+    const stage = wrapper.get('.stage-stub')
+    const viewport = wrapper.get('.journal-canvas-viewport')
+
+    await stage.trigger('mousedown', { clientX: 120, clientY: 100, button: 0 })
+    await stage.trigger('mousemove', { clientX: 180, clientY: 142, button: 0 })
+
+    expect(wrapper.vm.panning).toBe(true)
+    expect(wrapper.vm.canvasOffset).toEqual({ x: 72, y: 54 })
+    expect(viewport.classes()).toContain('is-panning')
+
+    await stage.trigger('mouseup', { clientX: 180, clientY: 142, button: 0 })
+    expect(wrapper.vm.panning).toBe(false)
+    expect(viewport.classes()).not.toContain('is-panning')
+  })
+
+  it('uses the middle mouse button to pan without drawing while a brush tool is active', async () => {
+    const wrapper = mountCanvas(emptyContent)
+    const stage = wrapper.get('.stage-stub')
+    const brushButton = findToolButton(wrapper, '画笔')
+    await brushButton!.trigger('click')
+
+    await stage.trigger('mousedown', { button: 1, clientX: 120, clientY: 90 })
+    await stage.trigger('mousemove', { button: 1, clientX: 170, clientY: 130 })
+
+    expect(wrapper.vm.panning).toBe(true)
+    expect(wrapper.vm.canvasOffset).toEqual({ x: 62, y: 52 })
+    expect(wrapper.emitted('update:modelValue')).toBeUndefined()
+
+    await stage.trigger('mouseup', { button: 1, clientX: 170, clientY: 130 })
+    expect(wrapper.vm.panning).toBe(false)
+  })
+
+  it('uses a fixed viewport stage and converts pointers through the world transform', () => {
+    const wrapper = mountCanvas(emptyContent)
+    wrapper.vm.canvasOffset.x = 50
+    wrapper.vm.canvasOffset.y = 30
+    pointerPosition = { x: 220, y: 150 }
+
+    expect(wrapper.vm.stageConfig).toMatchObject({ width: 760, height: 520 })
+    expect(wrapper.vm.getPointer()).toEqual({
+      x: Math.round((220 - 50) / wrapper.vm.scale),
+      y: Math.round((150 - 30) / wrapper.vm.scale),
+    })
+  })
+
+  it('zooms at the Ctrl wheel cursor and leaves a normal wheel untouched', async () => {
+    const wrapper = mountCanvas(emptyContent)
+    const viewport = wrapper.get('.journal-canvas-viewport')
+    const point = { clientX: 240, clientY: 140 }
+    const worldBefore = {
+      x: (point.clientX - wrapper.vm.canvasOffset.x) / wrapper.vm.scale,
+      y: (point.clientY - wrapper.vm.canvasOffset.y) / wrapper.vm.scale,
+    }
+    const wheelEvent = new Event('wheel', { bubbles: true, cancelable: true })
+    Object.assign(wheelEvent, { ...point, deltaY: -120, deltaMode: 0, ctrlKey: true, metaKey: false })
+
+    viewport.element.dispatchEvent(wheelEvent)
+    await wrapper.vm.$nextTick()
+
+    expect(wheelEvent.defaultPrevented).toBe(true)
+    expect(wrapper.vm.zoomLevel).toBeGreaterThan(1)
+    expect((point.clientX - wrapper.vm.canvasOffset.x) / wrapper.vm.scale).toBeCloseTo(worldBefore.x, 5)
+    expect((point.clientY - wrapper.vm.canvasOffset.y) / wrapper.vm.scale).toBeCloseTo(worldBefore.y, 5)
+
+    const zoomAfterCtrlWheel = wrapper.vm.zoomLevel
+    const normalWheel = new Event('wheel', { bubbles: true, cancelable: true })
+    Object.assign(normalWheel, { ...point, deltaY: -120, deltaMode: 0, ctrlKey: false, metaKey: false })
+    viewport.element.dispatchEvent(normalWheel)
+    await wrapper.vm.$nextTick()
+
+    expect(normalWheel.defaultPrevented).toBe(false)
+    expect(wrapper.vm.zoomLevel).toBe(zoomAfterCtrlWheel)
+  })
+
+  it('clamps zoom buttons and wheel zoom to the supported range', () => {
+    const wrapper = mountCanvas(emptyContent)
+
+    wrapper.vm.setZoom(100)
+    expect(wrapper.vm.zoomLevel).toBe(3)
+
+    wrapper.vm.setZoom(0.001)
+    expect(wrapper.vm.zoomLevel).toBe(0.2)
+  })
+
+  it('auto-pans while a layer drag reaches the viewport edge', () => {
+    const wrapper = mountCanvas(emptyContent)
+    const frame = vi.spyOn(window, 'requestAnimationFrame').mockReturnValue(77)
+    const cancel = vi.spyOn(window, 'cancelAnimationFrame').mockImplementation(() => undefined)
+    const startOffset = wrapper.vm.canvasOffset.x
+    pointerPosition = { x: 2, y: 220 }
+
+    wrapper.vm.handleLayerDragMove()
+
+    expect(wrapper.vm.canvasOffset.x).toBeLessThan(startOffset)
+    expect(frame).toHaveBeenCalledTimes(1)
+
+    wrapper.vm.handlePointerEnd()
+    expect(cancel).toHaveBeenCalledWith(77)
+    frame.mockRestore()
+    cancel.mockRestore()
   })
 
   it('adds text layers and drawing strokes without mutating the original content object', () => {
@@ -331,7 +512,7 @@ describe('JournalCanvas', () => {
     wrapper.vm.alignSelectedLayer('center')
     emitted = latestContent(wrapper)
     const aligned = emitted.layers.find(layer => layer.id === 'text-2')
-    expect(aligned?.items[0] && 'x' in aligned.items[0] ? aligned.items[0].x : undefined).toBe(540)
+    expect(aligned?.items[0] && 'x' in aligned.items[0] ? aligned.items[0].x : undefined).toBe(528)
   })
 
   it('copies and pastes selected layers with keyboard shortcuts', async () => {
@@ -672,6 +853,7 @@ describe('JournalCanvas', () => {
     wrapper.vm.selectLayer('draw-1')
     const eraserButton = findToolButton(wrapper, '橡皮')
     await eraserButton!.trigger('click')
+    pointerPosition = { x: 12, y: 12 }
     await wrapper.find('.stage-stub').trigger('mousemove')
 
     expect(wrapper.emitted('update:modelValue')).toBeUndefined()
@@ -721,7 +903,7 @@ describe('JournalCanvas', () => {
   it('shows an eraser preview circle that follows the pointer and matches eraser width', async () => {
     const wrapper = mountCanvas(emptyContent)
     const eraserButton = findToolButton(wrapper, '橡皮')
-    const autoFitScale = 760 / 1080
+    const autoFitScale = (760 - 24) / 1080
 
     pointerPosition = { x: 120, y: 80 }
     await eraserButton!.trigger('click')
@@ -729,8 +911,8 @@ describe('JournalCanvas', () => {
     await wrapper.find('.stage-stub').trigger('mousemove')
 
     expect(wrapper.vm.eraserPreviewConfig).toMatchObject({
-      x: Math.round(120 / autoFitScale),
-      y: Math.round(80 / autoFitScale),
+      x: Math.round((120 - 12) / autoFitScale),
+      y: Math.round((80 - 12) / autoFitScale),
       radius: 16,
       visible: true,
       listening: false,
@@ -773,10 +955,17 @@ describe('JournalCanvas', () => {
     })) as unknown as typeof fetch
     const wrapper = mountCanvas(emptyContent)
     wrapper.vm.setEraserWidth(32)
+    wrapper.vm.panCanvas(240, -180)
+    wrapper.vm.setZoom(2.5)
 
     await wrapper.vm.exportPngBlob(3)
 
-    expect(stageToDataURL).toHaveBeenCalledWith({ pixelRatio: 3 })
+    expect(konvaMocks.stageCtor).toHaveBeenCalledWith(expect.objectContaining({
+      width: 1080,
+      height: 1440,
+    }))
+    expect(konvaMocks.toDataURL).toHaveBeenCalledWith({ pixelRatio: 3 })
+    expect(konvaMocks.destroy).toHaveBeenCalled()
     expect(wrapper.vm.exporting).toBe(false)
   })
 })

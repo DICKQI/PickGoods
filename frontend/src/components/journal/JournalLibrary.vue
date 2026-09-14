@@ -1,27 +1,52 @@
 <template>
   <section
     class="journal-library"
+    :class="{ 'journal-library--desktop': isDesktop }"
     data-test="journal-library"
     @touchstart.capture.passive="handlePullStart"
     @touchmove="handlePullMove"
     @touchend="handlePullEnd"
     @touchcancel="resetPullRefresh"
   >
-    <span ref="headerSentinelRef" class="journal-library__scroll-sentinel" aria-hidden="true" />
-    <header
-      class="journal-library__header"
-      :class="{ 'is-compact': headerCompact }"
-      :data-compact="headerCompact ? 'true' : 'false'"
-    >
-      <div>
-        <p>MY JOURNALS</p>
-        <h1>我的手帐</h1>
-        <span>把喜欢的谷子和日常拼贴成册</span>
-      </div>
-      <strong>{{ journalStore.books.length }} 本</strong>
-    </header>
+    <template v-if="isDesktop">
+      <header class="journal-library__desktop-header">
+        <div>
+          <p>MY JOURNALS</p>
+          <h1>我的手帐</h1>
+          <span>把喜欢的谷子和日常拼贴成册</span>
+        </div>
+        <div class="journal-library__desktop-actions">
+          <strong>{{ journalStore.books.length }} 本</strong>
+          <el-button
+            class="brand-add-btn brand-add-btn--compact"
+            data-test="journal-library-create-desktop"
+            :loading="journalStore.loading"
+            @click="emit('createBook')"
+          >
+            <el-icon class="el-icon--left"><Plus /></el-icon>
+            新建手帐
+          </el-button>
+        </div>
+      </header>
+    </template>
 
-    <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
+    <template v-else>
+      <span ref="headerSentinelRef" class="journal-library__scroll-sentinel" aria-hidden="true" />
+      <header
+        class="journal-library__header"
+        :class="{ 'is-compact': headerCompact }"
+        :data-compact="headerCompact ? 'true' : 'false'"
+      >
+        <div>
+          <p>MY JOURNALS</p>
+          <h1>我的手帐</h1>
+          <span>把喜欢的谷子和日常拼贴成册</span>
+        </div>
+        <strong>{{ journalStore.books.length }} 本</strong>
+      </header>
+
+      <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
+    </template>
 
     <div v-if="journalStore.error" class="journal-library__error">
       <el-alert :title="journalStore.error" type="error" :closable="false" />
@@ -38,52 +63,84 @@
 
     <el-empty
       v-else-if="journalStore.books.length === 0"
-      description="还没有手帐，点右下角开始第一本吧"
+      :description="isDesktop ? '还没有手帐，创建一本开始记录吧' : '还没有手帐，点右下角开始第一本吧'"
       :image-size="104"
     />
 
     <div v-else class="journal-library__grid">
-      <button
+      <article
         v-for="book in journalStore.books"
         :key="book.id"
         class="journal-book-card"
-        type="button"
-        :data-test="`journal-book-${book.id}`"
-        @click="$emit('openBook', book.id)"
+        :data-test="`journal-book-card-${book.id}`"
       >
-        <span class="journal-book-card__cover">
-          <el-image
-            v-if="book.cover_image"
-            :src="book.cover_image"
-            :alt="`${book.title}封面`"
-            fit="cover"
-            lazy
-          >
-            <template #error>
-              <span class="journal-book-card__placeholder">
-                <i>{{ bookInitial(book.title) }}</i>
-              </span>
-            </template>
-          </el-image>
-          <span v-else class="journal-book-card__placeholder">
-            <i>{{ bookInitial(book.title) }}</i>
+        <button
+          class="journal-book-card__main"
+          type="button"
+          :data-test="`journal-book-${book.id}`"
+          @click="emit('openBook', book.id)"
+        >
+          <span class="journal-book-card__cover">
+            <el-image
+              v-if="book.cover_image"
+              :src="book.cover_image"
+              :alt="`${book.title}封面`"
+              fit="cover"
+              lazy
+            >
+              <template #error>
+                <span class="journal-book-card__placeholder">
+                  <i>{{ bookInitial(book.title) }}</i>
+                </span>
+              </template>
+            </el-image>
+            <span v-else class="journal-book-card__placeholder">
+              <i>{{ bookInitial(book.title) }}</i>
+            </span>
+            <small>{{ book.page_count || 0 }} 页</small>
           </span>
-          <small>{{ book.page_count || 0 }} 页</small>
-        </span>
 
-        <span class="journal-book-card__body">
-          <strong>{{ book.title }}</strong>
-          <span>{{ formatUpdatedAt(book.updated_at) }}</span>
-        </span>
-      </button>
+          <span class="journal-book-card__body">
+            <strong>{{ book.title }}</strong>
+            <span>{{ formatUpdatedAt(book.updated_at) }}</span>
+          </span>
+        </button>
+
+        <el-dropdown
+          v-if="isDesktop"
+          class="journal-book-card__menu"
+          trigger="click"
+          placement="bottom-end"
+          @command="handleBookCommand($event, book)"
+        >
+          <button
+            class="journal-book-card__menu-trigger"
+            type="button"
+            :aria-label="`${book.title}更多操作`"
+            :data-test="`journal-book-menu-${book.id}`"
+            @click.stop
+          >
+            <el-icon><MoreFilled /></el-icon>
+          </button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="open">打开手帐</el-dropdown-item>
+              <el-dropdown-item command="rename">重命名</el-dropdown-item>
+              <el-dropdown-item command="cover">更换封面</el-dropdown-item>
+              <el-dropdown-item command="delete" divided>删除手帐</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+      </article>
     </div>
 
     <button
+      v-if="!isDesktop"
       class="journal-library__fab"
       type="button"
       aria-label="新建手帐"
       data-test="journal-library-create"
-      @click="$emit('createBook')"
+      @click="emit('createBook')"
     >
       <el-icon><Plus /></el-icon>
     </button>
@@ -91,18 +148,29 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue'
-import { Plus } from '@element-plus/icons-vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { MoreFilled, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import { useJournalStore } from '@/stores/journal'
+import type { JournalBook } from '@/api/types'
 
-defineEmits<{
+const props = withDefaults(defineProps<{
+  variant?: 'mobile' | 'desktop'
+}>(), {
+  variant: 'mobile',
+})
+
+const emit = defineEmits<{
   openBook: [bookId: string]
   createBook: []
+  renameBook: [book: JournalBook]
+  changeCover: [book: JournalBook]
+  deleteBook: [book: JournalBook]
 }>()
 
+const isDesktop = computed(() => props.variant === 'desktop')
 const journalStore = useJournalStore()
 const headerSentinelRef = ref<HTMLElement | null>(null)
 const headerCompact = ref(false)
@@ -158,7 +226,7 @@ const {
   handleTouchEnd: handlePullEnd,
   reset: resetPullRefresh,
 } = useMobilePullRefresh({
-  enabled: true,
+  enabled: computed(() => !isDesktop.value),
   blocked: () => journalStore.loading,
   onRefresh: refreshBooks,
 })
@@ -180,16 +248,27 @@ const formatUpdatedAt = (value?: string) => {
   return `${date.toLocaleDateString()} 更新`
 }
 
+const handleBookCommand = (command: string, book: JournalBook) => {
+  if (command === 'open') emit('openBook', book.id)
+  else if (command === 'rename') emit('renameBook', book)
+  else if (command === 'cover') emit('changeCover', book)
+  else if (command === 'delete') emit('deleteBook', book)
+}
+
 onMounted(() => {
-  syncCompactHeader()
   void loadBooks()
   window.addEventListener('cloud-showcase:journal-refresh', handleExternalRefresh)
-  window.addEventListener('scroll', scheduleCompactHeaderSync, { passive: true })
+  if (!isDesktop.value) {
+    syncCompactHeader()
+    window.addEventListener('scroll', scheduleCompactHeaderSync, { passive: true })
+  }
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('cloud-showcase:journal-refresh', handleExternalRefresh)
-  window.removeEventListener('scroll', scheduleCompactHeaderSync)
+  if (!isDesktop.value) {
+    window.removeEventListener('scroll', scheduleCompactHeaderSync)
+  }
   if (headerFrame) window.cancelAnimationFrame(headerFrame)
 })
 </script>
@@ -199,6 +278,68 @@ onBeforeUnmount(() => {
   position: relative;
   min-height: 0;
   padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px));
+}
+
+.journal-library--desktop {
+  padding-bottom: 24px;
+}
+
+.journal-library__desktop-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 22px;
+  padding: 22px 24px;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at 90% 0, rgba(162, 155, 254, 0.16), transparent 32%),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.98), rgba(255, 251, 240, 0.94));
+  box-shadow: var(--shadow-sm);
+}
+
+.journal-library__desktop-header p {
+  margin: 0 0 6px;
+  color: var(--primary-gold-dark);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+}
+
+.journal-library__desktop-header h1 {
+  margin: 0;
+  color: var(--text-dark);
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.journal-library__desktop-header span {
+  display: block;
+  margin-top: 7px;
+  color: var(--text-light);
+  font-size: 14px;
+}
+
+.journal-library__desktop-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: none;
+}
+
+.journal-library__desktop-actions strong {
+  padding: 7px 12px;
+  border-radius: 999px;
+  color: var(--primary-gold-dark);
+  background: rgba(212, 175, 55, 0.12);
+  font-size: 13px;
+}
+
+.journal-library--desktop .journal-library__grid,
+.journal-library--desktop .journal-library__skeletons {
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 20px;
 }
 
 .journal-library__scroll-sentinel {
@@ -351,6 +492,7 @@ onBeforeUnmount(() => {
 }
 
 .journal-book-card {
+  position: relative;
   padding: 0;
   color: inherit;
   text-align: left;
@@ -358,10 +500,68 @@ onBeforeUnmount(() => {
   transition: transform var(--transition-fast), border-color var(--transition-fast), box-shadow var(--transition-fast);
 }
 
-.journal-book-card:active {
+.journal-book-card__main {
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.journal-book-card__main:active {
   transform: scale(0.98);
   border-color: rgba(212, 175, 55, 0.54);
   box-shadow: var(--shadow-md);
+}
+
+.journal-library--desktop .journal-book-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(212, 175, 55, 0.48);
+  box-shadow: 0 14px 30px rgba(72, 54, 14, 0.13);
+}
+
+.journal-library--desktop .journal-book-card__main {
+  display: block;
+}
+
+.journal-book-card__menu {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(-4px);
+  transition: opacity var(--transition-fast), transform var(--transition-fast);
+}
+
+.journal-library--desktop .journal-book-card:hover .journal-book-card__menu,
+.journal-library--desktop .journal-book-card:focus-within .journal-book-card__menu {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.journal-book-card__menu-trigger {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--text-dark);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 5px 16px rgba(15, 23, 42, 0.16);
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+}
+
+.journal-book-card__menu-trigger:hover,
+.journal-book-card__menu-trigger:focus-visible {
+  color: var(--primary-gold-dark);
+  border-color: rgba(212, 175, 55, 0.45);
+  outline: none;
 }
 
 .journal-book-card__cover {

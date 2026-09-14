@@ -132,8 +132,15 @@ const mountCloudShowcase = async ({
         },
         GoodsMultiDisplayDialog: { template: '<aside />' },
         StatsDashboard: { template: '<section data-test="stats-dashboard" />' },
-        JournalLibrary: { template: '<section data-test="journal-library" />' },
-        JournalWorkspace: { template: '<section data-test="journal-workspace" />' },
+        JournalLibrary: {
+          props: ['variant'],
+          emits: ['openBook', 'createBook', 'renameBook', 'changeCover', 'deleteBook'],
+          template: '<section data-test="journal-library" :data-variant="variant" />',
+        },
+        JournalWorkspace: {
+          props: ['bookId'],
+          template: '<section data-test="journal-workspace" :data-book-id="bookId" />',
+        },
         ShowcaseManager: { template: '<section />' },
         'el-alert': { template: '<div />' },
         'el-button': { template: '<button><slot /></button>' },
@@ -315,6 +322,34 @@ describe('CloudShowcase mobile compact header', () => {
     expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="journal-library"]').exists()).toBe(false)
     expect(wrapper.find('.barn-section').exists()).toBe(false)
+  })
+
+  it('shows the desktop journal library before a book is selected', async () => {
+    routeQuery.value = { tab: 'journal' }
+
+    const wrapper = await mountDesktopCloudShowcase()
+
+    expect(wrapper.get('[data-test="journal-library"]').attributes('data-variant')).toBe('desktop')
+    expect(wrapper.find('[data-test="journal-workspace"]').exists()).toBe(false)
+    expect(wrapper.get('.cloud-showcase').classes()).not.toContain('is-journal-editor')
+  })
+
+  it('opens the desktop journal workbench with the route book id', async () => {
+    routeQuery.value = { tab: 'journal', book: 'book-1' }
+
+    const wrapper = await mountDesktopCloudShowcase()
+
+    expect(wrapper.get('[data-test="journal-workspace"]').attributes('data-book-id')).toBe('book-1')
+    expect(wrapper.find('[data-test="journal-library"]').exists()).toBe(false)
+    expect(wrapper.get('.cloud-showcase').classes()).toContain('is-journal-editor')
+    expect(wrapper.get('.journal-section').classes()).toContain('is-journal-editor')
+  })
+
+  it('wires journal book management events from the desktop library', () => {
+    expect(cloudShowcaseSource).toContain('@rename-book="renameJournalBook"')
+    expect(cloudShowcaseSource).toContain('@change-cover="changeJournalCover"')
+    expect(cloudShowcaseSource).toContain('@delete-book="deleteJournalBook"')
+    expect(cloudShowcaseSource).toContain('const leavingJournalEditor = Boolean(journalBookId.value) && !to.query.book')
   })
 
   it('uses the dense mobile card only in the mobile granary branch', () => {
