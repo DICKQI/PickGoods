@@ -270,9 +270,10 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 }
 
 .status-group {
-  display: inline-flex;
+  display: flex;
+  align-items: center;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .character-stats-control {
@@ -312,9 +313,31 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 }
 
 .status-group :deep(.el-checkbox-button__inner) {
-  border-radius: 999px !important;
-  border-left: 1px solid var(--el-border-color) !important;
-  font-weight: 700;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 11px;
+  box-shadow: none;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.status-group :deep(.el-checkbox-button) {
+  display: inline-flex;
+}
+
+.status-group :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
+.status-group :deep(.el-checkbox-button:last-child .el-checkbox-button__inner) {
+  border-radius: 999px;
+}
+
+.status-group :deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
+  border-color: rgba(212, 175, 55, 0.85);
+  background: rgba(212, 175, 55, 0.13);
+  color: #7a5b08;
 }
 
 @media (max-width: 900px) {
@@ -347,10 +370,6 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 
   .topn-control {
     gap: 8px;
-  }
-
-  .status-group {
-    gap: 4px;
   }
 
   .stats-filter-item :deep(.el-select__wrapper),
