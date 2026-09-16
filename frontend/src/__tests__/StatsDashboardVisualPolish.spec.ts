@@ -44,10 +44,25 @@ describe('StatsDashboard visual polish', () => {
   })
 
   it('keeps filter controls aligned as a compact desktop toolbar', () => {
-    expect(statsFilterControlsSource).toContain('grid-template-columns: minmax(168px, 1.1fr) repeat(4, minmax(150px, 1fr))')
+    expect(statsFilterControlsSource).toMatch(
+      /grid-template-columns:\s*minmax\(168px, 1\.1fr\)\s*minmax\(150px, 1fr\)\s*auto\s*minmax\(150px, 1fr\)\s*minmax\(180px, 1\.2fr\)/,
+    )
     expect(statsFilterControlsSource).toContain('text-transform: uppercase')
     expect(statsFilterControlsSource).toContain('.topn-value')
     expect(statsFilterControlsSource).toContain('border-radius: 999px')
     expect(statsFilterControlsSource).toContain('.character-stats-button')
+  })
+
+  it('keeps desktop status filters on one line and uses icon chips at compact widths', () => {
+    expect(statsFilterControlsSource).toContain('aria-label="在馆"')
+    expect(statsFilterControlsSource).toContain('aria-label="意向入手"')
+    expect(statsFilterControlsSource).toContain('aria-label="出街中"')
+    expect(statsFilterControlsSource).toContain('aria-label="已售出"')
+    expect(statsFilterControlsSource.match(/class="stats-status-chip__icon"/g)).toHaveLength(4)
+    expect(statsFilterControlsSource).toMatch(/\.status-group\s*{[^}]*flex-wrap: nowrap;/s)
+    expect(statsFilterControlsSource).toContain('@media (min-width: 769px) and (max-width: 1279px)')
+    expect(statsFilterControlsSource).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));')
+    expect(statsFilterControlsSource).toMatch(/\.stats-status-chip__label\s*{\s*display: none;/)
+    expect(statsFilterControlsSource).toMatch(/\.stats-status-chip__icon\s*{\s*display: inline-flex;/)
   })
 })

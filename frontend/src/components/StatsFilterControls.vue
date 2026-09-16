@@ -37,10 +37,42 @@
         size="small"
         @update:model-value="$emit('update:selectedStatuses', $event)"
       >
-        <el-checkbox-button value="in_cabinet">在馆</el-checkbox-button>
-        <el-checkbox-button value="intended">意向入手</el-checkbox-button>
-        <el-checkbox-button value="outdoor">出街中</el-checkbox-button>
-        <el-checkbox-button value="sold">已售出</el-checkbox-button>
+        <el-checkbox-button
+          class="stats-status-chip stats-status-chip--in-cabinet"
+          value="in_cabinet"
+          aria-label="在馆"
+          title="在馆"
+        >
+          <el-icon class="stats-status-chip__icon" aria-hidden="true"><House /></el-icon>
+          <span class="stats-status-chip__label">在馆</span>
+        </el-checkbox-button>
+        <el-checkbox-button
+          class="stats-status-chip stats-status-chip--intended"
+          value="intended"
+          aria-label="意向入手"
+          title="意向入手"
+        >
+          <el-icon class="stats-status-chip__icon" aria-hidden="true"><Star /></el-icon>
+          <span class="stats-status-chip__label">意向入手</span>
+        </el-checkbox-button>
+        <el-checkbox-button
+          class="stats-status-chip stats-status-chip--outdoor"
+          value="outdoor"
+          aria-label="出街中"
+          title="出街中"
+        >
+          <el-icon class="stats-status-chip__icon" aria-hidden="true"><Van /></el-icon>
+          <span class="stats-status-chip__label">出街中</span>
+        </el-checkbox-button>
+        <el-checkbox-button
+          class="stats-status-chip stats-status-chip--sold"
+          value="sold"
+          aria-label="已售出"
+          title="已售出"
+        >
+          <el-icon class="stats-status-chip__icon" aria-hidden="true"><SoldOut /></el-icon>
+          <span class="stats-status-chip__label">已售出</span>
+        </el-checkbox-button>
       </el-checkbox-group>
     </div>
 
@@ -147,7 +179,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import { Top } from '@element-plus/icons-vue'
+import { House, SoldOut, Star, Top, Van } from '@element-plus/icons-vue'
 import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
 import type { Character, GoodsStatus, IP } from '@/api/types'
 
@@ -216,7 +248,12 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 <style scoped>
 .stats-filter-grid {
   display: grid;
-  grid-template-columns: minmax(168px, 1.1fr) repeat(4, minmax(150px, 1fr));
+  grid-template-columns:
+    minmax(168px, 1.1fr)
+    minmax(150px, 1fr)
+    auto
+    minmax(150px, 1fr)
+    minmax(180px, 1.2fr);
   gap: 18px 20px;
   align-items: start;
 }
@@ -272,8 +309,9 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 .status-group {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
+  white-space: nowrap;
 }
 
 .character-stats-control {
@@ -327,6 +365,15 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
 
 .status-group :deep(.el-checkbox-button) {
   display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.stats-status-chip__icon {
+  display: none;
+}
+
+.stats-status-chip__label {
+  white-space: nowrap;
 }
 
 .status-group :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
@@ -338,6 +385,44 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
   border-color: rgba(212, 175, 55, 0.85);
   background: rgba(212, 175, 55, 0.13);
   color: #7a5b08;
+}
+
+@media (min-width: 769px) and (max-width: 1279px) {
+  .stats-filter-grid {
+    grid-template-columns: repeat(5, minmax(120px, 1fr));
+  }
+
+  .status-group {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+  }
+
+  .status-group :deep(.el-checkbox-button) {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .status-group :deep(.el-checkbox-button__inner) {
+    width: 100%;
+    padding: 0;
+  }
+
+  .stats-status-chip__label {
+    display: none;
+  }
+
+  .stats-status-chip__icon {
+    display: inline-flex;
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  .status-group {
+    flex-wrap: wrap;
+  }
 }
 
 @media (max-width: 900px) {
