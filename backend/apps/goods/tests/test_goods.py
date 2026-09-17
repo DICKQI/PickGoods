@@ -1,4 +1,5 @@
-from django.test import TestCase
+from django.core.cache import cache
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework.test import APIClient
@@ -13,10 +14,26 @@ from PIL import Image, ImageDraw
 from django.utils import timezone
 
 from apps.users.models import User, Role
-from ..models import Goods, IP, Character, Category, Theme, ThemeImage
+from ..models import Goods, GoodsImageFingerprint, IP, Character, Category, Theme, ThemeImage
 from apps.location.models import StorageNode
-from ..similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
+from ..similarity import (
+    GoodsSimilarityCalculator,
+    ImageSimilarityIndex,
+    SeedSelector,
+    SimilarityGroupBuilder,
+)
 from ..utils import compress_image
+
+
+def _similarity_vector(similarity):
+    vector = np.zeros(384, dtype=np.float32)
+    vector[0] = similarity
+    vector[1] = np.sqrt(max(0.0, 1.0 - similarity ** 2))
+    return vector
+
+
+def _embedding_bytes(vector):
+    return np.asarray(vector, dtype="<f4").tobytes()
 
 
 class SimilarityAlgorithmTestCase(TestCase):
@@ -87,6 +104,33 @@ class SimilarityAlgorithmTestCase(TestCase):
 
         self.calculator = GoodsSimilarityCalculator()
 
+    def _attach_fingerprint(
+        self,
+        goods,
+        *,
+        phash="1111111111111111",
+        similarity=0.8,
+        source_name=None,
+        embedding=None,
+        embedding_dim=384,
+        algorithm_version="dinov2-small-int8-v1",
+    ):
+        main_photo = source_name or f"goods/main/{goods.id}.jpg"
+        Goods.objects.filter(pk=goods.pk).update(main_photo=main_photo)
+        goods.refresh_from_db(fields=["main_photo"])
+        return GoodsImageFingerprint.objects.create(
+            goods=goods,
+            phash=phash,
+            embedding=(
+                _embedding_bytes(_similarity_vector(similarity))
+                if embedding is None
+                else embedding
+            ),
+            embedding_dim=embedding_dim,
+            algorithm_version=algorithm_version,
+            source_name=source_name or goods.main_photo.name,
+        )
+
     def test_ip_match_same_ip(self):
         """测试相同IP的评分"""
         score = self.calculator._score_ip_match(self.goods1, self.goods2)
@@ -146,6 +190,225 @@ class SimilarityAlgorithmTestCase(TestCase):
         score = self.calculator.calculate_similarity(self.goods1, self.goods3)
         # 不同IP但同类型(10) + 相同品类(18) = 28
         self.assertLess(score, 40.0)
+
+    def test_image_similarity_is_fused_with_metadata(self):
+        """有主图指纹时，元数据与余弦分数按 75/25 融合。"""
+        self._attach_fingerprint(
+            self.goods1,
+            phash="0000000000000000",
+            similarity=1.0,
+        )
+        self._attach_fingerprint(
+            self.goods2,
+            phash="ffffffffffffffff",
+            similarity=0.8,
+        )
+
+        metadata_score = self.calculator.calculate_metadata_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        fused = GoodsSimilarityCalculator(image_index=image_index).calculate_similarity(
+            self.goods1,
+            self.goods2,
+        )
+
+        self.assertAlmostEqual(
+            fused,
+            metadata_score * 0.75 + 0.8 * 25,
+            places=6,
+        )
+
+    def test_negative_image_similarity_is_clamped_to_zero(self):
+        positive = np.zeros(384, dtype=np.float32)
+        positive[0] = 1.0
+        negative = -positive
+        self._attach_fingerprint(
+            self.goods1,
+            phash="0000000000000000",
+            embedding=_embedding_bytes(positive),
+        )
+        self._attach_fingerprint(
+            self.goods2,
+            phash="ffffffffffffffff",
+            embedding=_embedding_bytes(negative),
+        )
+
+        metadata_score = self.calculator.calculate_metadata_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        fused = GoodsSimilarityCalculator(image_index=image_index).calculate_similarity(
+            self.goods1,
+            self.goods2,
+        )
+
+        self.assertAlmostEqual(fused, metadata_score * 0.75, places=6)
+
+    def test_missing_or_corrupt_fingerprint_uses_metadata_score(self):
+        """缺图或损坏向量时不惩罚，直接使用原始元数据总分。"""
+        metadata_score = self.calculator.calculate_metadata_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        self.assertEqual(
+            self.calculator.calculate_similarity(self.goods1, self.goods2),
+            metadata_score,
+        )
+
+        self._attach_fingerprint(
+            self.goods1,
+            phash="0000000000000000",
+            embedding=b"\x00\x00\x00\x00",
+            embedding_dim=384,
+        )
+        self._attach_fingerprint(
+            self.goods2,
+            phash="ffffffffffffffff",
+            embedding=b"\x00\x00\x00\x00",
+            embedding_dim=384,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        fused = GoodsSimilarityCalculator(image_index=image_index).calculate_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        self.assertAlmostEqual(fused, metadata_score, places=6)
+
+    def test_stale_fingerprint_source_is_ignored(self):
+        self._attach_fingerprint(
+            self.goods1,
+            source_name="goods/main/old-one.jpg",
+        )
+        Goods.objects.filter(pk=self.goods1.pk).update(
+            main_photo="goods/main/new-one.jpg"
+        )
+        self.goods1.refresh_from_db(fields=["main_photo"])
+        self._attach_fingerprint(
+            self.goods2,
+            source_name="goods/main/old-two.jpg",
+        )
+        Goods.objects.filter(pk=self.goods2.pk).update(
+            main_photo="goods/main/new-two.jpg"
+        )
+        self.goods2.refresh_from_db(fields=["main_photo"])
+
+        metadata_score = self.calculator.calculate_metadata_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        fused = GoodsSimilarityCalculator(image_index=image_index).calculate_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        self.assertEqual(fused, metadata_score)
+
+    def test_old_fingerprint_algorithm_version_is_ignored(self):
+        self._attach_fingerprint(
+            self.goods1,
+            algorithm_version="old-algorithm",
+        )
+        self._attach_fingerprint(
+            self.goods2,
+            algorithm_version="old-algorithm",
+        )
+
+        metadata_score = self.calculator.calculate_metadata_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        fused = GoodsSimilarityCalculator(image_index=image_index).calculate_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        self.assertEqual(fused, metadata_score)
+
+    def test_phash_match_marks_pair_as_same_image(self):
+        self._attach_fingerprint(
+            self.goods1,
+            phash="1234567890abcdef",
+            similarity=0.1,
+        )
+        self._attach_fingerprint(
+            self.goods2,
+            phash="1234567890abcdef",
+            similarity=0.1,
+        )
+
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        pair = GoodsSimilarityCalculator(
+            image_index=image_index
+        ).calculate_pair_similarity(self.goods1, self.goods2)
+
+        self.assertTrue(pair.image_available)
+        self.assertTrue(pair.phash_match)
+        self.assertGreater(pair.score, 70)
+
+    @override_settings(GOODS_SIMILAR_IMAGE_WEIGHT=0)
+    def test_zero_image_weight_disables_image_similarity(self):
+        self._attach_fingerprint(self.goods1, similarity=1.0)
+        self._attach_fingerprint(self.goods2, similarity=1.0)
+
+        metadata_score = self.calculator.calculate_metadata_similarity(
+            self.goods1,
+            self.goods2,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        pair = GoodsSimilarityCalculator(
+            image_index=image_index
+        ).calculate_pair_similarity(self.goods1, self.goods2)
+
+        self.assertFalse(pair.image_available)
+        self.assertFalse(pair.phash_match)
+        self.assertEqual(pair.score, metadata_score)
+
+    @override_settings(GOODS_SIMILAR_IMAGE_WEIGHT=100)
+    def test_full_image_weight_ignores_metadata(self):
+        self._attach_fingerprint(
+            self.goods1,
+            phash="0000000000000000",
+            similarity=1.0,
+        )
+        self._attach_fingerprint(
+            self.goods2,
+            phash="ffffffffffffffff",
+            similarity=0.7,
+        )
+
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods2])
+        pair = GoodsSimilarityCalculator(
+            image_index=image_index
+        ).calculate_pair_similarity(self.goods1, self.goods2)
+
+        self.assertAlmostEqual(pair.score, 70.0, delta=1e-5)
+
+    def test_phash_match_bypasses_min_similarity(self):
+        self._attach_fingerprint(
+            self.goods1,
+            phash="1234567890abcdef",
+            similarity=0.1,
+        )
+        self._attach_fingerprint(
+            self.goods3,
+            phash="1234567890abcdef",
+            similarity=0.1,
+        )
+        image_index = ImageSimilarityIndex.from_goods([self.goods1, self.goods3])
+        builder = SimilarityGroupBuilder(
+            GoodsSimilarityCalculator(image_index=image_index)
+        )
+
+        groups = builder.build_groups(
+            [self.goods1],
+            [self.goods1, self.goods3],
+            min_similarity=60,
+        )
+
+        self.assertEqual(groups[0], [self.goods1, self.goods3])
 
 
 class SeedSelectorTestCase(TestCase):
@@ -207,6 +470,7 @@ class SimilarRandomEndpointTestCase(TestCase):
 
     def setUp(self):
         """设置测试数据"""
+        cache.clear()
         self.client = APIClient()
         self.role = Role.objects.create(name='测试角色')
         self.user = User.objects.create(
@@ -232,38 +496,109 @@ class SimilarRandomEndpointTestCase(TestCase):
     def test_similar_random_endpoint_exists(self):
         """测试端点是否存在"""
         response = self.client.get('/api/goods/similar-random/')
-        self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
 
     def test_similar_random_response_format(self):
         """测试响应格式"""
         response = self.client.get('/api/goods/similar-random/')
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            self.assertIn('count', data)
-            self.assertIn('results', data)
-            self.assertIn('page', data)
-            self.assertIn('page_size', data)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertIn('count', data)
+        self.assertIn('results', data)
+        self.assertIn('page', data)
+        self.assertIn('page_size', data)
 
     def test_similar_random_with_filters(self):
         """测试带过滤器的请求"""
         response = self.client.get(f'/api/goods/similar-random/?ip={self.ip.id}')
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            self.assertGreater(data['count'], 0)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertGreater(data['count'], 0)
+
+    def test_similar_random_cache_key_includes_all_filters(self):
+        """先缓存无筛选结果后，其他筛选条件不能复用该缓存。"""
+        non_official = Goods.objects.filter(user=self.user).first()
+        Goods.objects.filter(pk=non_official.pk).update(is_official=False)
+
+        self.client.get('/api/goods/similar-random/?page_size=18')
+        response = self.client.get(
+            '/api/goods/similar-random/?is_official=false&page_size=18'
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        data = response.json()
+        self.assertEqual(data['count'], 1)
+        self.assertEqual(data['results'][0]['id'], str(non_official.id))
 
     def test_similar_random_pagination(self):
-        """测试分页"""
-        response = self.client.get('/api/goods/similar-random/?page=1&page_size=10')
-        if response.status_code == status.HTTP_200_OK:
-            data = response.json()
-            self.assertLessEqual(len(data['results']), 10)
+        """相似接口应按完整排序返回相邻页且不重不漏。"""
+        first = self.client.get('/api/goods/similar-random/?page=1&page_size=10')
+        second = self.client.get('/api/goods/similar-random/?page=2&page_size=10')
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        first_data = first.json()
+        second_data = second.json()
+        self.assertEqual(len(first_data['results']), 10)
+        self.assertEqual(len(second_data['results']), 10)
+        self.assertEqual(first_data['next'], 2)
+        self.assertIsNone(second_data['next'])
+        self.assertEqual(second_data['previous'], 1)
+
+        first_ids = {item['id'] for item in first_data['results']}
+        second_ids = {item['id'] for item in second_data['results']}
+        self.assertFalse(first_ids & second_ids)
+        self.assertEqual(len(first_ids | second_ids), 20)
 
     def test_similar_random_seed_strategies(self):
         """测试不同的种子策略"""
         strategies = ['diverse', 'popular', 'recent']
         for strategy in strategies:
             response = self.client.get(f'/api/goods/similar-random/?seed_strategy={strategy}')
-            self.assertIn(response.status_code, [status.HTTP_200_OK, status.HTTP_404_NOT_FOUND])
+            self.assertEqual(response.status_code, status.HTTP_200_OK)
+
+    def test_small_dataset_keeps_phash_pair_together(self):
+        """18 条以内也使用图片融合算法，同款 pHash 应保持相邻。"""
+        Goods.objects.filter(user=self.user).delete()
+        other_ip = IP.objects.create(name='另一IP', subject_type=4)
+        first = Goods.objects.create(
+            user=self.user,
+            name='同款A',
+            ip=self.ip,
+            category=self.cat,
+        )
+        second = Goods.objects.create(
+            user=self.user,
+            name='同款B',
+            ip=self.ip,
+            category=self.cat,
+        )
+        third = Goods.objects.create(
+            user=self.user,
+            name='其他',
+            ip=other_ip,
+            category=self.cat,
+        )
+        for index, goods in enumerate((first, second)):
+            Goods.objects.filter(pk=goods.pk).update(
+                main_photo=f"goods/main/small-{index}.jpg"
+            )
+            GoodsImageFingerprint.objects.create(
+                goods=goods,
+                phash="1234567890abcdef",
+                embedding=_embedding_bytes(_similarity_vector(0.5)),
+                embedding_dim=384,
+                algorithm_version="dinov2-small-int8-v1",
+                source_name=f"goods/main/small-{index}.jpg",
+            )
+
+        response = self.client.get('/api/goods/similar-random/?page_size=18')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        result_ids = [item['id'] for item in response.json()['results']]
+        first_index = result_ids.index(str(first.id))
+        second_index = result_ids.index(str(second.id))
+        self.assertEqual(abs(first_index - second_index), 1)
 
 
 class GoodsDraftFlowTestCase(TestCase):

@@ -53,8 +53,16 @@ from ..image_match import (
     ModelUnavailableError,
     match_goods_image,
 )
+from ..image_match.config import ALGORITHM_VERSION, get_phash_distance_max
 from ..utils import compress_image
-from ..similarity import GoodsSimilarityCalculator, SeedSelector, SimilarityGroupBuilder
+from ..similarity import (
+    SIMILARITY_IMAGE_PIPELINE_VERSION,
+    GoodsSimilarityCalculator,
+    ImageSimilarityIndex,
+    SeedSelector,
+    SimilarityGroupBuilder,
+    get_similarity_image_weight,
+)
 from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 
 
@@ -1285,27 +1293,10 @@ class GoodsViewSet(viewsets.ModelViewSet):
         - seed_strategy: 种子选择策略（diverse/popular/recent，默认diverse）
         - refresh: 设置为1时跳过缓存强制重新计算（可选）
 
-        注意：此接口只返回第一页（18个谷子），以降低后端压力。
         响应格式与列表接口相同。
         """
-        # 1. 获取过滤后的queryset并优化查询
+        # 1. 获取过滤后的queryset
         qs = self.filter_queryset(self.get_queryset())
-
-        # 获取总数
-        total_count = qs.count()
-
-        # 边界情况：谷子数量 ≤ 18，使用优化的小数据集推荐算法
-        if total_count <= 18:
-            ordered_goods = self._compute_small_dataset_ordering(qs)
-            serializer = self.get_serializer(ordered_goods, many=True)
-            return Response({
-                'count': len(ordered_goods),
-                'page': 1,
-                'page_size': 18,
-                'next': None,
-                'previous': None,
-                'results': serializer.data
-            })
 
         # 2. 检查是否需要跳过缓存
         refresh = request.query_params.get('refresh') == '1'
@@ -1313,32 +1304,32 @@ class GoodsViewSet(viewsets.ModelViewSet):
         # 3. 检查缓存中的现有排序
         cache_key = self._get_similarity_cache_key(request)
         cached_ids = None if refresh else cache.get(cache_key)
+        paginator = self.pagination_class()
 
-        if cached_ids:
-            # 使用缓存的排序，只取前18个
-            ordered_goods = self._order_by_ids(qs, cached_ids[:18])
+        if cached_ids is not None:
+            # 使用缓存的完整排序，只查询当前页对象
+            page_ids = paginator.paginate_queryset(cached_ids, request, view=self)
+            ordered_goods = self._order_by_ids(
+                qs.filter(id__in=page_ids),
+                page_ids,
+            )
         else:
             # 计算新的相似度排序
             ordered_goods = self._compute_similarity_ordering(qs, request)
             # 缓存完整的ID列表（5分钟TTL）
             cache.set(cache_key, [str(g.id) for g in ordered_goods], timeout=300)
-            # 只返回前18个
-            ordered_goods = ordered_goods[:18]
+            ordered_goods = paginator.paginate_queryset(
+                ordered_goods,
+                request,
+                view=self,
+            )
 
-        # 4. 返回第一页数据（固定18个）
         serializer = self.get_serializer(ordered_goods, many=True)
-        return Response({
-            'count': total_count,
-            'page': 1,
-            'page_size': 18,
-            'next': 2 if total_count > 18 else None,
-            'previous': None,
-            'results': serializer.data
-        })
+        return paginator.get_paginated_response(serializer.data)
 
     def _get_similarity_cache_key(self, request):
         """
-        生成缓存键（用户ID + 过滤器哈希 + 时间窗口）
+        生成缓存键（用户ID + 全部过滤器哈希 + 算法配置 + 时间窗口）
 
         Args:
             request: HTTP请求对象
@@ -1348,20 +1339,22 @@ class GoodsViewSet(viewsets.ModelViewSet):
         """
         import time
         user_id = request.user.id
-        filter_params = {
-            'ip': request.query_params.get('ip'),
-            'category': request.query_params.get('category'),
-            'status': request.query_params.get('status'),
-            'theme': request.query_params.get('theme'),
-            'search': request.query_params.get('search'),
-            'seed_strategy': request.query_params.get('seed_strategy', 'diverse'),
-        }
-        # 移除None值
-        filter_params = {k: v for k, v in filter_params.items() if v}
+        filter_params = {}
+        for key in sorted(set(request.query_params.keys())):
+            if key in {"page", "page_size", "refresh"}:
+                continue
+            values = request.query_params.getlist(key)
+            filter_params[key] = values[0] if len(values) == 1 else tuple(sorted(values))
 
         # 添加时间窗口（每2分钟一个窗口），让排序定期自动刷新
         time_window = int(time.time() // 120)  # 120秒 = 2分钟
-        filter_params['_tw'] = time_window
+        filter_params.update({
+            '_tw': time_window,
+            '_pipeline': SIMILARITY_IMAGE_PIPELINE_VERSION,
+            '_fingerprint_algorithm': ALGORITHM_VERSION,
+            '_image_weight': get_similarity_image_weight(),
+            '_phash_distance_max': get_phash_distance_max(),
+        })
         filter_hash = hashlib.md5(str(sorted(filter_params.items())).encode()).hexdigest()
         return f"similar_random:{user_id}:{filter_hash}"
 
@@ -1386,7 +1379,8 @@ class GoodsViewSet(viewsets.ModelViewSet):
         seed_strategy = request.query_params.get('seed_strategy', 'diverse')
 
         # 初始化组件
-        calculator = GoodsSimilarityCalculator()
+        image_index = ImageSimilarityIndex.from_goods(goods_list)
+        calculator = GoodsSimilarityCalculator(image_index=image_index)
         selector = SeedSelector()
         builder = SimilarityGroupBuilder(calculator)
 
@@ -1403,92 +1397,6 @@ class GoodsViewSet(viewsets.ModelViewSet):
         ordered_goods = builder.interleave_groups(groups)
 
         return ordered_goods
-
-    def _compute_small_dataset_ordering(self, qs):
-        """
-        为小数据集（≤18个谷子）计算优化的排序
-
-        策略：
-        1. 按主题分组（相同主题的谷子聚集）
-        2. 在主题内按IP分组
-        3. 主题之间随机交错
-        4. 如果没有主题，则按IP分组并随机交错
-
-        Args:
-            qs: 查询集
-
-        Returns:
-            list: 排序后的谷子列表
-        """
-        from collections import defaultdict
-
-        # 预加载所有关联数据
-        goods_list = list(
-            qs.select_related('ip', 'category', 'theme', 'location')
-              .prefetch_related('characters')
-        )
-
-        if not goods_list:
-            return []
-
-        # 按主题和IP分组
-        theme_ip_groups = defaultdict(lambda: defaultdict(list))
-        no_theme_ip_groups = defaultdict(list)
-
-        for good in goods_list:
-            if good.theme_id:
-                theme_ip_groups[good.theme_id][good.ip_id].append(good)
-            else:
-                no_theme_ip_groups[good.ip_id].append(good)
-
-        result = []
-
-        # 处理有主题的谷子
-        if theme_ip_groups:
-            theme_ids = list(theme_ip_groups.keys())
-            random.shuffle(theme_ids)  # 随机化主题顺序
-
-            for theme_id in theme_ids:
-                ip_groups = theme_ip_groups[theme_id]
-                ip_ids = list(ip_groups.keys())
-                random.shuffle(ip_ids)  # 随机化IP顺序
-
-                # 在主题内交错不同IP的谷子
-                while ip_groups:
-                    for ip_id in ip_ids[:]:
-                        if ip_id not in ip_groups:
-                            continue
-
-                        # 从当前IP取出一个谷子
-                        good = ip_groups[ip_id].pop(0)
-                        result.append(good)
-
-                        # 如果该IP没有更多谷子，移除
-                        if not ip_groups[ip_id]:
-                            del ip_groups[ip_id]
-                            ip_ids.remove(ip_id)
-
-        # 处理没有主题的谷子
-        if no_theme_ip_groups:
-            ip_ids = list(no_theme_ip_groups.keys())
-            random.shuffle(ip_ids)  # 随机化IP顺序
-
-            # 交错不同IP的谷子
-            while no_theme_ip_groups:
-                for ip_id in ip_ids[:]:
-                    if ip_id not in no_theme_ip_groups:
-                        continue
-
-                    # 从当前IP取出一个谷子
-                    good = no_theme_ip_groups[ip_id].pop(0)
-                    result.append(good)
-
-                    # 如果该IP没有更多谷子，移除
-                    if not no_theme_ip_groups[ip_id]:
-                        del no_theme_ip_groups[ip_id]
-                        ip_ids.remove(ip_id)
-
-        return result
 
     @action(
         detail=False,
@@ -1692,9 +1600,6 @@ class GoodsViewSet(viewsets.ModelViewSet):
         Returns:
             list: 排序后的谷子列表
         """
-        # 创建ID到位置的映射
-        id_to_position = {str(id_val): pos for pos, id_val in enumerate(id_list)}
-
         # 获取谷子并按位置排序
         goods_dict = {str(g.id): g for g in qs}
         ordered_goods = []

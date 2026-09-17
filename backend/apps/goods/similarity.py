@@ -6,14 +6,146 @@
 
 import random
 from collections import defaultdict
-from datetime import timedelta
+from dataclasses import dataclass
+
+import numpy as np
+from django.conf import settings
+
+from .image_match.config import ALGORITHM_VERSION, get_phash_distance_max
+from .image_match.features import hamming_distance
+from .models import GoodsImageFingerprint
+
+
+SIMILARITY_IMAGE_PIPELINE_VERSION = "metadata-image-phash-v1"
+IMAGE_WEIGHT_SETTING = "GOODS_SIMILAR_IMAGE_WEIGHT"
+DEFAULT_IMAGE_WEIGHT = 25.0
+
+
+def get_similarity_image_weight():
+    """返回图片维度在最终 100 分中的权重。"""
+    raw_weight = getattr(settings, IMAGE_WEIGHT_SETTING, DEFAULT_IMAGE_WEIGHT)
+    try:
+        weight = float(raw_weight)
+    except (TypeError, ValueError):
+        weight = DEFAULT_IMAGE_WEIGHT
+    return min(100.0, max(0.0, weight))
+
+
+@dataclass(frozen=True)
+class PairSimilarity:
+    """两个谷子的融合分数及图片维度的可用状态。"""
+
+    score: float
+    image_available: bool = False
+    phash_match: bool = False
+
+
+class ImageSimilarityIndex:
+    """一次排序内复用的主图指纹索引。"""
+
+    def __init__(
+        self,
+        *,
+        vectors=None,
+        phashes=None,
+        image_weight=None,
+        phash_distance_max=None,
+    ):
+        self.vectors = vectors or {}
+        self.phashes = phashes or {}
+        self.image_weight = (
+            get_similarity_image_weight()
+            if image_weight is None
+            else min(100.0, max(0.0, float(image_weight)))
+        )
+        self.phash_distance_max = (
+            get_phash_distance_max()
+            if phash_distance_max is None
+            else max(0, int(phash_distance_max))
+        )
+
+    @classmethod
+    def from_goods(cls, goods_list):
+        """一次查询当前结果集的主图指纹，并预解析、归一化向量。"""
+        goods_by_id = {goods.id: goods for goods in goods_list}
+        if not goods_by_id:
+            return cls()
+
+        fingerprints = GoodsImageFingerprint.objects.filter(
+            goods_id__in=goods_by_id,
+            algorithm_version=ALGORITHM_VERSION,
+        ).only(
+            "goods_id",
+            "phash",
+            "embedding",
+            "embedding_dim",
+            "source_name",
+        )
+
+        vectors = {}
+        phashes = {}
+        for fingerprint in fingerprints:
+            goods = goods_by_id.get(fingerprint.goods_id)
+            if goods is None:
+                continue
+            photo = getattr(goods, "main_photo", None)
+            if not photo or photo.name != fingerprint.source_name:
+                continue
+
+            if len(fingerprint.phash) == 16:
+                phashes[fingerprint.goods_id] = fingerprint.phash
+
+            raw = fingerprint.embedding
+            if isinstance(raw, memoryview):
+                raw = raw.tobytes()
+            try:
+                vector = np.frombuffer(raw, dtype="<f4").astype(np.float32, copy=False)
+            except (TypeError, ValueError):
+                continue
+            if vector.size != fingerprint.embedding_dim or vector.size == 0:
+                continue
+            if not np.all(np.isfinite(vector)):
+                continue
+            norm = float(np.linalg.norm(vector))
+            if norm <= 1e-12:
+                continue
+            vectors[fingerprint.goods_id] = vector / norm
+
+        return cls(vectors=vectors, phashes=phashes)
+
+    def pair_similarity(self, goods_a, goods_b):
+        """
+        返回 (图片相似度, 是否 pHash 同款命中)。
+
+        图片相似度为 None 表示图片维度不可用，调用方应按可用维度重新归一化。
+        """
+        if self.image_weight <= 0:
+            return None, False
+
+        phash_a = self.phashes.get(goods_a.id)
+        phash_b = self.phashes.get(goods_b.id)
+        if phash_a and phash_b:
+            try:
+                distance = hamming_distance(phash_a, phash_b)
+            except ValueError:
+                distance = None
+            if distance is not None and distance <= self.phash_distance_max:
+                return 1.0, True
+
+        vector_a = self.vectors.get(goods_a.id)
+        vector_b = self.vectors.get(goods_b.id)
+        if vector_a is None or vector_b is None:
+            return None, False
+
+        similarity = float(np.dot(vector_a, vector_b))
+        return min(1.0, max(0.0, similarity)), False
 
 
 class GoodsSimilarityCalculator:
     """
     计算谷子之间的相似度分数（0-100分）
 
-    基于6个维度的加权评分：
+    元数据保持原始权重；提供 ImageSimilarityIndex 时，再按配置权重融合主图分：
     - IP匹配（30分）
     - 角色重叠（23分）
     - 品类层级（18分）
@@ -31,14 +163,16 @@ class GoodsSimilarityCalculator:
         'purchase_proximity': 6,
     }
 
-    def __init__(self, category_tree_cache=None):
+    def __init__(self, category_tree_cache=None, image_index=None):
         """
         初始化相似度计算器
 
         Args:
             category_tree_cache: 品类树缓存字典，用于优化层级查询
+            image_index: ImageSimilarityIndex实例
         """
         self.category_tree_cache = category_tree_cache or {}
+        self.image_index = image_index
 
     def calculate_similarity(self, goods_a, goods_b):
         """
@@ -51,6 +185,39 @@ class GoodsSimilarityCalculator:
         Returns:
             float: 相似度分数（0-100）
         """
+        return self.calculate_pair_similarity(goods_a, goods_b).score
+
+    def calculate_pair_similarity(self, goods_a, goods_b):
+        """
+        计算元数据与主图指纹的融合分。
+
+        图片可用时，元数据按 (1 - 图片权重) 缩放；图片不可用时直接使用原始
+        元数据分，等价于按当前可用维度重新归一化到 100 分。
+        """
+        metadata_score = self.calculate_metadata_similarity(goods_a, goods_b)
+        if self.image_index is None:
+            return PairSimilarity(score=metadata_score)
+
+        image_similarity, phash_match = self.image_index.pair_similarity(
+            goods_a,
+            goods_b,
+        )
+        if image_similarity is None:
+            return PairSimilarity(score=metadata_score, phash_match=phash_match)
+
+        image_weight = self.image_index.image_weight
+        score = (
+            metadata_score * (1 - image_weight / 100)
+            + image_similarity * image_weight
+        )
+        return PairSimilarity(
+            score=score,
+            image_available=True,
+            phash_match=phash_match,
+        )
+
+    def calculate_metadata_similarity(self, goods_a, goods_b):
+        """计算不含主图指纹的原始元数据分数（0-100）。"""
         score = 0.0
         score += self._score_ip_match(goods_a, goods_b)
         score += self._score_character_overlap(goods_a, goods_b)
@@ -457,13 +624,13 @@ class SimilarityGroupBuilder:
             for good in all_goods:
                 if good.id in used_ids:
                     continue
-                score = self.calculator.calculate_similarity(seed, good)
-                if score >= min_similarity:
-                    candidates.append((score, good))
+                pair = self.calculator.calculate_pair_similarity(seed, good)
+                if pair.phash_match or pair.score >= min_similarity:
+                    candidates.append((pair.phash_match, pair.score, good))
 
-            # 按分数排序并取前K个
-            candidates.sort(reverse=True, key=lambda x: x[0])
-            for score, good in candidates[:group_size-1]:
+            # pHash 同款优先，其次按融合分排序
+            candidates.sort(reverse=True, key=lambda item: (item[0], item[1]))
+            for phash_match, score, good in candidates[:group_size-1]:
                 group.append(good)
                 used_ids.add(good.id)
 

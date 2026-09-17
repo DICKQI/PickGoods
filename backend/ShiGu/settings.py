@@ -235,6 +235,11 @@ GOODS_IMAGE_MATCH_PATCH_WEIGHT = float(
     os.environ.get("GOODS_IMAGE_MATCH_PATCH_WEIGHT", "0.35")
 )
 
+# 谷仓“相似”中主图融合维度占最终 100 分的比例
+GOODS_SIMILAR_IMAGE_WEIGHT = float(
+    os.environ.get("GOODS_SIMILAR_IMAGE_WEIGHT", "25")
+)
+
 # JWT 配置
 JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
 JWT_ACCESS_TTL_SECONDS = 7 * 24 * 3600

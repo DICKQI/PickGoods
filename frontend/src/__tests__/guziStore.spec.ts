@@ -185,14 +185,31 @@ describe('useGuziStore', () => {
     expect(store.hasMore).toBe(true)
   })
 
-  it('hasMore 在 similar 模式下始终为 false', async () => {
+  it('hasMore 在 similar 模式下根据 pagination.next 计算', async () => {
     vi.mocked(getSimilarRandomGoodsList).mockResolvedValue(
       makePaginatedResponse([makeGoods('1', 'G1')], 100, 1, 2)
     )
 
     const store = useGuziStore()
     await store.setViewMode('similar')
-    expect(store.hasMore).toBe(false)
+    expect(store.hasMore).toBe(true)
+  })
+
+  it('loadMore 在 similar 模式下追加下一页', async () => {
+    vi.mocked(getSimilarRandomGoodsList)
+      .mockResolvedValueOnce(makePaginatedResponse([makeGoods('1', 'G1')], 2, 1, 2))
+      .mockResolvedValueOnce(makePaginatedResponse([makeGoods('2', 'G2')], 2, 2, null))
+
+    const store = useGuziStore()
+    await store.setViewMode('similar')
+    await store.loadMore()
+
+    expect(store.guziList.map(item => item.id)).toEqual(['1', '2'])
+    expect(store.pagination.page).toBe(2)
+    expect(getSimilarRandomGoodsList).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({ page: 2, page_size: 18 }),
+    )
   })
 
   it('并发搜索时，旧响应不覆盖最新结果（乱序返回）', async () => {

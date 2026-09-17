@@ -30,10 +30,7 @@ export const useGuziStore = defineStore('guzi', () => {
       .filter((goods): goods is GoodsListItem => Boolean(goods)),
   )
 
-  const hasMore = computed(() => {
-    if (viewMode.value !== 'standard') return false
-    return pagination.value.next !== null
-  })
+  const hasMore = computed(() => pagination.value.next !== null)
 
   // 搜索轮次序号：每次新的搜索会递增；在途旧请求的响应按序号丢弃，
   // 避免快速连续搜索/筛选时旧结果覆盖新结果，或新筛选条件被静默丢弃。

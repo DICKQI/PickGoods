@@ -6,7 +6,7 @@ from apps.goods.models import Goods, GoodsImageFingerprint
 
 
 class Command(BaseCommand):
-    help = "重建谷子在馆/出街主图的视觉匹配指纹。"
+    help = "重建所有状态谷子有效主图的视觉匹配指纹。"
 
     def add_arguments(self, parser):
         parser.add_argument("--user-id", type=int, help="仅重建指定用户")
@@ -18,8 +18,7 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         queryset = (
-            Goods.objects.filter(status__in=("in_cabinet", "outdoor"))
-            .exclude(Q(main_photo="") | Q(main_photo__isnull=True))
+            Goods.objects.exclude(Q(main_photo="") | Q(main_photo__isnull=True))
             .select_related("user")
             .order_by("user_id", "id")
         )

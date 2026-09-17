@@ -481,6 +481,30 @@ class GoodsImageIndexingTests(TestCase):
         self.assertFalse(refresh_goods_image_fingerprint(goods))
         self.assertFalse(GoodsImageFingerprint.objects.filter(goods=goods).exists())
 
+    @patch("apps.goods.image_match.indexing.extract_main_fingerprint")
+    def test_rebuild_indexes_all_goods_statuses(self, extract):
+        extract.return_value = ImageFingerprint(
+            phash="1234567890abcdef",
+            embedding=_vector(1.0),
+        )
+        statuses = ("draft", "intended", "in_cabinet", "outdoor", "sold")
+        for index, status_value in enumerate(statuses):
+            Goods.objects.create(
+                user=self.user,
+                name=f"全状态索引-{status_value}",
+                ip=self.ip,
+                category=self.category,
+                status=status_value,
+                main_photo=_query_image(f"status-{index}.png"),
+            )
+
+        call_command("rebuild_goods_image_index", verbosity=0)
+
+        fingerprint_statuses = set(
+            GoodsImageFingerprint.objects.values_list("goods__status", flat=True)
+        )
+        self.assertEqual(fingerprint_statuses, set(statuses))
+
 
 class GoodsImageAutoIndexTests(TransactionTestCase):
     reset_sequences = True
