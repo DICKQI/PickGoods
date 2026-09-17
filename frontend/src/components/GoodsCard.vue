@@ -1097,19 +1097,13 @@ onBeforeUnmount(() => {
   pointer-events: none;
   opacity: 0;
   background:
-    radial-gradient(
-      110px 90px at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
-      rgba(255, 255, 255, 0.3),
-      rgba(255, 255, 255, 0.08) 40%,
-      rgba(255, 255, 255, 0) 72%
-    ),
     linear-gradient(
-      112deg,
-      rgba(255, 255, 255, 0) 30%,
-      rgba(255, 255, 255, 0.2) 42%,
-      rgba(255, 255, 255, 0.52) 47%,
-      rgba(255, 255, 255, 0.1) 53%,
-      rgba(255, 255, 255, 0) 66%
+      var(--card-light-angle, 112deg),
+      rgba(255, 255, 255, 0) calc(var(--card-light-center, 50%) - 17%),
+      rgba(255, 255, 255, 0.2) calc(var(--card-light-center, 50%) - 5%),
+      rgba(255, 255, 255, 0.52) var(--card-light-center, 50%),
+      rgba(255, 255, 255, 0.1) calc(var(--card-light-center, 50%) + 6%),
+      rgba(255, 255, 255, 0) calc(var(--card-light-center, 50%) + 18%)
     ),
     linear-gradient(
       135deg,

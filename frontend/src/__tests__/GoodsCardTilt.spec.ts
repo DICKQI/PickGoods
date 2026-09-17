@@ -167,8 +167,8 @@ describe('GoodsCard 指针跟随 3D', () => {
     expect(wrapper.classes()).toContain('is-tilting')
     expect(readNumber(el, '--card-tilt-x')).toBeCloseTo(6, 2)
     expect(readNumber(el, '--card-tilt-y')).toBeCloseTo(-6, 2)
-    expect(el.style.getPropertyValue('--card-glare-x')).toBe('100.00%')
-    expect(el.style.getPropertyValue('--card-glare-y')).toBe('100.00%')
+    expect(el.style.getPropertyValue('--card-light-angle')).toBe('105.00deg')
+    expect(el.style.getPropertyValue('--card-light-center')).toBe('66.00%')
     expect(readNumber(el, '--card-image-shift-x')).toBeCloseTo(-3, 2)
     expect(readNumber(el, '--card-image-shift-y')).toBeCloseTo(-3, 2)
 
@@ -178,7 +178,8 @@ describe('GoodsCard 指针跟随 3D', () => {
     expect(readNumber(el, '--card-tilt-x', 0)).toBe(0)
     expect(readNumber(el, '--card-tilt-y', 0)).toBe(0)
     expect(readNumber(el, '--card-image-shift-x', 0)).toBe(0)
-    expect(el.style.getPropertyValue('--card-glare-x')).toBe('50%')
+    expect(el.style.getPropertyValue('--card-light-angle')).toBe('112deg')
+    expect(el.style.getPropertyValue('--card-light-center')).toBe('50%')
   })
 
   it('多选模式禁用倾斜并隐藏高光层', async () => {
@@ -261,7 +262,8 @@ describe('GoodsCard 指针跟随 3D', () => {
     expect(source).not.toContain('--card-scale')
     expect(source).not.toContain('scale(1.025)')
     expect(source).toContain('translate3d(\n        var(--card-image-shift-x, 0px)')
-    expect(source).toContain('--card-glare-x, 50%')
+    expect(source).toContain('var(--card-light-angle, 112deg)')
+    expect(source).toContain('var(--card-light-center, 50%)')
     expect(source).toMatch(/\.card-acrylic-glare\s*\{[\s\S]*?z-index:\s*1;/)
     expect(source).toContain('mix-blend-mode: screen;')
     const glareBlockIndex = source.indexOf('.card-acrylic-glare {')
@@ -270,6 +272,8 @@ describe('GoodsCard 指针跟随 3D', () => {
       source.indexOf('}', glareBlockIndex),
     )
     expect(glareBlock).not.toContain('filter')
+    expect(glareBlock).not.toContain('radial-gradient')
+    expect(glareBlock).not.toContain('--card-glare')
     expect(source).toContain('backdrop-filter: blur(18px) saturate(1.3);')
     expect(source).toContain('transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1)')
     expect(source).toContain(
