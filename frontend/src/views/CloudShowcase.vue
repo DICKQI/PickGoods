@@ -201,54 +201,59 @@
       <!-- 右键菜单：传送到 body，避免下拉刷新区域的 transform 改变 fixed 坐标系 -->
       <Teleport to="body">
         <div
-          v-if="contextMenuVisible"
           class="context-menu-overlay"
+          :class="{ 'is-open': contextMenuVisible }"
+          :aria-hidden="!contextMenuVisible"
           @click="closeContextMenu"
           @contextmenu.prevent
         >
-          <div
-            ref="contextMenuRef"
-            class="context-menu"
-            :style="{
-              top: contextMenuY + 'px',
-              left: contextMenuX + 'px',
-              visibility: contextMenuPositioned ? 'visible' : 'hidden',
-            }"
-            @click.stop
-          >
-          <div
-            class="context-menu-item"
-            :class="{ 'is-disabled': moveDisabledToTop }"
-            @click="handleMoveToTop"
-          >
-            <el-icon class="context-menu-icon"><Top /></el-icon>
-            <span>置顶到本页顶部</span>
-          </div>
-          <div
-            class="context-menu-item"
-            :class="{ 'is-disabled': moveDisabledForward }"
-            @click="handleMoveForward"
-          >
-            <el-icon class="context-menu-icon"><ArrowLeft /></el-icon>
-            <span>前移</span>
-          </div>
-          <div
-            class="context-menu-item"
-            :class="{ 'is-disabled': moveDisabledBackward }"
-            @click="handleMoveBackward"
-          >
-            <el-icon class="context-menu-icon"><ArrowRight /></el-icon>
-            <span>后移</span>
-          </div>
-          <div class="context-menu-item" @click="handleEditGoods">
-            <el-icon class="context-menu-icon"><Edit /></el-icon>
-            <span>编辑</span>
-          </div>
-          <div class="context-menu-item context-menu-item-danger" @click="handleDeleteGoods">
-            <el-icon class="context-menu-icon"><Delete /></el-icon>
-            <span>删除</span>
-          </div>
-          </div>
+          <Transition name="context-menu-pop" @after-leave="handleContextMenuAfterLeave">
+            <div
+              v-if="contextMenuVisible"
+              ref="contextMenuRef"
+              class="context-menu"
+              :style="{
+                top: contextMenuY + 'px',
+                left: contextMenuX + 'px',
+                visibility: contextMenuPositioned ? 'visible' : 'hidden',
+                transformOrigin: contextMenuTransformOrigin,
+              }"
+              @click.stop
+            >
+              <div
+                class="context-menu-item"
+                :class="{ 'is-disabled': moveDisabledToTop }"
+                @click="handleMoveToTop"
+              >
+                <el-icon class="context-menu-icon"><Top /></el-icon>
+                <span>置顶到本页顶部</span>
+              </div>
+              <div
+                class="context-menu-item"
+                :class="{ 'is-disabled': moveDisabledForward }"
+                @click="handleMoveForward"
+              >
+                <el-icon class="context-menu-icon"><ArrowLeft /></el-icon>
+                <span>前移</span>
+              </div>
+              <div
+                class="context-menu-item"
+                :class="{ 'is-disabled': moveDisabledBackward }"
+                @click="handleMoveBackward"
+              >
+                <el-icon class="context-menu-icon"><ArrowRight /></el-icon>
+                <span>后移</span>
+              </div>
+              <div class="context-menu-item" @click="handleEditGoods">
+                <el-icon class="context-menu-icon"><Edit /></el-icon>
+                <span>编辑</span>
+              </div>
+              <div class="context-menu-item context-menu-item-danger" @click="handleDeleteGoods">
+                <el-icon class="context-menu-icon"><Delete /></el-icon>
+                <span>删除</span>
+              </div>
+            </div>
+          </Transition>
         </div>
       </Teleport>
           </div>
@@ -473,6 +478,9 @@ const multiDisplayVisible = ref(false)
 const contextMenuVisible = ref(false)
 const contextMenuX = ref(0)
 const contextMenuY = ref(0)
+const contextMenuAnchorX = ref(0)
+const contextMenuAnchorY = ref(0)
+const contextMenuTransformOrigin = ref('top left')
 const contextMenuGoods = ref<GoodsListItem | null>(null)
 const contextMenuRef = ref<HTMLElement | null>(null)
 const contextMenuPositioned = ref(false)
@@ -636,25 +644,36 @@ const repositionContextMenu = () => {
   const menu = contextMenuRef.value
   if (!menu) return
 
-  const rect = menu.getBoundingClientRect()
+  const menuWidth = menu.offsetWidth
+  const menuHeight = menu.offsetHeight
   const position = getContextMenuPosition({
     x: contextMenuX.value,
     y: contextMenuY.value,
-    menuWidth: rect.width,
-    menuHeight: rect.height,
+    menuWidth,
+    menuHeight,
     viewportWidth: window.innerWidth,
     viewportHeight: window.innerHeight,
   })
+
+  const clampOrigin = (value: number, max: number) => Math.min(Math.max(value, 0), max)
+
   contextMenuX.value = position.left
   contextMenuY.value = position.top
+  contextMenuTransformOrigin.value = [
+    `${clampOrigin(contextMenuAnchorX.value - position.left, menuWidth)}px`,
+    `${clampOrigin(contextMenuAnchorY.value - position.top, menuHeight)}px`,
+  ].join(' ')
   contextMenuPositioned.value = true
 }
 
 const handleCardContextMenu = async (payload: { goods: GoodsListItem; x: number; y: number }) => {
   if (guziStore.selectionMode) return
   contextMenuGoods.value = payload.goods
+  contextMenuAnchorX.value = payload.x
+  contextMenuAnchorY.value = payload.y
   contextMenuX.value = payload.x
   contextMenuY.value = payload.y
+  contextMenuTransformOrigin.value = 'top left'
   contextMenuPositioned.value = false
   contextMenuVisible.value = true
 
@@ -729,7 +748,11 @@ const closeMobileFilter = () => {
 const closeContextMenu = () => {
   contextMenuPositionRequest += 1
   contextMenuVisible.value = false
+}
+
+const handleContextMenuAfterLeave = () => {
   contextMenuPositioned.value = false
+  contextMenuTransformOrigin.value = 'top left'
 }
 
 const handleEditGoods = () => {
@@ -2028,6 +2051,11 @@ watch(mobileFilterVisible, (visible) => {
   position: fixed;
   inset: 0;
   z-index: 2000;
+  pointer-events: none;
+}
+
+.context-menu-overlay.is-open {
+  pointer-events: auto;
 }
 
 .context-menu {
@@ -2041,6 +2069,34 @@ watch(mobileFilterVisible, (visible) => {
   border: 1px solid var(--border-color);
   padding: 6px 0;
   z-index: 2100;
+  transform-origin: top left;
+  transform: scale3d(1, 1, 1);
+  will-change: transform;
+  backface-visibility: hidden;
+}
+
+.context-menu-pop-enter-active {
+  transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.context-menu-pop-leave-active {
+  transition: transform 160ms cubic-bezier(0.55, 0, 1, 1);
+}
+
+.context-menu-pop-enter-from {
+  transform: scale3d(0.82, 0.82, 1);
+}
+
+.context-menu-pop-enter-to {
+  transform: scale3d(1, 1, 1);
+}
+
+.context-menu-pop-leave-from {
+  transform: scale3d(1, 1, 1);
+}
+
+.context-menu-pop-leave-to {
+  transform: scale3d(0.02, 0.02, 1);
 }
 
 .context-menu-item {
@@ -2085,5 +2141,12 @@ watch(mobileFilterVisible, (visible) => {
 .context-menu-item-danger:hover {
   background-color: rgba(245, 108, 108, 0.1);
   color: #F56C6C;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .context-menu-pop-enter-active,
+  .context-menu-pop-leave-active {
+    transition: none;
+  }
 }
 </style>

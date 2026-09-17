@@ -123,8 +123,18 @@ const mountCloudShowcase = async ({
       stubs: {
         SearchBar: { template: '<div data-test="search-bar" />' },
         FilterPanel: { template: '<div data-test="filter-panel" />' },
-        GoodsCard: { template: '<article class="goods-card-stub" @touchstart.stop />' },
-        MobileGoodsCard: { template: '<article class="mobile-goods-card-stub" @touchstart.stop />' },
+        GoodsCard: {
+          name: 'GoodsCard',
+          props: ['goods', 'selectable', 'selected', 'interactive3d'],
+          emits: ['contextMenu'],
+          template: '<article class="goods-card-stub" @touchstart.stop @contextmenu.prevent="$emit(\'contextMenu\', { goods, x: $event.clientX, y: $event.clientY })" />',
+        },
+        MobileGoodsCard: {
+          name: 'MobileGoodsCard',
+          props: ['goods', 'selectable', 'selected'],
+          emits: ['contextMenu'],
+          template: '<article class="mobile-goods-card-stub" @touchstart.stop @contextmenu.prevent="$emit(\'contextMenu\', { goods, x: $event.clientX, y: $event.clientY })" />',
+        },
         GoodsDrawer: { template: '<aside />' },
         GoodsImageMatcher: {
           props: ['modelValue'],
@@ -168,6 +178,12 @@ const mountMobileCloudShowcase = (options: { goodsResults?: GoodsListItem[] } = 
 const mountDesktopCloudShowcase = (options: { goodsResults?: GoodsListItem[] } = {}) =>
   mountCloudShowcase({ ...options, viewport: 'desktop' })
 
+const waitForGoodsGrid = async (wrapper: VueWrapper) => {
+  await flushPromises()
+  await new Promise<void>(resolve => setTimeout(resolve, 350))
+  await wrapper.vm.$nextTick()
+}
+
 describe('CloudShowcase mobile compact header', () => {
   beforeEach(() => {
     vi.restoreAllMocks()
@@ -199,6 +215,104 @@ describe('CloudShowcase mobile compact header', () => {
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-active')
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-enter-from')
     expect(cloudShowcaseSource).toContain('.mobile-search-expand-leave-to')
+  })
+
+  it('defines a scale-only spring transition for the context menu', () => {
+    const popTransitionSource = cloudShowcaseSource.match(
+      /\.context-menu-pop-enter-active[\s\S]*?@media \(prefers-reduced-motion/,
+    )?.[0] ?? ''
+
+    expect(cloudShowcaseSource).toContain('<Transition name="context-menu-pop" @after-leave="handleContextMenuAfterLeave">')
+    expect(cloudShowcaseSource).toContain('transition: transform 200ms cubic-bezier(0.34, 1.56, 0.64, 1);')
+    expect(cloudShowcaseSource).toContain('transition: transform 160ms cubic-bezier(0.55, 0, 1, 1);')
+    expect(cloudShowcaseSource).toContain('transform: scale3d(0.02, 0.02, 1);')
+    expect(popTransitionSource).not.toContain('opacity')
+  })
+
+  it('keeps the context menu mounted throughout its leave animation', () => {
+    const closeContextMenuSource = cloudShowcaseSource.match(
+      /const closeContextMenu = \(\) => \{[\s\S]*?\n\}/,
+    )?.[0] ?? ''
+    const afterLeaveSource = cloudShowcaseSource.match(
+      /const handleContextMenuAfterLeave = \(\) => \{[\s\S]*?\n\}/,
+    )?.[0] ?? ''
+
+    expect(closeContextMenuSource).toContain('contextMenuVisible.value = false')
+    expect(closeContextMenuSource).not.toContain('contextMenuPositioned.value = false')
+    expect(afterLeaveSource).toContain('contextMenuPositioned.value = false')
+  })
+
+  it('respects reduced motion for the context menu animation', () => {
+    expect(cloudShowcaseSource).toMatch(
+      /@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.context-menu-pop-enter-active,[\s\S]*?\.context-menu-pop-leave-active[\s\S]*?transition: none;/,
+    )
+  })
+
+  it.each([
+    {
+      viewport: 'desktop' as const,
+      cardSelector: '.goods-card-stub',
+      x: 1435,
+      y: 895,
+      expectedLeft: 1289,
+      expectedTop: 669,
+      expectedOrigin: '140px 220px',
+    },
+    {
+      viewport: 'mobile' as const,
+      cardSelector: '.mobile-goods-card-stub',
+      x: 385,
+      y: 840,
+      expectedLeft: 239,
+      expectedTop: 614,
+      expectedOrigin: '140px 220px',
+    },
+  ])('positions and scales the $viewport context menu from its trigger point', async ({
+    viewport,
+    cardSelector,
+    x,
+    y,
+    expectedLeft,
+    expectedTop,
+    expectedOrigin,
+  }) => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(140)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(220)
+    const wrapper = await mountCloudShowcase({
+      goodsResults: [sampleGoods],
+      viewport,
+    })
+    await waitForGoodsGrid(wrapper)
+    const card = wrapper.get(cardSelector)
+
+    await card.trigger('contextmenu', { clientX: x, clientY: y })
+    await flushPromises()
+
+    const overlay = document.body.querySelector('.context-menu-overlay')
+    const menu = document.body.querySelector('.context-menu') as HTMLElement | null
+
+    expect(overlay?.classList.contains('is-open')).toBe(true)
+    expect(menu).not.toBeNull()
+    expect(menu?.style.left).toBe(`${expectedLeft}px`)
+    expect(menu?.style.top).toBe(`${expectedTop}px`)
+    expect(menu?.style.transformOrigin).toBe(expectedOrigin)
+    expect(menu?.style.visibility).toBe('visible')
+  })
+
+  it('keeps the menu node during the close transition', async () => {
+    const wrapper = await mountDesktopCloudShowcase({ goodsResults: [sampleGoods] })
+    await waitForGoodsGrid(wrapper)
+    const card = wrapper.get('.goods-card-stub')
+
+    await card.trigger('contextmenu', { clientX: 120, clientY: 80 })
+    await flushPromises()
+
+    const overlay = document.body.querySelector('.context-menu-overlay') as HTMLElement
+    overlay.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+    await wrapper.vm.$nextTick()
+
+    expect(overlay.classList.contains('is-open')).toBe(false)
+    expect(document.body.querySelector('.context-menu')).not.toBeNull()
   })
 
   it('aligns the mobile sticky tabs with the shared navbar height', () => {
