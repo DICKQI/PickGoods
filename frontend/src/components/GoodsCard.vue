@@ -1,14 +1,30 @@
 <template>
   <div
+    ref="cardRef"
     class="goods-card"
-    :class="{ 'is-selectable': selectable, 'is-selected': selected }"
+    :class="{
+      'is-selectable': selectable,
+      'is-selected': selected,
+      'is-interactive-3d': interactive3d,
+      'is-tilting': isTilting,
+    }"
     @click="handleClick"
     @contextmenu.prevent="handleContextMenu"
+    @pointerenter="handlePointerEnter"
+    @pointermove="handlePointerMove"
+    @pointerleave="handlePointerLeave"
+    @pointercancel="handlePointerCancel"
     @touchstart.stop="handleTouchStart"
     @touchend="handleTouchEnd"
     @touchcancel="handleTouchEnd"
     @touchmove="handleTouchMove"
   >
+    <span
+      v-if="interactive3d && !selectable"
+      class="card-acrylic-glare"
+      aria-hidden="true"
+    ></span>
+
     <!-- 1. 图片区域 -->
     <div class="card-image-wrapper">
       <SquarePaddedImage
@@ -133,6 +149,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Picture, Location, CircleCheck, MoreFilled, Brush, Check } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
+import { useCardTilt } from '@/composables/useCardTilt'
 import type { GoodsListItem } from '@/api/types'
 
 interface Props {
@@ -145,17 +162,35 @@ interface Props {
    * 默认显示；当外层页面已自定义右上角操作区时可关闭，避免冲突/重叠。
    */
   showMenu?: boolean
+  /**
+   * 是否启用跟随鼠标的 3D 倾斜与亚克力高光。
+   * 默认关闭；目前仅 PC 端谷仓页开启。
+   */
+  interactive3d?: boolean
 }
 
 const props = withDefaults(defineProps<Props>(), {
   selectable: false,
   selected: false,
   showMenu: true,
+  interactive3d: false,
 })
 
 const selectable = computed(() => props.selectable)
 const selected = computed(() => props.selected)
 const showMenu = computed(() => props.showMenu && !selectable.value)
+const interactive3d = computed(() => props.interactive3d)
+
+const cardRef = ref<HTMLElement | null>(null)
+const {
+  isTilting,
+  handlePointerEnter,
+  handlePointerMove,
+  handlePointerLeave,
+  handlePointerCancel,
+} = useCardTilt(cardRef, {
+  enabled: () => props.interactive3d && !selectable.value,
+})
 
 const emit = defineEmits<{
   click: [goods: GoodsListItem]
@@ -1048,6 +1083,133 @@ onBeforeUnmount(() => {
     top: 16px;
     right: 16px;
     opacity: 0;
+  }
+}
+
+/* ===== 指针跟随 3D + 轻薄亚克力 =====
+   默认不渲染、不产生合成层；只有 interactive3d 卡片在精细指针的桌面视口悬停时才启用。 */
+.card-acrylic-glare {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(
+      240px 210px at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
+      rgba(255, 255, 255, 0.62),
+      rgba(255, 255, 255, 0.14) 42%,
+      rgba(255, 255, 255, 0) 72%
+    ),
+    linear-gradient(
+      118deg,
+      rgba(255, 255, 255, 0.38) 0%,
+      rgba(255, 255, 255, 0.08) 18%,
+      rgba(212, 175, 55, 0.08) 46%,
+      rgba(162, 155, 254, 0.11) 62%,
+      rgba(255, 255, 255, 0) 82%
+    );
+  mix-blend-mode: screen;
+  transition: opacity 0.24s ease;
+}
+
+.goods-card.is-interactive-3d .card-content {
+  position: relative;
+  z-index: 3;
+}
+
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .goods-card.is-interactive-3d {
+    --card-transform:
+      perspective(var(--card-perspective, 900px))
+      rotateX(var(--card-tilt-x, 0deg))
+      rotateY(var(--card-tilt-y, 0deg))
+      translate3d(0, var(--card-lift, 0px), 0)
+      scale(var(--card-scale, 1));
+
+    transform-origin: 50% 50%;
+    transition:
+      transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 0.35s ease,
+      border-color 0.24s ease;
+  }
+
+  .goods-card.is-interactive-3d:not(.is-selectable):hover,
+  .goods-card.is-interactive-3d:not(.is-selectable).is-tilting {
+    transform: var(--card-transform);
+  }
+
+  .goods-card.is-interactive-3d:not(.is-selectable):hover {
+    --card-lift: -6px;
+    --card-scale: 1.018;
+
+    background:
+      linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(250, 248, 243, 0.66)),
+      var(--goods-card-surface);
+    border-color: rgba(255, 255, 255, 0.78);
+    backdrop-filter: blur(18px) saturate(1.3);
+    -webkit-backdrop-filter: blur(18px) saturate(1.3);
+    box-shadow:
+      calc(var(--card-tilt-y-ratio, 0) * -12px)
+        calc(22px + var(--card-tilt-x-ratio, 0) * 8px)
+        46px -18px rgba(28, 23, 12, 0.24),
+      calc(var(--card-tilt-y-ratio, 0) * -7px) 0 28px rgba(212, 175, 55, 0.2),
+      0 0 0 3px rgba(255, 255, 255, 0.2),
+      inset 0 1px 0 rgba(255, 255, 255, 0.96),
+      inset 0 -1px 0 rgba(212, 175, 55, 0.14),
+      inset 1px 0 0 rgba(212, 175, 55, 0.2),
+      inset -1px 0 0 rgba(162, 155, 254, 0.18);
+  }
+
+  .goods-card.is-interactive-3d:not(.is-selectable):hover .card-acrylic-glare,
+  .goods-card.is-interactive-3d:not(.is-selectable).is-tilting .card-acrylic-glare {
+    opacity: 0.56;
+  }
+
+  .goods-card.is-interactive-3d:not(.is-selectable) .card-image-wrapper {
+    transform-origin: 50% 50%;
+    transition: transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+
+  .goods-card.is-interactive-3d:not(.is-selectable).is-tilting .card-image-wrapper {
+    transform: translate3d(
+        var(--card-image-shift-x, 0px),
+        var(--card-image-shift-y, 0px),
+        0
+      )
+      scale(1.025);
+    transition-duration: 0.12s;
+  }
+
+  .goods-card.is-interactive-3d.is-tilting {
+    transition:
+      transform 0.12s ease-out,
+      box-shadow 0.35s ease,
+      border-color 0.24s ease;
+    will-change: transform;
+  }
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .goods-card.is-interactive-3d:not(.is-selectable):hover {
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.97), rgba(252, 251, 248, 0.95)),
+      var(--goods-card-surface);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .goods-card.is-interactive-3d,
+  .goods-card.is-interactive-3d:hover,
+  .goods-card.is-interactive-3d.is-tilting,
+  .goods-card.is-interactive-3d .card-image-wrapper {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .card-acrylic-glare {
+    display: none;
   }
 }
 </style>

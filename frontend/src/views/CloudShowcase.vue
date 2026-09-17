@@ -155,6 +155,7 @@
                 :goods="goods"
                 :selectable="guziStore.selectionMode"
                 :selected="guziStore.isGoodsSelected(goods.id)"
+                :interactive-3d="true"
                 @click="handleCardClick"
                 @select="handleCardSelect"
                 @location-click="handleLocationClick"
