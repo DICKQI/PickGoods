@@ -44,8 +44,7 @@ const readMediaQuery = (query: string): MediaQueryList | null => {
   return window.matchMedia(query)
 }
 
-const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value))
-const clamp01 = (value: number) => clamp(value, 0, 1)
+const clamp01 = (value: number) => Math.min(1, Math.max(0, value))
 
 const toFiniteNumber = (value: unknown, fallback: number) => {
   const parsed = typeof value === 'number' ? value : Number(value)
@@ -120,8 +119,8 @@ export function useCardTilt(
     el.style.setProperty('--card-tilt-y', '0deg')
     el.style.setProperty('--card-tilt-x-ratio', '0')
     el.style.setProperty('--card-tilt-y-ratio', '0')
-    el.style.setProperty('--card-light-angle', '112deg')
-    el.style.setProperty('--card-light-center', '50%')
+    el.style.setProperty('--card-glare-x', '50%')
+    el.style.setProperty('--card-glare-y', '50%')
     el.style.setProperty('--card-image-shift-x', '0px')
     el.style.setProperty('--card-image-shift-y', '0px')
   }
@@ -146,10 +145,8 @@ export function useCardTilt(
     el.style.setProperty('--card-tilt-y', `${(-horizontalRatio * maxAngle).toFixed(2)}deg`)
     el.style.setProperty('--card-tilt-x-ratio', verticalRatio.toFixed(4))
     el.style.setProperty('--card-tilt-y-ratio', horizontalRatio.toFixed(4))
-    const lightAngle = clamp(112 - horizontalRatio * 15 + verticalRatio * 8, 97, 127)
-    const lightCenter = clamp(50 + horizontalRatio * 12 + verticalRatio * 4, 34, 66)
-    el.style.setProperty('--card-light-angle', `${lightAngle.toFixed(2)}deg`)
-    el.style.setProperty('--card-light-center', `${lightCenter.toFixed(2)}%`)
+    el.style.setProperty('--card-glare-x', `${(nx * 100).toFixed(2)}%`)
+    el.style.setProperty('--card-glare-y', `${(ny * 100).toFixed(2)}%`)
     // 图片只做整数像素位移，避免非整数合成坐标让位图边缘发虚。
     el.style.setProperty(
       '--card-image-shift-x',

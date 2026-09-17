@@ -34,7 +34,7 @@
         <el-icon><Picture /></el-icon>
       </div>
 
-      <!-- 仅覆盖图片的镜面打光；使用混合模式提亮，不使用 blur/filter 模糊图片。 -->
+      <!-- 仅保留跟随鼠标位置的柔和点光，不渲染斜向光带。 -->
       <span
         v-if="interactive3d && !selectable"
         class="card-acrylic-glare"
@@ -1087,8 +1087,6 @@ onBeforeUnmount(() => {
   }
 }
 
-/* ===== 指针跟随 3D + 轻薄亚克力 =====
-   默认不渲染、不产生合成层；只有 interactive3d 卡片在精细指针的桌面视口悬停时才启用。 */
 .card-acrylic-glare {
   position: absolute;
   inset: 0;
@@ -1096,35 +1094,18 @@ onBeforeUnmount(() => {
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
-  background:
-    linear-gradient(
-      var(--card-light-angle, 112deg),
-      rgba(255, 255, 255, 0) calc(var(--card-light-center, 50%) - 17%),
-      rgba(255, 255, 255, 0.2) calc(var(--card-light-center, 50%) - 5%),
-      rgba(255, 255, 255, 0.52) var(--card-light-center, 50%),
-      rgba(255, 255, 255, 0.1) calc(var(--card-light-center, 50%) + 6%),
-      rgba(255, 255, 255, 0) calc(var(--card-light-center, 50%) + 18%)
-    ),
-    linear-gradient(
-      135deg,
-      rgba(212, 175, 55, 0.1),
-      transparent 42%,
-      rgba(162, 155, 254, 0.09) 66%,
-      transparent
-    );
+  background: radial-gradient(
+    110px 90px at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
+    rgba(255, 255, 255, 0.3),
+    rgba(255, 255, 255, 0.08) 40%,
+    rgba(255, 255, 255, 0) 72%
+  );
   mix-blend-mode: screen;
   transition: opacity 0.24s ease;
 }
 
-.goods-card.is-interactive-3d .card-content {
-  position: relative;
-  z-index: 3;
-}
-
-.goods-card.is-interactive-3d .quantity-badge {
-  z-index: 2;
-}
-
+/* ===== 指针跟随 3D + 轻薄亚克力 =====
+   默认不产生合成层；只有 interactive3d 卡片在精细指针的桌面视口悬停时才启用。 */
 @media (hover: hover) and (pointer: fine) and (min-width: 769px) {
   .goods-card.is-interactive-3d {
     --card-transform:

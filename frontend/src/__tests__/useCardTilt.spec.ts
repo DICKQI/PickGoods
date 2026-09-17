@@ -155,7 +155,7 @@ afterEach(() => {
 })
 
 describe('useCardTilt', () => {
-  it('按鼠标位置写入倾斜、动态斜光、图片视差与透视变量', async () => {
+  it('按鼠标位置写入倾斜、鼠标跟随光、图片视差与透视变量', async () => {
     const harness = mountHarness()
     stubRect(harness.el)
 
@@ -166,14 +166,14 @@ describe('useCardTilt', () => {
     expect(readNumber(harness.el, '--card-tilt-y')).toBeCloseTo(-6, 2)
     expect(readNumber(harness.el, '--card-tilt-x-ratio')).toBeCloseTo(1, 3)
     expect(readNumber(harness.el, '--card-tilt-y-ratio')).toBeCloseTo(1, 3)
-    expect(harness.el.style.getPropertyValue('--card-light-angle')).toBe('105.00deg')
-    expect(harness.el.style.getPropertyValue('--card-light-center')).toBe('66.00%')
+    expect(harness.el.style.getPropertyValue('--card-glare-x')).toBe('100.00%')
+    expect(harness.el.style.getPropertyValue('--card-glare-y')).toBe('100.00%')
     expect(readNumber(harness.el, '--card-image-shift-x')).toBeCloseTo(-3, 2)
     expect(readNumber(harness.el, '--card-image-shift-y')).toBeCloseTo(-3, 2)
     expect(harness.el.style.getPropertyValue('--card-perspective')).toBe('900px')
   })
 
-  it('指针在左上角时倾斜、图片视差和斜光方向相反', async () => {
+  it('指针在左上角时倾斜和图片视差方向相反', async () => {
     const harness = mountHarness()
     stubRect(harness.el)
 
@@ -183,8 +183,6 @@ describe('useCardTilt', () => {
     expect(readNumber(harness.el, '--card-tilt-y')).toBeCloseTo(6, 2)
     expect(readNumber(harness.el, '--card-image-shift-x')).toBeCloseTo(3, 2)
     expect(readNumber(harness.el, '--card-image-shift-y')).toBeCloseTo(3, 2)
-    expect(harness.el.style.getPropertyValue('--card-light-angle')).toBe('119.00deg')
-    expect(harness.el.style.getPropertyValue('--card-light-center')).toBe('34.00%')
   })
 
   it('把卡片外坐标夹在边界内，不超出最大角度', async () => {
@@ -196,20 +194,6 @@ describe('useCardTilt', () => {
     expect(Math.abs(readNumber(harness.el, '--card-tilt-x'))).toBeLessThanOrEqual(4)
     expect(Math.abs(readNumber(harness.el, '--card-tilt-y'))).toBeLessThanOrEqual(4)
     expect(Math.abs(readNumber(harness.el, '--card-image-shift-x'))).toBeLessThanOrEqual(2)
-    expect(readNumber(harness.el, '--card-light-angle')).toBeGreaterThanOrEqual(97)
-    expect(readNumber(harness.el, '--card-light-angle')).toBeLessThanOrEqual(127)
-    expect(readNumber(harness.el, '--card-light-center')).toBeGreaterThanOrEqual(34)
-    expect(readNumber(harness.el, '--card-light-center')).toBeLessThanOrEqual(66)
-
-    await dispatchPointer(harness.el, 'pointermove', {
-      pointerType: 'mouse',
-      clientX: -9999,
-      clientY: 9999,
-    })
-    await flushTiltFrame()
-
-    expect(readNumber(harness.el, '--card-light-angle')).toBe(127)
-    expect(readNumber(harness.el, '--card-light-center')).toBe(42)
   })
 
   it('触屏和手写笔指针不启动倾斜', async () => {
