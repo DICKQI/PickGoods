@@ -258,9 +258,18 @@ describe('GoodsCard 指针跟随 3D', () => {
     expect(source).toContain('rotateX(var(--card-tilt-x, 0deg))')
     expect(source).toContain('rotateY(var(--card-tilt-y, 0deg))')
     expect(source).toContain('--card-lift: -6px;')
-    expect(source).toContain('--card-scale: 1.018;')
+    expect(source).not.toContain('--card-scale')
+    expect(source).not.toContain('scale(1.025)')
     expect(source).toContain('translate3d(\n        var(--card-image-shift-x, 0px)')
     expect(source).toContain('--card-glare-x, 50%')
+    expect(source).toMatch(/\.card-acrylic-glare\s*\{[\s\S]*?z-index:\s*1;/)
+    expect(source).toContain('mix-blend-mode: screen;')
+    const glareBlockIndex = source.indexOf('.card-acrylic-glare {')
+    const glareBlock = source.slice(
+      glareBlockIndex,
+      source.indexOf('}', glareBlockIndex),
+    )
+    expect(glareBlock).not.toContain('filter')
     expect(source).toContain('backdrop-filter: blur(18px) saturate(1.3);')
     expect(source).toContain('transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1)')
     expect(source).toContain(
@@ -270,6 +279,13 @@ describe('GoodsCard 指针跟随 3D', () => {
     expect(source).toContain(
       '@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)))',
     )
+
+    const imageIndex = source.indexOf('<SquarePaddedImage')
+    const glareIndex = source.indexOf('class="card-acrylic-glare"')
+    const tagIndex = source.indexOf('class="attr-tag"')
+    expect(imageIndex).toBeGreaterThan(-1)
+    expect(glareIndex).toBeGreaterThan(imageIndex)
+    expect(tagIndex).toBeGreaterThan(glareIndex)
   })
 })
 

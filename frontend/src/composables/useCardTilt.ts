@@ -147,8 +147,15 @@ export function useCardTilt(
     el.style.setProperty('--card-tilt-y-ratio', horizontalRatio.toFixed(4))
     el.style.setProperty('--card-glare-x', `${(nx * 100).toFixed(2)}%`)
     el.style.setProperty('--card-glare-y', `${(ny * 100).toFixed(2)}%`)
-    el.style.setProperty('--card-image-shift-x', `${(-horizontalRatio * parallax).toFixed(2)}px`)
-    el.style.setProperty('--card-image-shift-y', `${(-verticalRatio * parallax).toFixed(2)}px`)
+    // 图片只做整数像素位移，避免非整数合成坐标让位图边缘发虚。
+    el.style.setProperty(
+      '--card-image-shift-x',
+      `${Math.round(-horizontalRatio * parallax)}px`,
+    )
+    el.style.setProperty(
+      '--card-image-shift-y',
+      `${Math.round(-verticalRatio * parallax)}px`,
+    )
     el.style.setProperty('--card-perspective', `${perspectivePx}px`)
   }
 

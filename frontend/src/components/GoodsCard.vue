@@ -19,12 +19,6 @@
     @touchcancel="handleTouchEnd"
     @touchmove="handleTouchMove"
   >
-    <span
-      v-if="interactive3d && !selectable"
-      class="card-acrylic-glare"
-      aria-hidden="true"
-    ></span>
-
     <!-- 1. 图片区域 -->
     <div class="card-image-wrapper">
       <SquarePaddedImage
@@ -39,6 +33,13 @@
       <div v-else class="image-placeholder">
         <el-icon><Picture /></el-icon>
       </div>
+
+      <!-- 仅覆盖图片的镜面打光；使用混合模式提亮，不使用 blur/filter 模糊图片。 -->
+      <span
+        v-if="interactive3d && !selectable"
+        class="card-acrylic-glare"
+        aria-hidden="true"
+      ></span>
 
       <!-- 官谷/同人 标签 -->
       <div class="attr-tag" :class="tagClass">
@@ -1091,24 +1092,31 @@ onBeforeUnmount(() => {
 .card-acrylic-glare {
   position: absolute;
   inset: 0;
-  z-index: 2;
+  z-index: 1;
   border-radius: inherit;
   pointer-events: none;
   opacity: 0;
   background:
     radial-gradient(
-      240px 210px at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
-      rgba(255, 255, 255, 0.62),
-      rgba(255, 255, 255, 0.14) 42%,
+      110px 90px at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
+      rgba(255, 255, 255, 0.3),
+      rgba(255, 255, 255, 0.08) 40%,
       rgba(255, 255, 255, 0) 72%
     ),
     linear-gradient(
-      118deg,
-      rgba(255, 255, 255, 0.38) 0%,
-      rgba(255, 255, 255, 0.08) 18%,
-      rgba(212, 175, 55, 0.08) 46%,
-      rgba(162, 155, 254, 0.11) 62%,
-      rgba(255, 255, 255, 0) 82%
+      112deg,
+      rgba(255, 255, 255, 0) 30%,
+      rgba(255, 255, 255, 0.2) 42%,
+      rgba(255, 255, 255, 0.52) 47%,
+      rgba(255, 255, 255, 0.1) 53%,
+      rgba(255, 255, 255, 0) 66%
+    ),
+    linear-gradient(
+      135deg,
+      rgba(212, 175, 55, 0.1),
+      transparent 42%,
+      rgba(162, 155, 254, 0.09) 66%,
+      transparent
     );
   mix-blend-mode: screen;
   transition: opacity 0.24s ease;
@@ -1119,14 +1127,17 @@ onBeforeUnmount(() => {
   z-index: 3;
 }
 
+.goods-card.is-interactive-3d .quantity-badge {
+  z-index: 2;
+}
+
 @media (hover: hover) and (pointer: fine) and (min-width: 769px) {
   .goods-card.is-interactive-3d {
     --card-transform:
       perspective(var(--card-perspective, 900px))
       rotateX(var(--card-tilt-x, 0deg))
       rotateY(var(--card-tilt-y, 0deg))
-      translate3d(0, var(--card-lift, 0px), 0)
-      scale(var(--card-scale, 1));
+      translate3d(0, var(--card-lift, 0px), 0);
 
     transform-origin: 50% 50%;
     transition:
@@ -1142,7 +1153,6 @@ onBeforeUnmount(() => {
 
   .goods-card.is-interactive-3d:not(.is-selectable):hover {
     --card-lift: -6px;
-    --card-scale: 1.018;
 
     background:
       linear-gradient(145deg, rgba(255, 255, 255, 0.82), rgba(250, 248, 243, 0.66)),
@@ -1164,7 +1174,7 @@ onBeforeUnmount(() => {
 
   .goods-card.is-interactive-3d:not(.is-selectable):hover .card-acrylic-glare,
   .goods-card.is-interactive-3d:not(.is-selectable).is-tilting .card-acrylic-glare {
-    opacity: 0.56;
+    opacity: 0.68;
   }
 
   .goods-card.is-interactive-3d:not(.is-selectable) .card-image-wrapper {
@@ -1177,8 +1187,7 @@ onBeforeUnmount(() => {
         var(--card-image-shift-x, 0px),
         var(--card-image-shift-y, 0px),
         0
-      )
-      scale(1.025);
+      );
     transition-duration: 0.12s;
   }
 
