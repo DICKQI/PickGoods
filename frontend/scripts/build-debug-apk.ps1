@@ -178,6 +178,43 @@ function Ensure-MainActivityNativeSettings {
     [System.IO.File]::WriteAllText($mainActivity, $content, $utf8NoBom)
 }
 
+function Get-AndroidVersionCode([string]$Version) {
+    $match = [regex]::Match($Version, '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)')
+    if (-not $match.Success) {
+        throw "Unsupported package version for Android: $Version"
+    }
+
+    $postMatch = [regex]::Match($Version, 'post(?<post>\d+)$')
+    $post = if ($postMatch.Success) { [int]$postMatch.Groups["post"].Value } else { 0 }
+
+    return (
+        ([int]$match.Groups["major"].Value * 1000000) +
+        ([int]$match.Groups["minor"].Value * 10000) +
+        ([int]$match.Groups["patch"].Value * 100) +
+        $post
+    )
+}
+
+function Ensure-AndroidBuildMetadata([string]$Version) {
+    $buildGradle = Join-Path $AndroidRoot "app\build.gradle"
+    if (-not (Test-Path -LiteralPath $buildGradle)) {
+        throw "Android app/build.gradle was not generated: $buildGradle"
+    }
+
+    $content = Get-Content -LiteralPath $buildGradle -Raw
+    if ($content -notmatch '(?m)^\s*versionCode\s+\d+\s*$' -or
+        $content -notmatch '(?m)^\s*versionName\s+"[^"]+"\s*$') {
+        throw "Android version fields were not found in $buildGradle"
+    }
+
+    $versionCode = Get-AndroidVersionCode $Version
+    $content = $content -replace '(?m)^(\s*versionCode\s+).*$', ('${1}' + $versionCode)
+    $content = $content -replace '(?m)^(\s*versionName\s+).*$', ('${1}"' + $Version + '"')
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($buildGradle, $content, $utf8NoBom)
+}
+
 Push-Location $FrontendRoot
 try {
     $package = Get-Content -LiteralPath (Join-Path $FrontendRoot "package.json") -Raw | ConvertFrom-Json
@@ -202,6 +239,7 @@ try {
     Invoke-Checked "pnpm" @("exec", "cap", "sync", "android")
     Ensure-AndroidSdk
     Ensure-MainActivityNativeSettings
+    Ensure-AndroidBuildMetadata $version
 
     $jdkHome = Find-JavaHome
     if (-not $jdkHome) {
