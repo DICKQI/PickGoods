@@ -11,6 +11,8 @@ describe('个人中心', () => {
     expect(workspaceSource).toContain('to="/profile/account"')
     expect(workspaceSource).toContain('v-if="!authStore.isClub"')
     expect(workspaceSource).toContain('to="/profile/clubs"')
+    expect(workspaceSource).toContain('to="/profile/achievements"')
+    expect(workspaceSource).toContain('to="/profile/rewards"')
   })
 
   it('账号页承载刷新、管理员后台和退出登录操作', () => {

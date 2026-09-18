@@ -1,6 +1,12 @@
 <template>
   <section class="account-page" aria-labelledby="account-title">
-    <aside class="account-summary" data-test="account-summary">
+    <aside
+      class="account-summary"
+      :class="[
+        profileCard ? `card-${profileCard.preset_key || profileCard.code}` : '',
+      ]"
+      data-test="account-summary"
+    >
       <div class="summary-toolbar">
         <button
           v-if="canEditAvatar"
@@ -10,7 +16,12 @@
           data-test="avatar-edit-trigger"
           @click="avatarEditorVisible = true"
         >
-          <el-avatar :size="72" :src="summaryAvatar || undefined" class="summary-avatar">
+          <el-avatar
+            :size="72"
+            :src="summaryAvatar || undefined"
+            class="summary-avatar"
+            :class="profileFrame ? `avatar-frame-${profileFrame.preset_key || profileFrame.code}` : ''"
+          >
             <span v-if="avatarInitial">{{ avatarInitial }}</span>
             <el-icon v-else><User /></el-icon>
           </el-avatar>
@@ -18,7 +29,13 @@
             <el-icon><CameraFilled /></el-icon>
           </span>
         </button>
-        <el-avatar v-else :size="72" :src="summaryAvatar || undefined" class="summary-avatar">
+        <el-avatar
+          v-else
+          :size="72"
+          :src="summaryAvatar || undefined"
+          class="summary-avatar"
+          :class="profileFrame ? `avatar-frame-${profileFrame.preset_key || profileFrame.code}` : ''"
+        >
           <span v-if="avatarInitial">{{ avatarInitial }}</span>
           <el-icon v-else><User /></el-icon>
         </el-avatar>
@@ -201,7 +218,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowRight, CameraFilled, Close, Key, Lock, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
@@ -213,9 +230,11 @@ import {
 import AvatarEditorDialog from '@/components/profile/AvatarEditorDialog.vue'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useGamificationStore } from '@/stores/gamification'
 
 const router = useRouter()
 const authStore = useAuthStore()
+const gamificationStore = useGamificationStore()
 const { isMobile } = useResponsiveDevice()
 const refreshing = ref(false)
 const accountSaving = ref(false)
@@ -244,6 +263,10 @@ const displayName = computed(() => clubName.value || authStore.user?.username ||
 const avatarInitial = computed(() => displayName.value.trim().slice(0, 1).toUpperCase())
 const drawerDirection = computed<'rtl' | 'btt'>(() => isMobile.value ? 'btt' : 'rtl')
 const drawerSize = computed(() => isMobile.value ? '88dvh' : '480px')
+const profileFrame = computed(() => gamificationStore.equipped('PROFILE_FRAME'))
+const profileCard = computed(() => gamificationStore.equipped('PROFILE_CARD_SKIN'))
+
+onMounted(() => gamificationStore.loadSummary())
 
 function accountErrorMessage(error: unknown): string {
   const data = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
@@ -403,6 +426,25 @@ async function logout() {
   top: 84px;
   padding: 22px;
   border-radius: 18px;
+}
+
+.account-summary.card-neon-dream {
+  background: linear-gradient(145deg, #fff, #f6f2ff 52%, #fff8e6);
+}
+
+.summary-avatar.avatar-frame-star-orbit {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(162, 155, 254, .72), 0 10px 24px rgba(89, 70, 160, .25);
+}
+
+.summary-avatar.avatar-frame-radiant-crown {
+  box-shadow: 0 0 0 3px #fff, 0 0 0 6px rgba(212, 175, 55, .86), 0 0 28px rgba(255, 208, 78, .4);
+}
+
+.account-summary.card-collection-ledger {
+  background:
+    linear-gradient(90deg, rgba(212, 175, 55, 0.08) 1px, transparent 1px),
+    linear-gradient(#fffdf8, #fffaf0);
+  background-size: 18px 18px, auto;
 }
 
 .summary-toolbar {

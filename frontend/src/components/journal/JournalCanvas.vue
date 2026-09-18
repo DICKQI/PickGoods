@@ -278,7 +278,7 @@ const props = withDefaults(defineProps<{
   width: number
   height: number
   background: string
-  backgroundStyle?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  backgroundStyle?: 'plain' | 'dot' | 'line' | 'grid' | 'note' | 'sakura-grid'
   mobile?: boolean
 }>(), {
   backgroundStyle: 'plain',
@@ -548,7 +548,16 @@ const backgroundPattern = computed(() => {
   const endX = bounds.x + bounds.width
   const endY = bounds.y + bounds.height
 
-  if (style === 'dot') {
+  if (style === 'dot' || style === 'sakura-grid') {
+    const dotGap = style === 'sakura-grid' ? 40 : gap
+    if (style === 'sakura-grid') {
+      for (let y = startY; y < endY; y += dotGap) {
+        for (let x = startX; x < endX; x += dotGap) {
+          dots.push({ x, y })
+        }
+      }
+      return { lines, dots }
+    }
     for (let y = startY; y < endY; y += gap) {
       for (let x = startX; x < endX; x += gap) {
         dots.push({ x, y })

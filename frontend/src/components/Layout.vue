@@ -63,17 +63,23 @@
             </template>
             <!-- 通知中心只属于吃谷人/管理员；社团账号没有预购通知权限。 -->
             <NotificationCenter v-if="canUseNotifications" />
-            <el-button
-              v-if="authStore.isAuthenticated"
-              text
-              class="profile-btn"
-              :class="{ 'profile-active': route.path.startsWith('/profile') }"
-              title="个人"
-              aria-label="个人"
-              @click="goToProfile"
-            >
-              <el-icon><User /></el-icon>
-            </el-button>
+            <span v-if="authStore.isAuthenticated" class="profile-notification-badge">
+              <el-button
+                text
+                class="profile-btn"
+                :class="{ 'profile-active': route.path.startsWith('/profile') }"
+                title="个人"
+                aria-label="个人"
+                @click="goToProfile"
+              >
+                <el-icon><User /></el-icon>
+              </el-button>
+              <span
+                v-if="gamificationStore.summary.unseen_count > 0"
+                class="profile-unseen-dot"
+                aria-label="有未读成就"
+              />
+            </span>
             <el-button
               text
               class="github-btn"
@@ -280,6 +286,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { Grid, FolderOpened, Plus, Camera, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart, Shop, User } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
+import { useGamificationStore } from '@/stores/gamification'
 import { Capacitor } from '@capacitor/core'
 import MobileBottomNav from './MobileBottomNav.vue'
 import MobilePageHeader from './MobilePageHeader.vue'
@@ -303,6 +310,7 @@ const router = useRouter()
 const route = useRoute()
 const guziStore = useGuziStore()
 const authStore = useAuthStore()
+const gamificationStore = useGamificationStore()
 const notificationStore = useNotificationStore()
 const { isMobile } = useResponsiveDevice()
 const workspace = useMobileWorkspace(isMobile)
@@ -507,6 +515,9 @@ const handleShowcaseTabChanged = (e: Event) => {
 }
 
 onMounted(() => {
+  if (authStore.isAuthenticated && authStore.isCollector) {
+    void gamificationStore.loadSummary()
+  }
   window.addEventListener('cloud-showcase:tab-changed', handleShowcaseTabChanged as EventListener)
   window.addEventListener('scroll', handleFabScrollDim, { passive: true })
 })
@@ -662,6 +673,24 @@ watch(isMobile, (mobile) => {
   color: var(--text-dark);
   padding: 6px;
   transition: color var(--transition-fast), background-color var(--transition-fast);
+}
+
+.profile-notification-badge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.profile-unseen-dot {
+  position: absolute;
+  top: 5px;
+  right: 7px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  background: #f56c6c;
+  pointer-events: none;
 }
 
 .profile-btn:hover,

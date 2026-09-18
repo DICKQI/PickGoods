@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     "apps.admin_api.apps.AdminApiConfig",
     "apps.ocr.apps.OcrConfig",
     "apps.reminder.apps.ReminderConfig",
+    "apps.gamification.apps.GamificationConfig",
 ]
 
 MIDDLEWARE = [
@@ -243,6 +244,14 @@ GOODS_SIMILAR_IMAGE_WEIGHT = float(
 # JWT 配置
 JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
 JWT_ACCESS_TTL_SECONDS = 7 * 24 * 3600
+
+# 游戏化默认关闭；部署迁移并完成基线初始化后再显式开启。
+GAMIFICATION_ENABLED = os.environ.get("GAMIFICATION_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
 
 # django-simple-captcha 的超时单位是分钟。
 CAPTCHA_TIMEOUT = 5

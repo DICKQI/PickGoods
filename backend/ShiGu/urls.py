@@ -102,6 +102,7 @@ urlpatterns = [
     path("api/clubs/goods/<uuid:goods_id>/import/", ClubGoodsImportView.as_view({"post": "import_goods"}), name="club-goods-import"),
     # 后台管理（REST，仅管理员 JWT）
     path("api/admin/", include("apps.admin_api.urls")),
+    path("api/admin/gamification/", include("apps.gamification.admin_urls")),
     # 展柜独立接口
     path("api/showcases/public/", ShowcaseViewSet.as_view({"get": "public_list"}), name="showcases-public"),
     path("api/showcases/private/", ShowcaseViewSet.as_view({"get": "private_list"}), name="showcases-private"),
@@ -129,6 +130,7 @@ urlpatterns = [
     path("api/location/unassigned-goods/", LocationUnassignedGoodsView.as_view(), name="location-unassigned-goods"),
     # OCR 识别接口
     path("api/ocr/recognize/", ocr_recognize, name="ocr-recognize"),
+    path("api/gamification/", include("apps.gamification.urls")),
     # 预购与提醒接口
     path("api/", include("apps.reminder.urls")),
     # 导出 Schema 文件 (YAML格式)

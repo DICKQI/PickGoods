@@ -163,3 +163,18 @@
 
 - Django Admin 站点仍为：`/admin/`（基于 session，与 JWT 后台独立）。
 - 本文档描述的是 **REST `api/admin/`**，供独立后台前端使用，两者可同时存在。
+## 游戏化管理
+
+以下接口仅管理员可访问：
+
+| 方法 / 路径 | 说明 |
+| --- | --- |
+| `GET/POST/PATCH/DELETE /api/admin/gamification/sets/` | 成就系列和限时活动时间窗 |
+| `GET/POST/PATCH/DELETE /api/admin/gamification/achievements/` | 成就与两级 AND/OR 条件规则 |
+| `GET/POST/PATCH/DELETE /api/admin/gamification/rewards/` | 徽章、头像框、贴纸、背景、痛柜主题和效果 |
+| `POST /api/admin/gamification/rewards/{id}/assets/` | 上传贴纸等奖励素材 |
+| `GET /api/admin/gamification/users/` | 用户事件数、成就数、领取数和当前指标 |
+
+已有用户进度或奖励发放记录时，删除系列、成就或奖励返回 `409`，应改为停用。限时活动必须同时设置 `is_limited=true`、`starts_at` 和 `ends_at`。行为类奖励的 `preset_key` 由后端白名单校验。
+
+成就一旦产生用户进度，奖励集合即冻结；奖励一旦产生用户授权，或已被存在用户进度的成就引用，`code`、`reward_type` 和 `preset_key` 即冻结。上述变更需要专门的数据迁移/补发流程，不能通过普通后台编辑覆盖历史承诺。

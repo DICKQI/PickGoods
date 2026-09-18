@@ -181,6 +181,18 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/profile/ProfileClubs.vue'),
         meta: { title: '我的社团', requiresAuth: true, requiresCollector: true },
       },
+      {
+        path: 'achievements',
+        name: 'ProfileAchievements',
+        component: () => import('@/views/profile/ProfileAchievements.vue'),
+        meta: { title: '我的成就', requiresAuth: true, requiresCollector: true },
+      },
+      {
+        path: 'rewards',
+        name: 'ProfileRewards',
+        component: () => import('@/views/profile/ProfileRewards.vue'),
+        meta: { title: '我的装扮', requiresAuth: true, requiresCollector: true },
+      },
     ],
   },
   {
@@ -262,6 +274,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/BGMSyncManagement.vue'),
         meta: {
           title: 'BGM自动同步',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
+        path: 'gamification',
+        name: 'AdminGamification',
+        component: () => import('@/views/admin/AdminGamification.vue'),
+        meta: {
+          title: '成就与奖励',
           requiresAuth: true,
           requiresAdmin: true,
         },

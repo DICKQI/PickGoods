@@ -196,6 +196,44 @@
           </section>
 
           <section class="showcase-form-section showcase-form-section--settings">
+            <el-form-item label="主角色（可选）">
+              <el-select
+                v-model="showcaseForm.character"
+                filterable
+                clearable
+                placeholder="设置后可作为角色痛柜"
+                style="width: 100%"
+              >
+                <el-option
+                  v-for="character in characterOptions"
+                  :key="character.id"
+                  :label="`${character.name} · ${character.ip_name}`"
+                  :value="character.id"
+                />
+              </el-select>
+            </el-form-item>
+            <div class="showcase-decoration-grid">
+              <el-form-item label="痛柜主题">
+                <el-select v-model="showcaseForm.decoration_theme_code" clearable placeholder="默认主题" style="width: 100%">
+                  <el-option
+                    v-for="reward in ownedShowcaseThemes"
+                    :key="reward.id"
+                    :label="reward.name"
+                    :value="reward.preset_key || ''"
+                  />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="互动效果">
+                <el-select v-model="showcaseForm.decoration_effect_code" clearable placeholder="无额外效果" style="width: 100%">
+                  <el-option
+                    v-for="reward in ownedShowcaseEffects"
+                    :key="reward.id"
+                    :label="reward.name"
+                    :value="reward.preset_key || ''"
+                  />
+                </el-select>
+              </el-form-item>
+            </div>
             <div class="showcase-visibility-row">
               <div class="showcase-visibility-copy">
                 <span class="showcase-visibility-title">是否公开</span>
@@ -236,6 +274,8 @@ import ShowcaseAddGoodsDialog from '@/components/showcase/ShowcaseAddGoodsDialog
 import ShowcaseListView from '@/components/showcase/ShowcaseListView.vue'
 import ShowcaseDetailView from '@/components/showcase/ShowcaseDetailView.vue'
 import { useShowcaseStore } from '@/stores/showcase'
+import { useMetadataStore } from '@/stores/metadata'
+import { useGamificationStore } from '@/stores/gamification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { uploadShowcaseCoverImage } from '@/api/showcase'
 import type { GoodsListItem } from '@/api/types'
@@ -244,7 +284,19 @@ import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 const { isMobile } = useResponsiveDevice()
 
 const showcaseStore = useShowcaseStore()
+const metadataStore = useMetadataStore()
+const gamificationStore = useGamificationStore()
 const viewMode = ref<'list' | 'detail'>('list')
+const characterOptions = computed(() => metadataStore.characters.map(character => ({
+  ...character,
+  ip_name: character.ip?.name || '',
+})))
+const ownedShowcaseThemes = computed(() => gamificationStore.ownedRewards.filter(
+  reward => reward.reward_type === 'SHOWCASE_THEME' && reward.preset_key,
+))
+const ownedShowcaseEffects = computed(() => gamificationStore.ownedRewards.filter(
+  reward => reward.reward_type === 'SHOWCASE_EFFECT' && reward.preset_key,
+))
 
 const isReadonly = computed(() => showcaseStore.scope === 'public')
 
@@ -372,10 +424,21 @@ const openShowcaseContextMenu = (showcaseId: string, event: MouseEvent) => {
 
 const showcaseDialogVisible = ref(false)
 const showcaseDialogMode = ref<'create' | 'edit'>('create')
-const showcaseForm = reactive<{ id?: string; name: string; description: string; is_public: boolean }>({
+const showcaseForm = reactive<{
+  id?: string
+  name: string
+  description: string
+  is_public: boolean
+  character: number | null
+  decoration_theme_code: string
+  decoration_effect_code: string
+}>({
   name: '',
   description: '',
   is_public: true,
+  character: null,
+  decoration_theme_code: '',
+  decoration_effect_code: '',
 })
 const showcaseDialogTitle = computed(() => (showcaseDialogMode.value === 'create' ? '新建展柜' : '编辑展柜'))
 
@@ -414,15 +477,41 @@ const handleCoverRemove = () => {
 
 const openCreateShowcase = () => {
   showcaseDialogMode.value = 'create'
-  Object.assign(showcaseForm, { id: undefined, name: '', description: '', is_public: true })
+  const defaultTheme = gamificationStore.equipped('DEFAULT_SHOWCASE_THEME')
+  const defaultEffect = gamificationStore.equipped('DEFAULT_SHOWCASE_EFFECT')
+  Object.assign(showcaseForm, {
+    id: undefined,
+    name: '',
+    description: '',
+    is_public: true,
+    character: null,
+    decoration_theme_code: defaultTheme?.preset_key || '',
+    decoration_effect_code: defaultEffect?.preset_key || '',
+  })
   showcaseDialogVisible.value = true
   resetShowcaseCoverState()
 }
 const openEditShowcase = () => {
   if (!showcaseStore.activeShowcase) return
   showcaseDialogMode.value = 'edit'
-  const { id, name, description, is_public } = showcaseStore.activeShowcase
-  Object.assign(showcaseForm, { id, name, description: description || '', is_public: is_public ?? true })
+  const {
+    id,
+    name,
+    description,
+    is_public,
+    character,
+    decoration_theme_code,
+    decoration_effect_code,
+  } = showcaseStore.activeShowcase
+  Object.assign(showcaseForm, {
+    id,
+    name,
+    description: description || '',
+    is_public: is_public ?? true,
+    character: character ?? null,
+    decoration_theme_code: decoration_theme_code || '',
+    decoration_effect_code: decoration_effect_code || '',
+  })
   showcaseDialogVisible.value = true
   // 预填现有封面预览（不把远端封面当作待上传文件，仅做展示）
   if (showcaseStore.activeShowcase.cover_image) {
@@ -445,6 +534,9 @@ const submitShowcase = async () => {
     name: showcaseForm.name.trim(),
     description: showcaseForm.description?.trim() || null,
     is_public: showcaseForm.is_public,
+    character: showcaseForm.character,
+    decoration_theme_code: showcaseForm.decoration_theme_code,
+    decoration_effect_code: showcaseForm.decoration_effect_code,
   }
   let success = false
   let targetId: string | undefined
@@ -464,6 +556,7 @@ const submitShowcase = async () => {
     }
   }
   if (success) {
+    void gamificationStore.refreshAfterMutation()
     // 如有选择新的封面文件，调用封面上传 / 更新接口
     if (targetId && showcaseCoverFile.value) {
       try {
@@ -547,6 +640,7 @@ const handleAddToShowcase = async (goodsId: string) => {
   if (!showcaseId) return
   const created = await showcaseStore.addGoods({ showcaseId, goodsId })
   if (created) {
+    void gamificationStore.refreshAfterMutation()
     const nextAddedIds = new Set(recentlyAddedGoodsIds.value)
     nextAddedIds.add(goodsId)
     recentlyAddedGoodsIds.value = nextAddedIds
@@ -558,7 +652,10 @@ const handleRemoveFromShowcase = async (goodsId: string) => {
   const showcaseId = showcaseStore.activeShowcaseId
   if (!showcaseId) return
   const ok = await showcaseStore.removeGoods({ showcaseId, goodsId })
-  if (ok) ElMessage.success('已移除')
+  if (ok) {
+    void gamificationStore.refreshAfterMutation()
+    ElMessage.success('已移除')
+  }
 }
 
 const findInList = (goodsId: string) => {
@@ -636,6 +733,11 @@ const ctxDeleteShowcase = async () => {
 }
 
 onMounted(async () => {
+  void Promise.all([
+    metadataStore.fetchCharacters(),
+    gamificationStore.loadRewards(),
+    gamificationStore.loadSummary(),
+  ])
   window.addEventListener('resize', closeContextMenu)
   window.addEventListener('scroll', closeContextMenu, true)
   showcaseStore.activeShowcaseId = null

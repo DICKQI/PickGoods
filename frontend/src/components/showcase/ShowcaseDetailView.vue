@@ -1,5 +1,11 @@
 <template>
-  <div class="detail-root">
+  <div
+    class="detail-root"
+    :class="[
+      showcase?.decoration_theme_code ? `theme-${showcase.decoration_theme_code}` : '',
+      showcase?.decoration_effect_code ? `effect-${showcase.decoration_effect_code}` : '',
+    ]"
+  >
     <div v-if="loading && !showcase" class="detail-loading" data-test="detail-loading">
       <div class="loading-hero">
         <el-skeleton :rows="3" animated />
@@ -66,6 +72,13 @@
                   {{ showcase.is_public ? '公开展示' : '私密收藏' }}
                 </el-tag>
                 <span v-if="showcase.cover_image" class="cover-status">封面陈列中</span>
+              </div>
+              <div v-if="readonly && showcase.creator?.badges?.length" class="creator-badges" aria-label="作者公开徽章">
+                <span v-for="badge in showcase.creator.badges" :key="badge.id">
+                  <img v-if="badge.asset_url" :src="badge.asset_url" alt="" />
+                  <el-icon v-else><Medal /></el-icon>
+                  {{ badge.name }}
+                </span>
               </div>
             </div>
 
@@ -270,7 +283,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { ArrowLeft, Delete, Edit, FullScreen, Goods, MoreFilled, Picture } from '@element-plus/icons-vue'
+import { ArrowLeft, Delete, Edit, FullScreen, Goods, Medal, MoreFilled, Picture } from '@element-plus/icons-vue'
 import GoodsCard from '@/components/GoodsCard.vue'
 import PaperAlbumDisplay from '@/components/showcase/PaperAlbumDisplay.vue'
 import ShowcaseMobileFullscreenDisplay from '@/components/showcase/ShowcaseMobileFullscreenDisplay.vue'
@@ -439,6 +452,67 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   color: #263238;
 }
 
+.detail-root.theme-cream-stage .showcase-hero {
+  border-color: rgba(212, 175, 55, 0.24);
+  box-shadow: 0 20px 48px -32px rgba(173, 135, 55, 0.7);
+}
+
+.detail-root.theme-night-museum .goods-section {
+  border-radius: 20px;
+  background: linear-gradient(180deg, #17172d, #24203f);
+}
+
+.detail-root.theme-night-museum .cabinet-label-title,
+.detail-root.theme-night-museum .other-title {
+  color: #f7e7ae;
+}
+
+.detail-root.effect-soft-glow .showcase-hero {
+  animation: showcase-soft-glow 3.4s ease-in-out infinite;
+}
+
+.detail-root.effect-galaxy-flow .showcase-hero::after,
+.detail-root.effect-gold-fall .showcase-hero::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: .48;
+}
+
+.detail-root.effect-galaxy-flow .showcase-hero::after {
+  background: linear-gradient(115deg, transparent 25%, rgba(162, 155, 254, .34), transparent 72%);
+  background-size: 220% 100%;
+  animation: showcase-galaxy-flow 5.5s linear infinite;
+}
+
+.detail-root.effect-gold-fall .showcase-hero::after {
+  background-image: radial-gradient(circle, rgba(255, 224, 120, .72) 1px, transparent 1.5px);
+  background-size: 28px 28px;
+  animation: showcase-gold-fall 8s linear infinite;
+}
+
+@keyframes showcase-soft-glow {
+  50% { box-shadow: 0 22px 52px -30px rgba(212, 175, 55, .62); }
+}
+
+@keyframes showcase-galaxy-flow {
+  to { background-position: -220% 0; }
+}
+
+@keyframes showcase-gold-fall {
+  to { background-position: 0 84px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .detail-root.effect-soft-glow .showcase-hero,
+  .detail-root.effect-galaxy-flow .showcase-hero::after,
+  .detail-root.effect-gold-fall .showcase-hero::after {
+    animation: none;
+  }
+}
+
 .mobile-fullscreen-display-enter-active {
   animation: mobile-fullscreen-display-in 0.28s cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
@@ -556,6 +630,30 @@ const onBadgeClick = (item: ShowcaseGoods) => {
 .detail-tags {
   display: flex;
   align-items: center;
+}
+.creator-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.creator-badges span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid rgba(212, 175, 55, .24);
+  border-radius: 999px;
+  color: rgba(103, 76, 25, .92);
+  background: rgba(255, 252, 239, .84);
+  font-size: 11px;
+  font-weight: 700;
+  backdrop-filter: blur(8px);
+}
+.creator-badges img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
 }
 .hero-toolbar {
   justify-content: space-between;

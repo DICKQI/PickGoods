@@ -80,6 +80,15 @@ class PreorderViewSet(viewsets.ModelViewSet):
             return qs
         return qs.filter(user=user)
 
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        if instance.status in {Preorder.STATUS_PAID, Preorder.STATUS_CONVERTED}:
+            return Response(
+                {"detail": "已补款或已转正的预购不能删除，以免破坏成就消费账本。"},
+                status=status.HTTP_409_CONFLICT,
+            )
+        return super().destroy(request, *args, **kwargs)
+
     @action(detail=False, methods=["get"])
     def stats(self, request):
         """预购统计概览（纯读，零副作用）。
@@ -228,7 +237,8 @@ class PreorderViewSet(viewsets.ModelViewSet):
         )
         serializer.is_valid(raise_exception=True)
         with transaction.atomic():
-            goods = serializer.save(preorder=preorder, user=request.user)
+            # 管理员可以代操作，但转正后的资产与消费始终归预购登记人。
+            goods = serializer.save(preorder=preorder, user=preorder.user)
             preorder.goods = goods
             preorder.status = Preorder.STATUS_CONVERTED
             preorder.save(update_fields=["goods", "status", "updated_at"])

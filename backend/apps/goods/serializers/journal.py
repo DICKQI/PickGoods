@@ -9,7 +9,7 @@ from ..utils import compress_image
 HEX_COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 BRUSH_TYPES = {"pencil", "pen", "watercolor", "marker", "highlighter"}
 LAYER_TYPES = {"sticker", "text", "draw", "shape"}
-BACKGROUND_STYLES = {"plain", "dot", "line", "grid", "note"}
+BACKGROUND_STYLES = {"plain", "dot", "line", "grid", "note", "sakura-grid"}
 TEXT_ALIGNMENTS = {"left", "center", "right"}
 SHAPE_TYPES = {"rect", "circle", "line"}
 MAX_LAYERS = 200

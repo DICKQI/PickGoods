@@ -19,7 +19,7 @@ describe('mobile swipe sequence', () => {
       'clubs:clubs',
       'showcase:showcase', 'showcase:barn', 'showcase:preorders', 'showcase:journal', 'showcase:stats',
       'organize:location', 'organize:ipcharacter', 'organize:category', 'organize:theme',
-      'profile:account', 'profile:clubs', 'profile:settings',
+      'profile:account', 'profile:clubs', 'profile:achievements', 'profile:rewards', 'profile:settings',
     ])
   })
 
@@ -45,7 +45,7 @@ describe('mobile swipe sequence', () => {
     expect(mobileSwipeStepIndex(steps, { path: '/showcase', query: { tab: 'showcase' } })).toBe(1)
     expect(mobileSwipeStepIndex(steps, { path: '/showcase', query: { tab: 'stats' } })).toBe(5)
     expect(mobileSwipeStepIndex(steps, { path: '/preorders', query: {} })).toBe(3)
-    expect(mobileSwipeStepIndex(steps, { path: '/settings', query: {} })).toBe(12)
+    expect(mobileSwipeStepIndex(steps, { path: '/settings', query: {} })).toBe(14)
     expect(steps[steps.length - 1]?.to).toBe('/settings')
     // 云展柜首个标签的右侧邻居是社团目录，统计标签的左侧邻居是整理的位置页。
     expect(steps[mobileSwipeStepIndex(steps, { path: '/showcase', query: { tab: 'showcase' } }) - 1]?.to).toBe('/clubs')

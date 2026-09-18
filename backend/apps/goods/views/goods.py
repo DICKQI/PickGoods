@@ -634,7 +634,14 @@ class GoodsViewSet(viewsets.ModelViewSet):
             .get("min_order")
         )
         next_order = (min_order or 0) - self.ORDER_STEP
-        serializer.save(user=owner, order=next_order)
+        # 包住 save + M2M 写入，确保游戏化信号在角色关联完成后读取完整快照。
+        with transaction.atomic():
+            serializer.save(user=owner, order=next_order)
+
+    def perform_update(self, serializer):
+        # 与创建一致：状态、数量、角色等在同一事务提交后统一计算增量。
+        with transaction.atomic():
+            serializer.save()
 
     @action(detail=True, methods=["post"], url_path="move")
     def move(self, request, pk=None):

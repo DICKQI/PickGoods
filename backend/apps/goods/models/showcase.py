@@ -34,6 +34,33 @@ class Showcase(models.Model):
         blank=True,
         verbose_name="展柜描述",
     )
+    character = models.ForeignKey(
+        "goods.Character",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="showcases",
+        db_index=True,
+        verbose_name="主角色",
+        help_text="设置后可作为角色痛柜识别依据。",
+    )
+    decoration_theme_code = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        verbose_name="痛柜主题编码",
+    )
+    decoration_effect_code = models.CharField(
+        max_length=80,
+        blank=True,
+        default="",
+        verbose_name="痛柜效果编码",
+    )
+    gamification_valid_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="成就痛柜生效时间",
+    )
     cover_image = models.ImageField(
         upload_to="showcases/covers/",
         null=True,

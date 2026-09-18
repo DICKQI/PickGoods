@@ -5329,5 +5329,36 @@ OCR 接口用于识别购物订单截图，自动提取商品名称、价格、�
 
 定时上架由 APScheduler 每分钟检查一次。到期草稿在行锁事务内原子切换为 `listed`；缺少角色或执行异常时保留 `draft`，写入 `publish_failed_at` / `publish_error` 并清除 `publish_at`，不会自动重试。手动上架、下架和取消计划会清除 `publish_at` 及旧失败元数据。
 
+### 9.9 游戏化成就与奖励
+
+游戏化接口要求吃谷人身份，并由 `GAMIFICATION_ENABLED` 与已初始化的 `GamificationConfig.rollout_at` 共同控制。
+
+| 方法 / 路径 | 说明 |
+| --- | --- |
+| `GET /api/gamification/summary/` | 当前指标、未读解锁数、已装备奖励和公开徽章 ID |
+| `GET /api/gamification/overview/` | 成就状态、两级规则条件进度、完成度和奖励 |
+| `GET /api/gamification/rewards/` | 奖励目录；包含已拥有奖励，并标记 `owned` |
+| `POST /api/gamification/achievements/{id}/claim/` | 领取已解锁成就的全部奖励，重复调用幂等 |
+| `PUT /api/gamification/equipment/` | `{slot, reward_id}` 装备或取消装备；奖励必须已拥有且启用 |
+| `PUT /api/gamification/public-badges/` | `{reward_ids}` 设置最多 3 枚公开徽章 |
+| `POST /api/gamification/seen/` | 清除未读解锁提示 |
+
+指标只记录功能初始化后的新增事件。存量数据会冻结为来源基线；谷子减量和删除不回退。合格谷子状态为 `in_cabinet`、`outdoor`、`sold`，`draft` 和 `intended` 不计入。消费由谷子的 `quantity × price` 和已补款预购金额组成，预购转正不会重复计算。有效角色痛柜要求展柜设置主角色，且至少 3 件合格谷子关联该角色。
+
+筛选中同一维度的多个 ID 按 OR 匹配，不同维度必须在同一件谷子记录上同时满足。多角色谷子的件数和金额按整件计入，不做角色分摊。未关联谷子的预购事件没有 IP、角色、品类维度，因此不会命中带这些筛选条件的消费成就。角色、IP、品类和官谷属性后续修正会影响去重数量；历史件数/消费事件仍按事件发生时快照判断，不会把既有金额回溯归入新维度。
+
+一个展柜对应一个角色痛柜生命周期；达到有效条件后切换主角色不会把同一展柜重复计为新的角色痛柜。移除谷子或删除展柜不会回退已经累计的成就进度。
+
+为避免消费账本在删除/解绑后重复计数，已补款或已转正的预购不允许删除；如需撤销，应先通过专门的数据修复流程处理历史成就事件。
+
+初始化流程：
+
+```bash
+python manage.py seed_gamification
+python manage.py initialize_gamification --at 2026-09-19T00:00:00+08:00
+```
+
+初始化只能成功执行一次；异常或故障恢复使用 `reconcile_gamification`。同步失败会写入 `MetricSyncFailure`，由 reconcile 重试并统一重算受影响用户。
+
 
 

@@ -11,6 +11,8 @@
     <nav class="profile-tabs" aria-label="个人中心">
       <router-link to="/profile/account">账号信息</router-link>
       <router-link v-if="!authStore.isClub" to="/profile/clubs">我的社团</router-link>
+      <router-link v-if="!authStore.isClub" to="/profile/achievements">成就</router-link>
+      <router-link v-if="!authStore.isClub" to="/profile/rewards">装扮库</router-link>
     </nav>
 
     <router-view />

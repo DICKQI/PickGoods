@@ -106,6 +106,7 @@ const adminMenu: { index: string; title: string; icon: Component }[] = [
   { index: '/admin/themes', title: '主题', icon: Star },
   { index: '/admin/goods-crafts', title: '谷子工艺', icon: Box },
   { index: '/admin/bgm-sync', title: 'BGM 自动同步', icon: Refresh },
+  { index: '/admin/gamification', title: '成就与奖励', icon: Star },
 ]
 
 // 顶栏标题直接取子路由 meta.title，避免与菜单/路由重复维护标题表。

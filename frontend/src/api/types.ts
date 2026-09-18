@@ -881,6 +881,22 @@ export interface Showcase {
   preview_photos?: string[]
   order?: number
   is_public?: boolean
+  character?: number | null
+  character_detail?: { id: number; name: string; ip_id: number; ip_name: string } | null
+  decoration_theme_code?: string
+  decoration_effect_code?: string
+  creator?: {
+    id: number
+    username: string
+    avatar?: string | null
+    badges: Array<{
+      id: number
+      name: string
+      asset_url?: string | null
+      preset_key?: string
+      rarity: GamificationRarity
+    }>
+  } | null
   created_at?: string
   updated_at?: string
   /**
@@ -923,6 +939,9 @@ export interface ShowcaseCreateInput {
   name: string
   description?: string | null
   is_public?: boolean
+  character?: number | null
+  decoration_theme_code?: string
+  decoration_effect_code?: string
   /**
    * 说明：后端文档支持 multipart 同传 cover_image；如需封面上传，前端用 FormData。
    * 这里允许透传 FormData（在 api/showcase.ts 中按需处理）。
@@ -1130,7 +1149,7 @@ export interface JournalPage {
   width: number
   height: number
   background: string
-  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note' | 'sakura-grid'
   content?: JournalPageContent
   revision: number
   share_token?: string | null
@@ -1161,7 +1180,7 @@ export interface JournalPageInput {
   width?: number
   height?: number
   background?: string
-  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note'
+  background_style?: 'plain' | 'dot' | 'line' | 'grid' | 'note' | 'sakura-grid'
   content?: JournalPageContent
   revision?: number
   create_version?: boolean
@@ -1512,6 +1531,238 @@ export interface NotificationReadResult {
 }
 
 export type PaginatedNotificationResponse = PaginatedResponse<NotificationItem>
+
+// ==================== 游戏化（Gamification）====================
+
+export type GamificationRewardType =
+  | 'BADGE'
+  | 'PROFILE_FRAME'
+  | 'PROFILE_CARD_SKIN'
+  | 'JOURNAL_STICKER_PACK'
+  | 'JOURNAL_BACKGROUND'
+  | 'SHOWCASE_THEME'
+  | 'SHOWCASE_EFFECT'
+
+export type GamificationRarity = 'common' | 'rare' | 'epic' | 'legendary'
+export type GamificationOperator = 'ALL' | 'ANY'
+export type GamificationMetric =
+  | 'GOODS_QUANTITY'
+  | 'VALID_ALTARS'
+  | 'SPEND_AMOUNT'
+  | 'DISTINCT_IP_COUNT'
+  | 'DISTINCT_CHARACTER_COUNT'
+export type GamificationAchievementStatus = 'locked' | 'unlocked' | 'claimed'
+export type GamificationEquipmentSlot =
+  | 'PROFILE_FRAME'
+  | 'PROFILE_CARD_SKIN'
+  | 'DEFAULT_SHOWCASE_THEME'
+  | 'DEFAULT_SHOWCASE_EFFECT'
+
+export interface GamificationRewardAsset {
+  id: number
+  name: string
+  image?: string | null
+  image_url?: string | null
+  order: number
+  created_at?: string
+}
+
+export interface GamificationReward {
+  id: number
+  code: string
+  name: string
+  description: string
+  reward_type: GamificationRewardType
+  rarity: GamificationRarity
+  asset_url?: string | null
+  preset_key?: string
+  is_active?: boolean
+  assets?: GamificationRewardAsset[]
+  order: number
+  owned?: boolean
+  granted_at?: string | null
+  source_achievement?: { id: number; name: string } | null
+}
+
+export interface GamificationAchievementSet {
+  id: number
+  code: string
+  name: string
+  description: string
+  badge_label: string
+  starts_at?: string | null
+  ends_at?: string | null
+  is_limited: boolean
+  is_active: boolean
+  order: number
+}
+
+export interface GamificationConditionProgress {
+  id: number
+  metric: GamificationMetric
+  label: string
+  current: number
+  target: number
+  satisfied: boolean
+  filters: Record<string, unknown>
+}
+
+export interface GamificationGroupProgress {
+  id: number
+  operator: GamificationOperator
+  satisfied: boolean
+  conditions: GamificationConditionProgress[]
+}
+
+export interface GamificationProgress {
+  root_operator: GamificationOperator
+  groups: GamificationGroupProgress[]
+  satisfied_conditions: number
+  total_conditions: number
+}
+
+export interface UserGamificationAchievement {
+  id: number
+  achievement: {
+    id: number
+    code: string
+    name: string
+    description: string
+    root_operator: GamificationOperator
+    is_limited: boolean
+    set: GamificationAchievementSet
+  }
+  status: GamificationAchievementStatus
+  progress: GamificationProgress
+  progress_percent: string
+  unlocked_at?: string | null
+  claimed_at?: string | null
+  unseen: boolean
+  rewards: GamificationReward[]
+}
+
+export interface GamificationMetrics {
+  goods_quantity: number
+  valid_altars: number
+  spend_amount: number
+  distinct_ip_count: number
+  distinct_character_count: number
+  event_count?: number
+}
+
+export interface GamificationEquipment {
+  id: number
+  slot: GamificationEquipmentSlot
+  reward: GamificationReward
+  equipped_at: string
+}
+
+export interface GamificationSummary {
+  enabled: boolean
+  metrics: GamificationMetrics
+  unseen_count: number
+  recent_unlocked: {
+    id: number
+    achievement_id: number
+    name: string
+    set_name: string
+    unlocked_at: string
+  } | null
+  equipment: GamificationEquipment[]
+  public_badge_ids: number[]
+}
+
+export interface GamificationOverview {
+  enabled: boolean
+  metrics: GamificationMetrics
+  achievements: UserGamificationAchievement[]
+}
+
+export interface GamificationRewardList {
+  results: GamificationReward[]
+}
+
+export interface GamificationClaimResponse {
+  achievement: UserGamificationAchievement
+  rewards: Array<{
+    id: number
+    reward: GamificationReward
+    source_achievement: { id: number; code: string; name: string } | null
+    granted_at: string
+  }>
+}
+
+export interface AdminGamificationSet extends GamificationAchievementSet {
+  id: number
+  achievement_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminGamificationCondition {
+  id?: number
+  metric: GamificationMetric
+  threshold: string | number
+  filters: Record<string, unknown>
+  order: number
+}
+
+export interface AdminGamificationRuleGroup {
+  id?: number
+  operator: GamificationOperator
+  order: number
+  conditions: AdminGamificationCondition[]
+}
+
+export interface AdminGamificationAchievement {
+  id: number
+  code: string
+  set: number
+  set_name: string
+  name: string
+  description: string
+  root_operator: GamificationOperator
+  is_active: boolean
+  is_limited: boolean
+  order: number
+  rewards: number[]
+  rule_groups: AdminGamificationRuleGroup[]
+  user_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminGamificationAchievementInput {
+  code: string
+  set: number
+  name: string
+  description: string
+  root_operator: GamificationOperator
+  is_active: boolean
+  is_limited?: boolean
+  order: number
+  rewards: number[]
+  rule_groups: AdminGamificationRuleGroup[]
+}
+
+export interface AdminGamificationReward extends GamificationReward {
+  id: number
+  code: string
+  is_active: boolean
+  achievement_count: number
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminGamificationUser {
+  id: number
+  username: string
+  event_count: number
+  achievement_count: number
+  claimed_count: number
+  metrics: GamificationMetrics
+  updated_at: string | null
+}
 
 /** 预购统计概览（GET /api/preorders/stats/） */
 export interface PreorderStats {

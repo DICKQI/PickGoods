@@ -4,17 +4,25 @@
     <RouterLink v-for="item in items" :key="item.key" :to="workspace.destinations[item.key] || item.to"
       class="nav-item" :class="{ active: currentModule === item.key }"
       :aria-current="currentModule === item.key ? 'page' : undefined">
-      <el-icon class="nav-icon"><component :is="icons[item.key]" /></el-icon>
+      <span class="nav-icon-wrap">
+        <el-icon class="nav-icon"><component :is="icons[item.key]" /></el-icon>
+        <span
+          v-if="item.key === 'profile' && (gamificationStore?.summary.unseen_count || 0) > 0"
+          class="nav-unseen-dot"
+          aria-label="有未读成就"
+        />
+      </span>
       <span class="nav-label">{{ item.label }}</span>
     </RouterLink>
   </nav>
 </template>
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, onUnmounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { Shop, Grid, FolderOpened, User } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
+import { useGamificationStore } from '@/stores/gamification'
 import { mobileModule, mobileModules } from '@/navigation/mobile'
 const props = withDefaults(defineProps<{
   autoHideOnScroll?: boolean
@@ -24,6 +32,9 @@ const props = withDefaults(defineProps<{
 const auth = useAuthStore()
 const route = useRoute()
 const workspace = useMobileWorkspaceStore()
+const activePinia = getCurrentInstance()?.appContext.config.globalProperties.$pinia
+const gamificationStore = activePinia ? useGamificationStore(activePinia) : null
+if (auth.isAuthenticated && auth.isCollector) void gamificationStore?.loadSummary()
 const items = computed(() => mobileModules(auth))
 const currentModule = computed(() => mobileModule(route))
 const activeIndex = computed(() => Math.max(0, items.value.findIndex(item => item.key === currentModule.value)))
@@ -109,6 +120,17 @@ onUnmounted(() => {
 .mobile-bottom-nav.is-scroll-hidden { transform: translate3d(0, calc(100% + 2px), 0) scale(.94); opacity: 0; pointer-events: none; }
 .nav-item { position: relative; z-index: 1; transition: color 180ms ease; flex: 1; min-width: 0; min-height: 48px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--text-light, #777); text-decoration: none; border-radius: 14px; -webkit-tap-highlight-color: transparent; }
 .nav-icon { font-size: 23px; }
+.nav-icon-wrap { position: relative; display: inline-flex; }
+.nav-unseen-dot {
+  position: absolute;
+  top: -1px;
+  right: -5px;
+  width: 8px;
+  height: 8px;
+  border: 2px solid var(--bg-white, #fff);
+  border-radius: 50%;
+  background: #f56c6c;
+}
 .nav-label { font-size: 12px; line-height: 1.3; }
 .nav-item.active { color: var(--primary-gold-dark, #997719); font-weight: 600; }
 .nav-item:focus-visible { outline: 2px solid var(--primary-gold); outline-offset: -2px; }

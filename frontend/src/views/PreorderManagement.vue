@@ -407,6 +407,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Clock, Close, Delete, Edit, MagicStick, Plus, Search, ShoppingCart } from '@element-plus/icons-vue'
 import * as reminderApi from '@/api/reminder'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useGamificationStore } from '@/stores/gamification'
 import { usePreorderList } from '@/composables/usePreorderList'
 import { usePreorderStats } from '@/composables/usePreorderStats'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
@@ -598,6 +599,7 @@ const handleDelaySettled = async () => {
 // ─── 状态流转（桌面 ElMessageBox 确认；移动端复用 perform* + 底部确认面板） ───
 const performMarkPaid = async (item: Preorder) => {
   const updated = await reminderApi.markPreorderPaid(item.id)
+  void useGamificationStore().refreshAfterMutation()
   ElMessage.success('已标记补款')
   if (isMobile.value) {
     // 移动端保持无限滚动列表不坍塌：本地替换该条状态，仅刷新统计
@@ -880,6 +882,7 @@ const openConvert = (item: Preorder) => {
 
 const handleConverted = async () => {
   convertDialogVisible.value = false
+  void useGamificationStore().refreshAfterMutation()
   if (isMobile.value) page.value = 1
   await Promise.all([loadInitial(), loadStats()])
 }

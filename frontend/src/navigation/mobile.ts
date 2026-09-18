@@ -77,6 +77,7 @@ export function mobileTabs(module: MobileModule, identity: MobileIdentity): Mobi
     case 'profile': return [
       { key: 'account', label: '账号', to: '/profile/account' },
       ...(!identity.isClub && identity.isAuthenticated ? [{ key: 'clubs', label: '我的社团', to: '/profile/clubs' }] : []),
+      ...(!identity.isClub && identity.isAuthenticated ? [{ key: 'achievements', label: '成就', to: '/profile/achievements' }, { key: 'rewards', label: '装扮', to: '/profile/rewards' }] : []),
       { key: 'settings', label: '设置', to: '/settings' },
     ]
   }

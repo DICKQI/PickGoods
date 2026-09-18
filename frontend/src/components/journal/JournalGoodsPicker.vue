@@ -62,7 +62,7 @@
 
     <div v-if="activeTab === 'stickers'" class="decor-sticker-grid">
       <button
-        v-for="sticker in decorStickers"
+        v-for="sticker in allDecorStickers"
         :key="sticker.id"
         class="decor-sticker-item"
         type="button"
@@ -111,10 +111,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, getCurrentInstance, onMounted, ref } from 'vue'
 import { Picture } from '@element-plus/icons-vue'
 import { getGoodsList } from '@/api/goods'
 import type { GoodsListItem } from '@/api/types'
+import { useGamificationStore } from '@/stores/gamification'
 
 const emit = defineEmits<{
   insertGoods: [goods: GoodsListItem]
@@ -133,6 +134,8 @@ const props = withDefaults(defineProps<{
   onlyWithImage: true,
   mobile: false,
 })
+const activePinia = getCurrentInstance()?.appContext.config.globalProperties.$pinia
+const gamificationStore = activePinia ? useGamificationStore(activePinia) : null
 
 const keyword = ref('')
 const activeTab = ref<'goods' | 'stickers' | 'upload'>('goods')
@@ -167,6 +170,34 @@ const decorStickers: DecorSticker[] = [
   { id: 'bubble-blue', name: '对话框', src: svgSticker('HI', '#e0f2fe', '#0284c7') },
   { id: 'flower-green', name: '花边', src: svgSticker('✿', '#dcfce7', '#16a34a') },
 ]
+
+const rewardStickerPresets: Record<string, DecorSticker[]> = {
+  'hundred-goods': [
+    { id: 'reward-hundred-1', name: '百谷印记', src: svgSticker('100', '#fff4bd', '#b8911f') },
+    { id: 'reward-hundred-2', name: '收藏星芒', src: svgSticker('✦', '#efe7ff', '#7455b6') },
+  ],
+  'coins-tickets': [
+    { id: 'reward-coins-1', name: '金币票据', src: svgSticker('¥', '#fff2c2', '#b98b16') },
+    { id: 'reward-coins-2', name: '藏家邮戳', src: svgSticker('POST', '#ffe4ec', '#c65d87') },
+  ],
+}
+
+const rewardedStickers = computed(() => gamificationStore?.ownedRewards
+  .filter(reward => reward.reward_type === 'JOURNAL_STICKER_PACK')
+  .flatMap(reward => {
+    const uploaded = (reward.assets || [])
+      .map(asset => ({
+        id: `reward-${reward.id}-${asset.id}`,
+        name: asset.name,
+        src: asset.image_url || asset.image || '',
+      }))
+      .filter(asset => asset.src)
+    return uploaded.length
+      ? uploaded
+      : rewardStickerPresets[reward.preset_key || ''] || []
+  }) || [])
+
+const allDecorStickers = computed(() => [...decorStickers, ...rewardedStickers.value])
 
 const readRecentGoods = () => {
   try {
@@ -267,6 +298,7 @@ const loadMore = async () => {
 onMounted(() => {
   readRecentGoods()
   loadGoods()
+  if (gamificationStore) void gamificationStore.loadRewards()
 })
 </script>
 

@@ -1,4 +1,5 @@
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
+import { useGamificationStore } from '@/stores/gamification'
 import { ref, computed, type Ref } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
@@ -125,6 +126,7 @@ export function useGoodsForm(deps: GoodsFormDeps) {
       ElMessage.success('创建成功')
     }
     useMobileWorkspaceStore().goodsChanged = true
+    void useGamificationStore().refreshAfterMutation()
     router.push({ name: 'CloudShowcase' })
   }
 
@@ -154,6 +156,7 @@ export function useGoodsForm(deps: GoodsFormDeps) {
 
         ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
         useMobileWorkspaceStore().goodsChanged = true
+        void useGamificationStore().refreshAfterMutation()
     router.push({ name: 'CloudShowcase' })
       } else {
         const createPayload: GoodsInput =

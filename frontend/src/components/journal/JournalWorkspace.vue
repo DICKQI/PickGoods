@@ -447,6 +447,11 @@
                   <el-option label="横线" value="line" />
                   <el-option label="网格" value="grid" />
                   <el-option label="手帐纸" value="note" />
+                  <el-option
+                    v-if="hasSakuraBackground"
+                    label="樱色格纸（成就奖励）"
+                    value="sakura-grid"
+                  />
                 </el-select>
               </label>
             </div>
@@ -972,7 +977,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -1000,6 +1005,7 @@ import {
   View,
 } from '@element-plus/icons-vue'
 import { useJournalStore } from '@/stores/journal'
+import { useGamificationStore } from '@/stores/gamification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
 import JournalCanvas from './JournalCanvas.vue'
@@ -1008,6 +1014,8 @@ import type { GoodsListItem, JournalLayer, JournalPageContent, JournalShapeItem,
 import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 
 const journalStore = useJournalStore()
+const activePinia = getCurrentInstance()?.appContext.config.globalProperties.$pinia
+const gamificationStore = activePinia ? useGamificationStore(activePinia) : null
 const router = useRouter()
 const route = useRoute()
 const { isMobile, viewportWidth } = useResponsiveDevice()
@@ -1016,7 +1024,10 @@ const fallbackContent: JournalPageContent = { version: 2, layers: [] }
 const props = withDefaults(defineProps<{ bookId?: string }>(), {
   bookId: '',
 })
-type BackgroundStyle = 'plain' | 'dot' | 'line' | 'grid' | 'note'
+type BackgroundStyle = 'plain' | 'dot' | 'line' | 'grid' | 'note' | 'sakura-grid'
+const hasSakuraBackground = computed(() => gamificationStore?.ownedRewards.some(
+  reward => reward.reward_type === 'JOURNAL_BACKGROUND' && reward.preset_key === 'sakura-grid',
+) || false)
 type SizePreset = 'journal' | 'square' | 'a4' | 'phone'
 type MobileJournalPanel = 'pages' | 'materials' | 'layers' | 'versions' | 'more' | null
 type MobileBrushType = 'pencil' | 'pen' | 'watercolor' | 'marker' | 'highlighter'
@@ -1567,7 +1578,7 @@ const updatePageBackgroundColor = (event: Event) => {
 }
 
 const updatePageBackgroundStyle = (value: unknown) => {
-  const style = ['plain', 'dot', 'line', 'grid', 'note'].includes(String(value))
+  const style = ['plain', 'dot', 'line', 'grid', 'note', 'sakura-grid'].includes(String(value))
     ? String(value) as BackgroundStyle
     : 'plain'
   journalStore.updateActivePageBackground({
@@ -1879,6 +1890,7 @@ watch(
 )
 
 onMounted(() => {
+  if (gamificationStore) void gamificationStore.loadRewards()
   window.addEventListener('click', closeContextMenus)
   window.addEventListener('scroll', closeContextMenus, true)
   window.addEventListener('resize', closeContextMenus)

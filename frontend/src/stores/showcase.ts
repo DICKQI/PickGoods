@@ -172,7 +172,14 @@ export const useShowcaseStore = defineStore('showcase', () => {
     await fetchDetail(id)
   }
 
-  const createOne = async (payload: { name: string; description?: string | null; is_public?: boolean }) => {
+  const createOne = async (payload: {
+    name: string
+    description?: string | null
+    is_public?: boolean
+    character?: number | null
+    decoration_theme_code?: string
+    decoration_effect_code?: string
+  }) => {
     if (mutating.value) return null
     mutating.value = true
     error.value = null
@@ -193,7 +200,14 @@ export const useShowcaseStore = defineStore('showcase', () => {
     }
   }
 
-  const updateOne = async (id: string, payload: { name?: string; description?: string | null; is_public?: boolean }) => {
+  const updateOne = async (id: string, payload: {
+    name?: string
+    description?: string | null
+    is_public?: boolean
+    character?: number | null
+    decoration_theme_code?: string
+    decoration_effect_code?: string
+  }) => {
     if (mutating.value) return null
     mutating.value = true
     error.value = null
@@ -346,4 +360,3 @@ export const useShowcaseStore = defineStore('showcase', () => {
     moveGoods,
   }
 })
-

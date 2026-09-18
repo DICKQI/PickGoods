@@ -62,13 +62,20 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
             return ShowcaseListSerializer
         return ShowcaseDetailSerializer
 
+    def get_permissions(self):
+        if self.action in {"public_list", "retrieve"}:
+            return [AllowAny(), IsOwnerOrPublicReadOnly()]
+        return super().get_permissions()
+
     pagination_class = ShowcasePagination
 
     def get_queryset(self):
         """优化查询，避免 N+1 问题"""
         qs = (
             Showcase.objects.all()
+            .select_related("user", "character", "character__ip")
             .prefetch_related(
+                "user__public_badge_selections__reward",
                 "showcase_goods__goods__ip",
                 "showcase_goods__goods__characters__ip",
                 "showcase_goods__goods__category",
