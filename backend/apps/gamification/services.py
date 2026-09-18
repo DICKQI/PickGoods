@@ -76,7 +76,9 @@ def _spend_components(user) -> list[dict]:
                     "amount": amount,
                     "metadata": _goods_metadata(goods),
                     "initial_occurred_at": (
-                        goods.updated_at or goods.created_at
+                        goods.gamification_spend_changed_at
+                        or goods.updated_at
+                        or goods.created_at
                     ),
                 }
             )
@@ -88,13 +90,24 @@ def _spend_components(user) -> list[dict]:
             goods_amount = _as_decimal(goods.quantity) * _as_decimal(goods.price)
             amount = max(preorder_amount, goods_amount)
             metadata = _goods_metadata(goods)
+            goods_event_time = (
+                goods.gamification_spend_changed_at
+                or goods.updated_at
+                or goods.created_at
+            )
         else:
             amount = preorder_amount
             metadata = {
                 "preorder_id": str(preorder.id),
                 "name": preorder.name,
             }
+            goods_event_time = None
         if amount > 0:
+            preorder_event_time = (
+                preorder.gamification_spend_changed_at
+                or preorder.paid_at
+                or preorder.updated_at
+            )
             components.append(
                 {
                     "source_id": f"preorder:{preorder.id}",
@@ -104,17 +117,12 @@ def _spend_components(user) -> list[dict]:
                         max(
                             [
                                 value
-                                for value in (
-                                    preorder.paid_at,
-                                    preorder.updated_at,
-                                    getattr(goods, "updated_at", None),
-                                    getattr(goods, "created_at", None),
-                                )
+                                for value in (preorder_event_time, goods_event_time)
                                 if value is not None
                             ]
                         )
                         if goods is not None
-                        else preorder.paid_at or preorder.updated_at
+                        else preorder_event_time
                     ),
                 }
             )
@@ -309,7 +317,12 @@ def sync_goods_source(
                     source_type="goods",
                     source_id=str(goods.id),
                     metadata=metadata,
-                    occurred_at=occurred_at or goods.updated_at or goods.created_at,
+                    occurred_at=(
+                        goods.gamification_quantity_changed_at
+                        or occurred_at
+                        or goods.updated_at
+                        or goods.created_at
+                    ),
                 )
                 events_created = events_created or created_event is not None
                 quantity_event_created = created_event is not None
@@ -461,10 +474,6 @@ def sync_showcase_altar(
     # inflate progress by repeatedly switching roles.
     source_id = str(showcase.id)
     valid_since = showcase.gamification_valid_since
-    if is_valid and valid_since is None:
-        valid_since = occurred_at or timezone.now()
-        showcase.gamification_valid_since = valid_since
-        showcase.save(update_fields=["gamification_valid_since", "updated_at"])
     ip_ids = {str(item.ip_id) for item in goods_items}
     category_ids = {item.category_id for item in goods_items}
     is_official_values = {bool(item.is_official) for item in goods_items}
@@ -493,6 +502,16 @@ def sync_showcase_altar(
 
     with transaction.atomic():
         User.objects.select_for_update().get(pk=showcase.user_id)
+        locked_showcase = Showcase.objects.select_for_update().only(
+            "gamification_valid_since"
+        ).get(pk=showcase.pk)
+        valid_since = locked_showcase.gamification_valid_since
+        if is_valid and valid_since is None:
+            valid_since = occurred_at or timezone.now()
+            locked_showcase.gamification_valid_since = valid_since
+            locked_showcase.save(
+                update_fields=["gamification_valid_since", "updated_at"]
+            )
         state, created = MetricSourceState.objects.select_for_update().get_or_create(
             source_type="showcase_altar",
             source_id=source_id,

@@ -1,7 +1,7 @@
 import logging
 
 from django.db import transaction
-from django.db.models.signals import m2m_changed, post_save
+from django.db.models.signals import m2m_changed, post_save, pre_save
 from django.utils import timezone
 from django.dispatch import receiver
 
@@ -10,6 +10,9 @@ from apps.reminder.models import Preorder
 from apps.users.models import User
 
 from .models import Achievement, AchievementSet
+
+ELIGIBLE_GOODS_STATUSES = {"in_cabinet", "outdoor", "sold"}
+PAID_PREORDER_STATUSES = {Preorder.STATUS_PAID, Preorder.STATUS_CONVERTED}
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +102,86 @@ def _refresh_achievement_users():
         evaluate_user(user)
 
 
+def _goods_current_values(goods, *, quantity, price, status):
+    eligible = status in ELIGIBLE_GOODS_STATUSES
+    current_quantity = quantity if eligible else 0
+    current_spend = (
+        current_quantity * price
+        if eligible and price is not None
+        else 0
+    )
+    return current_quantity, current_spend
+
+
+@receiver(pre_save, sender=Goods, dispatch_uid="gamification_capture_goods_changed_at")
+def capture_goods_changed_at(sender, instance, **kwargs):
+    old = (
+        Goods.objects.filter(pk=instance.pk)
+        .values("status", "quantity", "price")
+        .first()
+        if instance.pk
+        else None
+    )
+    old_quantity, old_spend = (
+        _goods_current_values(
+            instance,
+            quantity=old["quantity"],
+            price=old["price"],
+            status=old["status"],
+        )
+        if old
+        else (0, 0)
+    )
+    new_quantity, new_spend = _goods_current_values(
+        instance,
+        quantity=instance.quantity,
+        price=instance.price,
+        status=instance.status,
+    )
+    now = timezone.now()
+    if new_quantity > old_quantity:
+        instance.gamification_quantity_changed_at = now
+        instance._gamification_quantity_changed = True
+    if new_spend > old_spend:
+        instance.gamification_spend_changed_at = now
+        instance._gamification_spend_changed = True
+
+
+@receiver(pre_save, sender=Preorder, dispatch_uid="gamification_capture_preorder_changed_at")
+def capture_preorder_changed_at(sender, instance, **kwargs):
+    old = (
+        Preorder.objects.filter(pk=instance.pk)
+        .values("status", "deposit_amount", "balance_amount")
+        .first()
+        if instance.pk
+        else None
+    )
+
+    def current_spend(status, deposit, balance):
+        if status not in PAID_PREORDER_STATUSES:
+            return 0
+        return deposit + (balance or 0)
+
+    old_spend = (
+        current_spend(old["status"], old["deposit_amount"], old["balance_amount"])
+        if old
+        else 0
+    )
+    new_spend = current_spend(instance.status, instance.deposit_amount, instance.balance_amount)
+    if new_spend > old_spend:
+        instance.gamification_spend_changed_at = timezone.now()
+        instance._gamification_spend_changed = True
+
+
 @receiver(post_save, sender=Goods, dispatch_uid="gamification_sync_goods")
 def sync_goods(sender, instance, **kwargs):
+    updates = {}
+    if getattr(instance, "_gamification_quantity_changed", False):
+        updates["gamification_quantity_changed_at"] = instance.gamification_quantity_changed_at
+    if getattr(instance, "_gamification_spend_changed", False):
+        updates["gamification_spend_changed_at"] = instance.gamification_spend_changed_at
+    if updates:
+        Goods.objects.filter(pk=instance.pk).update(**updates)
     occurred_at = timezone.now()
     _schedule(_sync_goods, instance.pk, occurred_at)
     _schedule(_sync_goods_related_altars, instance.pk, occurred_at)
@@ -116,6 +197,10 @@ def sync_goods_characters(sender, instance, action, pk_set, **kwargs):
 
 @receiver(post_save, sender=Preorder, dispatch_uid="gamification_sync_preorder")
 def sync_preorder(sender, instance, **kwargs):
+    if getattr(instance, "_gamification_spend_changed", False):
+        Preorder.objects.filter(pk=instance.pk).update(
+            gamification_spend_changed_at=instance.gamification_spend_changed_at
+        )
     _schedule(_sync_preorder, instance.pk, timezone.now())
 
 

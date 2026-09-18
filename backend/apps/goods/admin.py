@@ -170,6 +170,25 @@ class GoodsAdmin(admin.ModelAdmin):
     list_per_page = 50
     filter_horizontal = ("characters",)  # 使用水平选择器显示多对多关系
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            from apps.gamification.models import MetricEvent, MetricSourceState
+
+            has_ledger = (
+                MetricEvent.objects.filter(
+                    source_type="goods",
+                    source_id=str(obj.pk),
+                ).exists()
+                or MetricSourceState.objects.filter(
+                    source_type="goods",
+                    source_id=str(obj.pk),
+                ).exists()
+            )
+            if has_ledger:
+                fields.append("user")
+        return tuple(fields)
+
     def get_characters(self, obj):
         """显示所有关联的角色名称"""
         return ", ".join([char.name for char in obj.characters.all()])

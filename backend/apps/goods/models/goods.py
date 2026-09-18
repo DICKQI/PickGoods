@@ -122,6 +122,16 @@ class Goods(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
+    gamification_quantity_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="成就件数变更时间",
+    )
+    gamification_spend_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="成就消费变更时间",
+    )
 
     class Meta:
         verbose_name = "谷子"

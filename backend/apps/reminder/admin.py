@@ -8,6 +8,12 @@ class PreorderAdmin(admin.ModelAdmin):
     list_display = ("name", "user", "status", "estimated_month", "delay_count", "deposit_amount", "created_at")
     list_filter = ("status",)
     search_fields = ("name", "user__username")
+    readonly_fields = ("status", "paid_at", "goods")
+
+    def has_delete_permission(self, request, obj=None):
+        if obj and obj.status in {Preorder.STATUS_PAID, Preorder.STATUS_CONVERTED}:
+            return False
+        return super().has_delete_permission(request, obj)
 
 
 @admin.register(PreorderDelayRecord)

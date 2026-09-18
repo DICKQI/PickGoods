@@ -270,6 +270,89 @@ class GamificationServiceTests(TransactionTestCase):
         self.assertEqual(total_spend, Decimal("150.00"))
 
     @override_settings(GAMIFICATION_ENABLED=True)
+    def test_preorder_balance_increment_uses_increment_time(self):
+        self.initialize()
+        paid_at = timezone.now() - timedelta(days=2)
+        preorder = Preorder.objects.create(
+            user=self.user,
+            name="Timed preorder",
+            deposit_amount=Decimal("20.00"),
+            balance_amount=Decimal("0.00"),
+            estimated_month=timezone.localdate(),
+        )
+        Preorder.objects.filter(pk=preorder.pk).update(
+            status=Preorder.STATUS_PAID,
+            paid_at=paid_at,
+            gamification_spend_changed_at=paid_at
+        )
+        preorder.refresh_from_db()
+        sync_preorder_source(preorder.id)
+        first_event = MetricEvent.objects.get(
+            event_type=MetricEvent.EVENT_SPEND_AMOUNT,
+            source_id=f"preorder:{preorder.id}",
+        )
+        self.assertLess(abs((first_event.occurred_at - paid_at).total_seconds()), 1)
+
+        before_increment = timezone.now()
+        preorder.balance_amount = Decimal("80.00")
+        preorder.save(update_fields=["balance_amount", "updated_at"])
+        sync_preorder_source(preorder.id)
+        second_event = (
+            MetricEvent.objects.filter(
+                event_type=MetricEvent.EVENT_SPEND_AMOUNT,
+                source_id=f"preorder:{preorder.id}",
+            )
+            .exclude(pk=first_event.pk)
+            .get()
+        )
+        self.assertGreaterEqual(second_event.occurred_at, before_increment)
+
+    @override_settings(GAMIFICATION_ENABLED=True)
+    def test_unrelated_preorder_edit_does_not_move_spend_event_time(self):
+        self.initialize()
+        preorder = Preorder.objects.create(
+            user=self.user,
+            name="Stable preorder time",
+            deposit_amount=Decimal("20.00"),
+            balance_amount=Decimal("80.00"),
+            estimated_month=timezone.localdate(),
+        )
+        with transaction.atomic():
+            goods = self.make_goods(
+                quantity=1,
+                price="100.00",
+                created_at=self.rollout_at + timedelta(minutes=1),
+            )
+            preorder.goods = goods
+            preorder.status = Preorder.STATUS_PAID
+            preorder.paid_at = timezone.now() - timedelta(hours=1)
+            preorder.save(update_fields=["goods", "status", "paid_at", "updated_at"])
+        sync_preorder_source(preorder.id)
+        first_event = MetricEvent.objects.get(
+            event_type=MetricEvent.EVENT_SPEND_AMOUNT,
+            source_id=f"preorder:{preorder.id}",
+        )
+
+        preorder.name = "Renamed only"
+        preorder.save(update_fields=["name", "updated_at"])
+        goods.price = Decimal("120.00")
+        goods.save(update_fields=["price", "updated_at"])
+        preorder.name = "Renamed after price"
+        preorder.save(update_fields=["name", "updated_at"])
+        sync_preorder_source(preorder.id)
+        second_event = (
+            MetricEvent.objects.filter(
+                event_type=MetricEvent.EVENT_SPEND_AMOUNT,
+                source_id=f"preorder:{preorder.id}",
+            )
+            .exclude(pk=first_event.pk)
+            .get()
+        )
+        expected_time = goods.gamification_spend_changed_at
+        self.assertIsNotNone(expected_time)
+        self.assertLess(abs((second_event.occurred_at - expected_time).total_seconds()), 1)
+
+    @override_settings(GAMIFICATION_ENABLED=True)
     def test_goods_status_transition_triggers_altar_recheck(self):
         self.initialize()
         showcase = Showcase.objects.create(
