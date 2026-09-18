@@ -43,12 +43,16 @@ const stubMatchMedia = (overrides: Record<string, boolean> = {}) => {
   })) as unknown as typeof window.matchMedia
 }
 
-const mountCard = (props: Partial<InstanceType<typeof GoodsCard>['$props']> = {}) =>
+const mountCard = (
+  props: Partial<InstanceType<typeof GoodsCard>['$props']> = {},
+  slots: Record<string, string> = {},
+) =>
   mount(GoodsCard, {
     props: {
       goods,
       ...props,
     },
+    slots,
     global: {
       stubs: {
         'el-icon': { template: '<i><slot /></i>' },
@@ -118,6 +122,19 @@ afterEach(() => {
 })
 
 describe('GoodsCard 指针跟随 3D', () => {
+  it('将 overlay 插槽渲染在卡片根节点内部', () => {
+    stubMatchMedia()
+    const wrapper = mountCard(
+      { interactive3d: true },
+      { overlay: '<button class="card-overlay-probe">选择</button>' },
+    )
+
+    const overlay = wrapper.get('.card-overlay-probe')
+    expect(wrapper.element.contains(overlay.element)).toBe(true)
+    expect(wrapper.element.firstElementChild?.classList.contains('card-overlay-probe')).toBe(true)
+    expect(wrapper.classes()).toContain('is-interactive-3d')
+  })
+
   it('默认关闭，不渲染高光层也不响应指针', async () => {
     stubMatchMedia()
     const wrapper = mountCard()
@@ -254,6 +271,7 @@ describe('GoodsCard 指针跟随 3D', () => {
     const source = goodsCardSource()
 
     expect(source).toContain('interactive3d?: boolean')
+    expect(source).toContain('<slot name="overlay"></slot>')
     expect(source).toContain('.card-acrylic-glare')
     expect(source).toContain('perspective(var(--card-perspective, 900px))')
     expect(source).toContain('rotateX(var(--card-tilt-x, 0deg))')

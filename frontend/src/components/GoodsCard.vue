@@ -19,6 +19,9 @@
     @touchcancel="handleTouchEnd"
     @touchmove="handleTouchMove"
   >
+    <!-- 自定义覆盖内容位于卡片内部，会随整体 3D 变换一起倾斜和抬升。 -->
+    <slot name="overlay"></slot>
+
     <!-- 1. 图片区域 -->
     <div class="card-image-wrapper">
       <SquarePaddedImage
@@ -165,7 +168,7 @@ interface Props {
   showMenu?: boolean
   /**
    * 是否启用跟随鼠标的 3D 倾斜与亚克力高光。
-   * 默认关闭；目前仅 PC 端谷仓页开启。
+   * 默认关闭；目前由 PC 端谷仓、位置作业台等页面按需开启。
    */
   interactive3d?: boolean
 }

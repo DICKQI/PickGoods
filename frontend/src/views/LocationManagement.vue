@@ -350,15 +350,27 @@
             <el-empty v-else-if="filteredGoodsList.length === 0" description="这里暂时没有符合条件的谷子" />
             <div v-else class="guzi-grid">
               <div v-for="goods in filteredGoodsList" :key="goods.id" class="goods-card-shell">
-                <label class="select-mark">
-                  <input
-                    type="checkbox"
-                    :checked="selectedGoodsIds.includes(goods.id)"
-                    @change="toggleGoodsSelection(goods.id)"
-                  />
-                  <span></span>
-                </label>
-                <GoodsCard :goods="goods" :show-menu="false" @click="openGoodsDetail(goods)" />
+                <GoodsCard
+                  :goods="goods"
+                  :show-menu="false"
+                  :interactive-3d="true"
+                  @click="openGoodsDetail(goods)"
+                >
+                  <template #overlay>
+                    <label
+                      class="select-mark"
+                      @click.stop
+                      @touchstart.stop
+                    >
+                      <input
+                        type="checkbox"
+                        :checked="selectedGoodsIds.includes(goods.id)"
+                        @change="toggleGoodsSelection(goods.id)"
+                      />
+                      <span></span>
+                    </label>
+                  </template>
+                </GoodsCard>
               </div>
             </div>
 
@@ -2287,6 +2299,11 @@ h2 {
 .goods-card-shell {
   position: relative;
   min-width: 0;
+}
+
+.goods-card-shell:has(.goods-card:hover),
+.goods-card-shell:has(.goods-card.is-tilting) {
+  z-index: 2;
 }
 
 .select-mark {

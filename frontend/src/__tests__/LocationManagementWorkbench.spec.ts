@@ -152,6 +152,23 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).not.toContain('class="drawer-goods-row"')
   })
 
+  it('enables the shared 3D card effect and keeps selection controls on the card', () => {
+    const desktopCardStart = source.indexOf('<GoodsCard')
+    const desktopCardEnd = source.indexOf('</GoodsCard>', desktopCardStart)
+    const desktopCard = source.slice(desktopCardStart, desktopCardEnd)
+
+    expect(desktopCardStart).toBeGreaterThan(-1)
+    expect(desktopCardEnd).toBeGreaterThan(desktopCardStart)
+    expect(desktopCard).toContain(':interactive-3d="true"')
+    expect(desktopCard).toContain('<template #overlay>')
+    expect(desktopCard).toContain('class="select-mark"')
+    expect(desktopCard).toContain('@click.stop')
+    expect(desktopCard).toContain('@touchstart.stop')
+    expect(source).not.toMatch(/<label class="select-mark">[\s\S]*?<\/label>\s*<GoodsCard/)
+    expect(source).toContain('.goods-card-shell:has(.goods-card:hover)')
+    expect(source).toContain('.goods-card-shell:has(.goods-card.is-tilting)')
+  })
+
   it('adds status, IP and category quick filters for goods in a location', () => {
     expect(source).toContain("goodsStatusFilter")
     expect(source).toContain("goodsIpFilter")
