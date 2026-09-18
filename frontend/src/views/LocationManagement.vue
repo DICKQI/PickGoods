@@ -354,7 +354,9 @@
                   :goods="goods"
                   :show-menu="false"
                   :interactive-3d="true"
+                  location-layout="stacked"
                   @click="openGoodsDetail(goods)"
+                  @location-click="handleGoodsLocationClick"
                 >
                   <template #overlay>
                     <label
@@ -1168,6 +1170,32 @@ async function selectNodeById(id: number) {
     await handleNodeClick(treeNode)
     await restoreTreeVisualState({ selectedId: id, scrollIntoView: true })
   }
+}
+
+function normalizeLocationPath(path: string) {
+  return path
+    .split('/')
+    .map((segment) => segment.trim())
+    .filter(Boolean)
+    .join('/')
+}
+
+async function handleGoodsLocationClick(path: string) {
+  const normalizedPath = normalizeLocationPath(path)
+  if (!normalizedPath) return
+
+  let node = locationStore.getNodeByPathName(normalizedPath)
+  if (!node) {
+    await locationStore.fetchNodes(true)
+    node = locationStore.getNodeByPathName(normalizedPath)
+  }
+
+  if (!node) {
+    ElMessage.warning('未找到对应位置')
+    return
+  }
+
+  await selectNodeById(node.id)
 }
 
 function openMobileLocationPicker() {

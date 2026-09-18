@@ -3,6 +3,7 @@ import { mount } from '@vue/test-utils'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import GoodsCard from '@/components/GoodsCard.vue'
+import OverflowMarquee from '@/components/ui/OverflowMarquee.vue'
 import type { GoodsListItem } from '@/api/types'
 
 const goods: GoodsListItem = {
@@ -62,6 +63,49 @@ describe('GoodsCard selection mode', () => {
     expect(wrapper.classes()).toContain('is-selected')
   })
 
+  it('keeps the inline location layout and disables auto scroll by default', () => {
+    const deepGoods = {
+      ...goods,
+      location_path: '家/卧室/A 柜/第三层',
+    }
+    const wrapper = mountCard({ goods: deepGoods })
+    const locationButton = wrapper.get('.location-box')
+    const marquee = wrapper.findComponent(OverflowMarquee)
+
+    expect(wrapper.get('.card-footer').classes()).not.toContain('is-location-stacked')
+    expect(locationButton.element.tagName).toBe('BUTTON')
+    expect(locationButton.attributes('type')).toBe('button')
+    expect(locationButton.attributes('aria-label')).toBe(`定位到 ${deepGoods.location_path}`)
+    expect(marquee.props('text')).toBe('卧室 › A 柜 › 第三层')
+    expect(marquee.props('autoScroll')).toBe(false)
+  })
+
+  it('shows the complete path and enables auto scroll in stacked mode', async () => {
+    const deepGoods = {
+      ...goods,
+      location_path: '家/卧室/A 柜/第三层',
+    }
+    const wrapper = mountCard({ goods: deepGoods, locationLayout: 'stacked' })
+    const marquee = wrapper.findComponent(OverflowMarquee)
+
+    expect(wrapper.get('.card-footer').classes()).toContain('is-location-stacked')
+    expect(wrapper.get('.location-box').classes()).toContain('is-stacked')
+    expect(marquee.props('text')).toBe('家 › 卧室 › A 柜 › 第三层')
+    expect(marquee.props('autoScroll')).toBe(true)
+
+    await wrapper.get('.location-box').trigger('click')
+
+    expect(wrapper.emitted('locationClick')?.[0]).toEqual([deepGoods.location_path])
+    expect(wrapper.emitted('click')).toBeUndefined()
+  })
+
+  it('does not render a location row without a location path', () => {
+    const wrapper = mountCard({ goods: { ...goods, location_path: '' } })
+
+    expect(wrapper.find('.location-box').exists()).toBe(false)
+    expect(wrapper.findComponent(OverflowMarquee).exists()).toBe(false)
+  })
+
   it('保留 PC 卡片交互入口并隐藏未定位占位', () => {
     const source = goodsCardSource()
 
@@ -69,11 +113,16 @@ describe('GoodsCard selection mode', () => {
     expect(source).toContain('locationClick')
     expect(source).toContain('showMenu?: boolean')
     expect(source).toContain("'is-selected'")
-    expect(source).toContain('location-breadcrumb')
+    expect(source).toContain('location-marquee')
+    expect(source).toContain('OverflowMarquee')
     expect(source).toContain('category-tag-text')
     expect(source).toContain("class=\"card-footer\"")
     expect(source).toContain("'has-location': goods.location_path")
+    expect(source).toContain("'is-location-stacked': isLocationStacked && goods.location_path")
     expect(source).toContain('grid-template-columns: minmax(94px, 42%) minmax(0, 1fr);')
+    expect(source).toContain('grid-template-columns: minmax(0, 1fr);')
+    expect(source).toContain("locationLayout?: 'inline' | 'stacked'")
+    expect(source).toContain("locationLayout: 'inline'")
     expect(source).toContain('max-width: min(126px, 100%);')
     expect(source).toContain('box-sizing: border-box;')
     expect(source).toContain('category-tag-track')

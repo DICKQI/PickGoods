@@ -20,9 +20,12 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   text: string
-}>()
+  autoScroll?: boolean
+}>(), {
+  autoScroll: true,
+})
 
 const MARQUEE_GAP_PX = 18
 const hostRef = ref<HTMLElement | null>(null)
@@ -34,7 +37,7 @@ let resizeObserver: ResizeObserver | null = null
 const syncOverflowState = async () => {
   await nextTick()
   const textEl = textRef.value
-  const overflowing = !!textEl && textEl.scrollWidth > textEl.clientWidth + 1
+  const overflowing = props.autoScroll && !!textEl && textEl.scrollWidth > textEl.clientWidth + 1
 
   isScrollable.value = overflowing
   scrollDuration.value = overflowing && textEl
@@ -58,10 +61,13 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
 })
 
-watch(() => props.text, () => {
-  isScrollable.value = false
-  void syncOverflowState()
-})
+watch(
+  [() => props.text, () => props.autoScroll],
+  () => {
+    isScrollable.value = false
+    void syncOverflowState()
+  },
+)
 </script>
 
 <style scoped>

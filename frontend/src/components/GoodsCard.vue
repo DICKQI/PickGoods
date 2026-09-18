@@ -105,7 +105,13 @@
       </div>
 
       <!-- 3. 底部脚部（解决移动端冲突的核心区域） -->
-      <div class="card-footer" :class="{ 'has-location': goods.location_path }">
+      <div
+        class="card-footer"
+        :class="{
+          'has-location': goods.location_path,
+          'is-location-stacked': isLocationStacked && goods.location_path,
+        }"
+      >
         <!-- 品类标签：固定宽度不收缩 -->
         <div class="category-wrapper">
           <span
@@ -126,23 +132,22 @@
         </div>
 
       <!-- 位置信息：PC 端用面包屑强化“在哪儿”的识别 -->
-      <div
+      <button
         v-if="goods.location_path"
+        type="button"
         class="location-box"
+        :class="{ 'is-stacked': isLocationStacked }"
         :title="goods.location_path"
+        :aria-label="`定位到 ${goods.location_path}`"
         @click.stop="handleLocationClick"
       >
         <el-icon class="loc-icon"><Location /></el-icon>
-        <span class="location-breadcrumb">
-          <span
-            v-for="(segment, index) in locationDisplaySegments"
-            :key="`${segment}-${index}`"
-            class="location-segment"
-          >
-            {{ segment }}
-          </span>
-        </span>
-      </div>
+        <OverflowMarquee
+          class="location-marquee"
+          :text="locationDisplayText"
+          :auto-scroll="isLocationStacked"
+        />
+      </button>
       </div>
     </div>
   </div>
@@ -152,6 +157,7 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { Picture, Location, CircleCheck, MoreFilled, Brush, Check } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
+import OverflowMarquee from '@/components/ui/OverflowMarquee.vue'
 import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
 import { useCardTilt } from '@/composables/useCardTilt'
 import type { GoodsListItem } from '@/api/types'
@@ -171,6 +177,12 @@ interface Props {
    * 默认关闭；目前由 PC 端谷仓、位置作业台等页面按需开启。
    */
   interactive3d?: boolean
+  /**
+   * 位置信息布局：
+   * - inline：与品类同排，保持现有页面布局
+   * - stacked：位置独占一行并展示完整路径
+   */
+  locationLayout?: 'inline' | 'stacked'
 }
 
 const props = withDefaults(defineProps<Props>(), {
@@ -178,12 +190,14 @@ const props = withDefaults(defineProps<Props>(), {
   selected: false,
   showMenu: true,
   interactive3d: false,
+  locationLayout: 'inline',
 })
 
 const selectable = computed(() => props.selectable)
 const selected = computed(() => props.selected)
 const showMenu = computed(() => props.showMenu && !selectable.value)
 const interactive3d = computed(() => props.interactive3d)
+const isLocationStacked = computed(() => props.locationLayout === 'stacked')
 
 const cardRef = ref<HTMLElement | null>(null)
 const {
@@ -261,8 +275,10 @@ const locationDisplaySegments = computed(() => {
     .map(segment => segment.trim())
     .filter(Boolean)
 
-  return segments.slice(-3)
+  return isLocationStacked.value ? segments : segments.slice(-3)
 })
+
+const locationDisplayText = computed(() => locationDisplaySegments.value.join(' › '))
 
 // 动态计算品类标签样式
 const categoryStyle = computed(() => {
@@ -814,6 +830,11 @@ onBeforeUnmount(() => {
   grid-template-columns: minmax(94px, 42%) minmax(0, 1fr);
 }
 
+.card-footer.has-location.is-location-stacked {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
 .category-wrapper {
   justify-self: stretch;
   min-width: 0;
@@ -918,21 +939,48 @@ onBeforeUnmount(() => {
 }
 
 .location-box {
+  appearance: none;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: 5px;
+  padding: 0;
   font-size: 11px;
+  font-family: inherit;
   color: var(--goods-card-subtle);
   flex: 1;
   min-width: 0;
   border: 0;
   background: transparent;
+  cursor: pointer;
+  text-align: left;
   transition: color 0.18s ease;
 }
 
-.location-box:hover {
+.location-box:hover,
+.location-box:focus-visible {
   color: var(--goods-card-gold-dark);
+}
+
+.location-box:focus-visible {
+  outline: 2px solid rgba(212, 175, 55, 0.42);
+  outline-offset: 2px;
+}
+
+.location-box.is-stacked {
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 30px;
+  padding: 6px 8px;
+  border: 1px solid rgba(212, 175, 55, 0.18);
+  border-radius: 8px;
+  background: rgba(248, 250, 252, 0.78);
+}
+
+.location-box.is-stacked:hover,
+.location-box.is-stacked:focus-visible {
+  border-color: rgba(212, 175, 55, 0.42);
+  background: rgba(255, 248, 230, 0.82);
 }
 
 .loc-icon {
@@ -940,32 +988,9 @@ onBeforeUnmount(() => {
   font-size: 13px;
 }
 
-.location-breadcrumb {
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 4px;
+.location-marquee {
+  flex: 1;
   min-width: 0;
-  overflow: hidden;
-}
-
-.location-segment {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.location-segment + .location-segment::before {
-  content: '>';
-  margin-right: 4px;
-  color: rgba(148, 163, 184, 0.72);
-}
-
-.location-text {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 @media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {

@@ -160,6 +160,8 @@ describe('LocationManagement workbench source contract', () => {
     expect(desktopCardStart).toBeGreaterThan(-1)
     expect(desktopCardEnd).toBeGreaterThan(desktopCardStart)
     expect(desktopCard).toContain(':interactive-3d="true"')
+    expect(desktopCard).toContain('location-layout="stacked"')
+    expect(desktopCard).toContain('@location-click="handleGoodsLocationClick"')
     expect(desktopCard).toContain('<template #overlay>')
     expect(desktopCard).toContain('class="select-mark"')
     expect(desktopCard).toContain('@click.stop')
@@ -167,6 +169,19 @@ describe('LocationManagement workbench source contract', () => {
     expect(source).not.toMatch(/<label class="select-mark">[\s\S]*?<\/label>\s*<GoodsCard/)
     expect(source).toContain('.goods-card-shell:has(.goods-card:hover)')
     expect(source).toContain('.goods-card-shell:has(.goods-card.is-tilting)')
+  })
+
+  it('locates the exact storage node from a card path and refreshes stale tree data once', () => {
+    const handlerStart = source.indexOf('async function handleGoodsLocationClick')
+    const handlerEnd = source.indexOf('function openMobileLocationPicker', handlerStart)
+    const handler = source.slice(handlerStart, handlerEnd)
+
+    expect(handlerStart).toBeGreaterThan(-1)
+    expect(handler).toContain('normalizeLocationPath(path)')
+    expect(handler).toContain('locationStore.getNodeByPathName(normalizedPath)')
+    expect(handler).toContain('await locationStore.fetchNodes(true)')
+    expect(handler).toContain("ElMessage.warning('未找到对应位置')")
+    expect(handler).toContain('await selectNodeById(node.id)')
   })
 
   it('adds status, IP and category quick filters for goods in a location', () => {
