@@ -15,6 +15,24 @@ class PreorderAdmin(admin.ModelAdmin):
             return False
         return super().has_delete_permission(request, obj)
 
+    def get_readonly_fields(self, request, obj=None):
+        fields = list(super().get_readonly_fields(request, obj))
+        if obj is not None:
+            from apps.gamification.models import MetricEvent, MetricSourceState
+
+            source_id = str(obj.pk)
+            has_ledger = (
+                MetricEvent.objects.filter(
+                    source_id__in=[source_id, f"preorder:{source_id}"]
+                ).exists()
+                or MetricSourceState.objects.filter(
+                    source_id__in=[source_id, f"preorder:{source_id}"]
+                ).exists()
+            )
+            if has_ledger:
+                fields.append("user")
+        return tuple(fields)
+
 
 @admin.register(PreorderDelayRecord)
 class PreorderDelayRecordAdmin(admin.ModelAdmin):

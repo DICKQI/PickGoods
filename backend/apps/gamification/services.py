@@ -70,16 +70,19 @@ def _spend_components(user) -> list[dict]:
             continue
         amount = _as_decimal(goods.quantity) * _as_decimal(goods.price)
         if amount > 0:
+            goods_event_time = (
+                goods.gamification_spend_changed_at
+                or goods.updated_at
+                or goods.created_at
+            )
             components.append(
                 {
                     "source_id": f"goods:{goods.id}",
                     "amount": amount,
                     "metadata": _goods_metadata(goods),
-                    "initial_occurred_at": (
-                        goods.gamification_spend_changed_at
-                        or goods.updated_at
-                        or goods.created_at
-                    ),
+                    "source_candidates": [
+                        {"amount": amount, "occurred_at": goods_event_time}
+                    ],
                 }
             )
 
@@ -108,25 +111,37 @@ def _spend_components(user) -> list[dict]:
                 or preorder.paid_at
                 or preorder.updated_at
             )
+            candidates = [
+                {"amount": preorder_amount, "occurred_at": preorder_event_time}
+            ]
+            if goods is not None and goods.status in ELIGIBLE_GOODS_STATUSES:
+                candidates.append(
+                    {"amount": goods_amount, "occurred_at": goods_event_time}
+                )
             components.append(
                 {
                     "source_id": f"preorder:{preorder.id}",
                     "amount": amount,
                     "metadata": metadata,
-                    "initial_occurred_at": (
-                        max(
-                            [
-                                value
-                                for value in (preorder_event_time, goods_event_time)
-                                if value is not None
-                            ]
-                        )
-                        if goods is not None
-                        else preorder_event_time
-                    ),
+                    "source_candidates": candidates,
                 }
             )
     return sorted(components, key=lambda item: item["source_id"])
+
+
+def _component_event_time(component: dict, before: Decimal):
+    candidates = [
+        candidate
+        for candidate in component["source_candidates"]
+        if candidate["amount"] > before and candidate["occurred_at"] is not None
+    ]
+    if not candidates:
+        return None
+    winner = min(
+        candidates,
+        key=lambda candidate: (-candidate["amount"], candidate["occurred_at"]),
+    )
+    return winner["occurred_at"]
 
 
 def sync_user_spend_components(
@@ -177,7 +192,7 @@ def sync_user_spend_components(
                     source_id=component["source_id"],
                     metadata=metadata,
                     occurred_at=(
-                        component["initial_occurred_at"]
+                        _component_event_time(component, before)
                         or occurred_at
                         or timezone.now()
                     ),
@@ -333,7 +348,10 @@ def sync_goods_source(
 
         state.observed_quantity = observed_quantity
         if not state.scope_hash:
+            missing_scope_hash = True
             state.scope_hash = current_scope_hash
+        else:
+            missing_scope_hash = False
         state.last_seen_at = timezone.now()
         state.save()
 
@@ -341,7 +359,7 @@ def sync_goods_source(
             should_emit
             and state.accrued_quantity > 0
             and not quantity_event_created
-            and state.scope_hash != current_scope_hash
+            and (missing_scope_hash or state.scope_hash != current_scope_hash)
         ):
             scope_metadata = {
                 **current_metadata,
@@ -355,7 +373,11 @@ def sync_goods_source(
                 source_type="goods",
                 source_id=str(goods.id),
                 metadata=scope_metadata,
-                occurred_at=occurred_at or timezone.now(),
+                occurred_at=(
+                    goods.gamification_scope_changed_at
+                    or occurred_at
+                    or timezone.now()
+                ),
             )
             events_created = events_created or created_event is not None
             state.scope_hash = current_scope_hash

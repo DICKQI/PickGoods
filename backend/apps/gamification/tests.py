@@ -353,6 +353,84 @@ class GamificationServiceTests(TransactionTestCase):
         self.assertLess(abs((second_event.occurred_at - expected_time).total_seconds()), 1)
 
     @override_settings(GAMIFICATION_ENABLED=True)
+    def test_pair_component_uses_peak_source_change_time(self):
+        self.initialize()
+        preorder = Preorder.objects.create(
+            user=self.user,
+            name="Peak source",
+            deposit_amount=Decimal("20.00"),
+            balance_amount=Decimal("80.00"),
+            estimated_month=timezone.localdate(),
+        )
+        with transaction.atomic():
+            goods = self.make_goods(
+                quantity=1,
+                price="100.00",
+                created_at=self.rollout_at + timedelta(minutes=1),
+            )
+            preorder.goods = goods
+            preorder.status = Preorder.STATUS_PAID
+            preorder.paid_at = timezone.now()
+            preorder.save(update_fields=["goods", "status", "paid_at", "updated_at"])
+        sync_preorder_source(preorder.id)
+        first_event = MetricEvent.objects.get(
+            event_type=MetricEvent.EVENT_SPEND_AMOUNT,
+            source_id=f"preorder:{preorder.id}",
+        )
+
+        goods.price = Decimal("150.00")
+        goods.save(update_fields=["price", "updated_at"])
+        goods_time = goods.gamification_spend_changed_at
+        preorder.balance_amount = Decimal("120.00")
+        preorder.save(update_fields=["balance_amount", "updated_at"])
+        sync_preorder_source(preorder.id)
+
+        second_event = (
+            MetricEvent.objects.filter(
+                event_type=MetricEvent.EVENT_SPEND_AMOUNT,
+                source_id=f"preorder:{preorder.id}",
+            )
+            .exclude(pk=first_event.pk)
+            .get()
+        )
+        self.assertLess(abs((second_event.occurred_at - goods_time).total_seconds()), 1)
+
+    @override_settings(GAMIFICATION_ENABLED=True)
+    def test_scope_refresh_recovery_uses_persisted_dimension_time(self):
+        self.initialize()
+        goods = self.make_goods(
+            created_at=self.rollout_at + timedelta(minutes=1),
+        )
+        sync_goods_source(goods.id)
+        MetricEvent.objects.filter(
+            event_type=MetricEvent.EVENT_SCOPE_REFRESH,
+            source_id=str(goods.id),
+        ).delete()
+        state = MetricSourceState.objects.get(
+            source_type="goods",
+            source_id=str(goods.id),
+        )
+        state.scope_hash = ""
+        state.save(update_fields=["scope_hash", "updated_at"])
+
+        goods.characters.add(self.other_character)
+        scope_time = goods.gamification_scope_changed_at
+        MetricEvent.objects.filter(
+            event_type=MetricEvent.EVENT_SCOPE_REFRESH,
+            source_id=str(goods.id),
+        ).delete()
+        state.refresh_from_db()
+        state.scope_hash = ""
+        state.save(update_fields=["scope_hash", "updated_at"])
+        sync_goods_source(goods.id)
+
+        scope_event = MetricEvent.objects.get(
+            event_type=MetricEvent.EVENT_SCOPE_REFRESH,
+            source_id=str(goods.id),
+        )
+        self.assertLess(abs((scope_event.occurred_at - scope_time).total_seconds()), 1)
+
+    @override_settings(GAMIFICATION_ENABLED=True)
     def test_goods_status_transition_triggers_altar_recheck(self):
         self.initialize()
         showcase = Showcase.objects.create(

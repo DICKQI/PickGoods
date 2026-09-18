@@ -117,7 +117,7 @@ def _goods_current_values(goods, *, quantity, price, status):
 def capture_goods_changed_at(sender, instance, **kwargs):
     old = (
         Goods.objects.filter(pk=instance.pk)
-        .values("status", "quantity", "price")
+        .values("status", "quantity", "price", "name", "ip_id", "category_id", "is_official")
         .first()
         if instance.pk
         else None
@@ -145,6 +145,16 @@ def capture_goods_changed_at(sender, instance, **kwargs):
     if new_spend > old_spend:
         instance.gamification_spend_changed_at = now
         instance._gamification_spend_changed = True
+    scope_changed = (
+        old is None
+        or any(
+            old[field] != getattr(instance, field)
+            for field in ("name", "ip_id", "category_id", "is_official")
+        )
+    )
+    if scope_changed:
+        instance.gamification_scope_changed_at = now
+        instance._gamification_scope_changed = True
 
 
 @receiver(pre_save, sender=Preorder, dispatch_uid="gamification_capture_preorder_changed_at")
@@ -180,6 +190,8 @@ def sync_goods(sender, instance, **kwargs):
         updates["gamification_quantity_changed_at"] = instance.gamification_quantity_changed_at
     if getattr(instance, "_gamification_spend_changed", False):
         updates["gamification_spend_changed_at"] = instance.gamification_spend_changed_at
+    if getattr(instance, "_gamification_scope_changed", False):
+        updates["gamification_scope_changed_at"] = instance.gamification_scope_changed_at
     if updates:
         Goods.objects.filter(pk=instance.pk).update(**updates)
     occurred_at = timezone.now()
@@ -191,8 +203,13 @@ def sync_goods(sender, instance, **kwargs):
 def sync_goods_characters(sender, instance, action, pk_set, **kwargs):
     if action not in {"post_add", "post_remove", "post_clear"}:
         return
-    _schedule(_sync_goods, instance.pk, timezone.now())
-    _schedule(_sync_goods_related_altars, instance.pk, timezone.now())
+    occurred_at = timezone.now()
+    Goods.objects.filter(pk=instance.pk).update(
+        gamification_scope_changed_at=occurred_at
+    )
+    instance.gamification_scope_changed_at = occurred_at
+    _schedule(_sync_goods, instance.pk, occurred_at)
+    _schedule(_sync_goods_related_altars, instance.pk, occurred_at)
 
 
 @receiver(post_save, sender=Preorder, dispatch_uid="gamification_sync_preorder")

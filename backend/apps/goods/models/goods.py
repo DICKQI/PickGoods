@@ -132,6 +132,11 @@ class Goods(models.Model):
         blank=True,
         verbose_name="成就消费变更时间",
     )
+    gamification_scope_changed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="成就维度变更时间",
+    )
 
     class Meta:
         verbose_name = "谷子"
