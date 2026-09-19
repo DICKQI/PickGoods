@@ -79,6 +79,83 @@
         </p>
       </section>
 
+      <section
+        v-if="gamification.enabled && gamification.sets.length"
+        class="club-gamification-public"
+        aria-labelledby="club-gamification-title"
+      >
+        <header class="section-heading">
+          <div class="section-heading__title">
+            <span class="section-heading__eyebrow">CLUB MISSIONS</span>
+            <div class="section-heading__line">
+              <h2 id="club-gamification-title">社团成就</h2>
+              <span class="section-heading__count">
+                {{ gamification.sets.length }} 个系列
+              </span>
+            </div>
+          </div>
+          <el-tag v-if="gamification.participation" type="success" effect="plain">
+            已参与
+          </el-tag>
+        </header>
+        <div class="club-gamification-grid">
+          <article
+            v-for="achievementSet in gamification.sets"
+            :key="achievementSet.id"
+            class="club-gamification-set"
+          >
+            <div class="club-gamification-set__heading">
+              <div>
+                <h3>{{ achievementSet.name }}</h3>
+                <p>{{ achievementSet.description || '完成条件即可解锁社团限定奖励。' }}</p>
+              </div>
+              <el-tag :type="achievementSet.is_limited ? 'danger' : 'warning'" effect="plain">
+                {{ achievementSet.is_limited ? '限时' : '长期' }}
+              </el-tag>
+            </div>
+            <div class="club-gamification-list">
+              <div
+                v-for="achievement in achievementSet.achievements"
+                :key="achievement.id"
+                class="club-gamification-item"
+              >
+                <div class="club-gamification-item__copy">
+                  <strong>{{ achievement.name }}</strong>
+                  <span>{{ achievement.description || '完成对应条件即可解锁。' }}</span>
+                  <small v-if="achievement.progress_percent !== null">
+                    进度 {{ Number(achievement.progress_percent).toFixed(0) }}%
+                  </small>
+                </div>
+                <div class="club-gamification-item__rewards">
+                  <span v-for="reward in achievement.rewards" :key="reward.id">
+                    {{ reward.name }}
+                  </span>
+                </div>
+                <el-button
+                  v-if="achievement.can_claim"
+                  type="primary"
+                  class="club-gamification-claim"
+                  :loading="claimingAchievementId === achievement.id"
+                  @click="claimClubAchievement(achievement)"
+                >
+                  领取奖励
+                </el-button>
+                <el-tag
+                  v-else-if="achievement.status === 'claimed'"
+                  type="success"
+                  effect="plain"
+                >
+                  已领取
+                </el-tag>
+                <span v-else class="club-gamification-state">
+                  {{ achievement.status === 'unlocked' ? '已解锁' : '进行中' }}
+                </span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="detail-layout">
         <aside class="profile-panel" aria-labelledby="profile-title">
           <div class="panel-heading">
@@ -448,6 +525,9 @@ import {
   getClubGoodsFacets,
   unfavoriteClub,
 } from '@/api/clubs'
+import { getClubGamification } from '@/api/clubGamification'
+import { claimGamificationAchievement } from '@/api/gamification'
+import { useGamificationStore } from '@/stores/gamification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useAuthStore } from '@/stores/auth'
 import ClubGoodsDetailDrawer from '@/components/club/ClubGoodsDetailDrawer.vue'
@@ -467,11 +547,14 @@ import type {
   ClubGoodsDetail,
   ClubGoodsListItem,
   ClubGoodsOrdering,
+  ClubGamificationAchievement,
+  ClubGamificationOverview,
 } from '@/api/types'
 
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+const gamificationStore = useGamificationStore()
 const { isMobile } = useResponsiveDevice()
 const hasContactDetails = computed(() => Boolean(club.value && [
   club.value.contact_name, club.value.contact_phone, club.value.contact_email,
@@ -507,6 +590,13 @@ const detailVisible = ref(false)
 const detailLoading = ref(false)
 const selectedDetail = ref<ClubGoodsDetail | null>(null)
 const favoriteLoading = ref(false)
+const gamification = ref<ClubGamificationOverview>({
+  enabled: false,
+  club: { id: 0, name: '', avatar: null },
+  participation: false,
+  sets: [],
+})
+const claimingAchievementId = ref<number | null>(null)
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
 const platformLinkDefinitions: Array<{ key: PlatformKey; label: string; logo: string }> = [
@@ -703,13 +793,49 @@ async function loadClub() {
     }
     mobileDraftFilters.value = { ...filters.value }
     await syncFiltersToRoute()
-    await loadGoods()
+    await Promise.all([loadGoods(), loadClubGamification(id)])
   } catch (error: any) {
     if (sequence !== clubRequestSequence) return
     club.value = null
     pageError.value = error?.response?.data?.detail || error?.message || '社团不存在或已下线。'
   } finally {
     if (sequence === clubRequestSequence) loading.value = false
+  }
+}
+
+async function loadClubGamification(id = currentClubId()) {
+  if (!id) return
+  try {
+    gamification.value = await getClubGamification(id)
+  } catch {
+    gamification.value = {
+      enabled: false,
+      club: { id, name: club.value?.name || '', avatar: club.value?.avatar || null },
+      participation: false,
+      sets: [],
+    }
+  }
+}
+
+async function claimClubAchievement(achievement: ClubGamificationAchievement) {
+  if (!authStore.isAuthenticated) {
+    router.push({ name: 'Login', query: { redirect: route.fullPath } })
+    return
+  }
+  if (!authStore.isCollector) {
+    ElMessage.warning('社团账号不能领取成就奖励')
+    return
+  }
+  claimingAchievementId.value = achievement.id
+  try {
+    await claimGamificationAchievement(achievement.id)
+    await Promise.all([
+      loadClubGamification(),
+      gamificationStore.refreshAfterMutation(),
+    ])
+    ElMessage.success('奖励已领取，可在个人装扮库中查看')
+  } finally {
+    claimingAchievementId.value = null
   }
 }
 
@@ -900,6 +1026,12 @@ watch(() => route.params.id, () => {
   detailVisible.value = false
   selected.value = null
   selectedDetail.value = null
+  gamification.value = {
+    enabled: false,
+    club: { id: 0, name: '', avatar: null },
+    participation: false,
+    sets: [],
+  }
   void loadClub()
 })
 
@@ -1143,6 +1275,105 @@ onUnmounted(() => {
   flex: none;
   margin-top: 2px;
   color: var(--primary-gold-dark);
+}
+
+.club-gamification-public {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid rgba(162, 155, 254, 0.3);
+  border-radius: var(--card-radius-sm);
+  background:
+    radial-gradient(circle at 92% 0, rgba(162, 155, 254, 0.16), transparent 34%),
+    var(--bg-white);
+  box-shadow: var(--shadow-sm);
+}
+
+.club-gamification-grid {
+  display: grid;
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.club-gamification-set {
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+.club-gamification-set__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 15px 17px;
+  background: linear-gradient(120deg, rgba(255, 249, 229, 0.92), rgba(244, 241, 255, 0.78));
+}
+
+.club-gamification-set__heading h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.club-gamification-set__heading p {
+  margin: 5px 0 0;
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.club-gamification-list {
+  display: grid;
+  gap: 1px;
+  background: rgba(212, 175, 55, 0.12);
+}
+
+.club-gamification-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(180px, auto) auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 17px;
+  background: #fff;
+}
+
+.club-gamification-item__copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.club-gamification-item__copy strong {
+  font-size: 14px;
+}
+
+.club-gamification-item__copy span,
+.club-gamification-item__copy small {
+  color: var(--text-light);
+  font-size: 12px;
+}
+
+.club-gamification-item__rewards {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.club-gamification-item__rewards span {
+  padding: 4px 8px;
+  border-radius: 999px;
+  color: var(--accent-purple-dark);
+  background: var(--accent-purple-soft);
+  font-size: 11px;
+}
+
+.club-gamification-state {
+  color: var(--text-light);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.club-gamification-claim {
+  min-height: 32px;
 }
 
 .detail-layout {
@@ -2393,6 +2624,10 @@ onUnmounted(() => {
 .is-mobile .import-button .el-icon { font-size: 14px; }
 .is-mobile .goods-card:hover, .is-mobile .goods-card:hover .goods-card__image,
 .is-mobile .store-link:hover { transform: none; }
+.club-gamification-public { margin-top: 16px; padding: 14px; }
+.club-gamification-item { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.club-gamification-item__rewards { grid-row: 2; }
+.club-gamification-claim { width: 100%; }
 
 @media (prefers-reduced-motion: reduce) {
   .is-mobile .import-button { transition: none; }

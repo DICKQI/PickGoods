@@ -28,6 +28,14 @@ vi.mock('@/api/clubs', () => ({
   unfavoriteClub: vi.fn(),
 }))
 
+vi.mock('@/api/clubGamification', () => ({
+  getClubGamification: vi.fn(),
+}))
+
+vi.mock('@/api/gamification', () => ({
+  claimGamificationAchievement: vi.fn(),
+}))
+
 vi.mock('element-plus', () => ({
   ElMessage: {
     success: vi.fn(),
@@ -36,6 +44,7 @@ vi.mock('element-plus', () => ({
 }))
 
 import * as clubApi from '@/api/clubs'
+import * as clubGamificationApi from '@/api/clubGamification'
 
 const source = readFileSync(resolve(process.cwd(), 'src/views/ClubDetail.vue'), 'utf8')
 const detailDrawerSource = readFileSync(resolve(process.cwd(), 'src/components/club/ClubGoodsDetailDrawer.vue'), 'utf8')
@@ -190,6 +199,12 @@ function deferred<T>() {
 
 function mockSuccessfulLoad(items: ClubCatalogItem[] = [goods]) {
   vi.mocked(clubApi.getClub).mockResolvedValue(club)
+  vi.mocked(clubGamificationApi.getClubGamification).mockResolvedValue({
+    enabled: false,
+    club: { id: club.id, name: club.name, avatar: club.avatar },
+    participation: false,
+    sets: [],
+  })
   vi.mocked(clubApi.getClubGoods).mockResolvedValue({
     count: items.length,
     page: 1,

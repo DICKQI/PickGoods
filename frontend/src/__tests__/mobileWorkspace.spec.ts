@@ -15,7 +15,7 @@ describe('mobile workspace route contract', () => {
     ['/location', 'tabs'], ['/ipcharacter', 'tabs'], ['/characters/1/stats', 'detail'], ['/category', 'tabs'], ['/theme', 'tabs'],
     ['/goods/new', 'editor'], ['/goods/drafts', 'detail'], ['/goods/1/edit', 'editor'], ['/preorders', 'tabs'], ['/settings', 'tabs'],
     ['/profile/account', 'tabs'], ['/profile/clubs', 'tabs'], ['/club/profile', 'tabs'], ['/club/goods', 'tabs'],
-    ['/club/goods/new', 'editor'], ['/club/goods/1/edit', 'editor'], ['/club/themes', 'tabs'], ['/club/popularity', 'tabs'],
+    ['/club/goods/new', 'editor'], ['/club/goods/1/edit', 'editor'], ['/club/gamification', 'tabs'], ['/club/themes', 'tabs'], ['/club/popularity', 'tabs'],
     ['/admin/users', 'standalone'], ['/admin/goods', 'standalone'], ['/admin/ip', 'standalone'], ['/admin/categories', 'standalone'],
     ['/admin/themes', 'standalone'], ['/admin/goods-crafts', 'standalone'], ['/admin/bgm-sync', 'standalone'],
   ])('%s has the expected mobile frame', (path, mode) => expect(mobileHeaderMode(path)).toBe(mode))
@@ -43,6 +43,7 @@ describe('mobile workspace route contract', () => {
   })
   it('keeps service settings reachable for anonymous users and isolates club tabs', () => {
     expect(mobileModules({ isClub: false, isAuthenticated: false }).find(item => item.key === 'profile')?.to).toBe('/settings')
+    expect(mobileTabs('workbench', { isClub: true, isAuthenticated: true }).map(item => item.key)).toEqual(['goods', 'gamification', 'themes', 'popularity', 'profile'])
     expect(mobileTabs('profile', { isClub: true, isAuthenticated: true }).map(item => item.key)).toEqual(['account', 'settings'])
   })
   it('clears remembered destinations and scroll without touching local settings', () => {

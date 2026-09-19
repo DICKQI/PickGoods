@@ -70,6 +70,7 @@ export function mobileTabs(module: MobileModule, identity: MobileIdentity): Mobi
     ]
     case 'workbench': return [
       { key: 'goods', label: '谷子', to: '/club/goods' },
+      { key: 'gamification', label: '成就', to: '/club/gamification' },
       { key: 'themes', label: '主题', to: '/club/themes' },
       { key: 'popularity', label: '人气', to: '/club/popularity' },
       { key: 'profile', label: '资料', to: '/club/profile' },

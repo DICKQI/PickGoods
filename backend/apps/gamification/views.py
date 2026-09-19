@@ -3,7 +3,7 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, Max, Q
+from django.db.models import Count, Max, Prefetch, Q
 from django.shortcuts import get_object_or_404
 from rest_framework import mixins, status, viewsets
 from rest_framework.decorators import action
@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.goods.models import ClubGoodsOrigin
 from core.permissions import IsAdmin, IsCollectorAccount
 from apps.users.models import User
 
@@ -85,13 +86,29 @@ def _metric_summary(user) -> dict:
 
 
 def _published_rewards(user, request):
+    participating_club_ids = set(
+        ClubGoodsOrigin.objects.filter(
+            collector=user,
+            club__isnull=False,
+        ).values_list("club_id", flat=True)
+    )
     grants = {
         grant.reward_id: grant
         for grant in UserReward.objects.filter(user=user).select_related("source_achievement")
     }
     payload = []
     reward_qs = (
-        Reward.objects.filter(Q(is_active=True) | Q(user_grants__user=user))
+        Reward.objects.filter(
+            Q(club__isnull=True, is_active=True)
+            | Q(
+                club_id__in=participating_club_ids,
+                is_active=True,
+                achievements__is_active=True,
+                achievements__set__is_active=True,
+            )
+            | Q(user_grants__user=user)
+        )
+        .select_related("club")
         .prefetch_related("assets")
         .distinct()
     )
@@ -131,8 +148,7 @@ class SummaryView(APIView):
         )
         equipment = UserEquippedReward.objects.filter(
             user=request.user,
-            reward__is_active=True,
-        ).select_related("reward")
+        ).select_related("reward", "reward__club")
         return Response(
             {
                 "enabled": enabled,
@@ -170,17 +186,40 @@ class OverviewView(APIView):
                     "achievements": [],
                 }
             )
+        participating_club_ids = set(
+            ClubGoodsOrigin.objects.filter(
+                collector=request.user,
+                club__isnull=False,
+            ).values_list("club_id", flat=True)
+        )
         states = (
             UserAchievement.objects.filter(user=request.user)
             .filter(
                 Q(
+                    achievement__set__club__isnull=True,
+                    achievement__is_active=True,
+                    achievement__set__is_active=True,
+                )
+                | Q(
+                    achievement__set__club_id__in=participating_club_ids,
                     achievement__is_active=True,
                     achievement__set__is_active=True,
                 )
                 | ~Q(status=UserAchievement.STATUS_LOCKED)
             )
-            .select_related("achievement", "achievement__set")
-            .prefetch_related("achievement__rewards")
+            .select_related(
+                "achievement",
+                "achievement__set",
+                "achievement__set__club",
+            )
+            .prefetch_related(
+                Prefetch(
+                    "achievement__rewards",
+                    queryset=Reward.objects.select_related("club").prefetch_related(
+                        "assets"
+                    ),
+                )
+            )
             .order_by("achievement__set__order", "achievement__order", "id")
         )
         return Response(
@@ -223,7 +262,6 @@ class EquipmentView(APIView):
     def get(self, request):
         equipment = UserEquippedReward.objects.filter(
             user=request.user,
-            reward__is_active=True,
         ).select_related("reward")
         return Response({"results": EquipmentSerializer(equipment, many=True, context={"request": request}).data})
 

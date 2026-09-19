@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from django.contrib.auth.hashers import check_password, make_password
-from django.db import models
+from django.db import models, transaction
+from django.utils import timezone
 
 
 class Role(models.Model):
@@ -61,6 +62,10 @@ class User(models.Model):
         verbose_name = "用户"
         verbose_name_plural = "用户"
         ordering = ["id"]
+        indexes = [
+            models.Index(fields=["is_active", "created_at"]),
+            models.Index(fields=["role", "is_active", "created_at"]),
+        ]
 
     def __str__(self) -> str:
         return self.username
@@ -100,6 +105,12 @@ class Club(models.Model):
     address = models.CharField(max_length=300, blank=True, default="", verbose_name="地址")
     business_hours = models.CharField(max_length=200, blank=True, default="", verbose_name="营业时间")
     application_reason = models.TextField(blank=True, default="", verbose_name="申请理由")
+    deleted_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="注销时间",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 
@@ -110,6 +121,20 @@ class Club(models.Model):
 
     def __str__(self):
         return self.name
+
+    def soft_delete(self):
+        with transaction.atomic():
+            now = timezone.now()
+            self.deleted_at = now
+            self.save(update_fields=["deleted_at", "updated_at"])
+            if self.user_id and self.user.is_active:
+                self.user.is_active = False
+                self.user.save(update_fields=["is_active", "updated_at"])
+
+    def delete(self, *args, **kwargs):
+        if self.deleted_at is None:
+            self.soft_delete()
+        return 0, {}
 
 
 class ClubFavorite(models.Model):

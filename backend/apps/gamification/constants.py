@@ -5,3 +5,7 @@ REWARD_PRESET_KEYS = {
     "SHOWCASE_THEME": {"cream-stage", "night-museum"},
     "SHOWCASE_EFFECT": {"soft-glow", "galaxy-flow", "gold-fall"},
 }
+
+ELIGIBLE_GOODS_STATUSES = {"in_cabinet", "outdoor", "sold"}
+
+PAID_PREORDER_STATUSES = {"paid", "converted"}

@@ -54,7 +54,7 @@ export const useGamificationStore = defineStore('gamification', () => {
 
   const enabled = computed(() => summary.value.enabled)
   const ownedRewards = computed(() => rewards.value.filter(
-    item => item.owned && item.is_active !== false,
+    item => item.owned,
   ))
 
   function equipped(slot: GamificationEquipmentSlot) {

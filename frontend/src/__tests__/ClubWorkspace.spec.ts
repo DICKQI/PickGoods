@@ -72,9 +72,10 @@ describe('ClubWorkspace 社团工作区导航', () => {
   it('社团谷子列表页仍显示工作区导航', () => {
     const wrapper = mountWorkspace()
 
-    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(4)
+    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(5)
     expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(0%)')
     expect(wrapper.text()).toContain('社团谷子')
+    expect(wrapper.text()).toContain('成就奖励')
     expect(wrapper.text()).toContain('主题管理')
     expect(wrapper.text()).toContain('人气统计')
     expect(wrapper.text()).toContain('社团资料')
@@ -86,10 +87,10 @@ describe('ClubWorkspace 社团工作区导航', () => {
     expect(wrapper.find('.workspace-tabs').exists()).toBe(false)
   })
 
-  it('桌面端使用四等分轨道并保留滑块动画', () => {
+  it('桌面端使用五等分轨道并保留滑块动画', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/views/club/ClubWorkspace.vue'), 'utf8')
 
-    expect(source).toContain('grid-template-columns: repeat(4, minmax(0, 1fr))')
+    expect(source).toContain('grid-template-columns: repeat(5, minmax(0, 1fr))')
     expect(source).toContain('transition: transform 240ms cubic-bezier(.22, 1, .36, 1)')
   })
 
@@ -97,16 +98,16 @@ describe('ClubWorkspace 社团工作区导航', () => {
     routeMock.name = 'ClubPopularity'
     const wrapper = mountWorkspace()
 
-    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(200%)')
+    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(300%)')
     expect(wrapper.find('.workspace-tab.is-active').text()).toContain('人气统计')
-    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(4)
+    expect(wrapper.findAll('.workspace-tabs a')).toHaveLength(5)
   })
 
   it('主题管理路由激活第二个工作区 TAB', () => {
     routeMock.name = 'ClubThemes'
     const wrapper = mountWorkspace()
 
-    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(100%)')
+    expect(wrapper.find('.workspace-tab-slider').attributes('style')).toContain('translateX(200%)')
     expect(wrapper.find('.workspace-tab.is-active').text()).toContain('主题管理')
   })
 })

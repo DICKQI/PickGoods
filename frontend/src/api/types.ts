@@ -1551,7 +1551,10 @@ export type GamificationMetric =
   | 'SPEND_AMOUNT'
   | 'DISTINCT_IP_COUNT'
   | 'DISTINCT_CHARACTER_COUNT'
+  | 'CLUB_GOODS_QUANTITY'
+  | 'CLUB_SPEND_AMOUNT'
 export type GamificationAchievementStatus = 'locked' | 'unlocked' | 'claimed'
+export type GamificationOwnerType = 'platform' | 'club'
 export type GamificationEquipmentSlot =
   | 'PROFILE_FRAME'
   | 'PROFILE_CARD_SKIN'
@@ -1567,9 +1570,17 @@ export interface GamificationRewardAsset {
   created_at?: string
 }
 
+export interface GamificationClubSummary {
+  id: number
+  name: string
+  avatar?: string | null
+}
+
 export interface GamificationReward {
   id: number
   code: string
+  club?: GamificationClubSummary | null
+  owner_type?: GamificationOwnerType
   name: string
   description: string
   reward_type: GamificationRewardType
@@ -1587,6 +1598,8 @@ export interface GamificationReward {
 export interface GamificationAchievementSet {
   id: number
   code: string
+  club?: GamificationClubSummary | null
+  owner_type?: GamificationOwnerType
   name: string
   description: string
   badge_label: string
@@ -1630,6 +1643,7 @@ export interface UserGamificationAchievement {
     description: string
     root_operator: GamificationOperator
     is_limited: boolean
+    first_published_at?: string | null
     set: GamificationAchievementSet
   }
   status: GamificationAchievementStatus
@@ -1695,6 +1709,8 @@ export interface GamificationClaimResponse {
 export interface AdminGamificationSet extends GamificationAchievementSet {
   id: number
   achievement_count: number
+  unlocked_count: number
+  claimed_count: number
   created_at: string
   updated_at: string
 }
@@ -1725,6 +1741,7 @@ export interface AdminGamificationAchievement {
   is_active: boolean
   is_limited: boolean
   order: number
+  first_published_at?: string | null
   rewards: number[]
   rule_groups: AdminGamificationRuleGroup[]
   user_count: number
@@ -1752,6 +1769,33 @@ export interface AdminGamificationReward extends GamificationReward {
   achievement_count: number
   created_at: string
   updated_at: string
+}
+
+export interface ClubGamificationAchievement {
+  id: number
+  code: string
+  name: string
+  description: string
+  is_limited: boolean
+  first_published_at?: string | null
+  rewards: GamificationReward[]
+  status: GamificationAchievementStatus | null
+  progress: GamificationProgress | null
+  progress_percent: string | number | null
+  unlocked_at?: string | null
+  claimed_at?: string | null
+  can_claim: boolean
+}
+
+export interface ClubGamificationSet extends GamificationAchievementSet {
+  achievements: ClubGamificationAchievement[]
+}
+
+export interface ClubGamificationOverview {
+  enabled: boolean
+  club: GamificationClubSummary
+  participation: boolean
+  sets: ClubGamificationSet[]
 }
 
 export interface AdminGamificationUser {

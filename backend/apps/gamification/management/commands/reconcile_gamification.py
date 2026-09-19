@@ -7,10 +7,12 @@ from apps.gamification.models import MetricEvent
 from apps.gamification.services import (
     GamificationConfig,
     evaluate_user,
+    reconcile_club_achievements,
     sync_goods_source,
     sync_preorder_source,
     sync_showcase_altar,
 )
+from apps.gamification.models import MetricSyncFailure
 
 
 class Command(BaseCommand):
@@ -46,9 +48,21 @@ class Command(BaseCommand):
             showcase = Showcase.objects.only("user_id").get(pk=showcase_id)
             user_ids.add(showcase.user_id)
             sync_showcase_altar(showcase_id, emit_events=emit_events)
+        for event_id in (
+            MetricSyncFailure.objects.filter(
+                source_type="club_import",
+                resolved_at__isnull=True,
+            )
+            .values_list("source_id", flat=True)
+            .iterator()
+        ):
+            from apps.gamification.services import sync_club_import_event
+
+            sync_club_import_event(event_id)
         if emit_events:
             from apps.users.models import User
 
             for user in User.objects.filter(id__in=user_ids, account_type="collector").iterator():
                 evaluate_user(user, force=True)
+            reconcile_club_achievements()
         self.stdout.write(self.style.SUCCESS("游戏化数据修复完成。"))

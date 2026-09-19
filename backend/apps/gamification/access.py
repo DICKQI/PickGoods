@@ -28,10 +28,9 @@ def public_badge_queryset(user_id: int):
         PublicBadgeSelection.objects.filter(
             user_id=user_id,
             reward__reward_type=Reward.TYPE_BADGE,
-            reward__is_active=True,
             reward__user_grants__user_id=user_id,
         )
-        .select_related("reward")
+        .select_related("reward", "reward__club")
         .distinct()
         .order_by("order", "id")
     )

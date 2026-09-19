@@ -76,6 +76,17 @@ describe('useGamificationStore', () => {
     expect(store.equipped('PROFILE_FRAME')?.id).toBe(1)
   })
 
+  it('keeps owned rewards available after they are disabled', async () => {
+    vi.mocked(getGamificationRewards).mockResolvedValue({
+      results: [{ ...reward, is_active: false }],
+    })
+    const store = useGamificationStore()
+
+    await store.loadRewards(true)
+
+    expect(store.ownedRewards.map(item => item.id)).toEqual([1])
+  })
+
   it('refreshes all user state after claiming an achievement', async () => {
     vi.mocked(claimGamificationAchievement).mockResolvedValue({
       achievement: {} as never,

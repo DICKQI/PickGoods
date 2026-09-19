@@ -9,6 +9,7 @@ import type {
   GamificationEquipment,
   GamificationEquipmentSlot,
   GamificationOverview,
+  GamificationOwnerType,
   GamificationReward,
   GamificationRewardList,
   GamificationSummary,
@@ -51,7 +52,13 @@ export function markGamificationSeen() {
 
 // ==================== 管理员接口 ====================
 
-export function getAdminGamificationSets(params?: { page?: number; page_size?: number; search?: string }) {
+export function getAdminGamificationSets(params?: {
+  page?: number
+  page_size?: number
+  search?: string
+  owner_type?: GamificationOwnerType
+  club?: number
+}) {
   return request.get<PaginatedResponse<AdminGamificationSet>>('/api/admin/gamification/sets/', { params })
 }
 
@@ -72,6 +79,8 @@ export function getAdminGamificationAchievements(params?: {
   page_size?: number
   search?: string
   set?: number
+  owner_type?: GamificationOwnerType
+  club?: number
 }) {
   return request.get<PaginatedResponse<AdminGamificationAchievement>>(
     '/api/admin/gamification/achievements/',
@@ -96,6 +105,8 @@ export function getAdminGamificationRewards(params?: {
   page_size?: number
   search?: string
   reward_type?: string
+  owner_type?: GamificationOwnerType
+  club?: number
 }) {
   return request.get<PaginatedResponse<AdminGamificationReward>>('/api/admin/gamification/rewards/', { params })
 }

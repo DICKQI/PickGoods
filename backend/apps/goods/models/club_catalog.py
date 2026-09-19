@@ -102,6 +102,15 @@ class ClubGoodsOrigin(models.Model):
     collector = models.ForeignKey(
         "users.User", on_delete=models.SET_NULL, null=True, blank=True, related_name="club_goods_origins", verbose_name="吃谷人"
     )
+    club = models.ForeignKey(
+        "users.Club",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="goods_origins",
+        db_index=True,
+        verbose_name="来源社团",
+    )
     source_item = models.ForeignKey(
         ClubCatalogItem,
         on_delete=models.SET_NULL,
@@ -134,6 +143,7 @@ class ClubGoodsOrigin(models.Model):
         ]
         indexes = [
             models.Index(fields=["collector", "source_item"]),
+            models.Index(fields=["club", "collector"]),
         ]
 
 
@@ -153,6 +163,12 @@ class ClubGoodsImportEvent(models.Model):
     quantity_added = models.PositiveIntegerField(default=1, verbose_name="增加数量")
     source_snapshot = models.JSONField(default=dict, verbose_name="导入时来源快照")
     goods_snapshot = models.JSONField(default=dict, verbose_name="导入后个人库存快照")
+    effective_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="首次进入有效状态时间",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="导入时间")
 
     class Meta:

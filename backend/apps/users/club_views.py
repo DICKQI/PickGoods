@@ -32,6 +32,7 @@ from apps.goods.models import (
 )
 from apps.goods.serializers.goods import GoodsDetailSerializer
 from apps.goods.utils import compress_image
+from apps.gamification.constants import ELIGIBLE_GOODS_STATUSES
 from core.permissions import IsClubAccount, IsCollectorAccount, is_admin
 
 from .club_serializers import (
@@ -80,6 +81,7 @@ def _public_club_queryset():
         user__account_type=User.ACCOUNT_TYPE_CLUB,
         user__approval_status=User.APPROVAL_APPROVED,
         user__is_active=True,
+        deleted_at__isnull=True,
     ).order_by("name", "id")
 
 
@@ -354,6 +356,7 @@ class ClubViewSet(viewsets.GenericViewSet):
             club__user__account_type=User.ACCOUNT_TYPE_CLUB,
             club__user__approval_status=User.APPROVAL_APPROVED,
             club__user__is_active=True,
+            club__deleted_at__isnull=True,
         ).select_related("club", "club__user").order_by("-created_at", "-id")
         page = self.paginate_queryset(queryset)
         serializer = ClubFavoriteSerializer(page, many=True, context={"request": request})
@@ -361,7 +364,7 @@ class ClubViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=["get", "patch"], url_path="me")
     def me(self, request):
-        club = get_object_or_404(Club, user=request.user)
+        club = get_object_or_404(Club, user=request.user, deleted_at__isnull=True)
         if request.method.lower() == "patch":
             serializer = ClubSerializer(club, data=request.data, partial=True, context={"request": request})
             serializer.is_valid(raise_exception=True)
@@ -370,7 +373,7 @@ class ClubViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=["post"], url_path="me/avatar", parser_classes=[MultiPartParser, FormParser])
     def avatar(self, request):
-        club = get_object_or_404(Club, user=request.user)
+        club = get_object_or_404(Club, user=request.user, deleted_at__isnull=True)
         serializer = ClubAvatarUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         image = serializer.validated_data["avatar"]
@@ -528,7 +531,7 @@ class ClubViewSet(viewsets.GenericViewSet):
 
     @action(detail=False, methods=["get"], url_path="me/popularity")
     def popularity(self, request):
-        club = get_object_or_404(Club, user=request.user)
+        club = get_object_or_404(Club, user=request.user, deleted_at__isnull=True)
         queryset = ClubCatalogItem.objects.filter(club=club).annotate(
             intended_user_count=Count(
                 "goods_origins__collector",
@@ -599,10 +602,17 @@ class ClubCatalogManagementViewSet(viewsets.ModelViewSet):
     serializer_class = ClubCatalogItemSerializer
 
     def _club(self):
-        return get_object_or_404(Club, user=self.request.user)
+        return get_object_or_404(
+            Club,
+            user=self.request.user,
+            deleted_at__isnull=True,
+        )
 
     def get_queryset(self):
-        return ClubCatalogItem.objects.filter(club__user=self.request.user).select_related(
+        return ClubCatalogItem.objects.filter(
+            club__user=self.request.user,
+            club__deleted_at__isnull=True,
+        ).select_related(
             "club", "ip", "category", "theme"
         ).prefetch_related("characters__ip", "additional_photos")
 
@@ -828,32 +838,47 @@ class ClubGoodsImportView(viewsets.ViewSet):
         target_user = request.user
         if getattr(target_user, "account_type", None) != User.ACCOUNT_TYPE_COLLECTOR and not is_admin(target_user):
             return Response({"detail": "只有吃谷人可以导入社团谷子"}, status=status.HTTP_403_FORBIDDEN)
-        source = get_object_or_404(
-            ClubCatalogItem.objects.select_related("club", "ip", "category", "theme").prefetch_related(
-                "characters", "additional_photos", "theme__images", "theme__template__characters"
-            ),
-            pk=goods_id,
-            club__user__account_type=User.ACCOUNT_TYPE_CLUB,
-            club__user__approval_status=User.APPROVAL_APPROVED,
-            club__user__is_active=True,
-            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
-        )
         values = serializer.validated_data
-        existing_origin = ClubGoodsOrigin.objects.filter(
-            collector=target_user, source_item=source
-        ).select_related("personal_goods").first()
-        existing = existing_origin.personal_goods if existing_origin else None
-        if existing and not values["confirm_duplicate"]:
-            return Response(
-                {
-                    "code": "club_goods_already_imported",
-                    "detail": "谷仓内已有同一社团的同一个，是否增加数量",
-                    "goods": GoodsDetailSerializer(existing, context={"request": request}).data,
-                },
-                status=status.HTTP_409_CONFLICT,
-            )
 
         with transaction.atomic():
+            source = get_object_or_404(
+                ClubCatalogItem.objects.select_for_update()
+                .select_related("club", "ip", "category", "theme")
+                .prefetch_related(
+                    "characters",
+                    "additional_photos",
+                    "theme__images",
+                    "theme__template__characters",
+                ),
+                pk=goods_id,
+                club__user__account_type=User.ACCOUNT_TYPE_CLUB,
+                club__user__approval_status=User.APPROVAL_APPROVED,
+                club__user__is_active=True,
+                publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+            )
+            existing_origin = (
+                ClubGoodsOrigin.objects.select_for_update()
+                .filter(collector=target_user, source_item=source)
+                .select_related("personal_goods")
+                .first()
+            )
+            existing = (
+                Goods.objects.select_for_update().get(pk=existing_origin.personal_goods_id)
+                if existing_origin and existing_origin.personal_goods_id
+                else None
+            )
+            if existing and not values["confirm_duplicate"]:
+                return Response(
+                    {
+                        "code": "club_goods_already_imported",
+                        "detail": "谷仓内已有同一社团的同一个，是否增加数量",
+                        "goods": GoodsDetailSerializer(
+                            existing,
+                            context={"request": request},
+                        ).data,
+                    },
+                    status=status.HTTP_409_CONFLICT,
+                )
             snapshot = _catalog_snapshot(source)
             if existing:
                 existing.quantity += 1
@@ -866,6 +891,11 @@ class ClubGoodsImportView(viewsets.ViewSet):
                     quantity_added=1,
                     source_snapshot=snapshot,
                     goods_snapshot=GoodsDetailSerializer(existing, context={"request": request}).data,
+                    effective_at=(
+                        timezone.now()
+                        if existing.status in ELIGIBLE_GOODS_STATUSES
+                        else None
+                    ),
                 )
                 result = existing
                 response_status = status.HTTP_200_OK
@@ -895,19 +925,29 @@ class ClubGoodsImportView(viewsets.ViewSet):
                 _copy_catalog_media(source, result)
                 origin = existing_origin or ClubGoodsOrigin.objects.create(
                     collector=target_user,
+                    club=source.club,
                     source_item=source,
                     personal_goods=result,
                     first_source_snapshot=snapshot,
                 )
+                if origin.club_id is None:
+                    origin.club = source.club
                 if origin.personal_goods_id != result.id:
                     origin.personal_goods = result
-                    origin.save(update_fields=["personal_goods", "updated_at"])
+                    origin.save(update_fields=["club", "personal_goods", "updated_at"])
+                elif origin.club_id == source.club_id:
+                    origin.save(update_fields=["club", "updated_at"])
                 ClubGoodsImportEvent.objects.create(
                     origin=origin,
                     operation=ClubGoodsImportEvent.OPERATION_CREATED,
-                    quantity_added=1,
+                    quantity_added=values.get("quantity", 1),
                     source_snapshot=snapshot,
                     goods_snapshot=GoodsDetailSerializer(result, context={"request": request}).data,
+                    effective_at=(
+                        timezone.now()
+                        if result.status in ELIGIBLE_GOODS_STATUSES
+                        else None
+                    ),
                 )
                 response_status = status.HTTP_201_CREATED
                 merged = False

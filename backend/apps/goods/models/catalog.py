@@ -60,6 +60,9 @@ class IP(models.Model):
         verbose_name = "IP作品"
         verbose_name_plural = "IP作品"
         ordering = ["order", "id"]
+        indexes = [
+            models.Index(fields=["subject_type", "order"]),
+        ]
 
     def __str__(self):
         return self.name
@@ -148,6 +151,10 @@ class Character(models.Model):
         verbose_name_plural = "角色"
         unique_together = ("ip", "name")
         ordering = ["created_at"]
+        indexes = [
+            models.Index(fields=["ip", "created_at"]),
+            models.Index(fields=["bgm_character_id"]),
+        ]
 
     def __str__(self):
         return f"{self.ip.name} - {self.name}"

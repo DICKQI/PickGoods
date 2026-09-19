@@ -1,11 +1,13 @@
 from datetime import timedelta
 from io import BytesIO
+import threading
+from unittest import skipUnless
 from uuid import uuid4
 
-from django.db import connection
+from django.db import close_old_connections, connection
 from django.conf import settings
 from django.core.cache import cache
-from django.test import TestCase, override_settings
+from django.test import TestCase, TransactionTestCase, override_settings
 from django.test.utils import CaptureQueriesContext
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.utils import timezone
@@ -92,6 +94,16 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(ClubGoodsImportTemplateView.throttle_scope, "club_import")
         self.assertEqual(ClubGoodsImportView.throttle_scope, "club_import")
         self.assertEqual(PublicClubGoodsDetailView.throttle_scope, "club_public_read")
+
+    def test_soft_deleted_club_is_hidden_and_deactivates_owner(self):
+        self.club.delete()
+        self.club.refresh_from_db()
+        self.club_user.refresh_from_db()
+
+        self.assertIsNotNone(self.club.deleted_at)
+        self.assertFalse(self.club_user.is_active)
+        response = APIClient().get(f"/api/clubs/{self.club.id}/")
+        self.assertEqual(response.status_code, 404)
 
     def test_club_account_manages_only_its_own_themes(self):
         other_club_user = User.objects.create(
@@ -1150,3 +1162,92 @@ class ClubFeatureAPITestCase(TestCase):
         self.club_user.is_active = False
         self.club_user.save(update_fields=["is_active", "updated_at"])
         self.assertFalse(ClubFavorite.objects.filter(pk=favorite.pk).exists())
+
+
+class ClubGoodsImportConcurrencyTests(TransactionTestCase):
+    reset_sequences = True
+
+    @skipUnless(
+        connection.vendor == "postgresql",
+        "Row-lock concurrency assertion requires PostgreSQL.",
+    )
+    def test_confirmed_duplicate_imports_are_serialized(self):
+        cache.clear()
+        user_role = Role.objects.create(name="User")
+        club_user = User.objects.create(
+            username="concurrent-club-owner",
+            role=user_role,
+            account_type=User.ACCOUNT_TYPE_CLUB,
+            approval_status=User.APPROVAL_APPROVED,
+            is_active=True,
+        )
+        collector = User.objects.create(
+            username="concurrent-collector",
+            role=user_role,
+            account_type=User.ACCOUNT_TYPE_COLLECTOR,
+            is_active=True,
+        )
+        club = Club.objects.create(user=club_user, name="并发测试社团")
+        ip = IP.objects.create(name="并发测试 IP")
+        category = Category.objects.create(name="并发测试品类")
+        character = Character.objects.create(name="并发测试角色", ip=ip)
+        source = ClubCatalogItem.objects.create(
+            club=club,
+            name="并发测试商品",
+            ip=ip,
+            category=category,
+            publication_status=ClubCatalogItem.PUBLICATION_LISTED,
+        )
+        source.characters.add(character)
+
+        initial_client = APIClient()
+        initial_client.force_authenticate(collector)
+        initial = initial_client.post(
+            f"/api/clubs/goods/{source.id}/import/",
+            {"status": "in_cabinet", "quantity": 1},
+            format="json",
+        )
+        self.assertEqual(initial.status_code, status.HTTP_201_CREATED)
+
+        barrier = threading.Barrier(2)
+        statuses = []
+        errors = []
+
+        def import_once():
+            close_old_connections()
+            try:
+                client = APIClient()
+                client.force_authenticate(collector)
+                barrier.wait(timeout=10)
+                response = client.post(
+                    f"/api/clubs/goods/{source.id}/import/",
+                    {
+                        "status": "in_cabinet",
+                        "quantity": 1,
+                        "confirm_duplicate": True,
+                    },
+                    format="json",
+                )
+                statuses.append(response.status_code)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+            finally:
+                close_old_connections()
+
+        threads = [threading.Thread(target=import_once) for _ in range(2)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join(timeout=30)
+
+        self.assertFalse(errors)
+        self.assertEqual(statuses, [status.HTTP_200_OK, status.HTTP_200_OK])
+        goods = Goods.objects.get(user=collector)
+        self.assertEqual(goods.quantity, 3)
+        self.assertEqual(
+            ClubGoodsImportEvent.objects.filter(
+                origin__collector=collector,
+                origin__source_item=source,
+            ).count(),
+            3,
+        )

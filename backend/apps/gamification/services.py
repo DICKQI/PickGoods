@@ -10,10 +10,17 @@ from django.db import transaction
 from django.db.models import Prefetch
 from django.utils import timezone
 
-from apps.goods.models import Goods, Showcase, ShowcaseGoods
+from apps.goods.models import (
+    ClubGoodsImportEvent,
+    ClubGoodsOrigin,
+    Goods,
+    Showcase,
+    ShowcaseGoods,
+)
 from apps.reminder.models import Preorder
-from apps.users.models import User
+from apps.users.models import Club, User
 
+from .constants import ELIGIBLE_GOODS_STATUSES, PAID_PREORDER_STATUSES
 from .models import (
     Achievement,
     AchievementSet,
@@ -32,8 +39,10 @@ from .models import (
 
 logger = logging.getLogger(__name__)
 
-ELIGIBLE_GOODS_STATUSES = {"in_cabinet", "outdoor", "sold"}
-PAID_PREORDER_STATUSES = {Preorder.STATUS_PAID, Preorder.STATUS_CONVERTED}
+CLUB_METRICS = {
+    RuleCondition.METRIC_CLUB_GOODS_QUANTITY,
+    RuleCondition.METRIC_CLUB_SPEND_AMOUNT,
+}
 
 SLOT_REWARD_TYPES = {
     UserEquippedReward.SLOT_PROFILE_FRAME: Reward.TYPE_PROFILE_FRAME,
@@ -227,8 +236,16 @@ def _as_decimal(value) -> Decimal:
     return Decimal(str(value))
 
 
-def _event_key(source_type: str, source_id, metric: str, before, after) -> str:
-    return f"{source_type}:{source_id}:{metric}:{before}->{after}"
+def _event_key(
+    source_type: str,
+    source_id,
+    metric: str,
+    before,
+    after,
+    occurrence_key: str | None = None,
+) -> str:
+    base = f"{source_type}:{source_id}:{metric}:{before}->{after}"
+    return f"{base}@{occurrence_key}" if occurrence_key else base
 
 
 def _create_event(
@@ -240,9 +257,17 @@ def _create_event(
     source_id: str,
     metadata: dict,
     occurred_at=None,
+    occurrence_key: str | None = None,
 ) -> MetricEvent | None:
     event, created = MetricEvent.objects.get_or_create(
-        idempotency_key=_event_key(source_type, source_id, event_type, metadata.get("before"), metadata.get("after")),
+        idempotency_key=_event_key(
+            source_type,
+            source_id,
+            event_type,
+            metadata.get("before"),
+            metadata.get("after"),
+            occurrence_key,
+        ),
         defaults={
             "user": user,
             "event_type": event_type,
@@ -273,9 +298,10 @@ def _goods_metadata(goods: Goods, *, before=None, after=None) -> dict:
 
 def _metadata_scope_hash(metadata: dict) -> str:
     scope = {
-        key: value
-        for key, value in metadata.items()
-        if key not in {"before", "after", "items"}
+        "ip_id": metadata.get("ip_id"),
+        "character_ids": sorted(metadata.get("character_ids") or []),
+        "category_id": metadata.get("category_id"),
+        "is_official": bool(metadata.get("is_official")),
     }
     return sha256(json.dumps(scope, sort_keys=True, default=str).encode("utf-8")).hexdigest()
 
@@ -377,6 +403,11 @@ def sync_goods_source(
                     goods.gamification_scope_changed_at
                     or occurred_at
                     or timezone.now()
+                ),
+                occurrence_key=(
+                    goods.gamification_scope_changed_at.isoformat()
+                    if goods.gamification_scope_changed_at
+                    else None
                 ),
             )
             events_created = events_created or created_event is not None
@@ -586,6 +617,10 @@ def _event_metadata_matches(metadata: dict, filters: dict) -> bool:
 
 
 def _event_entry_matches(entry: dict, filters: dict) -> bool:
+    catalog_item_ids = {str(value) for value in filters.get("catalog_item_ids", [])}
+    if catalog_item_ids and str(entry.get("goods_id", "")) not in catalog_item_ids:
+        return False
+
     ip_ids = {int(value) for value in filters.get("ip_ids", [])}
     if ip_ids and entry.get("ip_id") not in ip_ids:
         return False
@@ -600,6 +635,10 @@ def _event_entry_matches(entry: dict, filters: dict) -> bool:
     if category_ids and entry.get("category_id") not in category_ids:
         return False
 
+    theme_ids = {int(value) for value in filters.get("theme_ids", [])}
+    if theme_ids and entry.get("theme_id") not in theme_ids:
+        return False
+
     official_values = filters.get("is_official")
     if official_values not in (None, []) and bool(entry.get("is_official")) not in set(official_values):
         return False
@@ -609,6 +648,28 @@ def _event_entry_matches(entry: dict, filters: dict) -> bool:
 def _matching_entries(metadata: dict, filters: dict) -> list[dict]:
     entries = metadata.get("items") or [metadata]
     return [entry for entry in entries if _event_entry_matches(entry, filters)]
+
+
+def _club_import_metadata(event: ClubGoodsImportEvent) -> dict:
+    snapshot = event.source_snapshot or {}
+    ip = snapshot.get("ip") or {}
+    category = snapshot.get("category") or {}
+    theme = snapshot.get("theme") or {}
+    return {
+        "goods_id": str(snapshot.get("id") or ""),
+        "ip_id": ip.get("id"),
+        "category_id": category.get("id"),
+        "theme_id": theme.get("id"),
+        "character_ids": [
+            item.get("id")
+            for item in snapshot.get("characters", [])
+            if item.get("id") is not None
+        ],
+        "is_official": bool(snapshot.get("is_official")),
+        "public_price": snapshot.get("public_price"),
+        "quantity_added": event.quantity_added,
+        "effective_at": event.effective_at,
+    }
 
 
 def _events_for_condition(condition: RuleCondition, *, user, starts_at, ends_at):
@@ -635,14 +696,69 @@ def _events_for_condition(condition: RuleCondition, *, user, starts_at, ends_at)
     ).order_by("occurred_at", "id")
 
 
-def evaluate_condition(condition: RuleCondition, *, user, starts_at, ends_at) -> dict:
-    events = list(_events_for_condition(condition, user=user, starts_at=starts_at, ends_at=ends_at))
-    matching = [event for event in events if _event_metadata_matches(event.metadata or {}, condition.filters or {})]
+def evaluate_condition(condition: RuleCondition, *, user, starts_at, ends_at, club=None) -> dict:
+    if condition.metric in CLUB_METRICS:
+        if club is None:
+            matching = []
+        else:
+            club_events = (
+                ClubGoodsImportEvent.objects.filter(
+                    origin__collector=user,
+                    origin__club=club,
+                    effective_at__isnull=False,
+                    effective_at__gte=starts_at,
+                    effective_at__lte=ends_at,
+                )
+                .select_related("origin")
+                .select_related("origin__personal_goods")
+                .order_by("effective_at", "id")
+            )
+            matching = []
+            for event in club_events:
+                metadata = _club_import_metadata(event)
+                if (
+                    _event_entry_matches(
+                        metadata,
+                        condition.filters or {},
+                    )
+                ):
+                    matching.append(event)
+    else:
+        events = list(
+            _events_for_condition(
+                condition,
+                user=user,
+                starts_at=starts_at,
+                ends_at=ends_at,
+            )
+        )
+        matching = [
+            event
+            for event in events
+            if _event_metadata_matches(
+                event.metadata or {},
+                condition.filters or {},
+            )
+        ]
 
     if condition.metric == RuleCondition.METRIC_GOODS_QUANTITY:
         current = sum((_as_decimal(event.amount) for event in matching), Decimal("0.00"))
     elif condition.metric == RuleCondition.METRIC_SPEND_AMOUNT:
         current = sum((_as_decimal(event.amount) for event in matching), Decimal("0.00"))
+    elif condition.metric == RuleCondition.METRIC_CLUB_GOODS_QUANTITY:
+        current = sum(
+            (Decimal(event.quantity_added) for event in matching),
+            Decimal("0.00"),
+        )
+    elif condition.metric == RuleCondition.METRIC_CLUB_SPEND_AMOUNT:
+        current = sum(
+            (
+                _as_decimal(_club_import_metadata(event)["public_price"])
+                * Decimal(event.quantity_added)
+                for event in matching
+            ),
+            Decimal("0.00"),
+        )
     elif condition.metric == RuleCondition.METRIC_VALID_ALTARS:
         current = Decimal(
             len(
@@ -699,6 +815,16 @@ def evaluate_condition(condition: RuleCondition, *, user, starts_at, ends_at) ->
 
 
 def _range_for_achievement(achievement: Achievement):
+    if achievement.set.club_id:
+        starts_at = achievement.first_published_at or timezone.now()
+        if achievement.set.starts_at:
+            starts_at = max(starts_at, achievement.set.starts_at)
+        ends_at = (
+            achievement.set.ends_at
+            if achievement.set.is_limited and achievement.set.ends_at
+            else timezone.now()
+        )
+        return starts_at, ends_at
     config = GamificationConfig.load()
     starts_at = achievement.set.starts_at or config.rollout_at
     ends_at = achievement.set.ends_at if achievement.set.is_limited and achievement.set.ends_at else timezone.now()
@@ -707,11 +833,18 @@ def _range_for_achievement(achievement: Achievement):
 
 def evaluate_achievement(user, achievement: Achievement) -> dict:
     starts_at, ends_at = _range_for_achievement(achievement)
+    club = achievement.set.club
     groups = []
     condition_results = []
     for group in achievement.rule_groups.all():
         results = [
-            evaluate_condition(condition, user=user, starts_at=starts_at, ends_at=ends_at)
+            evaluate_condition(
+                condition,
+                user=user,
+                starts_at=starts_at,
+                ends_at=ends_at,
+                club=club,
+            )
             for condition in group.conditions.all()
         ]
         if group.operator == RuleGroup.OPERATOR_ANY:
@@ -765,11 +898,16 @@ def evaluate_achievement(user, achievement: Achievement) -> dict:
     }
 
 
-def evaluate_user(user, *, force: bool = False) -> list[dict]:
+def evaluate_user(user, *, force: bool = False, club=None) -> list[dict]:
     if (not force and not is_feature_enabled()) or getattr(user, "account_type", None) != "collector":
         return []
+    achievements = Achievement.objects.filter(is_active=True, set__is_active=True)
+    if club is None:
+        achievements = achievements.filter(set__club__isnull=True)
+    else:
+        achievements = achievements.filter(set__club=club)
     achievements = (
-        Achievement.objects.filter(is_active=True, set__is_active=True)
+        achievements
         .select_related("set")
         .prefetch_related(
             Prefetch("rule_groups", queryset=RuleGroup.objects.prefetch_related("conditions")),
@@ -780,11 +918,127 @@ def evaluate_user(user, *, force: bool = False) -> list[dict]:
     return [evaluate_achievement(user, achievement) for achievement in achievements]
 
 
+def sync_club_import_event(event_id) -> None:
+    if not is_feature_enabled():
+        return
+    event = (
+        ClubGoodsImportEvent.objects.select_related(
+            "origin",
+            "origin__collector",
+            "origin__club",
+            "origin__personal_goods",
+        )
+        .filter(pk=event_id)
+        .first()
+    )
+    if (
+        event is None
+        or event.origin.collector is None
+        or event.origin.club is None
+        or event.origin.collector.account_type != User.ACCOUNT_TYPE_COLLECTOR
+    ):
+        _clear_sync_failure("club_import", str(event_id))
+        return
+    try:
+        evaluate_user(event.origin.collector, club=event.origin.club)
+    except Exception:
+        logger.exception("Unable to evaluate club gamification import")
+        raise
+    _clear_sync_failure("club_import", str(event_id))
+
+
+def sync_goods_club_sources(goods_id) -> None:
+    goods = (
+        Goods.objects.select_related("user")
+        .filter(pk=goods_id)
+        .first()
+    )
+    if goods is None:
+        return
+    origins = (
+        ClubGoodsOrigin.objects.filter(personal_goods_id=goods_id)
+        .select_related("collector", "club")
+        .distinct()
+    )
+    if goods.status in ELIGIBLE_GOODS_STATUSES and goods.gamification_eligible_since:
+        ClubGoodsImportEvent.objects.filter(
+            origin__personal_goods_id=goods_id,
+            effective_at__isnull=True,
+        ).update(effective_at=goods.gamification_eligible_since)
+    if not is_feature_enabled():
+        return
+    for origin in origins:
+        if (
+            origin.collector is None
+            or origin.club is None
+            or origin.collector.account_type != User.ACCOUNT_TYPE_COLLECTOR
+        ):
+            continue
+        evaluate_user(origin.collector, club=origin.club)
+
+
+def publish_club_achievements(club) -> int:
+    if not is_feature_enabled():
+        return 0
+    collector_ids = (
+        ClubGoodsImportEvent.objects.filter(
+            origin__club=club,
+            origin__collector__account_type=User.ACCOUNT_TYPE_COLLECTOR,
+            origin__collector__is_active=True,
+        )
+        .values_list("origin__collector_id", flat=True)
+        .distinct()
+    )
+    evaluated = 0
+    for user in User.objects.filter(id__in=collector_ids).iterator():
+        evaluate_user(user, club=club)
+        evaluated += 1
+    return evaluated
+
+
+def reconcile_club_achievements() -> int:
+    """Materialize active club achievements for every participating collector."""
+    if not is_feature_enabled():
+        return 0
+    pairs = (
+        ClubGoodsOrigin.objects.filter(
+            club__isnull=False,
+            club__deleted_at__isnull=True,
+            collector__isnull=False,
+            collector__account_type=User.ACCOUNT_TYPE_COLLECTOR,
+            collector__is_active=True,
+        )
+        .values_list("club_id", "collector_id")
+        .distinct()
+    )
+    users_by_club: dict[int, set[int]] = {}
+    for club_id, collector_id in pairs:
+        users_by_club.setdefault(club_id, set()).add(collector_id)
+
+    evaluated = 0
+    for club_id, user_ids in users_by_club.items():
+        club = Club.objects.filter(pk=club_id, deleted_at__isnull=True).first()
+        if club is None:
+            continue
+        for user in User.objects.filter(id__in=user_ids, is_active=True).iterator():
+            evaluate_user(user, club=club, force=True)
+            evaluated += 1
+    return evaluated
+
+
 def claim_achievement(user, achievement_id: int) -> tuple[UserAchievement, list[UserReward]]:
     with transaction.atomic():
-        state = UserAchievement.objects.select_for_update().select_related("achievement").get(
-            user=user,
-            achievement_id=achievement_id,
+        state = (
+            UserAchievement.objects.select_for_update()
+            .select_related(
+                "achievement",
+                "achievement__set",
+                "achievement__set__club",
+            )
+            .get(
+                user=user,
+                achievement_id=achievement_id,
+            )
         )
         if state.status == UserAchievement.STATUS_LOCKED:
             raise ValueError("成就尚未解锁")
@@ -800,7 +1054,12 @@ def claim_achievement(user, achievement_id: int) -> tuple[UserAchievement, list[
             state.claimed_at = timezone.now()
             state.unseen = False
             state.save(update_fields=["status", "claimed_at", "unseen", "updated_at"])
-        grants = list(UserReward.objects.filter(user=user, reward__in=rewards).order_by("id"))
+        grants = list(
+            UserReward.objects.filter(user=user, reward__in=rewards)
+            .select_related("reward", "reward__club")
+            .prefetch_related("reward__assets")
+            .order_by("id")
+        )
     return state, grants
 
 
@@ -813,7 +1072,7 @@ def equip_reward(user, slot: str, reward_id: int | None):
     reward = Reward.objects.get(pk=reward_id)
     if reward.reward_type != SLOT_REWARD_TYPES[slot]:
         raise ValueError("奖励类型与槽位不匹配")
-    if not UserReward.objects.filter(user=user, reward=reward, reward__is_active=True).exists():
+    if not UserReward.objects.filter(user=user, reward=reward).exists():
         raise ValueError("尚未拥有该奖励")
     equipment, _ = UserEquippedReward.objects.update_or_create(
         user=user,
@@ -894,6 +1153,7 @@ def initialize_baseline(rollout_at, *, dry_run: bool = False) -> dict:
 
         for user in User.objects.filter(account_type="collector", is_active=True).iterator():
             evaluate_user(user, force=True)
+        reconcile_club_achievements()
     return counts
 
 

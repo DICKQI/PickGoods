@@ -45,9 +45,14 @@
             <h3>{{ set.name }}</h3>
             <p>{{ set.description }}</p>
           </div>
-          <el-tag :type="set.is_limited ? 'danger' : 'warning'" effect="plain" round>
-            {{ set.is_limited ? '限时活动' : set.badge_label || '永久成就' }}
-          </el-tag>
+          <div class="set-tags">
+            <el-tag :type="set.is_limited ? 'danger' : 'warning'" effect="plain" round>
+              {{ set.is_limited ? '限时活动' : set.badge_label || '永久成就' }}
+            </el-tag>
+            <el-tag v-if="set.club" type="info" effect="plain" round>
+              {{ set.club.name }}
+            </el-tag>
+          </div>
         </header>
 
         <article
@@ -151,6 +156,7 @@ import { ElMessage } from 'element-plus'
 import { CircleCheck, Clock, Medal, Trophy } from '@element-plus/icons-vue'
 import { useGamificationStore } from '@/stores/gamification'
 import type {
+  GamificationAchievementSet,
   GamificationMetric,
   GamificationReward,
   UserGamificationAchievement,
@@ -177,6 +183,7 @@ const groupedAchievements = computed(() => {
     description: string
     badge_label: string
     is_limited: boolean
+    club?: GamificationAchievementSet['club']
     items: UserGamificationAchievement[]
   }>()
   for (const item of store.overview.achievements) {
@@ -187,6 +194,7 @@ const groupedAchievements = computed(() => {
       description: set.description,
       badge_label: set.badge_label,
       is_limited: set.is_limited,
+      club: set.club,
       items: [],
     }
     group.items.push(item)
@@ -215,7 +223,9 @@ function statusTagType(status: UserGamificationAchievement['status']) {
 }
 
 function formatMetric(value: number, metric: GamificationMetric) {
-  if (metric === 'SPEND_AMOUNT') return `¥${Number(value).toFixed(2)}`
+  if (metric === 'SPEND_AMOUNT' || metric === 'CLUB_SPEND_AMOUNT') {
+    return `¥${Number(value).toFixed(2)}`
+  }
   return `${Number.isInteger(value) ? value : Number(value).toFixed(2)}`
 }
 
@@ -291,6 +301,7 @@ onMounted(async () => {
 .set-header span { color: var(--primary-gold-dark); font-size: 11px; font-weight: 800; letter-spacing: .12em; }
 .set-header h3 { margin: 3px 0; font-size: 21px; }
 .set-header p { margin: 0; color: var(--text-light); font-size: 13px; }
+.set-tags { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
 .achievement-card {
   display: grid; grid-template-columns: 70px minmax(0, 1fr) 120px; gap: 16px; align-items: center;
   padding: 18px; border: 1px solid rgba(44,39,30,.08); border-radius: 18px; background: #fff;

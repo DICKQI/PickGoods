@@ -38,6 +38,7 @@ from apps.goods.views import (
     ShowcaseViewSet,
     ThemeViewSet,
 )
+from apps.gamification.club_views import PublicClubGamificationView
 from apps.ocr.views import recognize as ocr_recognize
 from apps.location.views import (
     LocationMoveGoodsView,
@@ -100,6 +101,12 @@ urlpatterns = [
     path("api/clubs/me/goods/<uuid:pk>/additional-photos/<int:photo_id>/", ClubCatalogManagementViewSet.as_view({"delete": "delete_additional_photo"}), name="club-my-goods-additional-photo-detail"),
     path("api/clubs/<int:pk>/goods/<uuid:goods_id>/import-template/", ClubGoodsImportTemplateView.as_view(), name="club-goods-import-template"),
     path("api/clubs/goods/<uuid:goods_id>/import/", ClubGoodsImportView.as_view({"post": "import_goods"}), name="club-goods-import"),
+    path("api/clubs/me/gamification/", include("apps.gamification.club_urls")),
+    path(
+        "api/clubs/<int:pk>/gamification/",
+        PublicClubGamificationView.as_view(),
+        name="club-gamification",
+    ),
     # 后台管理（REST，仅管理员 JWT）
     path("api/admin/", include("apps.admin_api.urls")),
     path("api/admin/gamification/", include("apps.gamification.admin_urls")),

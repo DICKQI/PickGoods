@@ -39,7 +39,8 @@
               <p>{{ reward.description || rewardTypeLabel(reward.reward_type) }}</p>
               <span v-if="reward.owned" class="owned-time">已拥有</span>
               <span v-else class="locked-source">
-                解锁来源：{{ reward.source_achievement?.name || '完成对应成就' }}
+                解锁来源：
+                {{ reward.club ? `${reward.club.name} · ` : '' }}{{ reward.source_achievement?.name || '完成对应成就' }}
               </span>
             </div>
             <div class="reward-actions">
@@ -47,15 +48,14 @@
                 v-if="equipSlot(reward)"
                 :type="isEquipped(reward) ? 'success' : 'primary'"
                 :plain="isEquipped(reward)"
-                :disabled="!reward.owned || reward.is_active === false"
+                :disabled="!reward.owned"
                 @click="toggleEquip(reward)"
               >
                 {{ isEquipped(reward) ? '使用中' : '装备' }}
               </el-button>
-              <span v-else-if="reward.owned && reward.is_active !== false">
+              <span v-else-if="reward.owned">
                 {{ rewardUsageText(reward) }}
               </span>
-              <span v-else-if="reward.owned">奖励已停用</span>
               <span v-else>尚未解锁</span>
             </div>
           </article>

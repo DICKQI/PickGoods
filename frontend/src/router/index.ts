@@ -51,6 +51,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'goods', name: 'ClubGoods', component: () => import('@/views/club/ClubGoods.vue'), meta: { title: '社团谷子', requiresAuth: true, requiresClub: true } },
       { path: 'goods/new', name: 'ClubGoodsNew', component: () => import('@/views/club/ClubGoodsEditor.vue'), meta: { title: '新增社团谷子', requiresAuth: true, requiresClub: true, hideBottomNav: true } },
       { path: 'goods/:id/edit', name: 'ClubGoodsEdit', component: () => import('@/views/club/ClubGoodsEditor.vue'), meta: { title: '编辑社团谷子', requiresAuth: true, requiresClub: true, hideBottomNav: true } },
+      { path: 'gamification', name: 'ClubGamification', component: () => import('@/views/club/ClubGamification.vue'), meta: { title: '社团成就与奖励', requiresAuth: true, requiresClub: true } },
       { path: 'themes', name: 'ClubThemes', component: () => import('@/views/ThemeManagement.vue'), meta: { title: '社团主题', requiresAuth: true, requiresClub: true } },
       { path: 'popularity', name: 'ClubPopularity', component: () => import('@/views/club/ClubPopularity.vue'), meta: { title: '人气统计', requiresAuth: true, requiresClub: true } },
     ],

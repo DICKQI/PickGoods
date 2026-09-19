@@ -45,6 +45,9 @@ class Theme(models.Model):
         verbose_name_plural = "主题"
         ordering = ["created_at"]
         unique_together = ("user", "name")
+        indexes = [
+            models.Index(fields=["user", "created_at"]),
+        ]
 
     def __str__(self):
         return self.name

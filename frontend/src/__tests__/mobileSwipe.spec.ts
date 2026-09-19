@@ -26,7 +26,7 @@ describe('mobile swipe sequence', () => {
   it('keeps the club workspace sequence without 我的社团', () => {
     expect(pairs(clubMember)).toEqual([
       'clubs:clubs',
-      'workbench:goods', 'workbench:themes', 'workbench:popularity', 'workbench:profile',
+      'workbench:goods', 'workbench:gamification', 'workbench:themes', 'workbench:popularity', 'workbench:profile',
       'profile:account', 'profile:settings',
     ])
   })

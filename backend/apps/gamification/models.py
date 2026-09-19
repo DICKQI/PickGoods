@@ -60,6 +60,16 @@ class Reward(models.Model):
     )
 
     code = models.SlugField(max_length=80, unique=True, db_index=True, verbose_name="奖励编码")
+    club = models.ForeignKey(
+        "users.Club",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="gamification_rewards",
+        db_index=True,
+        verbose_name="所属社团",
+        help_text="为空表示平台奖励。",
+    )
     name = models.CharField(max_length=100, verbose_name="奖励名称")
     description = models.TextField(blank=True, default="", verbose_name="奖励说明")
     reward_type = models.CharField(max_length=40, choices=TYPE_CHOICES, db_index=True, verbose_name="奖励类型")
@@ -81,6 +91,9 @@ class Reward(models.Model):
         verbose_name = "游戏化奖励"
         verbose_name_plural = "游戏化奖励"
         ordering = ["order", "id"]
+        indexes = [
+            models.Index(fields=["club", "is_active"]),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -112,6 +125,16 @@ class RewardAsset(models.Model):
 
 class AchievementSet(models.Model):
     code = models.SlugField(max_length=80, unique=True, db_index=True, verbose_name="系列编码")
+    club = models.ForeignKey(
+        "users.Club",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="gamification_sets",
+        db_index=True,
+        verbose_name="所属社团",
+        help_text="为空表示平台成就系列。",
+    )
     name = models.CharField(max_length=100, verbose_name="系列名称")
     description = models.TextField(blank=True, default="", verbose_name="系列说明")
     badge_label = models.CharField(max_length=30, blank=True, default="", verbose_name="系列标签")
@@ -127,6 +150,9 @@ class AchievementSet(models.Model):
         verbose_name = "成就系列"
         verbose_name_plural = "成就系列"
         ordering = ["order", "id"]
+        indexes = [
+            models.Index(fields=["club", "is_active"]),
+        ]
 
     def __str__(self) -> str:
         return self.name
@@ -158,6 +184,13 @@ class Achievement(models.Model):
     is_active = models.BooleanField(default=True, db_index=True, verbose_name="是否启用")
     is_limited = models.BooleanField(default=False, db_index=True, verbose_name="是否限定")
     order = models.IntegerField(default=0, db_index=True, verbose_name="排序值")
+    first_published_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="首次发布时间",
+        help_text="社团成就首次实际可见的时间；统计起点不早于该时间。",
+    )
     rewards = models.ManyToManyField(Reward, related_name="achievements", blank=True, verbose_name="奖励")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -203,6 +236,8 @@ class RuleCondition(models.Model):
     METRIC_SPEND_AMOUNT = "SPEND_AMOUNT"
     METRIC_DISTINCT_IP_COUNT = "DISTINCT_IP_COUNT"
     METRIC_DISTINCT_CHARACTER_COUNT = "DISTINCT_CHARACTER_COUNT"
+    METRIC_CLUB_GOODS_QUANTITY = "CLUB_GOODS_QUANTITY"
+    METRIC_CLUB_SPEND_AMOUNT = "CLUB_SPEND_AMOUNT"
 
     METRIC_CHOICES = (
         (METRIC_GOODS_QUANTITY, "新增谷子件数"),
@@ -210,6 +245,8 @@ class RuleCondition(models.Model):
         (METRIC_SPEND_AMOUNT, "累计消费金额"),
         (METRIC_DISTINCT_IP_COUNT, "去重 IP 数"),
         (METRIC_DISTINCT_CHARACTER_COUNT, "去重角色数"),
+        (METRIC_CLUB_GOODS_QUANTITY, "社团商品导入件数"),
+        (METRIC_CLUB_SPEND_AMOUNT, "社团商品累计公开价"),
     )
 
     group = models.ForeignKey(

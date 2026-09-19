@@ -21,6 +21,12 @@ from .models import (
 )
 
 
+class ClubSummarySerializer(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    avatar = serializers.ImageField(allow_null=True)
+
+
 class RewardAssetSerializer(serializers.ModelSerializer):
     image = serializers.ImageField(read_only=True)
     image_url = serializers.SerializerMethodField()
@@ -41,12 +47,16 @@ class RewardAssetSerializer(serializers.ModelSerializer):
 class RewardSerializer(serializers.ModelSerializer):
     asset_url = serializers.SerializerMethodField()
     assets = RewardAssetSerializer(many=True, read_only=True)
+    club = ClubSummarySerializer(read_only=True)
+    owner_type = serializers.SerializerMethodField()
 
     class Meta:
         model = Reward
         fields = (
             "id",
             "code",
+            "club",
+            "owner_type",
             "name",
             "description",
             "reward_type",
@@ -65,13 +75,21 @@ class RewardSerializer(serializers.ModelSerializer):
         url = obj.asset.url
         return request.build_absolute_uri(url) if request else url
 
+    def get_owner_type(self, obj):
+        return "club" if obj.club_id else "platform"
+
 
 class AchievementSetSerializer(serializers.ModelSerializer):
+    club = ClubSummarySerializer(read_only=True)
+    owner_type = serializers.SerializerMethodField()
+
     class Meta:
         model = AchievementSet
         fields = (
             "id",
             "code",
+            "club",
+            "owner_type",
             "name",
             "description",
             "badge_label",
@@ -81,6 +99,9 @@ class AchievementSetSerializer(serializers.ModelSerializer):
             "is_active",
             "order",
         )
+
+    def get_owner_type(self, obj):
+        return "club" if obj.club_id else "platform"
 
 
 class UserAchievementSerializer(serializers.ModelSerializer):
@@ -110,7 +131,10 @@ class UserAchievementSerializer(serializers.ModelSerializer):
             "description": achievement.description,
             "root_operator": achievement.root_operator,
             "is_limited": achievement.is_limited,
-            "set": AchievementSetSerializer(achievement.set).data,
+            "set": AchievementSetSerializer(
+                achievement.set,
+                context=self.context,
+            ).data,
         }
 
 
@@ -231,16 +255,39 @@ class AchievementAdminSerializer(serializers.ModelSerializer):
             "is_active",
             "is_limited",
             "order",
+            "first_published_at",
             "rewards",
             "rule_groups",
             "user_count",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "created_at", "updated_at", "set_name", "user_count")
+        read_only_fields = (
+            "id",
+            "first_published_at",
+            "created_at",
+            "updated_at",
+            "set_name",
+            "user_count",
+        )
 
     def validate(self, attrs):
         instance = self.instance
+        achievement_set = attrs.get("set", getattr(instance, "set", None))
+        rewards = attrs.get("rewards")
+        effective_rewards = (
+            rewards
+            if rewards is not None
+            else list(instance.rewards.all())
+            if instance is not None
+            else []
+        )
+        if achievement_set is not None:
+            expected_club_id = achievement_set.club_id
+            if any(reward.club_id != expected_club_id for reward in effective_rewards):
+                raise serializers.ValidationError(
+                    {"rewards": "只能关联与成就系列归属相同的奖励。"}
+                )
         if instance and instance.user_states.exists():
             immutable = {}
             if "code" in attrs and attrs["code"] != instance.code:
@@ -318,12 +365,18 @@ class AchievementAdminSerializer(serializers.ModelSerializer):
 
 class AchievementSetAdminSerializer(serializers.ModelSerializer):
     achievement_count = serializers.IntegerField(source="achievements.count", read_only=True)
+    club = ClubSummarySerializer(read_only=True)
+    owner_type = serializers.SerializerMethodField()
+    unlocked_count = serializers.IntegerField(read_only=True)
+    claimed_count = serializers.IntegerField(read_only=True)
 
     class Meta:
         model = AchievementSet
         fields = (
             "id",
             "code",
+            "club",
+            "owner_type",
             "name",
             "description",
             "badge_label",
@@ -333,10 +386,24 @@ class AchievementSetAdminSerializer(serializers.ModelSerializer):
             "is_active",
             "order",
             "achievement_count",
+            "unlocked_count",
+            "claimed_count",
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "achievement_count", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "club",
+            "owner_type",
+            "achievement_count",
+            "unlocked_count",
+            "claimed_count",
+            "created_at",
+            "updated_at",
+        )
+
+    def get_owner_type(self, obj):
+        return "club" if obj.club_id else "platform"
 
     def validate(self, attrs):
         starts_at = attrs.get("starts_at", getattr(self.instance, "starts_at", None))
@@ -360,11 +427,14 @@ class AchievementSetAdminSerializer(serializers.ModelSerializer):
 
 class RewardAdminSerializer(RewardSerializer):
     achievement_count = serializers.IntegerField(source="achievements.count", read_only=True)
+    club = ClubSummarySerializer(read_only=True)
 
     class Meta(RewardSerializer.Meta):
         fields = (
             "id",
             "code",
+            "club",
+            "owner_type",
             "name",
             "description",
             "reward_type",
@@ -379,7 +449,16 @@ class RewardAdminSerializer(RewardSerializer):
             "created_at",
             "updated_at",
         )
-        read_only_fields = ("id", "asset_url", "assets", "achievement_count", "created_at", "updated_at")
+        read_only_fields = (
+            "id",
+            "club",
+            "owner_type",
+            "asset_url",
+            "assets",
+            "achievement_count",
+            "created_at",
+            "updated_at",
+        )
 
     def validate_preset_key(self, value):
         return (value or "").strip()

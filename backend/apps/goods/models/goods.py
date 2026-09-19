@@ -137,6 +137,11 @@ class Goods(models.Model):
         blank=True,
         verbose_name="成就维度变更时间",
     )
+    gamification_eligible_since = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="成就状态首次有效时间",
+    )
 
     class Meta:
         verbose_name = "谷子"
@@ -147,6 +152,8 @@ class Goods(models.Model):
             models.Index(fields=["location"]),
             models.Index(fields=["user", "location"]),
             models.Index(fields=["created_at"]),
+            models.Index(fields=["status", "created_at"]),
+            models.Index(fields=["user", "created_at"]),
         ]
 
     def __str__(self):

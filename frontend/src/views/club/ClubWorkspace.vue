@@ -30,7 +30,7 @@
       </router-link>
     </nav>
     <router-view v-slot="{ Component }">
-      <KeepAlive v-if="isMobile" :include="['ClubGoods', 'ThemeManagement', 'ClubPopularity']" :max="3">
+      <KeepAlive v-if="isMobile" :include="['ClubGoods', 'ClubGamification', 'ThemeManagement', 'ClubPopularity']" :max="4">
         <component :is="Component" :key="route.path" />
       </KeepAlive>
       <Transition v-else name="workspace-content" mode="out-in">
@@ -55,6 +55,7 @@ const isGoodsCreate = computed(() => route.name === 'ClubGoodsNew')
 const isGoodsEditor = computed(() => route.name === 'ClubGoodsNew' || route.name === 'ClubGoodsEdit')
 const workspaceTabs = [
   { name: 'ClubGoods', to: '/club/goods', label: '社团谷子', caption: '目录运营' },
+  { name: 'ClubGamification', to: '/club/gamification', label: '成就奖励', caption: '用户激励' },
   { name: 'ClubThemes', to: '/club/themes', label: '主题管理', caption: '主题资料' },
   { name: 'ClubPopularity', to: '/club/popularity', label: '人气统计', caption: '需求反馈' },
   { name: 'ClubProfile', to: '/club/profile', label: '社团资料', caption: '品牌信息' },
@@ -80,8 +81,8 @@ const publicHomePath = computed(() => {
 .workspace-caption { margin: 5px 0 0; color: var(--text-light); font-size: var(--font-caption); }
 .public-link { flex: none; color: var(--text-regular); }
 .public-link:hover { color: var(--primary-gold-dark); }
-.workspace-tabs { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 0 0 20px; padding: 4px; border: 1px solid var(--secondary-gray-dark); border-radius: 12px; background: rgba(255,255,255,.74); isolation: isolate; }
-.workspace-tab-slider { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 4); border: 1px solid rgba(163,150,255,.2); border-radius: 8px; background: var(--accent-purple-soft); box-shadow: 0 4px 12px rgba(124,105,220,.08); pointer-events: none; will-change: transform; transition: transform 240ms cubic-bezier(.22, 1, .36, 1); }
+.workspace-tabs { position: relative; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0 0 20px; padding: 4px; border: 1px solid var(--secondary-gray-dark); border-radius: 12px; background: rgba(255,255,255,.74); isolation: isolate; }
+.workspace-tab-slider { position: absolute; z-index: 0; top: 4px; bottom: 4px; left: 4px; width: calc((100% - 8px) / 5); border: 1px solid rgba(163,150,255,.2); border-radius: 8px; background: var(--accent-purple-soft); box-shadow: 0 4px 12px rgba(124,105,220,.08); pointer-events: none; will-change: transform; transition: transform 240ms cubic-bezier(.22, 1, .36, 1); }
 .workspace-tab { position: relative; z-index: 1; display: grid; gap: 2px; min-width: 0; padding: 11px 16px; border-radius: 8px; color: var(--text-regular); text-decoration: none; transition: color var(--transition-fast); }
 .workspace-tab span { overflow: hidden; font-size: var(--font-body); font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .workspace-tab small { overflow: hidden; color: var(--text-light); font-size: var(--font-small); text-overflow: ellipsis; white-space: nowrap; }
@@ -98,7 +99,7 @@ const publicHomePath = computed(() => {
   .workspace-header h1 { font-size: 22px; }
   .workspace-caption { display: none; }
   .public-link { padding: 6px 0; font-size: var(--font-caption); }
-  .workspace-tabs { overflow: hidden; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .workspace-tabs { overflow: hidden; grid-template-columns: repeat(5, minmax(0, 1fr)); }
   .workspace-tab { display: flex; align-items: center; justify-content: center; min-height: 42px; padding: 9px 10px; text-align: center; }
   .workspace-tab span { line-height: 20px; }
   .workspace-tab small { display: none; }

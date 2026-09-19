@@ -431,6 +431,58 @@ class GamificationServiceTests(TransactionTestCase):
         self.assertLess(abs((scope_event.occurred_at - scope_time).total_seconds()), 1)
 
     @override_settings(GAMIFICATION_ENABLED=True)
+    def test_scope_repeat_uses_new_occurrence_but_rename_does_not_refresh(self):
+        self.initialize()
+        goods = self.make_goods(
+            created_at=self.rollout_at + timedelta(minutes=1),
+        )
+        sync_goods_source(goods.id)
+        state = MetricSourceState.objects.get(
+            source_type="goods",
+            source_id=str(goods.id),
+        )
+
+        state.scope_hash = "stale"
+        state.save(update_fields=["scope_hash", "updated_at"])
+        goods.gamification_scope_changed_at = timezone.now() - timedelta(minutes=2)
+        goods.save(update_fields=["gamification_scope_changed_at", "updated_at"])
+        sync_goods_source(goods.id)
+
+        goods.characters.set([self.other_character])
+        sync_goods_source(goods.id)
+        goods.characters.set([self.character])
+        sync_goods_source(goods.id)
+
+        scope_events = list(
+            MetricEvent.objects.filter(
+                event_type=MetricEvent.EVENT_SCOPE_REFRESH,
+                source_id=str(goods.id),
+            ).order_by("id")
+        )
+        a_events = [
+            event
+            for event in scope_events
+            if event.metadata.get("character_ids") == [self.character.id]
+        ]
+        self.assertGreaterEqual(len(a_events), 2)
+        self.assertEqual(
+            len({event.idempotency_key for event in a_events}),
+            len(a_events),
+        )
+
+        event_count = len(scope_events)
+        goods.name = "Renamed only"
+        goods.save(update_fields=["name", "updated_at"])
+        sync_goods_source(goods.id)
+        self.assertEqual(
+            MetricEvent.objects.filter(
+                event_type=MetricEvent.EVENT_SCOPE_REFRESH,
+                source_id=str(goods.id),
+            ).count(),
+            event_count,
+        )
+
+    @override_settings(GAMIFICATION_ENABLED=True)
     def test_goods_status_transition_triggers_altar_recheck(self):
         self.initialize()
         showcase = Showcase.objects.create(
@@ -669,6 +721,27 @@ class GamificationApiTests(TestCase):
         response = self.client.get("/api/admin/gamification/sets/")
         self.assertEqual(response.status_code, 403)
 
+    def test_inactive_owned_reward_can_still_be_equipped(self):
+        reward = Reward.objects.create(
+            code="inactive-owned-frame",
+            name="Inactive Owned Frame",
+            reward_type=Reward.TYPE_PROFILE_FRAME,
+            is_active=False,
+        )
+        UserReward.objects.create(user=self.user, reward=reward)
+
+        response = self.client.put(
+            "/api/gamification/equipment/",
+            {"slot": "PROFILE_FRAME", "reward_id": reward.id},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["equipment"]["reward"]["id"],
+            reward.id,
+        )
+
     def admin_client(self):
         admin_role, _ = Role.objects.get_or_create(name="Admin")
         admin = User.objects.create(username="gamification-rules-admin", role=admin_role)
@@ -758,7 +831,7 @@ class GamificationApiTests(TestCase):
         self.assertTrue(Reward.objects.filter(pk=reward.pk).exists())
 
     @override_settings(GAMIFICATION_ENABLED=True)
-    def test_public_badges_require_enabled_feature_active_reward_and_grant(self):
+    def test_public_badges_keep_owned_inactive_reward_but_require_grant(self):
         GamificationConfig.objects.create(pk=1, rollout_at=timezone.now())
         reward = Reward.objects.create(
             code="public-badge",
@@ -776,8 +849,11 @@ class GamificationApiTests(TestCase):
 
         reward.is_active = False
         reward.save(update_fields=["is_active", "updated_at"])
-        hidden = anonymous.get("/api/showcases/public/")
-        self.assertIsNone(hidden.json()["results"][0]["creator"])
+        still_visible = anonymous.get("/api/showcases/public/")
+        self.assertEqual(
+            still_visible.json()["results"][0]["creator"]["badges"][0]["name"],
+            "Public Badge",
+        )
 
         reward.is_active = True
         reward.reward_type = Reward.TYPE_JOURNAL_STICKER_PACK
