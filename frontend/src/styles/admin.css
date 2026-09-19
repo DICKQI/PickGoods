@@ -1,48 +1,67 @@
-/* 管理后台共享样式 —— 全部基于 src/styles/variables.css 的设计 token。
-   仅 admin 专属页面使用，不影响主站。 */
+/* 管理后台共享样式。所有 token 都限定在 admin 命名空间，避免影响主站。 */
 
-/* 页面容器：居中限宽 */
+:root {
+  --admin-bg: #f4f5f7;
+  --admin-sidebar: #1f232b;
+  --admin-surface: #ffffff;
+  --admin-border: #e5e7eb;
+  --admin-border-strong: #d8dde5;
+  --admin-text: #1f2937;
+  --admin-text-secondary: #606a78;
+  --admin-text-muted: #9099a6;
+  --admin-primary: #8070ed;
+  --admin-primary-soft: rgba(128, 112, 237, 0.1);
+  --admin-gold: #b8941f;
+  --admin-gold-soft: rgba(212, 175, 55, 0.12);
+  --admin-radius: 8px;
+  --admin-table-row-height: 44px;
+}
+
 .admin-page {
   box-sizing: border-box;
-  padding: var(--space-lg);
-  max-width: 1280px;
+  padding: 0;
+  max-width: 1680px;
   width: 100%;
   min-width: 0;
   margin: 0 auto;
 }
 
-/* 搜索卡片 */
 .admin-search-card {
-  border-radius: var(--card-radius-sm);
-  border: none;
-  margin-bottom: var(--space-lg);
+  border: 1px solid var(--admin-border) !important;
+  border-radius: var(--admin-radius) !important;
+  box-shadow: none !important;
+  margin-bottom: 14px;
 }
 
-/* 搜索区 flex 布局 */
+.admin-search-card .el-card__body {
+  padding: 12px 14px;
+}
+
 .admin-search-flex {
   display: flex;
-  gap: var(--space-sm);
+  align-items: center;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
-/* 表格壳 */
 .admin-table-wrapper {
-  background: var(--bg-white);
-  border-radius: var(--card-radius-sm);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--admin-border);
+  border-radius: var(--admin-radius);
+  background: var(--admin-surface);
+  box-shadow: none;
   overflow: hidden;
 }
 
-/* 分页栏 */
 .admin-pagination {
   display: flex;
   justify-content: flex-end;
-  padding: var(--space-md);
-  background: var(--bg-white);
-  border-radius: 0 0 var(--card-radius-sm) var(--card-radius-sm);
+  padding: 12px 14px;
+  border: 1px solid var(--admin-border);
+  border-top: 0;
+  border-radius: 0 0 var(--admin-radius) var(--admin-radius);
+  background: var(--admin-surface);
 }
 
-/* 行内操作按钮组 */
 .admin-action-inline {
   display: flex;
   align-items: center;
@@ -50,14 +69,121 @@
   gap: var(--space-sm);
 }
 
-/* 移动端适配 */
-@media (max-width: 768px) {
-  .admin-page {
-    padding: var(--space-md);
-  }
+.admin-table-wrapper .el-table {
+  --el-table-header-bg-color: #fafbfc;
+  --el-table-row-hover-bg-color: #faf9ff;
+  --el-table-border-color: var(--admin-border);
+  color: var(--admin-text);
+  font-size: 13px;
+}
 
+.admin-table-wrapper .el-table th.el-table__cell {
+  height: 40px;
+  color: #596273;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.admin-table-wrapper .el-table td.el-table__cell {
+  height: var(--admin-table-row-height);
+}
+
+.admin-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.admin-toolbar__filters,
+.admin-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.admin-toolbar__actions {
+  margin-left: auto;
+  justify-content: flex-end;
+}
+
+.admin-filter-chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: -2px 0 12px;
+}
+
+.admin-selection-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  border: 1px solid rgba(128, 112, 237, 0.2);
+  border-radius: var(--admin-radius);
+  background: var(--admin-primary-soft);
+  color: #5548b5;
+  font-size: 13px;
+}
+
+.admin-selection-bar__count {
+  font-weight: 700;
+}
+
+.admin-selection-bar__spacer {
+  flex: 1;
+}
+
+.admin-section-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 18px 0 10px;
+}
+
+.admin-section-title h3 {
+  margin: 0;
+  color: var(--admin-text);
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.admin-muted {
+  color: var(--admin-text-muted);
+}
+
+.admin-page-loading,
+.admin-page-error {
+  display: grid;
+  min-height: 320px;
+  place-items: center;
+}
+
+.admin-drawer {
+  --el-drawer-padding-primary: 0;
+}
+
+.admin-detail-drawer .el-drawer__header {
+  margin-bottom: 0;
+  padding: 18px 20px;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.admin-detail-drawer .el-drawer__body {
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+@media (max-width: 768px) {
   .admin-search-flex {
     flex-direction: column;
+    align-items: stretch;
   }
 
   .admin-pagination {
@@ -71,5 +197,31 @@
 
   .admin-table-wrapper .el-table {
     min-width: 640px;
+  }
+
+  .admin-pagination .el-pagination__sizes,
+  .admin-pagination .el-pagination__jump {
+    display: none;
+  }
+
+  .admin-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-toolbar__filters,
+  .admin-toolbar__actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .admin-toolbar__actions {
+    margin-left: 0;
+  }
+
+  .admin-toolbar__filters .el-input,
+  .admin-toolbar__filters .el-select,
+  .admin-toolbar__actions .el-button {
+    width: 100%;
   }
 }

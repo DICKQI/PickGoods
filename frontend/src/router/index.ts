@@ -207,8 +207,18 @@ const routes: RouteRecordRaw[] = [
       hideTopNav: true,
       hideBottomNav: true,
     },
-    redirect: '/admin/users',
+    redirect: '/admin/overview',
     children: [
+      {
+        path: 'overview',
+        name: 'AdminOverview',
+        component: () => import('@/views/admin/AdminOverview.vue'),
+        meta: {
+          title: '运营总览',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
       {
         path: 'users',
         name: 'AdminUsers',
@@ -230,9 +240,29 @@ const routes: RouteRecordRaw[] = [
         },
       },
       {
+        path: 'goods/new',
+        name: 'AdminGoodsNew',
+        component: () => import('@/views/GoodsForm.vue'),
+        meta: {
+          title: '新增谷子',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
+        path: 'goods/:id/edit',
+        name: 'AdminGoodsEdit',
+        component: () => import('@/views/GoodsForm.vue'),
+        meta: {
+          title: '编辑谷子',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
         path: 'ip',
         name: 'AdminIP',
-        component: () => import('@/views/IPCharacterManagement.vue'),
+        component: () => import('@/views/admin/AdminIPCharacterManagement.vue'),
         meta: {
           title: 'IP与角色管理',
           requiresAuth: true,
@@ -242,7 +272,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'categories',
         name: 'AdminCategories',
-        component: () => import('@/views/CategoryManagement.vue'),
+        component: () => import('@/views/admin/AdminCategoryManagement.vue'),
         meta: {
           title: '品类',
           requiresAuth: true,
@@ -252,7 +282,7 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'themes',
         name: 'AdminThemes',
-        component: () => import('@/views/ThemeManagement.vue'),
+        component: () => import('@/views/admin/AdminThemeManagement.vue'),
         meta: {
           title: '主题',
           requiresAuth: true,
@@ -285,6 +315,16 @@ const routes: RouteRecordRaw[] = [
         component: () => import('@/views/admin/AdminGamification.vue'),
         meta: {
           title: '成就与奖励',
+          requiresAuth: true,
+          requiresAdmin: true,
+        },
+      },
+      {
+        path: 'audit-logs',
+        name: 'AdminAuditLogs',
+        component: () => import('@/views/admin/AdminAuditLogs.vue'),
+        meta: {
+          title: '操作日志',
           requiresAuth: true,
           requiresAdmin: true,
         },

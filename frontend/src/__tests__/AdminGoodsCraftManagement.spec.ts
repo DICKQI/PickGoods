@@ -39,6 +39,8 @@ vi.mock('@/api/admin', () => ({
     ...data,
   })),
   deleteAdminGoodsCraft: vi.fn(async () => undefined),
+  bulkAdminGoodsCrafts: vi.fn(async () => ({ updated: 1, action: 'disable', ids: [1] })),
+  exportAdminResource: vi.fn(async () => new Blob(['a,b'], { type: 'text/csv' })),
 }))
 
 vi.mock('element-plus', async () => {
@@ -57,6 +59,10 @@ vi.mock('element-plus', async () => {
 
 vi.mock('@/utils/datetime', () => ({
   formatDateTime: (value: string) => value,
+}))
+
+vi.mock('@/utils/download', () => ({
+  downloadBlob: vi.fn(),
 }))
 
 const passthroughStub = (name: string, tag = 'div') => defineComponent({
@@ -190,34 +196,34 @@ describe('GoodsCraftManagement', () => {
     const wrapper = mountGoodsCraftManagement()
     await vi.waitFor(() => expect(getAdminGoodsCrafts).toHaveBeenCalled())
 
-    await (wrapper.vm as any).handleAdd()
-    ;(wrapper.vm as any).formData.name = '镭射'
-    ;(wrapper.vm as any).formData.order = 30
-    ;(wrapper.vm as any).formData.is_active = true
-    await (wrapper.vm as any).handleSubmit()
+    ;(wrapper.vm as any).openDialog()
+    ;(wrapper.vm as any).form.name = '镭射'
+    ;(wrapper.vm as any).form.order = 30
+    ;(wrapper.vm as any).form.is_active = true
+    await (wrapper.vm as any).saveCraft()
     expect(createAdminGoodsCraft).toHaveBeenCalledWith({
       name: '镭射',
       order: 30,
       is_active: true,
     })
 
-    await (wrapper.vm as any).handleEdit({
+    ;(wrapper.vm as any).openDialog({
       id: 1,
       name: '烫金',
       order: 10,
       is_active: true,
     })
-    ;(wrapper.vm as any).formData.name = '烫银'
-    ;(wrapper.vm as any).formData.order = 5
-    ;(wrapper.vm as any).formData.is_active = false
-    await (wrapper.vm as any).handleSubmit()
+    ;(wrapper.vm as any).form.name = '烫银'
+    ;(wrapper.vm as any).form.order = 5
+    ;(wrapper.vm as any).form.is_active = false
+    await (wrapper.vm as any).saveCraft()
     expect(updateAdminGoodsCraft).toHaveBeenCalledWith(1, {
       name: '烫银',
       order: 5,
       is_active: false,
     })
 
-    await (wrapper.vm as any).handleDelete({ id: 1, name: '烫银' })
+    await (wrapper.vm as any).removeCraft({ id: 1, name: '烫银' })
     expect(deleteAdminGoodsCraft).toHaveBeenCalledWith(1)
   })
 
@@ -238,9 +244,12 @@ describe('GoodsCraftManagement', () => {
     await vi.waitFor(() => expect(getAdminGoodsCrafts).toHaveBeenCalled())
 
     vi.mocked(getAdminGoodsCrafts).mockClear()
-    const searchInput = wrapper.get('input[placeholder="搜索工艺名称..."]')
+    const searchInput = wrapper.get('input[placeholder="搜索工艺名称"]')
     await searchInput.setValue('烫')
-    await wrapper.get('.admin-search-flex button').trigger('click')
+    const searchButton = wrapper
+      .findAll('.admin-search-flex button')
+      .find((button) => button.text() === '查询')
+    await searchButton?.trigger('click')
     expect(getAdminGoodsCrafts).toHaveBeenCalledWith({
       page: 1,
       page_size: 20,
@@ -257,11 +266,16 @@ describe('GoodsCraftManagement', () => {
     })
 
     vi.mocked(updateAdminGoodsCraft).mockClear()
-    await wrapper.get('button[title="停用"]').trigger('click')
+    await (wrapper.vm as any).toggleActive({
+      id: 1,
+      name: '烫金',
+      order: 10,
+      is_active: true,
+    })
     expect(updateAdminGoodsCraft).toHaveBeenCalledWith(1, { is_active: false })
 
     vi.mocked(deleteAdminGoodsCraft).mockClear()
-    await wrapper.get('button[title="删除"]').trigger('click')
+    await (wrapper.vm as any).removeCraft({ id: 1, name: '烫银' })
     expect(deleteAdminGoodsCraft).toHaveBeenCalledWith(1)
   })
 })

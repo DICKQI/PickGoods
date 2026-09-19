@@ -39,6 +39,60 @@ class CharacterViewSet(viewsets.ModelViewSet):
     }
     permission_classes = [IsAdminOrReadOnly]
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="character.create",
+            resource_type="character",
+            resource_id=instance.pk,
+            summary=f"创建角色 {instance.name}",
+            changes={"name": instance.name, "ip_id": instance.ip_id},
+        )
+
+    def perform_update(self, serializer):
+        before = {
+            "name": serializer.instance.name,
+            "ip_id": serializer.instance.ip_id,
+            "gender": serializer.instance.gender,
+        }
+        instance = serializer.save()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="character.update",
+            resource_type="character",
+            resource_id=instance.pk,
+            summary=f"更新角色 {instance.name}",
+            changes={
+                "before": before,
+                "after": {
+                    "name": instance.name,
+                    "ip_id": instance.ip_id,
+                    "gender": instance.gender,
+                },
+            },
+        )
+
+    def perform_destroy(self, instance):
+        resource_id = instance.pk
+        name = instance.name
+        ip_id = instance.ip_id
+        instance.delete()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="character.delete",
+            resource_type="character",
+            resource_id=resource_id,
+            summary=f"删除角色 {name}",
+            changes={"ip_id": ip_id},
+        )
+
     @action(detail=True, methods=["get"], url_path="stats", permission_classes=[IsAuthenticated])
     def stats(self, request, pk=None):
         character = self.get_object()

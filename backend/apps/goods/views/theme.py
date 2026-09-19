@@ -74,7 +74,47 @@ class ThemeViewSet(viewsets.ModelViewSet):
         uid = serializer.validated_data.get("user_id")
         if uid is not None and is_admin(self.request.user):
             user = uid
-        serializer.save(user=user)
+        instance = serializer.save(user=user)
+        if is_admin(self.request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                self.request,
+                action="theme.create",
+                resource_type="theme",
+                resource_id=instance.pk,
+                summary=f"创建主题 {instance.name}",
+                changes={"user_id": user.pk, "name": instance.name},
+            )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        if is_admin(self.request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                self.request,
+                action="theme.update",
+                resource_type="theme",
+                resource_id=instance.pk,
+                summary=f"更新主题 {instance.name}",
+                changes={"user_id": instance.user_id, "name": instance.name},
+            )
+
+    def perform_destroy(self, instance):
+        resource_id = instance.pk
+        name = instance.name
+        instance.delete()
+        if is_admin(self.request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                self.request,
+                action="theme.delete",
+                resource_type="theme",
+                resource_id=resource_id,
+                summary=f"删除主题 {name}",
+            )
 
     @action(detail=True, methods=["get", "post"], url_path="template")
     def template(self, request, pk=None):
@@ -106,7 +146,22 @@ class ThemeViewSet(viewsets.ModelViewSet):
             context=self.get_serializer_context(),
         )
         serializer.is_valid(raise_exception=True)
-        serializer.save(theme=instance, user=instance.user)
+        template_instance = serializer.save(theme=instance, user=instance.user)
+        if is_admin(request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                request,
+                action="theme.template_update",
+                resource_type="theme",
+                resource_id=instance.pk,
+                summary=f"更新主题 {instance.name} 的默认模板",
+                changes={
+                    "template_id": template_instance.pk,
+                    "name": template_instance.name,
+                    "ip_id": template_instance.ip_id,
+                },
+            )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     def _copy_theme_image_from_field(self, theme, image_field, label):
@@ -170,6 +225,17 @@ class ThemeViewSet(viewsets.ModelViewSet):
             instance,
             context=self.get_serializer_context(),
         )
+        if is_admin(request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                request,
+                action="theme.images_copy",
+                resource_type="theme",
+                resource_id=instance.pk,
+                summary=f"从谷子复制 {len(copied)} 张图片到主题 {instance.name}",
+                changes={"goods_id": str(goods.pk), "copied_count": len(copied)},
+            )
         return Response(
             {"copied_count": len(copied), **serializer.data},
             status=status.HTTP_200_OK,
@@ -221,6 +287,17 @@ class ThemeViewSet(viewsets.ModelViewSet):
             serializer = ThemeDetailSerializer(
                 instance, context=self.get_serializer_context()
             )
+            if is_admin(request.user):
+                from apps.admin_api.services import record_admin_action
+
+                record_admin_action(
+                    request,
+                    action="theme.image_label_update",
+                    resource_type="theme",
+                    resource_id=instance.pk,
+                    summary=f"更新主题 {instance.name} 的素材标签",
+                    changes={"photo_ids": photo_ids, "label": label},
+                )
             return Response(serializer.data, status=status.HTTP_200_OK)
 
         # 创建新图片或同时更新图片和标签
@@ -250,6 +327,20 @@ class ThemeViewSet(viewsets.ModelViewSet):
         serializer = ThemeDetailSerializer(
             instance, context=self.get_serializer_context()
         )
+        if is_admin(request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                request,
+                action="theme.images_update",
+                resource_type="theme",
+                resource_id=instance.pk,
+                summary=f"更新主题 {instance.name} 的素材",
+                changes={
+                    "photo_ids": list(photo_ids),
+                    "uploaded_count": len(additional_photos),
+                },
+            )
         return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(
@@ -268,6 +359,17 @@ class ThemeViewSet(viewsets.ModelViewSet):
             return Response(
                 {"detail": "附加图片不存在或不属于该主题"},
                 status=status.HTTP_404_NOT_FOUND,
+            )
+        if is_admin(request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                request,
+                action="theme.image_delete",
+                resource_type="theme",
+                resource_id=instance.pk,
+                summary=f"删除主题 {instance.name} 的素材 #{photo_id}",
+                changes={"photo_id": photo_id},
             )
         serializer = ThemeDetailSerializer(
             instance, context=self.get_serializer_context()
@@ -310,6 +412,17 @@ class ThemeViewSet(viewsets.ModelViewSet):
                 )
 
             theme_images.delete()
+            if is_admin(request.user):
+                from apps.admin_api.services import record_admin_action
+
+                record_admin_action(
+                    request,
+                    action="theme.images_delete",
+                    resource_type="theme",
+                    resource_id=instance.pk,
+                    summary=f"批量删除主题 {instance.name} 的 {deleted_count} 个素材",
+                    changes={"photo_ids": photo_ids},
+                )
 
             serializer = ThemeDetailSerializer(
                 instance, context=self.get_serializer_context()

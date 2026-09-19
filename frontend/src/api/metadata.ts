@@ -39,17 +39,35 @@ export function getIPDetail(id: number) {
 }
 
 // 创建IP
-export function createIP(data: { name: string; keywords?: string[]; subject_type?: number | null }) {
+export function createIP(data: {
+  name: string
+  keywords?: string[]
+  subject_type?: number | null
+  order?: number
+  bgm_subject_id?: number | null
+}) {
   return request.post<IP>('/api/ips/', data)
 }
 
 // 更新IP
-export function updateIP(id: number, data: { name: string; keywords?: string[]; subject_type?: number | null }) {
+export function updateIP(id: number, data: {
+  name: string
+  keywords?: string[]
+  subject_type?: number | null
+  order?: number
+  bgm_subject_id?: number | null
+}) {
   return request.put<IP>(`/api/ips/${id}/`, data)
 }
 
 // 部分更新IP
-export function patchIP(id: number, data: Partial<{ name: string; keywords?: string[]; subject_type?: number | null }>) {
+export function patchIP(id: number, data: Partial<{
+  name: string
+  keywords?: string[]
+  subject_type?: number | null
+  order?: number
+  bgm_subject_id?: number | null
+}>) {
   return request.patch<IP>(`/api/ips/${id}/`, data)
 }
 
@@ -190,17 +208,29 @@ export function getThemeDetail(id: number) {
 }
 
 // 创建主题
-export function createTheme(data: { name: string; description?: string | null }) {
+export function createTheme(data: {
+  name: string
+  description?: string | null
+  user_id?: number
+}) {
   return request.post<Theme>('/api/themes/', data)
 }
 
 // 更新主题
-export function updateTheme(id: number, data: { name: string; description?: string | null }) {
+export function updateTheme(id: number, data: {
+  name: string
+  description?: string | null
+  user_id?: number
+}) {
   return request.put<Theme>(`/api/themes/${id}/`, data)
 }
 
 // 部分更新主题
-export function patchTheme(id: number, data: Partial<{ name: string; description?: string | null }>) {
+export function patchTheme(id: number, data: Partial<{
+  name: string
+  description?: string | null
+  user_id?: number
+}>) {
   return request.patch<Theme>(`/api/themes/${id}/`, data)
 }
 

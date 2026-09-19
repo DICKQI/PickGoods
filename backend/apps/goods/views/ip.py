@@ -61,6 +61,46 @@ class IPViewSet(viewsets.ModelViewSet):
             return IPDetailSerializer
         return IPSimpleSerializer
 
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="ip.create",
+            resource_type="ip",
+            resource_id=instance.pk,
+            summary=f"创建 IP {instance.name}",
+            changes={"name": instance.name, "subject_type": instance.subject_type},
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="ip.update",
+            resource_type="ip",
+            resource_id=instance.pk,
+            summary=f"更新 IP {instance.name}",
+            changes={"name": instance.name, "subject_type": instance.subject_type},
+        )
+
+    def perform_destroy(self, instance):
+        resource_id = instance.pk
+        name = instance.name
+        instance.delete()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="ip.delete",
+            resource_type="ip",
+            resource_id=resource_id,
+            summary=f"删除 IP {name}",
+        )
+
     @action(detail=True, methods=["get"], url_path="characters")
     def characters(self, request, pk=None):
         """
@@ -114,6 +154,16 @@ class IPViewSet(viewsets.ModelViewSet):
                 result_ips = IP.objects.filter(id__in=updated_ids).order_by("order", "id")
                 result_serializer = IPSimpleSerializer(
                     result_ips, many=True, context={"request": request}
+                )
+                from apps.admin_api.services import record_admin_action
+
+                record_admin_action(
+                    request,
+                    action="ip.batch_order",
+                    resource_type="ip",
+                    resource_id=None,
+                    summary=f"调整 {len(updated_ips)} 个 IP 的排序",
+                    changes={"items": items},
                 )
 
                 return Response(
@@ -279,6 +329,20 @@ class IPViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            request,
+            action="ip.bgm_sync",
+            resource_type="ip",
+            resource_id=ip.pk,
+            summary=f"同步 IP {ip.name} 的 BGM 角色",
+            changes={
+                "subject_id": subject_id,
+                "created_count": result.get("created_count", 0),
+                "linked_count": result.get("linked_count", 0),
+            },
+        )
         response_serializer = BGMSyncApplyResponseSerializer(data=result)
         response_serializer.is_valid(raise_exception=True)
         return Response(response_serializer.data, status=status.HTTP_200_OK)

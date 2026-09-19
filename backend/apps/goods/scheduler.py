@@ -55,6 +55,28 @@ def _captcha_cleanup_tick() -> None:
         logger.exception("[CaptchaScheduler] expired captcha cleanup failed")
 
 
+def _admin_audit_cleanup_tick() -> None:
+    try:
+        from apps.admin_api.services import purge_admin_audit_logs
+
+        deleted = purge_admin_audit_logs()
+        if deleted:
+            logger.info("[AdminAuditScheduler] purged %s expired audit records", deleted)
+    except Exception:  # noqa: BLE001
+        logger.exception("[AdminAuditScheduler] audit cleanup failed")
+
+
+def _admin_audit_retry_tick() -> None:
+    try:
+        from apps.admin_api.services import retry_admin_audit_queue
+
+        retried = retry_admin_audit_queue()
+        if retried:
+            logger.info("[AdminAuditScheduler] resolved %s audit retries", retried)
+    except Exception:  # noqa: BLE001
+        logger.exception("[AdminAuditScheduler] audit retry failed")
+
+
 def _should_start() -> bool:
     """判断当前进程是否应启动调度器。"""
     if os.environ.get("BGM_SCHEDULER_DISABLED") == "1":
@@ -74,6 +96,7 @@ def _should_start() -> bool:
         "createsuperuser",
         "seed_users",
         "seed_test_data",
+        "purge_admin_audit_logs",
         "rebalance_goods_order",
         "download_ocr_models",
         "spectacular",
@@ -129,6 +152,22 @@ def start_scheduler() -> None:
             _captcha_cleanup_tick,
             trigger=CronTrigger(hour=3, minute=30, timezone="Asia/Shanghai"),
             id="captcha_cleanup_daily",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            _admin_audit_cleanup_tick,
+            trigger=CronTrigger(hour=4, minute=0, timezone="Asia/Shanghai"),
+            id="admin_audit_cleanup_daily",
+            replace_existing=True,
+            max_instances=1,
+            coalesce=True,
+        )
+        scheduler.add_job(
+            _admin_audit_retry_tick,
+            trigger=IntervalTrigger(minutes=1),
+            id="admin_audit_retry",
             replace_existing=True,
             max_instances=1,
             coalesce=True,

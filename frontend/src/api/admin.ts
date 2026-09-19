@@ -1,6 +1,15 @@
 import request from '@/utils/request'
 import type {
   PaginatedResponse,
+  AdminAuditLog,
+  AdminBulkActionResponse,
+  AdminCharacterListItem,
+  AdminExportResource,
+  AdminGoodsListItem,
+  AdminIPListItem,
+  AdminListQuery,
+  AdminOverviewResponse,
+  AdminThemeListItem,
   AdminUser,
   AdminRole,
   GoodsCraft,
@@ -13,14 +22,16 @@ import type {
 // 避免在 admin.ts 与 types.ts 两处重复定义同一接口。
 export type { AdminUser, AdminRole, GoodsCraft, BGMSyncSettings, BGMSyncJob, BGMSyncJobItem } from './types'
 
-// ==================== 用户 / 角色管理 ====================
-
-export interface AdminUserListParams {
-  page?: number
-  page_size?: number
-  /** 按用户名模糊匹配（后端 SearchFilter，icontains） */
-  search?: string
+export interface AdminUserListParams extends AdminListQuery {
+  role?: number
+  account_type?: 'collector' | 'club'
+  approval_status?: 'pending' | 'approved'
+  is_active?: boolean
+  created_at__gte?: string
+  created_at__lte?: string
 }
+
+// ==================== 用户 / 角色管理 ====================
 
 export interface CreateAdminUserData {
   username: string
@@ -62,10 +73,154 @@ export function getAdminRoles() {
   return request.get<AdminRole[]>('/api/admin/roles/')
 }
 
+export function getAdminOverview(range: '7d' | '30d' = '30d') {
+  return request.get<AdminOverviewResponse>('/api/admin/overview/', {
+    params: { range },
+  })
+}
+
+export interface AdminAuditLogListParams extends AdminListQuery {
+  actor?: number
+  action?: string
+  resource_type?: string
+  resource_id?: string
+  created_at__gte?: string
+  created_at__lte?: string
+}
+
+export function getAdminAuditLogs(params?: AdminAuditLogListParams) {
+  return request.get<PaginatedResponse<AdminAuditLog>>(
+    '/api/admin/audit-logs/',
+    { params },
+  )
+}
+
+export function bulkAdminUsers(
+  ids: number[],
+  action: 'enable' | 'disable' | 'approve',
+) {
+  return request.post<AdminBulkActionResponse>('/api/admin/users/bulk-action/', {
+    ids,
+    action,
+  })
+}
+
+// ==================== 全站数据列表 ====================
+
+export interface AdminGoodsListParams extends AdminListQuery {
+  user?: number
+  ip?: number
+  category?: number
+  theme?: number
+  character?: number
+  status?: string
+  is_official?: boolean
+  has_main_photo?: boolean
+  purchase_date__gte?: string
+  purchase_date__lte?: string
+  created_at__gte?: string
+  created_at__lte?: string
+}
+
+export function getAdminGoods(params?: AdminGoodsListParams) {
+  return request.get<PaginatedResponse<AdminGoodsListItem>>('/api/admin/goods/', {
+    params,
+  })
+}
+
+export function bulkAdminGoods(
+  ids: string[],
+  action: 'status' | 'category' | 'theme',
+  value: string | number | null,
+) {
+  const payload: Record<string, unknown> = { ids, action }
+  if (action === 'status') payload.status = value
+  if (action === 'category') payload.category_id = value
+  if (action === 'theme') payload.theme_id = value
+  return request.post<AdminBulkActionResponse>(
+    '/api/admin/goods/bulk-action/',
+    payload,
+  )
+}
+
+export interface AdminIPListParams extends AdminListQuery {
+  subject_type?: number
+  subject_type__in?: string
+  is_bgm_bound?: boolean
+  has_characters?: boolean
+  created_at__gte?: string
+  created_at__lte?: string
+}
+
+export function getAdminIPs(params?: AdminIPListParams) {
+  return request.get<PaginatedResponse<AdminIPListItem>>('/api/admin/ips/', {
+    params,
+  })
+}
+
+export interface AdminCharacterListParams extends AdminListQuery {
+  ip?: number
+  gender?: string
+  is_bgm_bound?: boolean
+  created_at__gte?: string
+  created_at__lte?: string
+}
+
+export function getAdminCharacters(params?: AdminCharacterListParams) {
+  return request.get<PaginatedResponse<AdminCharacterListItem>>(
+    '/api/admin/characters/',
+    { params },
+  )
+}
+
+export interface AdminThemeListParams extends AdminListQuery {
+  user?: number
+  created_at__gte?: string
+  created_at__lte?: string
+}
+
+export function getAdminThemes(params?: AdminThemeListParams) {
+  return request.get<PaginatedResponse<AdminThemeListItem>>(
+    '/api/admin/themes/',
+    { params },
+  )
+}
+
+export interface AdminCategoryListParams extends AdminListQuery {
+  parent?: number
+  parent__isnull?: boolean
+  shape_type?: string
+}
+
+export type AdminCategoryListResponse = Array<import('./types').Category>
+
+export function getAdminCategories(params?: AdminCategoryListParams) {
+  return request.get<AdminCategoryListResponse>('/api/admin/categories/', {
+    params,
+  })
+}
+
+export function exportAdminResource(
+  resource: AdminExportResource,
+  params?: AdminListQuery,
+) {
+  const exportParams = { ...(params || {}) }
+  delete exportParams.page
+  delete exportParams.page_size
+  return request.get<Blob>(`/api/admin/exports/${resource}/`, {
+    params: exportParams,
+    responseType: 'blob',
+  })
+}
+
 export interface AdminGoodsCraftListParams {
   page?: number
   page_size?: number
   search?: string
+  is_active?: boolean
+  ordering?: string
+  created_at__gte?: string
+  created_at__lte?: string
 }
 
 export interface CreateAdminGoodsCraftData {
@@ -94,6 +249,16 @@ export function updateAdminGoodsCraft(id: number, data: UpdateAdminGoodsCraftDat
 
 export function deleteAdminGoodsCraft(id: number) {
   return request.delete(`/api/admin/goods-crafts/${id}/`)
+}
+
+export function bulkAdminGoodsCrafts(
+  ids: number[],
+  action: 'enable' | 'disable',
+) {
+  return request.post<AdminBulkActionResponse>(
+    '/api/admin/goods-crafts/bulk-action/',
+    { ids, action },
+  )
 }
 
 // ==================== BGM 自动同步 ====================

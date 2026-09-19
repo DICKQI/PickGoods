@@ -56,10 +56,20 @@ export function getAdminGamificationSets(params?: {
   page?: number
   page_size?: number
   search?: string
+  is_active?: boolean
+  is_limited?: boolean
+  ordering?: string
   owner_type?: GamificationOwnerType
   club?: number
 }) {
   return request.get<PaginatedResponse<AdminGamificationSet>>('/api/admin/gamification/sets/', { params })
+}
+
+export function bulkAdminGamificationSets(
+  ids: number[],
+  action: 'enable' | 'disable',
+) {
+  return request.post('/api/admin/gamification/sets/bulk-action/', { ids, action })
 }
 
 export function createAdminGamificationSet(data: Partial<AdminGamificationSet>) {
@@ -79,6 +89,9 @@ export function getAdminGamificationAchievements(params?: {
   page_size?: number
   search?: string
   set?: number
+  is_active?: boolean
+  is_limited?: boolean
+  ordering?: string
   owner_type?: GamificationOwnerType
   club?: number
 }) {
@@ -86,6 +99,13 @@ export function getAdminGamificationAchievements(params?: {
     '/api/admin/gamification/achievements/',
     { params },
   )
+}
+
+export function bulkAdminGamificationAchievements(
+  ids: number[],
+  action: 'enable' | 'disable',
+) {
+  return request.post('/api/admin/gamification/achievements/bulk-action/', { ids, action })
 }
 
 export function createAdminGamificationAchievement(data: AdminGamificationAchievementInput) {
@@ -105,10 +125,20 @@ export function getAdminGamificationRewards(params?: {
   page_size?: number
   search?: string
   reward_type?: string
+  is_active?: boolean
+  rarity?: string
+  ordering?: string
   owner_type?: GamificationOwnerType
   club?: number
 }) {
   return request.get<PaginatedResponse<AdminGamificationReward>>('/api/admin/gamification/rewards/', { params })
+}
+
+export function bulkAdminGamificationRewards(
+  ids: number[],
+  action: 'enable' | 'disable',
+) {
+  return request.post('/api/admin/gamification/rewards/bulk-action/', { ids, action })
 }
 
 export function createAdminGamificationReward(data: FormData) {

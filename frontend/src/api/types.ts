@@ -713,6 +713,8 @@ export interface CharacterStatsResponse {
 
 // 创建/更新谷子的输入类型（字段可以是 ID 或对象）
 export interface GoodsInput {
+  /** 仅管理员新建时可用；创建后不可修改归属。 */
+  user_id?: number
   name?: string
   ip?: number | IP
   ip_id?: number
@@ -1337,6 +1339,14 @@ export interface AdminUser {
   approval_status: 'pending' | 'approved' | string
   club_name?: string | null
   application_reason?: string | null
+  club_id?: number | null
+  club_description?: string | null
+  club_contact_name?: string | null
+  club_contact_phone?: string | null
+  club_contact_email?: string | null
+  club_address?: string | null
+  goods_count?: number
+  theme_count?: number
 }
 
 // ==================== BGM 自动同步：审计 ====================
@@ -1806,6 +1816,131 @@ export interface AdminGamificationUser {
   claimed_count: number
   metrics: GamificationMetrics
   updated_at: string | null
+}
+
+export type AdminAuditAction = string
+
+export interface AdminAuditLog {
+  id: number
+  actor_id: number | null
+  actor_name: string | null
+  action: AdminAuditAction
+  resource_type: string
+  resource_id: string
+  summary: string
+  changes: Record<string, unknown>
+  ip_address: string | null
+  created_at: string
+}
+
+export interface AdminOverviewAlert {
+  code: string
+  severity: 'info' | 'warning' | 'danger'
+  title: string
+  count: number
+  href: string
+}
+
+export interface AdminOverviewTrendPoint {
+  date: string
+  value: number
+}
+
+export interface AdminOverviewResponse {
+  generated_at: string
+  range: '7d' | '30d'
+  stats: {
+    users: {
+      total: number
+      new_in_range: number
+      active: number
+      pending_clubs: number
+    }
+    goods: {
+      total: number
+      new_in_range: number
+      quantity: number
+      value: string
+      missing_photo: number
+    }
+    catalog: {
+      ips: number
+      characters: number
+      categories: number
+      themes: number
+    }
+    gamification: {
+      active_sets: number
+      active_achievements: number
+      active_rewards: number
+      sync_failures: number
+    }
+    bgm: {
+      running: number
+      recent_failures: number
+    }
+  }
+  alerts: AdminOverviewAlert[]
+  trends: {
+    users: AdminOverviewTrendPoint[]
+    goods: AdminOverviewTrendPoint[]
+  }
+  recent_jobs: BGMSyncJob[]
+  recent_audits: AdminAuditLog[]
+}
+
+export type AdminBulkAction = 'enable' | 'disable' | 'approve'
+export type AdminGoodsBulkAction = 'status' | 'category' | 'theme'
+
+export interface AdminBulkActionResponse {
+  updated: number
+  action: string
+  ids: number[]
+}
+
+export interface AdminListQuery {
+  page?: number
+  page_size?: number
+  search?: string
+  ordering?: string
+  [key: string]: string | number | boolean | null | undefined
+}
+
+export type AdminExportResource =
+  | 'users'
+  | 'goods'
+  | 'ips'
+  | 'characters'
+  | 'themes'
+  | 'categories'
+  | 'goods-crafts'
+  | 'bgm-jobs'
+  | 'audit-logs'
+
+export interface AdminGoodsListItem extends GoodsListItem {
+  price?: string | null
+  purchase_date?: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface AdminIPListItem extends IP {
+  goods_count: number
+  created_at: string
+}
+
+export interface AdminCharacterListItem extends Character {
+  created_at: string
+}
+
+export interface AdminThemeListItem extends Theme {
+  user: {
+    id: number
+    username: string
+  } | null
+  goods_count: number
+  image_count: number
+  has_template: boolean
 }
 
 /** 预购统计概览（GET /api/preorders/stats/） */

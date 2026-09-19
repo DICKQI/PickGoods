@@ -104,6 +104,32 @@ class CategoryViewSet(viewsets.ModelViewSet):
         if self.action == "tree":
             return CategoryTreeSerializer
         return CategorySimpleSerializer
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="category.create",
+            resource_type="category",
+            resource_id=instance.pk,
+            summary=f"创建品类 {instance.path_name or instance.name}",
+            changes={"parent_id": instance.parent_id, "order": instance.order},
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            self.request,
+            action="category.update",
+            resource_type="category",
+            resource_id=instance.pk,
+            summary=f"更新品类 {instance.path_name or instance.name}",
+            changes={"parent_id": instance.parent_id, "order": instance.order},
+        )
     
     def get_all_descendants(self, category):
         """
@@ -173,6 +199,16 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 updated_ids = [cat.id for cat in updated_categories]
                 result_categories = Category.objects.filter(id__in=updated_ids).order_by('order', 'id')
                 result_serializer = CategorySimpleSerializer(result_categories, many=True)
+                from apps.admin_api.services import record_admin_action
+
+                record_admin_action(
+                    request,
+                    action="category.batch_order",
+                    resource_type="category",
+                    resource_id=None,
+                    summary=f"调整 {len(updated_categories)} 个品类的排序",
+                    changes={"items": items},
+                )
                 
                 return Response({
                     "detail": f"成功更新 {len(updated_categories)} 个品类的排序",
@@ -210,7 +246,19 @@ class CategoryViewSet(viewsets.ModelViewSet):
         
         # 删除根节点（由于 parent 字段使用了 on_delete=models.CASCADE，
         # 删除父节点时，Django 会自动删除所有子节点）
+        resource_id = instance.pk
+        resource_label = instance.path_name or instance.name
         with transaction.atomic():
             instance.delete()
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            request,
+            action="category.delete",
+            resource_type="category",
+            resource_id=resource_id,
+            summary=f"删除品类 {resource_label}",
+            changes={"node_count": len(node_ids), "node_ids": node_ids},
+        )
         
         return Response(status=status.HTTP_204_NO_CONTENT)

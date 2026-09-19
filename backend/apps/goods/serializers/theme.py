@@ -133,6 +133,8 @@ class ThemeDetailSerializer(serializers.ModelSerializer):
         fields = ("id", "name", "description", "created_at", "images", "template", "user_id")
 
     def validate_user_id(self, value):
+        if self.instance is not None:
+            raise serializers.ValidationError("创建后不能修改主题归属用户")
         request = self.context.get("request")
         if not request or not is_admin(request.user):
             raise serializers.ValidationError("仅管理员可指定 user_id")

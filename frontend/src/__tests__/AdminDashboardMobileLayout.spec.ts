@@ -7,7 +7,7 @@ const sharedAdminSource = readFileSync(join(process.cwd(), 'src/styles/admin.css
 
 describe('Admin mobile layout', () => {
   it('allows the dashboard flex content to shrink to the viewport', () => {
-    expect(dashboardSource).toMatch(/\.admin-main\s*\{[\s\S]*?min-width:\s*0;/)
+    expect(dashboardSource).toMatch(/\.admin-workspace\s*\{[\s\S]*?min-width:\s*0;/)
     expect(dashboardSource).toMatch(/\.admin-content\s*\{[\s\S]*?min-width:\s*0;/)
     expect(sharedAdminSource).toContain('box-sizing: border-box;')
     expect(sharedAdminSource).toContain('width: 100%;')
@@ -17,6 +17,6 @@ describe('Admin mobile layout', () => {
   it('keeps wide admin tables scrollable inside the narrowed content area', () => {
     expect(sharedAdminSource).toContain('.admin-table-wrapper {')
     expect(sharedAdminSource).toContain('overflow-x: auto;')
-    expect(dashboardSource).toContain('@media (max-width: 768px), (pointer: coarse)')
+    expect(dashboardSource).toContain('@media (max-width: 900px)')
   })
 })

@@ -5,6 +5,8 @@ from rest_framework import serializers
 
 from apps.users.models import Role, User
 
+from .models import AdminAuditLog
+
 
 class AdminRoleSerializer(serializers.ModelSerializer):
     class Meta:
@@ -18,6 +20,14 @@ class AdminUserSerializer(serializers.ModelSerializer):
     role = AdminRoleSerializer(read_only=True)
     club_name = serializers.SerializerMethodField()
     application_reason = serializers.SerializerMethodField()
+    club_id = serializers.SerializerMethodField()
+    club_description = serializers.SerializerMethodField()
+    club_contact_name = serializers.SerializerMethodField()
+    club_contact_phone = serializers.SerializerMethodField()
+    club_contact_email = serializers.SerializerMethodField()
+    club_address = serializers.SerializerMethodField()
+    goods_count = serializers.IntegerField(read_only=True, default=0)
+    theme_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = User
@@ -32,16 +42,51 @@ class AdminUserSerializer(serializers.ModelSerializer):
             "approval_status",
             "club_name",
             "application_reason",
+            "club_id",
+            "club_description",
+            "club_contact_name",
+            "club_contact_phone",
+            "club_contact_email",
+            "club_address",
+            "goods_count",
+            "theme_count",
         )
         read_only_fields = fields
 
+    def _club(self, obj):
+        return getattr(obj, "club_profile", None)
+
     def get_club_name(self, obj):
-        club = getattr(obj, "club_profile", None)
+        club = self._club(obj)
         return club.name if club else None
 
     def get_application_reason(self, obj):
-        club = getattr(obj, "club_profile", None)
+        club = self._club(obj)
         return club.application_reason if club else None
+
+    def get_club_id(self, obj):
+        club = self._club(obj)
+        return club.id if club else None
+
+    def get_club_description(self, obj):
+        club = self._club(obj)
+        return club.description if club else None
+
+    def get_club_contact_name(self, obj):
+        club = self._club(obj)
+        return club.contact_name if club else None
+
+    def get_club_contact_phone(self, obj):
+        club = self._club(obj)
+        return club.contact_phone if club else None
+
+    def get_club_contact_email(self, obj):
+        club = self._club(obj)
+        return club.contact_email if club else None
+
+    def get_club_address(self, obj):
+        club = self._club(obj)
+        return club.address if club else None
 
 
 class AdminUserCreateSerializer(serializers.ModelSerializer):
@@ -108,8 +153,114 @@ from apps.goods.models import (  # noqa: E402
     BGMSyncJob,
     BGMSyncJobItem,
     BGMSyncSettings,
+    Character,
+    Category,
+    Goods,
     GoodsCraft,
+    IP,
+    Theme,
 )
+from apps.goods.serializers import (  # noqa: E402
+    CategorySimpleSerializer,
+    CharacterSimpleSerializer,
+    GoodsListSerializer,
+    IPSimpleSerializer,
+    ThemeSimpleSerializer,
+)
+
+
+class AdminGoodsListSerializer(GoodsListSerializer):
+    class Meta(GoodsListSerializer.Meta):
+        fields = GoodsListSerializer.Meta.fields + (
+            "price",
+            "purchase_date",
+            "created_at",
+            "updated_at",
+        )
+
+
+class AdminIPListSerializer(IPSimpleSerializer):
+    goods_count = serializers.IntegerField(read_only=True, default=0)
+
+    class Meta(IPSimpleSerializer.Meta):
+        fields = IPSimpleSerializer.Meta.fields + ("goods_count", "created_at")
+
+
+class AdminCharacterListSerializer(CharacterSimpleSerializer):
+    created_at = serializers.DateTimeField(read_only=True)
+
+    class Meta(CharacterSimpleSerializer.Meta):
+        fields = CharacterSimpleSerializer.Meta.fields + ("created_at",)
+
+
+class AdminThemeListSerializer(ThemeSimpleSerializer):
+    user = serializers.SerializerMethodField()
+    goods_count = serializers.IntegerField(read_only=True, default=0)
+    image_count = serializers.IntegerField(read_only=True, default=0)
+    has_template = serializers.SerializerMethodField()
+
+    class Meta(ThemeSimpleSerializer.Meta):
+        fields = ThemeSimpleSerializer.Meta.fields + (
+            "user",
+            "goods_count",
+            "image_count",
+            "has_template",
+        )
+
+    def get_user(self, obj):
+        if not obj.user_id:
+            return None
+        return {
+            "id": obj.user_id,
+            "username": obj.user.username,
+        }
+
+    def get_has_template(self, obj):
+        return hasattr(obj, "template")
+
+
+class AdminCategoryListSerializer(CategorySimpleSerializer):
+    pass
+
+
+class AdminAuditLogSerializer(serializers.ModelSerializer):
+    actor_name = serializers.CharField(source="actor.username", read_only=True, default=None)
+    actor_id = serializers.IntegerField(read_only=True, allow_null=True)
+
+    class Meta:
+        model = AdminAuditLog
+        fields = (
+            "id",
+            "actor_id",
+            "actor_name",
+            "action",
+            "resource_type",
+            "resource_id",
+            "summary",
+            "changes",
+            "ip_address",
+            "created_at",
+        )
+        read_only_fields = fields
+
+
+class AdminBulkActionSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.CharField(max_length=100),
+        allow_empty=False,
+        max_length=1000,
+    )
+    action = serializers.CharField(max_length=50)
+    role_id = serializers.IntegerField(required=False)
+    status = serializers.CharField(required=False, max_length=30)
+    category_id = serializers.IntegerField(required=False, allow_null=True)
+    theme_id = serializers.IntegerField(required=False, allow_null=True)
+    is_active = serializers.BooleanField(required=False)
+
+    def validate_ids(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("ids 不能包含重复项")
+        return value
 
 
 class BGMSyncSettingsSerializer(serializers.ModelSerializer):

@@ -605,6 +605,17 @@ class GoodsViewSet(viewsets.ModelViewSet):
             add_qty = validated.get("quantity", 1)
             target.quantity += add_qty
             target.save(update_fields=["quantity", "updated_at"])
+            if is_admin(request.user):
+                from apps.admin_api.services import record_admin_action
+
+                record_admin_action(
+                    request,
+                    action="goods.merge",
+                    resource_type="goods",
+                    resource_id=target.pk,
+                    summary=f"合并谷子到 {target.name}",
+                    changes={"quantity_added": add_qty, "target_id": str(target.pk)},
+                )
             detail_serializer = GoodsDetailSerializer(
                 target, context=self.get_serializer_context()
             )
@@ -637,11 +648,76 @@ class GoodsViewSet(viewsets.ModelViewSet):
         # 包住 save + M2M 写入，确保游戏化信号在角色关联完成后读取完整快照。
         with transaction.atomic():
             serializer.save(user=owner, order=next_order)
+        if is_admin(self.request.user):
+            from apps.admin_api.services import record_admin_action
+
+            instance = serializer.instance
+            record_admin_action(
+                self.request,
+                action="goods.create",
+                resource_type="goods",
+                resource_id=instance.pk,
+                summary=f"创建谷子 {instance.name}",
+                changes={
+                    "name": instance.name,
+                    "user_id": owner.pk,
+                    "status": instance.status,
+                },
+            )
 
     def perform_update(self, serializer):
         # 与创建一致：状态、数量、角色等在同一事务提交后统一计算增量。
+        before = None
+        if is_admin(self.request.user):
+            instance = serializer.instance
+            before = {
+                "name": instance.name,
+                "status": instance.status,
+                "quantity": instance.quantity,
+                "user_id": instance.user_id,
+            }
         with transaction.atomic():
             serializer.save()
+        if is_admin(self.request.user):
+            from apps.admin_api.services import record_admin_action
+
+            instance = serializer.instance
+            record_admin_action(
+                self.request,
+                action="goods.update",
+                resource_type="goods",
+                resource_id=instance.pk,
+                summary=f"更新谷子 {instance.name}",
+                changes={
+                    "before": before,
+                    "after": {
+                        "name": instance.name,
+                        "status": instance.status,
+                        "quantity": instance.quantity,
+                        "user_id": instance.user_id,
+                    },
+                },
+            )
+
+    def perform_destroy(self, instance):
+        payload = {
+            "name": instance.name,
+            "user_id": instance.user_id,
+            "status": instance.status,
+        }
+        resource_id = str(instance.pk)
+        instance.delete()
+        if is_admin(self.request.user):
+            from apps.admin_api.services import record_admin_action
+
+            record_admin_action(
+                self.request,
+                action="goods.delete",
+                resource_type="goods",
+                resource_id=resource_id,
+                summary=f"删除谷子 {payload['name']}",
+                changes=payload,
+            )
 
     @action(detail=True, methods=["post"], url_path="move")
     def move(self, request, pk=None):

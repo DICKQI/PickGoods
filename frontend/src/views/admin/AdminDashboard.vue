@@ -1,427 +1,482 @@
 <template>
-  <div class="admin-layout" :class="{ 'is-collapsed': isSidebarCollapsed }">
+  <div
+    class="admin-shell"
+    :class="{ 'is-collapsed': isSidebarCollapsed, 'is-mobile': isMobile }"
+  >
     <aside class="admin-sidebar" :class="{ collapsed: isSidebarCollapsed }">
-      <div class="sidebar-header">
-        <div class="brand" @click="goToShowcase">
-          <span class="brand-icon">✦</span>
-          <span v-show="!isSidebarCollapsed" class="brand-text">管理后台</span>
-        </div>
-        <el-button
-          v-show="!isSidebarCollapsed"
-          class="collapse-btn"
-          text
-          @click="toggleSidebar"
-          :icon="Fold"
-        />
-        <el-button
-          v-show="isSidebarCollapsed"
-          class="collapse-btn collapsed-toggle"
-          text
-          @click="toggleSidebar"
-          :icon="Expand"
-        />
-      </div>
+      <button class="admin-brand" type="button" @click="router.push('/showcase')">
+        <span class="admin-brand__mark">拾</span>
+        <span v-show="!isSidebarCollapsed" class="admin-brand__copy">
+          <strong>拾谷管理台</strong>
+          <small>PickGoods Console</small>
+        </span>
+      </button>
 
-      <el-menu
-        :default-active="route.path"
-        class="sidebar-menu"
-        :collapse="isSidebarCollapsed"
-        @select="handleMenuSelect"
-      >
-        <el-menu-item v-for="item in adminMenu" :key="item.index" :index="item.index">
-          <el-icon><component :is="item.icon" /></el-icon>
-          <template #title>{{ item.title }}</template>
-        </el-menu-item>
-      </el-menu>
+      <el-scrollbar class="admin-nav-scroll">
+        <nav class="admin-nav" aria-label="管理后台导航">
+          <section v-for="group in adminMenu" :key="group.title" class="admin-nav__group">
+            <p v-show="!isSidebarCollapsed" class="admin-nav__group-title">
+              {{ group.title }}
+            </p>
+            <el-menu
+              :default-active="activePath"
+              :collapse="isSidebarCollapsed"
+              :collapse-transition="false"
+              class="admin-menu"
+              @select="handleMenuSelect"
+            >
+              <el-menu-item
+                v-for="item in group.items"
+                :key="item.path"
+                :index="item.path"
+              >
+                <el-icon><component :is="item.icon" /></el-icon>
+                <template #title>{{ item.title }}</template>
+              </el-menu-item>
+            </el-menu>
+          </section>
+        </nav>
+      </el-scrollbar>
 
-      <div class="sidebar-footer">
-        <el-button text class="back-btn" @click="goToShowcase">
+      <div class="admin-sidebar__footer">
+        <el-button text class="admin-sidebar__back" @click="router.push('/showcase')">
           <el-icon><Back /></el-icon>
           <span v-show="!isSidebarCollapsed">返回主站</span>
         </el-button>
       </div>
     </aside>
 
-    <main class="admin-main">
-      <header class="admin-header">
-        <div class="header-left">
-          <h1 class="page-title">{{ pageTitle }}</h1>
+    <div
+      v-if="isMobile && !isSidebarCollapsed"
+      class="admin-sidebar-mask"
+      aria-hidden="true"
+      @click="isSidebarCollapsed = true"
+    />
+
+    <section class="admin-workspace">
+      <header class="admin-topbar">
+        <div class="admin-topbar__left">
+          <el-button
+            class="admin-topbar__menu"
+            text
+            :icon="isSidebarCollapsed ? Expand : Fold"
+            aria-label="切换侧栏"
+            @click="toggleSidebar"
+          />
+          <div class="admin-breadcrumb">
+            <span>管理后台</span>
+            <el-icon><ArrowRight /></el-icon>
+            <strong>{{ pageTitle }}</strong>
+          </div>
         </div>
-        <div class="header-right">
-          <span class="user-info">
-            <el-icon><User /></el-icon>
-            <span>{{ authStore.user?.username }}</span>
+
+        <div class="admin-topbar__right">
+          <span class="admin-account">
+            <span class="admin-account__avatar">{{ accountInitial }}</span>
+            <span class="admin-account__name">{{ authStore.user?.username }}</span>
           </span>
-          <el-button text @click="goToSettings">
-            <el-icon><Setting /></el-icon>
-          </el-button>
+          <el-tooltip content="账号设置" placement="bottom">
+            <el-button
+              circle
+              text
+              :icon="Setting"
+              aria-label="账号设置"
+              @click="router.push('/settings')"
+            />
+          </el-tooltip>
         </div>
       </header>
 
-      <div class="admin-content">
-        <router-view v-slot="{ Component, route }">
+      <main class="admin-content">
+        <router-view v-slot="{ Component, route: currentRoute }">
           <Transition name="admin-page-fade" mode="out-in">
-            <component :is="Component" :key="route.fullPath" />
+            <component :is="Component" :key="String(currentRoute.name || currentRoute.path)" />
           </Transition>
         </router-view>
-      </div>
-    </main>
-
-    <div v-if="isMobile && !isSidebarCollapsed" class="sidebar-overlay" @click="isSidebarCollapsed = true"></div>
+      </main>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, type Component } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
+import { computed, ref, watch, type Component } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import {
-  User,
-  Goods,
-  Collection,
-  Box,
-  Star,
+  ArrowRight,
   Back,
-  Setting,
-  Fold,
+  Brush,
+  Collection,
+  DataAnalysis,
   Expand,
+  Fold,
+  Goods,
+  Grid,
+  List,
   Refresh,
+  Setting,
+  Star,
+  User,
 } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 
+interface AdminMenuItem {
+  path: string
+  title: string
+  icon: Component
+}
+
 const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
-
-const isSidebarCollapsed = ref(false)
 const { isMobile } = useResponsiveDevice()
+const isSidebarCollapsed = ref(isMobile.value)
 
-// 菜单单一数据源：index=路由路径，title=展示名，icon=Element 图标组件。
-// 新增菜单项只需在此追加一行，无需同步修改路由表/高亮/标题等多处。
-const adminMenu: { index: string; title: string; icon: Component }[] = [
-  { index: '/admin/users', title: '用户管理', icon: User },
-  { index: '/admin/goods', title: '谷子管理', icon: Goods },
-  { index: '/admin/ip', title: 'IP与角色', icon: Collection },
-  { index: '/admin/categories', title: '品类管理', icon: Box },
-  { index: '/admin/themes', title: '主题', icon: Star },
-  { index: '/admin/goods-crafts', title: '谷子工艺', icon: Box },
-  { index: '/admin/bgm-sync', title: 'BGM 自动同步', icon: Refresh },
-  { index: '/admin/gamification', title: '成就与奖励', icon: Star },
+const adminMenu: Array<{ title: string; items: AdminMenuItem[] }> = [
+  {
+    title: '工作台',
+    items: [
+      { path: '/admin/overview', title: '运营总览', icon: DataAnalysis },
+    ],
+  },
+  {
+    title: '用户与内容',
+    items: [
+      { path: '/admin/users', title: '用户管理', icon: User },
+      { path: '/admin/goods', title: '谷子管理', icon: Goods },
+    ],
+  },
+  {
+    title: '元数据',
+    items: [
+      { path: '/admin/ip', title: 'IP 与角色', icon: Collection },
+      { path: '/admin/categories', title: '品类管理', icon: Grid },
+      { path: '/admin/themes', title: '主题管理', icon: Brush },
+      { path: '/admin/goods-crafts', title: '谷子工艺', icon: List },
+    ],
+  },
+  {
+    title: '运维与激励',
+    items: [
+      { path: '/admin/bgm-sync', title: 'BGM 自动同步', icon: Refresh },
+      { path: '/admin/gamification', title: '成就与奖励', icon: Star },
+      { path: '/admin/audit-logs', title: '操作日志', icon: List },
+    ],
+  },
 ]
 
-// 顶栏标题直接取子路由 meta.title，避免与菜单/路由重复维护标题表。
-const pageTitle = computed(() => (route.meta.title as string) || '管理后台')
+const pageTitle = computed(() => (route.meta.title as string) || '运营总览')
+const activePath = computed(() => {
+  if (route.path.startsWith('/admin/goods/')) return '/admin/goods'
+  return route.path
+})
+const accountInitial = computed(
+  () => authStore.user?.username?.trim().slice(0, 1).toUpperCase() || 'A',
+)
 
 const toggleSidebar = () => {
   isSidebarCollapsed.value = !isSidebarCollapsed.value
 }
 
-const handleMenuSelect = (index: string) => {
-  router.push(index)
-  if (isMobile.value) {
-    isSidebarCollapsed.value = true
-  }
-}
-
-const goToShowcase = () => {
-  router.push('/showcase')
-}
-
-const goToSettings = () => {
-  router.push('/settings')
+const handleMenuSelect = (path: string) => {
+  void router.push(path)
+  if (isMobile.value) isSidebarCollapsed.value = true
 }
 
 watch(
   isMobile,
   (mobile) => {
-    if (mobile) {
-      isSidebarCollapsed.value = true
-    }
+    isSidebarCollapsed.value = mobile
   },
   { immediate: true },
 )
 </script>
 
 <style scoped>
-.admin-layout {
-  display: flex;
+.admin-shell {
+  --admin-sidebar-width: 224px;
+  --admin-sidebar-collapsed-width: 64px;
   min-height: 100vh;
-  background-color: var(--bg-gray);
+  background: var(--admin-bg, #f4f5f7);
+  color: var(--admin-text, #1f2937);
 }
 
 .admin-sidebar {
-  width: 220px;
-  background: var(--bg-white);
-  border-right: 1px solid var(--border-color);
-  display: flex;
-  flex-direction: column;
-  transition: width var(--transition-normal);
   position: fixed;
-  top: 0;
-  left: 0;
-  bottom: 0;
+  inset: 0 auto 0 0;
   z-index: var(--z-admin-sidebar);
+  display: flex;
+  width: var(--admin-sidebar-width);
+  flex-direction: column;
+  overflow: hidden;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--admin-sidebar, #1f232b);
+  color: #e5e7eb;
+  transition: width var(--transition-normal);
 }
 
 .admin-sidebar.collapsed {
-  width: 64px;
+  width: var(--admin-sidebar-collapsed-width);
 }
 
-.sidebar-header {
-  height: 64px;
+.admin-brand {
   display: flex;
+  min-height: 64px;
   align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-md);
-  border-bottom: 1px solid var(--border-color);
-}
-
-.admin-sidebar.collapsed .sidebar-header {
-  justify-content: center;
-  padding: 0;
-}
-
-.brand {
-  display: flex;
-  align-items: center;
-  gap: var(--space-sm);
+  gap: 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: transparent;
+  color: inherit;
   cursor: pointer;
+  padding: 0 14px;
+  text-align: left;
 }
 
-.admin-sidebar.collapsed .brand {
-  display: none;
+.admin-brand__mark {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  place-items: center;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #d4af37, #b8941f);
+  color: #1f232b;
+  font-size: 18px;
+  font-weight: 800;
 }
 
-.brand-icon {
-  font-size: 24px;
-  background: linear-gradient(45deg, var(--primary-gold), var(--primary-gold-light));
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+.admin-brand__copy {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  line-height: 1.2;
 }
 
-.brand-text {
-  font-size: var(--font-body);
-  font-weight: 600;
-  color: var(--text-dark);
+.admin-brand__copy strong {
+  color: #fff;
+  font-size: 14px;
 }
 
-.collapse-btn {
-  font-size: var(--font-section);
-  color: var(--text-regular);
+.admin-brand__copy small {
+  margin-top: 3px;
+  color: #9ca3af;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
-.admin-sidebar.collapsed .collapse-btn {
-  margin: 0 auto;
-}
-
-.sidebar-menu {
+.admin-nav-scroll {
   flex: 1;
-  border-right: none;
+}
+
+.admin-nav {
+  padding: 12px 10px;
+}
+
+.admin-nav__group + .admin-nav__group {
+  margin-top: 14px;
+}
+
+.admin-nav__group-title {
+  margin: 0 8px 6px;
+  color: #7f8794;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.admin-menu {
+  border-right: 0;
   background: transparent;
 }
 
-.sidebar-menu:not(.el-menu--collapse) {
-  width: 220px;
+.admin-menu :deep(.el-menu-item) {
+  height: 42px;
+  margin: 2px 0;
+  border-radius: 8px;
+  color: #cbd5e1;
+  font-size: 13px;
 }
 
-.sidebar-menu.el-menu--collapse {
-  width: 64px;
+.admin-menu :deep(.el-menu-item:hover) {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
 }
 
-.sidebar-menu :deep(.el-menu-item) {
-  height: 50px;
-  line-height: 50px;
-  margin: var(--space-xs) var(--space-sm);
-  border-radius: var(--button-radius);
+.admin-menu :deep(.el-menu-item.is-active) {
+  background: rgba(212, 175, 55, 0.14);
+  color: #f0d9a4;
+  box-shadow: inset 3px 0 #d4af37;
 }
 
-.sidebar-menu.el-menu--collapse :deep(.el-menu-item) {
-  margin: var(--space-xs) 0;
-  padding: 0 !important;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+.admin-sidebar__footer {
+  padding: 12px 10px 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.sidebar-menu.el-menu--collapse :deep(.el-menu-item .el-icon) {
-  margin-right: 0 !important;
-}
-
-.sidebar-menu :deep(.el-menu-item:hover) {
-  background-color: var(--bg-gray);
-}
-
-/* 菜单激活态：遵循 STYLING.md，使用香槟金（与全局 el-menu 激活一致），
-   不再用紫色作为后台识别色。 */
-.sidebar-menu :deep(.el-menu-item.is-active) {
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--primary-gold-dark);
-}
-
-.sidebar-footer {
-  padding: var(--space-md);
-  border-top: 1px solid var(--border-color);
-}
-
-.back-btn {
+.admin-sidebar__back {
   width: 100%;
   justify-content: flex-start;
-  color: var(--text-regular);
+  color: #cbd5e1;
 }
 
-.back-btn:hover {
-  color: var(--primary-gold);
+.admin-sidebar__back:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
 }
 
-.admin-main {
-  flex: 1;
-  min-width: 0;
-  margin-left: 220px;
-  transition: margin-left var(--transition-normal);
+.admin-workspace {
   display: flex;
+  min-width: 0;
+  min-height: 100vh;
   flex-direction: column;
+  margin-left: var(--admin-sidebar-width);
+  transition: margin-left var(--transition-normal);
 }
 
-/* 用父级 class 控制折叠态，替代脆弱的 .admin-sidebar.collapsed + .admin-main 相邻兄弟选择器。 */
-.admin-layout.is-collapsed .admin-main {
-  margin-left: 64px;
+.admin-shell.is-collapsed .admin-workspace {
+  margin-left: var(--admin-sidebar-collapsed-width);
 }
 
-.admin-header {
-  height: 64px;
-  background: var(--bg-white);
-  border-bottom: 1px solid var(--border-color);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0 var(--space-lg);
-  min-width: 0;
+.admin-topbar {
   position: sticky;
   top: 0;
   z-index: var(--z-admin-header);
+  display: flex;
+  min-height: 56px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  border-bottom: 1px solid var(--admin-border, #e5e7eb);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px);
+  padding: 0 20px;
 }
 
-.header-left {
+.admin-topbar__left,
+.admin-topbar__right,
+.admin-breadcrumb,
+.admin-account {
   display: flex;
   align-items: center;
-  min-width: 0;
 }
 
-.page-title {
-  font-size: var(--font-title);
-  font-weight: 600;
-  color: var(--text-dark);
-  margin: 0;
+.admin-topbar__left {
   min-width: 0;
+  gap: 10px;
+}
+
+.admin-topbar__menu {
+  flex: none;
+}
+
+.admin-breadcrumb {
+  min-width: 0;
+  gap: 7px;
+  color: #909399;
+  font-size: 13px;
+}
+
+.admin-breadcrumb strong {
   overflow: hidden;
+  color: #303133;
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: var(--space-md);
+.admin-topbar__right {
+  gap: 12px;
 }
 
-.user-info {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--font-body);
-  color: var(--text-regular);
+.admin-account {
+  gap: 8px;
+  color: #4b5563;
+  font-size: 13px;
+}
+
+.admin-account__avatar {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  border-radius: 50%;
+  background: #f1e6bd;
+  color: #7a5f0d;
+  font-weight: 700;
 }
 
 .admin-content {
-  flex: 1;
   min-width: 0;
-  padding: var(--space-lg);
-  overflow: auto;
+  flex: 1;
+  padding: 20px;
 }
 
 .admin-page-fade-enter-active,
 .admin-page-fade-leave-active {
-  transition: opacity var(--transition-fast), transform var(--transition-fast);
+  transition: opacity 160ms ease, transform 160ms ease;
 }
 
 .admin-page-fade-enter-from,
 .admin-page-fade-leave-to {
   opacity: 0;
-  transform: translateY(8px);
+  transform: translateY(4px);
 }
 
-.sidebar-overlay {
+.admin-sidebar-mask {
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .admin-sidebar {
-    width: 220px;
+    width: var(--admin-sidebar-width);
+    transform: translateX(0);
+    transition: transform var(--transition-normal);
   }
 
   .admin-sidebar.collapsed {
-    width: 0;
-    overflow: hidden;
+    width: var(--admin-sidebar-width);
+    transform: translateX(-100%);
   }
 
-  .admin-main,
-  .admin-layout.is-collapsed .admin-main {
+  .admin-workspace,
+  .admin-shell.is-collapsed .admin-workspace {
     margin-left: 0;
   }
 
-  .sidebar-overlay {
-    display: block;
+  .admin-sidebar-mask {
     position: fixed;
-    top: 0;
-    left: 220px;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: var(--z-admin-overlay);
+    inset: 0;
+    z-index: calc(var(--z-admin-sidebar) - 1);
+    display: block;
+    background: rgba(15, 23, 42, 0.42);
   }
 
   .admin-content {
-    padding: var(--space-md);
+    padding: 14px;
   }
 
-  .admin-header {
-    padding: 0 var(--space-md);
+  .admin-topbar {
+    padding: 0 14px;
+  }
+
+  .admin-account__name {
+    display: none;
+  }
+
+  .admin-breadcrumb > span,
+  .admin-breadcrumb > .el-icon {
+    display: none;
   }
 }
 
-@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  .admin-sidebar {
-    width: 220px;
-  }
-
-  .admin-sidebar.collapsed {
-    width: 0;
-    overflow: hidden;
-  }
-
-  .admin-main,
-  .admin-layout.is-collapsed .admin-main {
-    margin-left: 0;
-  }
-
-  .sidebar-overlay {
-    display: block;
-    position: fixed;
-    top: 0;
-    left: 220px;
-    right: 0;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: var(--z-admin-overlay);
-  }
-
-  .admin-content {
-    padding: var(--space-md);
-  }
-
-  .admin-header {
-    padding: 0 var(--space-md);
+@media (prefers-reduced-motion: reduce) {
+  .admin-sidebar,
+  .admin-workspace,
+  .admin-page-fade-enter-active,
+  .admin-page-fade-leave-active {
+    transition: none;
   }
 }
 </style>

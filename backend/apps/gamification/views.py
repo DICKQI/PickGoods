@@ -5,7 +5,7 @@ from decimal import Decimal
 from django.db import transaction
 from django.db.models import Count, Max, Prefetch, Q
 from django.shortcuts import get_object_or_404
-from rest_framework import mixins, status, viewsets
+from rest_framework import filters, mixins, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.pagination import PageNumberPagination
@@ -13,6 +13,8 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.admin_api.serializers import AdminBulkActionSerializer
+from apps.admin_api.services import record_admin_action, sanitize_audit_value
 from apps.goods.models import ClubGoodsOrigin
 from core.permissions import IsAdmin, IsCollectorAccount
 from apps.users.models import User
@@ -335,13 +337,137 @@ class GamificationAdminPagination(PageNumberPagination):
     max_page_size = 100
 
 
-class AdminAchievementSetViewSet(viewsets.ModelViewSet):
+class AdminAuditedBulkMixin:
+    audit_resource_type = "gamification"
+    audit_label = "游戏化配置"
+
+    def perform_create(self, serializer):
+        instance = serializer.save()
+        record_admin_action(
+            self.request,
+            action=f"{self.audit_resource_type}.create",
+            resource_type=self.audit_resource_type,
+            resource_id=instance.pk,
+            summary=f"创建{self.audit_label} {instance}",
+            changes={
+                key: sanitize_audit_value(value)
+                for key, value in serializer.validated_data.items()
+            },
+        )
+
+    def perform_update(self, serializer):
+        instance = serializer.save()
+        record_admin_action(
+            self.request,
+            action=f"{self.audit_resource_type}.update",
+            resource_type=self.audit_resource_type,
+            resource_id=instance.pk,
+            summary=f"更新{self.audit_label} {instance}",
+            changes={
+                key: sanitize_audit_value(value)
+                for key, value in serializer.validated_data.items()
+            },
+        )
+
+    def perform_destroy(self, instance):
+        resource_id = instance.pk
+        label = str(instance)
+        instance.delete()
+        record_admin_action(
+            self.request,
+            action=f"{self.audit_resource_type}.delete",
+            resource_type=self.audit_resource_type,
+            resource_id=resource_id,
+            summary=f"删除{self.audit_label} {label}",
+        )
+
+    @action(detail=False, methods=["post"], url_path="bulk-action")
+    def bulk_action(self, request):
+        serializer = AdminBulkActionSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        try:
+            ids = [int(value) for value in serializer.validated_data["ids"]]
+        except (TypeError, ValueError):
+            return Response(
+                {"detail": "记录 ID 必须是整数"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        action_name = serializer.validated_data["action"]
+        if action_name not in {"enable", "disable"}:
+            return Response(
+                {"detail": f"不支持的批量动作：{action_name}"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        with transaction.atomic():
+            locked = list(
+                self.get_queryset().select_for_update().filter(pk__in=ids)
+            )
+            found = {item.pk for item in locked}
+            missing = sorted(set(ids) - found)
+            if missing:
+                return Response(
+                    {"detail": "部分记录不存在", "missing_ids": missing},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            for instance in locked:
+                instance.is_active = action_name == "enable"
+                instance.save(update_fields=["is_active", "updated_at"])
+            record_admin_action(
+                request,
+                action=f"{self.audit_resource_type}.bulk_{action_name}",
+                resource_type=self.audit_resource_type,
+                resource_id=None,
+                summary=f"批量{action_name} {self.audit_label} {len(ids)} 个",
+                changes={"ids": ids, "action": action_name},
+            )
+        return Response({"updated": len(ids), "action": action_name, "ids": ids})
+
+
+class AdminAchievementSetViewSet(AdminAuditedBulkMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     pagination_class = GamificationAdminPagination
-    queryset = AchievementSet.objects.annotate(achievement_count=Count("achievements")).order_by("order", "id")
+    queryset = (
+        AchievementSet.objects.select_related("club")
+        .annotate(
+            achievement_count=Count("achievements", distinct=True),
+            unlocked_count=Count(
+                "achievements__user_states",
+                filter=Q(
+                    achievements__user_states__status__in=[
+                        UserAchievement.STATUS_UNLOCKED,
+                        UserAchievement.STATUS_CLAIMED,
+                    ]
+                ),
+                distinct=True,
+            ),
+            claimed_count=Count(
+                "achievements__user_states",
+                filter=Q(
+                    achievements__user_states__status=UserAchievement.STATUS_CLAIMED
+                ),
+                distinct=True,
+            ),
+        )
+        .order_by("order", "id")
+    )
     serializer_class = AchievementSetAdminSerializer
     search_fields = ["code", "name", "description"]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    ordering_fields = ["id", "code", "name", "order", "created_at", "starts_at", "ends_at"]
+    ordering = ["order", "id"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    audit_resource_type = "gamification_set"
+    audit_label = "成就系列"
+
+    def get_queryset(self):
+        qs = super().get_queryset().filter(club__isnull=True)
+        active = self.request.query_params.get("is_active")
+        if active in {"true", "false"}:
+            qs = qs.filter(is_active=active == "true")
+        limited = self.request.query_params.get("is_limited")
+        if limited in {"true", "false"}:
+            qs = qs.filter(is_limited=limited == "true")
+        return qs
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
@@ -353,27 +479,35 @@ class AdminAchievementSetViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class AdminAchievementViewSet(viewsets.ModelViewSet):
+class AdminAchievementViewSet(AdminAuditedBulkMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     pagination_class = GamificationAdminPagination
     queryset = (
-        Achievement.objects.select_related("set")
+        Achievement.objects.select_related("set", "set__club")
         .prefetch_related("rewards", "rule_groups__conditions")
         .annotate(user_count=Count("user_states", distinct=True))
         .order_by("set__order", "order", "id")
     )
     serializer_class = AchievementAdminSerializer
     search_fields = ["code", "name", "set__name"]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    ordering_fields = ["id", "code", "name", "order", "user_count", "created_at", "updated_at"]
+    ordering = ["set__order", "order", "id"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    audit_resource_type = "gamification_achievement"
+    audit_label = "成就"
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(set__club__isnull=True)
         set_id = self.request.query_params.get("set")
         if set_id:
             qs = qs.filter(set_id=set_id)
         active = self.request.query_params.get("is_active")
         if active in {"true", "false"}:
             qs = qs.filter(is_active=active == "true")
+        limited = self.request.query_params.get("is_limited")
+        if limited in {"true", "false"}:
+            qs = qs.filter(is_limited=limited == "true")
         return qs
 
     def destroy(self, request, *args, **kwargs):
@@ -386,25 +520,36 @@ class AdminAchievementViewSet(viewsets.ModelViewSet):
         return super().destroy(request, *args, **kwargs)
 
 
-class AdminRewardViewSet(viewsets.ModelViewSet):
+class AdminRewardViewSet(AdminAuditedBulkMixin, viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, IsAdmin]
     pagination_class = GamificationAdminPagination
-    queryset = Reward.objects.prefetch_related("assets").annotate(
-        achievement_count=Count("achievements", distinct=True)
-    ).order_by("order", "id")
+    queryset = (
+        Reward.objects.select_related("club")
+        .prefetch_related("assets")
+        .annotate(achievement_count=Count("achievements", distinct=True))
+        .order_by("order", "id")
+    )
     serializer_class = RewardAdminSerializer
     parser_classes = [JSONParser, MultiPartParser, FormParser]
     search_fields = ["code", "name", "description", "preset_key"]
+    filter_backends = [filters.SearchFilter, filters.OrderingFilter]
+    ordering_fields = ["id", "code", "name", "rarity", "order", "created_at", "updated_at"]
+    ordering = ["order", "id"]
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
+    audit_resource_type = "gamification_reward"
+    audit_label = "奖励"
 
     def get_queryset(self):
-        qs = super().get_queryset()
+        qs = super().get_queryset().filter(club__isnull=True)
         reward_type = self.request.query_params.get("reward_type")
         if reward_type:
             qs = qs.filter(reward_type=reward_type)
         active = self.request.query_params.get("is_active")
         if active in {"true", "false"}:
             qs = qs.filter(is_active=active == "true")
+        rarity = self.request.query_params.get("rarity")
+        if rarity:
+            qs = qs.filter(rarity=rarity)
         return qs
 
     def destroy(self, request, *args, **kwargs):
@@ -432,6 +577,14 @@ class AdminRewardViewSet(viewsets.ModelViewSet):
             image=serializer.validated_data["image"],
             order=serializer.validated_data.get("order", 0),
         )
+        record_admin_action(
+            request,
+            action="gamification_reward.asset_upload",
+            resource_type="gamification_reward",
+            resource_id=reward.pk,
+            summary=f"上传奖励素材 {asset.name}",
+            changes={"asset_id": asset.pk, "name": asset.name, "order": asset.order},
+        )
         return Response(
             {
                 "id": asset.id,
@@ -450,7 +603,16 @@ class AdminRewardViewSet(viewsets.ModelViewSet):
     def delete_asset(self, request, pk=None, asset_id=None):
         reward = self.get_object()
         asset = get_object_or_404(RewardAsset, pk=asset_id, reward=reward)
+        asset_name = asset.name
         asset.delete()
+        record_admin_action(
+            request,
+            action="gamification_reward.asset_delete",
+            resource_type="gamification_reward",
+            resource_id=reward.pk,
+            summary=f"删除奖励素材 {asset_name}",
+            changes={"asset_id": asset_id, "name": asset_name},
+        )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

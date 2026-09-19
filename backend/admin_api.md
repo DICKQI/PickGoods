@@ -114,6 +114,43 @@
 
 返回 `users.Role` 全表列表，用于分配用户时的角色选择（如 `Admin`、`User`）。
 
+### 2.6 管理员总览
+
+| 项目 | 说明 |
+|------|------|
+| **URL** | `GET /api/admin/overview/` |
+| **查询参数** | `range=7d` 或 `range=30d`，默认 `30d` |
+
+返回管理员首页所需的用户、谷子、目录、游戏化、BGM 统计，待办告警、趋势、最近同步任务和最近操作日志。统计日期按 `Asia/Shanghai` 分桶，响应缓存约 60 秒。
+
+### 2.7 操作日志
+
+| 项目 | 说明 |
+|------|------|
+| **URL** | `GET /api/admin/audit-logs/` |
+| **查询参数** | `page`、`page_size`、`search`、`actor`、`action`、`resource_type`、`resource_id`、`created_at__gte`、`created_at__lte` |
+
+日志记录管理员、动作、资源类型/ID、脱敏变更、来源 IP 和时间。密码、Token、原始文件等敏感字段统一写为 `[REDACTED]`。默认保留 365 天，可通过定时任务或 `python manage.py purge_admin_audit_logs --days=365` 清理。
+
+### 2.8 安全批量操作
+
+| 资源 | URL | 支持动作 |
+|------|-----|----------|
+| 用户 | `POST /api/admin/users/bulk-action/` | `enable`、`disable`、`approve` |
+| 谷子 | `POST /api/admin/goods/bulk-action/` | `status`、`category`、`theme` |
+| 谷子工艺 | `POST /api/admin/goods-crafts/bulk-action/` | `enable`、`disable` |
+| 游戏化系列 | `POST /api/admin/gamification/sets/bulk-action/` | `enable`、`disable` |
+| 成就 | `POST /api/admin/gamification/achievements/bulk-action/` | `enable`、`disable` |
+| 奖励 | `POST /api/admin/gamification/rewards/bulk-action/` | `enable`、`disable` |
+
+请求包含 `ids` 和 `action`，谷子按动作附加 `status`、`category_id` 或 `theme_id`。批量操作为原子事务；任一 ID 或状态无效时不会部分提交。禁止停用当前管理员或最后一个有效管理员。
+
+### 2.9 CSV 导出
+
+`GET /api/admin/exports/<resource>/` 使用与对应列表相同的筛选参数，流式返回 UTF-8 BOM CSV。
+
+支持资源：`users`、`goods`、`ips`、`characters`、`themes`、`categories`、`goods-crafts`、`bgm-jobs`、`audit-logs`。单次最多导出 100,000 行，超出时需要缩小筛选范围。所有导出行为都会写入操作日志，CSV 单元格会防护公式注入。
+
 **响应示例**：
 
 ```json
@@ -140,6 +177,8 @@
 | 作品角色 | `/api/characters/` | 同上（对应模型 `Character`，非 `users.Role`）。 |
 
 谷子、主题请求中的 **`user_id`** 仅管理员可用；普通用户传入会校验失败。
+
+`user_id` 仅在创建时生效。已创建谷子或主题的归属用户不可通过 `PATCH/PUT` 修改；更新请求携带 `user_id` 会返回 `400`。
 
 ---
 
@@ -178,3 +217,7 @@
 已有用户进度或奖励发放记录时，删除系列、成就或奖励返回 `409`，应改为停用。限时活动必须同时设置 `is_limited=true`、`starts_at` 和 `ends_at`。行为类奖励的 `preset_key` 由后端白名单校验。
 
 成就一旦产生用户进度，奖励集合即冻结；奖励一旦产生用户授权，或已被存在用户进度的成就引用，`code`、`reward_type` 和 `preset_key` 即冻结。上述变更需要专门的数据迁移/补发流程，不能通过普通后台编辑覆盖历史承诺。
+
+`/api/admin/gamification/*` 仅管理平台内容。社团系列、成就和奖励继续通过 `/api/clubs/me/gamification/*` 由对应社团工作台维护。
+
+管理员操作审计优先同步写入；写入失败时进入持久化重试队列，由调度器定时补偿，不再让已完成的业务操作因审计失败返回 500。后台总览会提示未解决的审计补偿任务。

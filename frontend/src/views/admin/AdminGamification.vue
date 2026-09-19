@@ -10,12 +10,30 @@
     <el-tabs v-model="activeTab" class="gamification-tabs" @tab-change="handleTabChange">
       <el-tab-pane label="成就与活动" name="sets">
         <div class="toolbar">
-          <el-input v-model="setSearch" clearable placeholder="搜索系列" @keyup.enter="loadSets">
+          <el-input v-model="setSearch" clearable placeholder="搜索系列" @keyup.enter="searchSets">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
+          <el-select v-model="setActiveFilter" clearable placeholder="启用状态" @change="loadSets">
+            <el-option label="启用" :value="true" />
+            <el-option label="停用" :value="false" />
+          </el-select>
+          <el-select v-model="setLimitedFilter" clearable placeholder="活动类型" @change="loadSets">
+            <el-option label="限时" :value="true" />
+            <el-option label="永久" :value="false" />
+          </el-select>
+          <el-dropdown v-if="selectedSets.length" trigger="click" @command="bulkSets">
+            <el-button plain>批量操作（{{ selectedSets.length }}）</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="enable">启用</el-dropdown-item>
+                <el-dropdown-item command="disable">停用</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button type="primary" @click="openSetDialog()"><el-icon><Plus /></el-icon>新增系列</el-button>
         </div>
-        <el-table v-loading="loading" :data="sets" row-key="id">
+        <el-table v-loading="loading" :data="sets" row-key="id" @selection-change="selectedSets = $event">
+          <el-table-column type="selection" width="46" />
           <el-table-column prop="name" label="系列" min-width="150" />
           <el-table-column prop="code" label="编码" min-width="160" />
           <el-table-column label="类型" width="100">
@@ -36,7 +54,12 @@
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="170" fixed="right">
+          <el-table-column
+            label="操作"
+            width="190"
+            fixed="right"
+            class-name="gamification-actions"
+          >
             <template #default="{ row }">
               <el-button link type="primary" @click="openAchievementDialog(undefined, row.id)">添加成就</el-button>
               <el-button link type="primary" @click="openSetDialog(row)">编辑</el-button>
@@ -44,13 +67,46 @@
             </template>
           </el-table-column>
         </el-table>
+        <div class="pagination-row">
+          <el-pagination
+            v-model:current-page="setsPage"
+            v-model:page-size="setsPageSize"
+            :page-sizes="[20, 50, 100]"
+            :total="setsTotal"
+            layout="total, sizes, prev, pager, next"
+            @size-change="loadSets"
+            @current-change="loadSets"
+          />
+        </div>
         <div class="section-title-row">
-          <h3>成就规则</h3>
-          <el-button type="primary" class="soft-button" @click="openAchievementDialog()">
+          <div class="section-title-row__heading">
+            <h3>成就规则</h3>
+            <span>共 {{ achievementsTotal }} 条规则</span>
+          </div>
+        </div>
+        <div class="toolbar achievement-toolbar">
+          <el-select v-model="achievementSetFilter" clearable placeholder="筛选系列" @change="loadAchievements">
+            <el-option v-for="item in sets" :key="item.id" :label="item.name" :value="item.id" />
+          </el-select>
+          <el-select v-model="achievementActiveFilter" clearable placeholder="状态" @change="loadAchievements">
+            <el-option label="启用" :value="true" />
+            <el-option label="停用" :value="false" />
+          </el-select>
+          <el-dropdown v-if="selectedAchievements.length" trigger="click" @command="bulkAchievements">
+            <el-button plain>批量操作（{{ selectedAchievements.length }}）</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="enable">启用</el-dropdown-item>
+                <el-dropdown-item command="disable">停用</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button type="primary" @click="openAchievementDialog()">
             <el-icon><Plus /></el-icon>新增成就
           </el-button>
         </div>
-        <el-table v-loading="loading" :data="achievements" row-key="id">
+        <el-table v-loading="loading" :data="achievements" row-key="id" @selection-change="selectedAchievements = $event">
+          <el-table-column type="selection" width="46" />
           <el-table-column prop="name" label="成就" min-width="160" />
           <el-table-column prop="set_name" label="系列" min-width="130" />
           <el-table-column prop="code" label="编码" min-width="150" />
@@ -63,23 +119,56 @@
               <el-tag :type="row.is_active ? 'success' : 'info'" effect="plain">{{ row.is_active ? '启用' : '停用' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="130" fixed="right">
+          <el-table-column
+            label="操作"
+            width="130"
+            fixed="right"
+            class-name="gamification-actions"
+          >
             <template #default="{ row }">
               <el-button link type="primary" @click="openAchievementDialog(row)">编辑</el-button>
               <el-button link type="danger" @click="removeAchievement(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
+        <div class="pagination-row">
+          <el-pagination
+            v-model:current-page="achievementsPage"
+            v-model:page-size="achievementsPageSize"
+            :page-sizes="[20, 50, 100]"
+            :total="achievementsTotal"
+            layout="total, sizes, prev, pager, next"
+            @size-change="loadAchievements"
+            @current-change="loadAchievements"
+          />
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="奖励与素材" name="rewards">
         <div class="toolbar">
-          <el-input v-model="rewardSearch" clearable placeholder="搜索奖励" @keyup.enter="loadRewards">
+          <el-input v-model="rewardSearch" clearable placeholder="搜索奖励" @keyup.enter="searchRewards">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
+          <el-select v-model="rewardTypeFilter" clearable placeholder="奖励类型" @change="loadRewards">
+            <el-option v-for="item in rewardTypes" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+          <el-select v-model="rewardActiveFilter" clearable placeholder="状态" @change="loadRewards">
+            <el-option label="启用" :value="true" />
+            <el-option label="停用" :value="false" />
+          </el-select>
+          <el-dropdown v-if="selectedRewards.length" trigger="click" @command="bulkRewards">
+            <el-button plain>批量操作（{{ selectedRewards.length }}）</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="enable">启用</el-dropdown-item>
+                <el-dropdown-item command="disable">停用</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-button type="primary" @click="openRewardDialog()"><el-icon><Plus /></el-icon>新增奖励</el-button>
         </div>
-        <el-table v-loading="loading" :data="rewards" row-key="id">
+        <el-table v-loading="loading" :data="rewards" row-key="id" @selection-change="selectedRewards = $event">
+          <el-table-column type="selection" width="46" />
           <el-table-column label="预览" width="90">
             <template #default="{ row }">
               <div class="reward-thumb">
@@ -100,7 +189,12 @@
               <el-tag :type="row.is_active ? 'success' : 'info'" effect="plain">{{ row.is_active ? '启用' : '停用' }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="200" fixed="right">
+          <el-table-column
+            label="操作"
+            width="200"
+            fixed="right"
+            class-name="gamification-actions"
+          >
             <template #default="{ row }">
               <el-button link type="primary" @click="openRewardDialog(row)">编辑</el-button>
               <el-button link type="success" @click="triggerAssetUpload(row.id)">上传素材</el-button>
@@ -108,12 +202,23 @@
             </template>
           </el-table-column>
         </el-table>
+        <div class="pagination-row">
+          <el-pagination
+            v-model:current-page="rewardsPage"
+            v-model:page-size="rewardsPageSize"
+            :page-sizes="[20, 50, 100]"
+            :total="rewardsTotal"
+            layout="total, sizes, prev, pager, next"
+            @size-change="loadRewards"
+            @current-change="loadRewards"
+          />
+        </div>
         <input ref="assetInput" class="sr-only-input" type="file" accept="image/*" @change="uploadAsset" />
       </el-tab-pane>
 
       <el-tab-pane label="用户进度" name="users">
         <div class="toolbar">
-          <el-input v-model="userSearch" clearable placeholder="搜索用户名" @keyup.enter="loadUsers">
+          <el-input v-model="userSearch" clearable placeholder="搜索用户名" @keyup.enter="searchUsers">
             <template #prefix><el-icon><Search /></el-icon></template>
           </el-input>
         </div>
@@ -137,6 +242,17 @@
             <template #default="{ row }">{{ row.updated_at ? formatDateTime(row.updated_at) : '—' }}</template>
           </el-table-column>
         </el-table>
+        <div class="pagination-row">
+          <el-pagination
+            v-model:current-page="usersPage"
+            v-model:page-size="usersPageSize"
+            :page-sizes="[20, 50, 100]"
+            :total="usersTotal"
+            layout="total, sizes, prev, pager, next"
+            @size-change="loadUsers"
+            @current-change="loadUsers"
+          />
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -190,7 +306,6 @@
           </el-form-item>
         </div>
         <div class="switch-row">
-          <el-checkbox v-model="achievementForm.is_limited">限定成就</el-checkbox>
           <el-checkbox v-model="achievementForm.is_active">启用</el-checkbox>
           <el-input-number v-model="achievementForm.order" :step="10" />
         </div>
@@ -213,7 +328,48 @@
               <el-option v-for="metric in metrics" :key="metric.value" :label="metric.label" :value="metric.value" />
             </el-select>
             <el-input-number v-model="condition.threshold" :min="0.01" :precision="2" />
-            <el-input v-model="condition.filtersText" placeholder='筛选 JSON，例如 {"ip_ids":[1]}' />
+            <div class="rule-condition__filters">
+              <el-select
+                v-model="condition.filters.ip_ids"
+                multiple
+                filterable
+                remote
+                collapse-tags
+                placeholder="限定 IP"
+                :remote-method="searchRuleIPs"
+              >
+                <el-option v-for="ip in ruleIPOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
+              </el-select>
+              <el-select
+                v-model="condition.filters.character_ids"
+                multiple
+                filterable
+                remote
+                collapse-tags
+                placeholder="限定角色"
+                :remote-method="searchRuleCharacters"
+              >
+                <el-option v-for="item in ruleCharacterOptions" :key="item.id" :label="item.name" :value="item.id" />
+              </el-select>
+              <el-select
+                v-model="condition.filters.category_ids"
+                multiple
+                filterable
+                collapse-tags
+                placeholder="限定品类"
+              >
+                <el-option
+                  v-for="item in ruleCategoryOptions"
+                  :key="item.id"
+                  :label="item.path_name || item.name"
+                  :value="item.id"
+                />
+              </el-select>
+              <el-select v-model="condition.filters.is_official" multiple placeholder="官谷属性">
+                <el-option label="官谷" :value="true" />
+                <el-option label="非官谷" :value="false" />
+              </el-select>
+            </div>
             <el-button link type="danger" @click="group.conditions.splice(conditionIndex, 1)">删除</el-button>
           </div>
           <el-button text type="primary" @click="addCondition(group)">添加条件</el-button>
@@ -288,14 +444,19 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Medal, Plus, Refresh, Search } from '@element-plus/icons-vue'
 import AdminPageHeader from './components/AdminPageHeader.vue'
 import { formatDateTime } from '@/utils/datetime'
+import { createLatestRequestGuard } from '@/composables/useLatestRequest'
 import {
   createAdminGamificationAchievement,
   createAdminGamificationReward,
   createAdminGamificationSet,
+  bulkAdminGamificationAchievements,
+  bulkAdminGamificationRewards,
+  bulkAdminGamificationSets,
   deleteAdminGamificationAchievement,
   deleteAdminGamificationReward,
   deleteAdminGamificationSet,
@@ -308,21 +469,44 @@ import {
   updateAdminGamificationSet,
   uploadAdminGamificationRewardAsset,
 } from '@/api/gamification'
+import {
+  getAdminCategories,
+  getAdminCharacters,
+  getAdminIPs,
+  type AdminCharacterListParams,
+  type AdminIPListParams,
+} from '@/api/admin'
 import type {
   AdminGamificationAchievement,
   AdminGamificationReward,
   AdminGamificationRuleGroup,
   AdminGamificationSet,
   AdminGamificationUser,
+  AdminCharacterListItem,
+  AdminIPListItem,
+  Category,
   GamificationMetric,
   GamificationOperator,
   GamificationRewardType,
 } from '@/api/types'
 
-type EditableCondition = AdminGamificationRuleGroup['conditions'][number] & { filtersText?: string }
+interface EditableRuleFilters {
+  ip_ids: number[]
+  character_ids: number[]
+  category_ids: number[]
+  is_official: boolean[]
+}
+type EditableCondition = Omit<AdminGamificationRuleGroup['conditions'][number], 'filters'> & {
+  filters: EditableRuleFilters
+}
 type EditableGroup = Omit<AdminGamificationRuleGroup, 'conditions'> & { conditions: EditableCondition[] }
 
-const activeTab = ref('sets')
+const route = useRoute()
+const activeTab = ref(
+  ['sets', 'achievements', 'rewards', 'users'].includes(String(route.query.tab))
+    ? String(route.query.tab)
+    : 'sets',
+)
 const loading = ref(false)
 const submitting = ref(false)
 const setSearch = ref('')
@@ -332,6 +516,34 @@ const sets = ref<AdminGamificationSet[]>([])
 const achievements = ref<AdminGamificationAchievement[]>([])
 const rewards = ref<AdminGamificationReward[]>([])
 const users = ref<AdminGamificationUser[]>([])
+const selectedSets = ref<AdminGamificationSet[]>([])
+const selectedAchievements = ref<AdminGamificationAchievement[]>([])
+const selectedRewards = ref<AdminGamificationReward[]>([])
+const setListRequests = createLatestRequestGuard()
+const achievementListRequests = createLatestRequestGuard()
+const rewardListRequests = createLatestRequestGuard()
+const userListRequests = createLatestRequestGuard()
+const setsPage = ref(1)
+const achievementsPage = ref(1)
+const rewardsPage = ref(1)
+const usersPage = ref(1)
+const setsPageSize = ref(20)
+const achievementsPageSize = ref(20)
+const rewardsPageSize = ref(20)
+const usersPageSize = ref(20)
+const setsTotal = ref(0)
+const achievementsTotal = ref(0)
+const rewardsTotal = ref(0)
+const usersTotal = ref(0)
+const setActiveFilter = ref<boolean | undefined>()
+const setLimitedFilter = ref<boolean | undefined>()
+const achievementSetFilter = ref<number | undefined>()
+const achievementActiveFilter = ref<boolean | undefined>()
+const rewardTypeFilter = ref<GamificationRewardType | undefined>()
+const rewardActiveFilter = ref<boolean | undefined>()
+const ruleIPOptions = ref<AdminIPListItem[]>([])
+const ruleCharacterOptions = ref<AdminCharacterListItem[]>([])
+const ruleCategoryOptions = ref<Category[]>([])
 
 const setDialogVisible = ref(false)
 const achievementDialogVisible = ref(false)
@@ -446,28 +658,152 @@ const achievementRulePreview = computed(() => achievementForm.rule_groups
   .join(achievementForm.root_operator === 'ANY' ? ' 或 ' : ' 且 ') || '尚未配置条件')
 
 async function loadSets() {
-  sets.value = (await getAdminGamificationSets({ page_size: 100, search: setSearch.value || undefined })).results
+  const requestSequence = setListRequests.next()
+  const response = await getAdminGamificationSets({
+    page: setsPage.value,
+    page_size: setsPageSize.value,
+    search: setSearch.value || undefined,
+    is_active: setActiveFilter.value,
+    is_limited: setLimitedFilter.value,
+  })
+  if (!setListRequests.isLatest(requestSequence)) return
+  sets.value = response.results
+  setsTotal.value = response.count
 }
 
 async function loadAchievements() {
-  achievements.value = (await getAdminGamificationAchievements({ page_size: 100 })).results
+  const requestSequence = achievementListRequests.next()
+  const response = await getAdminGamificationAchievements({
+    page: achievementsPage.value,
+    page_size: achievementsPageSize.value,
+    set: achievementSetFilter.value,
+    is_active: achievementActiveFilter.value,
+  })
+  if (!achievementListRequests.isLatest(requestSequence)) return
+  achievements.value = response.results
+  achievementsTotal.value = response.count
 }
 
 async function loadRewards() {
-  rewards.value = (await getAdminGamificationRewards({ page_size: 100, search: rewardSearch.value || undefined })).results
+  const requestSequence = rewardListRequests.next()
+  const response = await getAdminGamificationRewards({
+    page: rewardsPage.value,
+    page_size: rewardsPageSize.value,
+    search: rewardSearch.value || undefined,
+    reward_type: rewardTypeFilter.value,
+    is_active: rewardActiveFilter.value,
+  })
+  if (!rewardListRequests.isLatest(requestSequence)) return
+  rewards.value = response.results
+  rewardsTotal.value = response.count
 }
 
 async function loadUsers() {
-  users.value = (await getAdminGamificationUsers({ page_size: 100, search: userSearch.value || undefined })).results
+  const requestSequence = userListRequests.next()
+  const response = await getAdminGamificationUsers({
+    page: usersPage.value,
+    page_size: usersPageSize.value,
+    search: userSearch.value || undefined,
+  })
+  if (!userListRequests.isLatest(requestSequence)) return
+  users.value = response.results
+  usersTotal.value = response.count
+}
+
+async function loadRuleOptions() {
+  const [ips, characters, categories] = await Promise.all([
+    getAdminIPs({ page_size: 100 }),
+    getAdminCharacters({ page_size: 100 } as AdminCharacterListParams),
+    getAdminCategories({ ordering: 'order,id' }),
+  ])
+  ruleIPOptions.value = ips.results
+  ruleCharacterOptions.value = characters.results
+  ruleCategoryOptions.value = categories
+}
+
+async function searchRuleIPs(query: string) {
+  const params: AdminIPListParams = {
+    search: query || undefined,
+    page_size: 100,
+  }
+  ruleIPOptions.value = (await getAdminIPs(params)).results
+}
+
+async function searchRuleCharacters(query: string) {
+  const params: AdminCharacterListParams = {
+    search: query || undefined,
+    page_size: 100,
+  }
+  ruleCharacterOptions.value = (await getAdminCharacters(params)).results
 }
 
 async function refreshAll() {
   loading.value = true
   try {
-    await Promise.all([loadSets(), loadAchievements(), loadRewards(), loadUsers()])
+    await Promise.all([
+      loadSets(),
+      loadAchievements(),
+      loadRewards(),
+      loadUsers(),
+      loadRuleOptions(),
+    ])
   } finally {
     loading.value = false
   }
+}
+
+function searchSets() {
+  setsPage.value = 1
+  void loadSets()
+}
+
+function searchRewards() {
+  rewardsPage.value = 1
+  void loadRewards()
+}
+
+function searchUsers() {
+  usersPage.value = 1
+  void loadUsers()
+}
+
+async function bulkSets(action: 'enable' | 'disable') {
+  await ElMessageBox.confirm(
+    `确认批量${action === 'enable' ? '启用' : '停用'} ${selectedSets.value.length} 个系列吗？`,
+    '批量操作',
+    { type: 'warning' },
+  )
+  await bulkAdminGamificationSets(selectedSets.value.map((item) => item.id), action)
+  selectedSets.value = []
+  await loadSets()
+}
+
+async function bulkAchievements(action: 'enable' | 'disable') {
+  await ElMessageBox.confirm(
+    `确认批量${action === 'enable' ? '启用' : '停用'} ${selectedAchievements.value.length} 个成就吗？`,
+    '批量操作',
+    { type: 'warning' },
+  )
+  await bulkAdminGamificationAchievements(
+    selectedAchievements.value.map((item) => item.id),
+    action,
+  )
+  selectedAchievements.value = []
+  await loadAchievements()
+}
+
+async function bulkRewards(action: 'enable' | 'disable') {
+  await ElMessageBox.confirm(
+    `确认批量${action === 'enable' ? '启用' : '停用'} ${selectedRewards.value.length} 个奖励吗？`,
+    '批量操作',
+    { type: 'warning' },
+  )
+  await bulkAdminGamificationRewards(
+    selectedRewards.value.map((item) => item.id),
+    action,
+  )
+  selectedRewards.value = []
+  await loadRewards()
 }
 
 function handleTabChange() {
@@ -523,7 +859,17 @@ async function removeSet(row: AdminGamificationSet) {
 }
 
 function emptyCondition(): EditableCondition {
-  return { metric: 'GOODS_QUANTITY', threshold: 1, filters: {}, filtersText: '{}', order: 0 }
+  return {
+    metric: 'GOODS_QUANTITY',
+    threshold: 1,
+    filters: {
+      ip_ids: [],
+      character_ids: [],
+      category_ids: [],
+      is_official: [],
+    },
+    order: 0,
+  }
 }
 
 function addRuleGroup() {
@@ -543,7 +889,13 @@ function openAchievementDialog(row?: AdminGamificationAchievement, presetSetId?:
         ...group,
         conditions: group.conditions.map(condition => ({
           ...condition,
-          filtersText: JSON.stringify(condition.filters || {}, null, 0),
+          filters: {
+            ip_ids: [],
+            character_ids: [],
+            category_ids: [],
+            is_official: [],
+            ...(condition.filters || {}),
+          },
         })),
       })),
     })
@@ -568,21 +920,20 @@ function openAchievementDialog(row?: AdminGamificationAchievement, presetSetId?:
 async function saveAchievement() {
   if (!achievementForm.code || !achievementForm.name || !achievementForm.set) return ElMessage.warning('请填写编码、名称和系列')
   if (!achievementForm.rule_groups.length) return ElMessage.warning('至少需要一组规则')
-  let ruleGroups
-  try {
-    ruleGroups = achievementForm.rule_groups.map(group => ({
-      operator: group.operator,
-      order: group.order,
-      conditions: group.conditions.map((condition, index) => ({
-        metric: condition.metric,
-        threshold: condition.threshold,
-        filters: condition.filtersText ? JSON.parse(condition.filtersText) : (condition.filters || {}),
-        order: index,
-      })),
-    }))
-  } catch {
-    return ElMessage.error('筛选条件必须是合法 JSON')
-  }
+  const ruleGroups = achievementForm.rule_groups.map(group => ({
+    operator: group.operator,
+    order: group.order,
+    conditions: group.conditions.map((condition, index) => ({
+      metric: condition.metric,
+      threshold: condition.threshold,
+      filters: Object.fromEntries(
+        Object.entries(condition.filters).filter(
+          ([, value]) => Array.isArray(value) && value.length > 0,
+        ),
+      ),
+      order: index,
+    })),
+  }))
   const payload = {
     code: achievementForm.code,
     set: achievementForm.set,
@@ -712,18 +1063,43 @@ function rewardTypeLabel(type: GamificationRewardType) {
 }
 
 onMounted(refreshAll)
+
+watch(
+  () => route.query.tab,
+  (tab) => {
+    const nextTab = ['sets', 'achievements', 'rewards', 'users'].includes(String(tab))
+      ? String(tab)
+      : 'sets'
+    if (activeTab.value === nextTab) return
+    activeTab.value = nextTab
+    if (nextTab === 'sets') void loadSets()
+    if (nextTab === 'achievements') void loadAchievements()
+    if (nextTab === 'rewards') void loadRewards()
+    if (nextTab === 'users') void loadUsers()
+  },
+)
 </script>
 
 <style scoped>
-.gamification-admin { display: grid; gap: 16px; }
-.gamification-tabs :deep(.el-tabs__content) { overflow: visible; }
-.toolbar { display: flex; gap: 10px; margin-bottom: 14px; }
+.gamification-admin { display: grid; min-width: 0; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+.gamification-tabs,
+.gamification-tabs :deep(.el-tabs__content),
+.gamification-tabs :deep(.el-tab-pane) { min-width: 0; }
+.gamification-tabs :deep(.el-tabs__content) { overflow: hidden; }
+.toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
 .toolbar .el-input { max-width: 360px; }
-.section-title-row { display: flex; align-items: center; justify-content: space-between; margin: 28px 0 12px; }
-.section-title-row h3 { margin: 0; }
-.soft-button { color: var(--primary-gold-dark); }
+.toolbar .el-select { width: 150px; }
+.section-title-row { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 16px; margin: 28px 0 12px; }
+.section-title-row__heading { display: flex; min-width: 0; align-items: baseline; gap: 9px; }
+.section-title-row h3 { flex: 0 0 auto; margin: 0; white-space: nowrap; }
+.section-title-row__heading span { color: #9099a6; font-size: 12px; white-space: nowrap; }
+.achievement-toolbar { margin-bottom: 12px; }
+.achievement-toolbar .el-select { width: 190px; }
+.achievement-toolbar > .el-button { flex: none; margin-left: auto; }
+.pagination-row { display: flex; justify-content: flex-end; padding: 12px 0 4px; }
 .reward-thumb { display: grid; width: 48px; height: 48px; place-items: center; overflow: hidden; border-radius: 12px; color: #fff; background: linear-gradient(135deg, var(--accent-purple), var(--primary-gold)); }
 .reward-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.gamification-admin :deep(.gamification-actions .cell) { white-space: nowrap; }
 .metric-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .metric-chips span { padding: 4px 7px; border-radius: 999px; background: var(--bg-gray); font-size: 11px; }
 .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 14px; }
@@ -734,11 +1110,16 @@ onMounted(refreshAll)
 .rule-group { margin-bottom: 12px; padding: 14px; border: 1px solid var(--border-color); border-radius: 14px; background: var(--bg-gray); }
 .rule-group > header { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; font-weight: 700; }
 .rule-group > header .el-button { margin-left: auto; }
-.rule-condition { display: grid; grid-template-columns: 180px 130px minmax(0, 1fr) auto; gap: 8px; margin-bottom: 8px; }
+.rule-condition { display: grid; grid-template-columns: 180px 130px minmax(0, 1fr) auto; gap: 8px; margin-bottom: 10px; }
+.rule-condition__filters { display: grid; grid-template-columns: repeat(2, minmax(150px, 1fr)); gap: 8px; }
 @media (max-width: 768px) {
   .toolbar { flex-direction: column; }
-  .toolbar .el-input { max-width: none; }
+  .toolbar .el-input, .toolbar .el-select { width: 100%; max-width: none; }
+  .section-title-row { align-items: stretch; flex-direction: column; gap: 10px; }
+  .achievement-toolbar .el-select { width: 100%; }
+  .achievement-toolbar > .el-button { width: 100%; margin-left: 0; }
   .form-grid, .form-grid--three { grid-template-columns: 1fr; }
   .rule-condition { grid-template-columns: 1fr; padding-bottom: 10px; border-bottom: 1px dashed var(--border-color); }
+  .rule-condition__filters { grid-template-columns: 1fr; }
 }
 </style>

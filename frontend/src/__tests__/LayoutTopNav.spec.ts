@@ -38,6 +38,10 @@ const routerRoutes = [
     path: '/login',
     component: { template: '<div />' },
   },
+  {
+    path: '/admin/:pathMatch(.*)*',
+    component: { template: '<div />' },
+  },
 ]
 
 const mountLayout = async ({
@@ -192,6 +196,15 @@ describe('Layout top navigation', () => {
 
   it('hides the app version badge on mobile pages other than login', async () => {
     const wrapper = await mountMobileLayout('/showcase')
+
+    expect(wrapper.find('.app-version').exists()).toBe(false)
+  })
+
+  it('hides the app version badge inside the admin console', async () => {
+    const wrapper = await mountLayout({
+      width: 1197,
+      path: '/admin/overview',
+    })
 
     expect(wrapper.find('.app-version').exists()).toBe(false)
   })

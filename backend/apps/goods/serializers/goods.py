@@ -246,9 +246,13 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
         self.fields["location"].queryset = StorageNode.objects.filter(user=user)
 
     def validate_user_id(self, value):
+        if self.instance is not None:
+            raise serializers.ValidationError("创建后不能修改谷子归属用户")
         request = self.context.get("request")
         if not request or not is_admin(request.user):
             raise serializers.ValidationError("仅管理员可指定 user_id")
+        if not is_admin(value) and getattr(value, "account_type", None) != "collector":
+            raise serializers.ValidationError("谷子只能归属普通吃谷人或管理员")
         return value
 
     def get_user(self, obj):
@@ -351,24 +355,6 @@ class GoodsDetailSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         """更新谷子时自动压缩主图并处理多对多关系"""
-        new_user = validated_data.get("user")
-        if new_user is not None and new_user.pk != instance.user_id:
-            from apps.gamification.models import MetricEvent, MetricSourceState
-
-            has_ledger = (
-                MetricEvent.objects.filter(
-                    source_type="goods",
-                    source_id=str(instance.pk),
-                ).exists()
-                or MetricSourceState.objects.filter(
-                    source_type="goods",
-                    source_id=str(instance.pk),
-                ).exists()
-            )
-            if has_ledger:
-                raise serializers.ValidationError(
-                    {"user_id": "该谷子已进入成就账本，不能直接转移所有权。"}
-                )
         # 提取多对多关系数据
         characters = validated_data.pop("characters", None)
         

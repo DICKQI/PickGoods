@@ -271,6 +271,13 @@ class AchievementAdminSerializer(serializers.ModelSerializer):
             "user_count",
         )
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["set"].queryset = AchievementSet.objects.filter(club__isnull=True)
+        self.fields["rewards"].child_relation.queryset = Reward.objects.filter(
+            club__isnull=True
+        )
+
     def validate(self, attrs):
         instance = self.instance
         achievement_set = attrs.get("set", getattr(instance, "set", None))

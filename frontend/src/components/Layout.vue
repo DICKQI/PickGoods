@@ -347,6 +347,7 @@ const showcaseActiveTab = ref<'showcase' | 'barn' | 'stats' | null>(route.path.s
 const appVersion = __APP_VERSION__
 // 版本号徽标显示策略：桌面端所有页面显示；移动端仅在登录页显示
 const showAppVersion = computed(() => {
+  if (route.path === '/admin' || route.path.startsWith('/admin/')) return false
   if (!isMobile.value) return true
   return route.path === '/login'
 })

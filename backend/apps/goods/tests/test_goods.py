@@ -774,6 +774,33 @@ class GoodsCRUDTestCase(TestCase):
         goods.refresh_from_db()
         self.assertEqual(goods.name, "New")
 
+    def test_update_goods_rejects_owner_change(self):
+        goods = Goods.objects.create(
+            user=self.user,
+            name="Owned",
+            ip=self.ip,
+            category=self.category,
+        )
+        response = self.client.patch(
+            f"/api/goods/{goods.id}/",
+            {"user_id": self.user.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        goods.refresh_from_db()
+        self.assertEqual(goods.user_id, self.user.id)
+
+    def test_update_theme_rejects_owner_change(self):
+        theme = Theme.objects.create(user=self.user, name="Owned Theme")
+        response = self.client.patch(
+            f"/api/themes/{theme.id}/",
+            {"user_id": self.user.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
+        theme.refresh_from_db()
+        self.assertEqual(theme.user_id, self.user.id)
+
     def test_delete_goods(self):
         """删除商品"""
         goods = Goods.objects.create(user=self.user, name='ToDelete', ip=self.ip, category=self.category)

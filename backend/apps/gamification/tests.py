@@ -9,7 +9,7 @@ from rest_framework.test import APIClient
 
 from apps.goods.models import Category, Character, Goods, IP, Showcase, ShowcaseGoods
 from apps.reminder.models import Preorder
-from apps.users.models import Role, User
+from apps.users.models import Club, Role, User
 
 from .models import (
     Achievement,
@@ -791,6 +791,92 @@ class GamificationApiTests(TestCase):
         )
         self.assertEqual(empty_response.status_code, 400)
         self.assertEqual(invalid_filter_response.status_code, 400)
+
+    def test_admin_gamification_is_limited_to_platform_content(self):
+        club_user = User.objects.create(
+            username="admin-scope-club",
+            role=self.role,
+            account_type=User.ACCOUNT_TYPE_CLUB,
+            approval_status=User.APPROVAL_APPROVED,
+        )
+        club = Club.objects.create(user=club_user, name="Admin Scope Club")
+        club_set = AchievementSet.objects.create(
+            club=club,
+            code="admin-scope-club-set",
+            name="Club Set",
+        )
+        client = self.admin_client()
+
+        listed = client.get("/api/admin/gamification/sets/")
+        self.assertNotIn(
+            club_set.id,
+            [item["id"] for item in listed.json()["results"]],
+        )
+        detail = client.get(f"/api/admin/gamification/sets/{club_set.id}/")
+        self.assertEqual(detail.status_code, 404)
+        bulk = client.post(
+            "/api/admin/gamification/sets/bulk-action/",
+            {"ids": [club_set.id], "action": "disable"},
+            format="json",
+        )
+        self.assertEqual(bulk.status_code, 400)
+
+    @override_settings(GAMIFICATION_ENABLED=True)
+    def test_bulk_enable_achievement_runs_publish_lifecycle(self):
+        ip = IP.objects.create(name="Bulk Platform IP")
+        category = Category.objects.create(name="Bulk Platform Category")
+        character = Character.objects.create(name="Bulk Platform Character", ip=ip)
+        GamificationConfig.objects.create(
+            pk=1,
+            rollout_at=timezone.now() - timedelta(minutes=1),
+            initialized_at=timezone.now(),
+        )
+        achievement_set = AchievementSet.objects.create(
+            code="bulk-platform-set",
+            name="Bulk Platform Set",
+        )
+        achievement = Achievement.objects.create(
+            code="bulk-platform-achievement",
+            set=achievement_set,
+            name="Bulk Platform Achievement",
+            is_active=False,
+        )
+        group = RuleGroup.objects.create(achievement=achievement)
+        RuleCondition.objects.create(
+            group=group,
+            metric=RuleCondition.METRIC_GOODS_QUANTITY,
+            threshold=Decimal("1.00"),
+        )
+        MetricEvent.objects.create(
+            user=self.user,
+            event_type=MetricEvent.EVENT_GOODS_QUANTITY,
+            amount=Decimal("1.00"),
+            source_type="test",
+            source_id="bulk-enable",
+            metadata={
+                "ip_id": ip.id,
+                "character_ids": [character.id],
+                "category_id": category.id,
+            },
+            occurred_at=timezone.now(),
+            idempotency_key="bulk-enable-event",
+        )
+
+        client = self.admin_client()
+        with self.captureOnCommitCallbacks(execute=True):
+            response = client.post(
+                "/api/admin/gamification/achievements/bulk-action/",
+                {"ids": [achievement.id], "action": "enable"},
+                format="json",
+            )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(
+            UserAchievement.objects.filter(
+                user=self.user,
+                achievement=achievement,
+                status=UserAchievement.STATUS_UNLOCKED,
+            ).exists()
+        )
 
     def test_admin_cannot_delete_definition_with_user_progress(self):
         admin_role, _ = Role.objects.get_or_create(name="Admin")

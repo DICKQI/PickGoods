@@ -57,6 +57,27 @@
                 <el-input :model-value="formData.name" placeholder="请输入谷子名称" @update:model-value="handleNameInput" />
               </el-form-item>
             </el-col>
+            <el-col v-if="showAdminOwnerSelect" :xs="24" :sm="12">
+              <el-form-item label="归属用户">
+                <el-select
+                  v-model="adminOwnerId"
+                  clearable
+                  filterable
+                  remote
+                  :remote-method="searchAdminOwners"
+                  :loading="adminOwnerLoading"
+                  placeholder="留空则归属当前管理员"
+                  style="width: 100%"
+                >
+                  <el-option
+                    v-for="owner in adminOwnerOptions"
+                    :key="owner.id"
+                    :label="owner.username"
+                    :value="owner.id"
+                  />
+                </el-select>
+              </el-form-item>
+            </el-col>
             <el-col :xs="24" :sm="12">
               <el-form-item label="IP作品" prop="ip" class="is-required">
                 <el-select v-model="formData.ip" placeholder="选择IP" filterable :filter-method="handleIpFilter" @change="handleIpChange" style="width: 100%">
@@ -581,8 +602,9 @@ import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
 import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
+import { getAdminUsers } from '@/api/admin'
 import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
-import type { GoodsCraft, GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
+import type { AdminUser, GoodsCraft, GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
@@ -611,8 +633,17 @@ const submitting = ref(false)
 const leaveConfirmVisible = ref(false)
 const resetConfirmVisible = ref(false)
 const isEditMode = computed(() => Boolean(route.params.id))
+const isAdminGoodsRoute = computed(() =>
+  String(route.path || '').startsWith('/admin/goods/'),
+)
+const showAdminOwnerSelect = computed(
+  () => isAdminGoodsRoute.value && !isEditMode.value,
+)
 const formTitle = computed(() => (route.params.id ? '编辑谷子' : '新增谷子'))
 const sourceClubGoodsId = ref<string | null>(null)
+const adminOwnerId = ref<number | null>(null)
+const adminOwnerOptions = ref<AdminUser[]>([])
+const adminOwnerLoading = ref(false)
 
 type CreateWizardStepKey = 'basic' | 'meta' | 'images' | 'notes'
 
@@ -702,6 +733,28 @@ const openClubImport = async () => {
   clubImportVisible.value = true
   if (clubImportClubs.value.length > 0) return
   await searchClubImportClubs('')
+}
+
+const searchAdminOwners = async (keyword: string) => {
+  if (!showAdminOwnerSelect.value) return
+  adminOwnerLoading.value = true
+  try {
+    adminOwnerOptions.value = (
+      await getAdminUsers({
+        account_type: 'collector',
+        search: keyword.trim() || undefined,
+        page_size: 50,
+      })
+    ).results
+  } finally {
+    adminOwnerLoading.value = false
+  }
+}
+
+const leaveAfterGoodsSave = () => {
+  void router.push(
+    isAdminGoodsRoute.value ? { name: 'AdminGoods' } : { name: 'CloudShowcase' },
+  )
 }
 
 const searchClubImportClubs = async (keyword: string) => {
@@ -1214,7 +1267,7 @@ const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft'
     }
     return
   }
-  router.push({ name: 'CloudShowcase' })
+  leaveAfterGoodsSave()
 }
 
 const duplicateHandler = useDuplicateHandler({ onSuccess: onCreateOrMergeSuccess })
@@ -1348,7 +1401,7 @@ const handleOcrFileChange = async (uploadFile: any) => {
 }
 
 const handleOcrBatchImported = () => {
-  router.push({ name: 'CloudShowcase' })
+  leaveAfterGoodsSave()
 }
 
 const handleOcrFillConfirm = (data: {
@@ -1569,6 +1622,9 @@ const buildSubmitData = async (mode: 'draft' | 'publish'): Promise<GoodsInput> =
     ip_id: restForm.ip!, character_ids: restForm.characters,
     category_id: restForm.category!, theme_id: themeId,
   }
+  if (showAdminOwnerSelect.value && adminOwnerId.value) {
+    submitData.user_id = adminOwnerId.value
+  }
   if (!restForm.purchase_date) delete (submitData as any).purchase_date
   return submitData
 }
@@ -1593,7 +1649,7 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
       await runNewThemePostSaveFlow(id, mode, submitData.theme_id ?? null)
       ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
       rememberSubmittedLocation(submitData.location ?? null)
-      router.push({ name: 'CloudShowcase' })
+      leaveAfterGoodsSave()
     } else {
       const createPayload: GoodsInput = mode === 'publish' ? { ...submitData, merge_strategy: 'auto' } : submitData
       const result = sourceClubGoodsId.value
@@ -1693,6 +1749,7 @@ const resetForNewGoods = () => {
     notes: DEFAULT_NOTES_TEMPLATE,
     main_photo: '',
   }
+  adminOwnerId.value = null
   sourceClubGoodsId.value = null
   mainPhotoFile.value = null
   mainPhotoList.value = []
@@ -1778,6 +1835,7 @@ onMounted(async () => {
   window.addEventListener('scroll', handleWindowScrollForDock, { passive: true })
 
   try { await loadMetadata() } catch { ElMessage.error('加载基础数据失败') }
+  if (showAdminOwnerSelect.value) void searchAdminOwners('')
   void loadGoodsCrafts()
   await locationStore.fetchNodes()
 

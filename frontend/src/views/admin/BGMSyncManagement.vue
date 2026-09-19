@@ -1,6 +1,11 @@
 <template>
   <div class="admin-page">
-    <AdminPageHeader title="BGM 自动同步" subtitle="定时从 Bangumi 带回已绑定 IP 的角色变更，并保留审计记录~" />
+    <AdminPageHeader title="BGM 自动同步" subtitle="定时从 Bangumi 拉取已绑定 IP 的角色变更，并保留审计记录。">
+      <el-button :loading="exporting" @click="handleExport">
+        <el-icon><Download /></el-icon>
+        导出任务
+      </el-button>
+    </AdminPageHeader>
 
     <!-- 顶部设置卡片 -->
     <el-card class="settings-card" shadow="never">
@@ -110,6 +115,16 @@
             <el-option label="定时调度" value="scheduled" />
             <el-option label="手动触发" value="manual" />
           </el-select>
+          <el-date-picker
+            v-model="jobsDateRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            clearable
+            @change="fetchJobs"
+          />
           <el-button @click="fetchJobs">
             <el-icon><Refresh /></el-icon>
             刷新
@@ -261,7 +276,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue'
-import { CaretRight, Refresh } from '@element-plus/icons-vue'
+import { useRoute } from 'vue-router'
+import { CaretRight, Download, Refresh } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   getBGMSyncSettings,
@@ -270,19 +286,23 @@ import {
   getBGMSyncJob,
   listBGMSyncJobs,
   listBGMSyncJobItems,
+  exportAdminResource,
   type BGMSyncSettings,
   type BGMSyncJob,
   type BGMSyncJobItem,
 } from '@/api/admin'
 import AdminPageHeader from './components/AdminPageHeader.vue'
+import { downloadBlob } from '@/utils/download'
 import { formatDateTime } from '@/utils/datetime'
 
 // ==================== 设置 ====================
 const settings = ref<BGMSyncSettings | null>(null)
+const route = useRoute()
 const settingsLoading = ref(false)
 const settingsSaving = ref(false)
 const runNowLoading = ref(false)
 const runningJobId = ref<number | null>(null)
+const exporting = ref(false)
 const boundIpCount = ref(0)
 // 手动触发后的轮询句柄：每 5s 拉一次当前 job 状态，直到离开 running
 let runPollTimer: ReturnType<typeof setInterval> | null = null
@@ -393,6 +413,7 @@ const jobsLoading = ref(false)
 const jobsPage = ref(1)
 const jobsPageSize = ref(20)
 const jobsTotal = ref(0)
+const jobsDateRange = ref<[string, string] | null>(null)
 const jobFilter = ref<{ status: string | null; trigger: string | null }>({
   status: null,
   trigger: null,
@@ -406,6 +427,12 @@ const fetchJobs = async () => {
       page_size: jobsPageSize.value,
       status: jobFilter.value.status || undefined,
       trigger: jobFilter.value.trigger || undefined,
+      started_at__gte: jobsDateRange.value?.[0]
+        ? `${jobsDateRange.value[0]}T00:00:00+08:00`
+        : undefined,
+      started_at__lte: jobsDateRange.value?.[1]
+        ? `${jobsDateRange.value[1]}T23:59:59+08:00`
+        : undefined,
     })
     jobs.value = resp.results.map((j) => ({ ...j, duration_display: formatDuration(j) }))
     jobsTotal.value = resp.count
@@ -413,6 +440,26 @@ const fetchJobs = async () => {
     ElMessage.error(err?.message || '获取任务列表失败')
   } finally {
     jobsLoading.value = false
+  }
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    const blob = await exportAdminResource('bgm-jobs', {
+      status: jobFilter.value.status || undefined,
+      trigger: jobFilter.value.trigger || undefined,
+      started_at__gte: jobsDateRange.value?.[0]
+        ? `${jobsDateRange.value[0]}T00:00:00+08:00`
+        : undefined,
+      started_at__lte: jobsDateRange.value?.[1]
+        ? `${jobsDateRange.value[1]}T23:59:59+08:00`
+        : undefined,
+    })
+    downloadBlob(blob, `admin-bgm-jobs-${Date.now()}.csv`)
+    ElMessage.success('导出已开始')
+  } finally {
+    exporting.value = false
   }
 }
 
@@ -512,6 +559,8 @@ const getItemStatusLabel = (s: string): string => {
 }
 
 onMounted(() => {
+  if (typeof route.query.status === 'string') jobFilter.value.status = route.query.status
+  if (typeof route.query.trigger === 'string') jobFilter.value.trigger = route.query.trigger
   fetchSettings()
   fetchJobs()
 })
