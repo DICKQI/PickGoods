@@ -26,7 +26,8 @@ def _is_draft_status(value):
 class GuziImageSerializer(serializers.ModelSerializer):
     class Meta:
         model = GuziImage
-        fields = ("id", "image", "label")
+        fields = ("id", "image", "label", "order")
+        read_only_fields = ("order",)
 
     def create(self, validated_data):
         """创建补充图片时自动压缩"""

@@ -295,25 +295,44 @@
           <div class="goods-form-additional-photos-pane">
             <el-form-item label="附件图片">
               <div class="additional-photos-section">
-                <div v-if="existingAdditionalPhotos.length > 0" class="existing-photos">
-                  <div v-for="(photo, index) in existingAdditionalPhotos" :key="photo.id" class="photo-item">
-                    <el-image :src="photo.image" fit="cover" class="photo-preview" :preview-src-list="existingAdditionalPhotos.map(p => p.image)" :initial-index="index">
+                <div
+                  ref="additionalPhotosGridRef"
+                  class="additional-photos-grid"
+                  :class="{
+                    'additional-photos-grid--sortable': !isMobile && additionalPhotoItems.length > 1,
+                    'additional-photos-grid--sorting': isPhotoSorting,
+                  }"
+                  @click.capture="handleAdditionalPhotoGridClick"
+                >
+                  <div
+                    v-for="(photo, index) in additionalPhotoItems"
+                    :key="photo.key"
+                    class="photo-item"
+                  >
+                    <el-image
+                      :src="photo.kind === 'local' ? photo.preview : photo.image"
+                      fit="cover"
+                      class="photo-preview"
+                      :preview-src-list="additionalPhotoPreviewSources"
+                      :initial-index="index"
+                    >
                       <template #error><div class="image-error"><el-icon><Picture /></el-icon></div></template>
                     </el-image>
                     <div class="photo-actions">
-                      <el-input v-model="photo.label" placeholder="图片标签（可选）" size="small" class="photo-label-input" @blur="handlePhotoLabelChange(photo)" />
-                      <el-button type="danger" size="small" :icon="Delete" circle @click="handleRemoveExistingPhoto(photo.id)" />
-                    </div>
-                  </div>
-                </div>
-                <div v-if="newAdditionalPhotoFiles.length > 0" class="new-photos">
-                  <div v-for="(file, index) in newAdditionalPhotoFiles" :key="index" class="photo-item">
-                    <el-image :src="file.preview" fit="cover" class="photo-preview" :preview-src-list="newAdditionalPhotoFiles.map(f => f.preview)" :initial-index="index">
-                      <template #error><div class="image-error"><el-icon><Picture /></el-icon></div></template>
-                    </el-image>
-                    <div class="photo-actions">
-                      <el-input v-model="file.label" placeholder="图片标签（可选）" size="small" class="photo-label-input" />
-                      <el-button type="danger" size="small" :icon="Delete" circle @click="handleRemoveNewPhoto(index)" />
+                      <el-input
+                        v-model="photo.label"
+                        placeholder="图片标签（可选）"
+                        size="small"
+                        class="photo-label-input"
+                        @blur="handleExistingPhotoLabelChange(photo)"
+                      />
+                      <el-button
+                        type="danger"
+                        size="small"
+                        :icon="Delete"
+                        circle
+                        @click="handleRemoveAdditionalPhoto(photo)"
+                      />
                     </div>
                   </div>
                 </div>
@@ -583,6 +602,7 @@
 import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, type FormInstance, type FormRules, type UploadFile } from 'element-plus'
+import Sortable from 'sortablejs'
 import {
   Plus,
   Delete,
@@ -612,7 +632,11 @@ import OcrFillDialog from '@/views/goods-form/components/OcrFillDialog.vue'
 import ClubImportDialog from '@/views/goods-form/components/ClubImportDialog.vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import { useGoodsFormMetadata } from '@/views/goods-form/composables/useGoodsFormMetadata'
-import { useAdditionalPhotos } from '@/views/goods-form/composables/useAdditionalPhotos'
+import {
+  useAdditionalPhotos,
+  type AdditionalPhotoItem,
+  type ExistingPhoto,
+} from '@/views/goods-form/composables/useAdditionalPhotos'
 import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicateHandler'
 import { useImageClassifier } from '@/views/goods-form/composables/useImageClassifier'
 import { applyCraftToNotes } from '@/views/goods-form/craftNotes'
@@ -811,7 +835,7 @@ const applyClubImportTemplate = (template: ClubImportTemplate) => {
   mainPhotoList.value = template.source.main_photo
     ? [{ name: '社团来源主图', url: template.source.main_photo, status: 'success' } as UploadFile]
     : []
-  setExistingPhotos(template.source.additional_photos)
+  setExistingPhotos(template.source.additional_photos, { kind: 'club-source' })
   if (template.existing) {
     ElMessage.info(`已有同来源库存 ${template.existing.quantity} 件，提交时可确认增加数量`)
   }
@@ -914,11 +938,69 @@ const {
 
 const additionalPhotos = useAdditionalPhotos(goodsId)
 const {
-  existingAdditionalPhotos, newAdditionalPhotoFiles, additionalPhotoList,
+  additionalPhotoItems, newAdditionalPhotoFiles,
+  additionalPhotoPreviewSources, additionalPhotoList,
   handleAdditionalPhotoChange, handleAdditionalPhotoRemove,
-  handleRemoveNewPhoto, handleRemoveExistingPhoto, handlePhotoLabelChange,
-  handleAdditionalPhotosUpload, setExistingPhotos, cleanupNewPhotos, addNewPhotoFile,
+  handleRemoveAdditionalPhoto, handlePhotoLabelChange,
+  moveAdditionalPhoto, handleAdditionalPhotosUpload,
+  getClubSourcePhotoIdsInDisplayOrder, getClubSourcePhotoLabelOverrides,
+  hydrateMergedPhotos, adoptClubSourcePhotos, persistAdditionalPhotoOrder,
+  setExistingPhotos, cleanupNewPhotos, addNewPhotoFile,
 } = additionalPhotos
+
+const additionalPhotosGridRef = ref<HTMLElement | null>(null)
+const isPhotoSorting = ref(false)
+let additionalPhotoSortable: ReturnType<typeof Sortable.create> | null = null
+let suppressAdditionalPhotoClick = false
+let suppressAdditionalPhotoClickTimer: number | undefined
+
+const destroyAdditionalPhotoSortable = () => {
+  additionalPhotoSortable?.destroy()
+  additionalPhotoSortable = null
+  isPhotoSorting.value = false
+}
+
+const initAdditionalPhotoSortable = async () => {
+  await nextTick()
+  destroyAdditionalPhotoSortable()
+  if (isMobile.value || !additionalPhotosGridRef.value) return
+
+  additionalPhotoSortable = Sortable.create(additionalPhotosGridRef.value, {
+    animation: 150,
+    draggable: '.photo-item',
+    filter: 'input, button',
+    ghostClass: 'photo-item--ghost',
+    chosenClass: 'photo-item--chosen',
+    dragClass: 'photo-item--dragging',
+    onStart: () => {
+      isPhotoSorting.value = true
+    },
+    onEnd: (event: { oldIndex?: number; newIndex?: number }) => {
+      isPhotoSorting.value = false
+      suppressAdditionalPhotoClick = true
+      if (suppressAdditionalPhotoClickTimer !== undefined) {
+        window.clearTimeout(suppressAdditionalPhotoClickTimer)
+      }
+      suppressAdditionalPhotoClickTimer = window.setTimeout(() => {
+        suppressAdditionalPhotoClick = false
+        suppressAdditionalPhotoClickTimer = undefined
+      }, 0)
+      moveAdditionalPhoto(event.oldIndex ?? 0, event.newIndex ?? 0)
+    },
+  })
+}
+
+const handleAdditionalPhotoGridClick = (event: MouseEvent) => {
+  if (!suppressAdditionalPhotoClick) return
+  suppressAdditionalPhotoClick = false
+  event.preventDefault()
+  event.stopPropagation()
+}
+
+const handleExistingPhotoLabelChange = (photo: AdditionalPhotoItem) => {
+  if (photo.kind === 'local') return
+  void handlePhotoLabelChange(photo as ExistingPhoto)
+}
 
 const DEFAULT_NOTES_TEMPLATE = '店铺：\n工艺：\n画师：\n主题：'
 const activeThemeTemplatePayload = ref<ThemeTemplatePayload | null>(null)
@@ -1228,9 +1310,18 @@ const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft'
   if (mainPhotoFile.value) {
     await uploadMainPhoto(id, mainPhotoFile.value)
   }
+  const clubSourcePhotoIds = sourceClubGoodsId.value
+    ? getClubSourcePhotoIdsInDisplayOrder()
+    : []
+  if (result.merged) {
+    hydrateMergedPhotos(result.additional_photos)
+  } else if (sourceClubGoodsId.value) {
+    adoptClubSourcePhotos(result.additional_photos, clubSourcePhotoIds)
+  }
   if (newAdditionalPhotoFiles.value.length > 0) {
     await handleAdditionalPhotosUpload(id)
   }
+  await persistAdditionalPhotoOrder(id)
   if (!result.merged) {
     await runNewThemePostSaveFlow(id, mode, themeId)
   }
@@ -1646,6 +1737,7 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
       await updateGoods(id, submitData)
       if (mainPhotoFile.value) await uploadMainPhoto(id, mainPhotoFile.value)
       await handleAdditionalPhotosUpload(id)
+      await persistAdditionalPhotoOrder(id)
       await runNewThemePostSaveFlow(id, mode, submitData.theme_id ?? null)
       ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
       rememberSubmittedLocation(submitData.location ?? null)
@@ -1665,6 +1757,8 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
           purchase_date: submitData.purchase_date ?? null,
           notes: submitData.notes ?? null,
           is_official: submitData.is_official,
+          source_photo_ids: getClubSourcePhotoIdsInDisplayOrder(),
+          source_photo_labels: getClubSourcePhotoLabelOverrides(),
         })
         : await createGoods(createPayload)
       await onCreateOrMergeSuccess(result, mode, createPayload.theme_id ?? null)
@@ -1685,6 +1779,8 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
           purchase_date: submitData.purchase_date ?? null,
           notes: submitData.notes ?? null,
           is_official: submitData.is_official,
+          source_photo_ids: getClubSourcePhotoIdsInDisplayOrder(),
+          source_photo_labels: getClubSourcePhotoLabelOverrides(),
           confirm_duplicate: true,
         })
         await onCreateOrMergeSuccess(result, mode, submitData.theme_id ?? null)
@@ -1827,6 +1923,10 @@ watch(
   () => { void syncClubImportRoute() },
 )
 
+watch(isMobile, () => {
+  void initAdditionalPhotoSortable()
+})
+
 // ── Lifecycle ──
 
 onMounted(async () => {
@@ -1875,12 +1975,17 @@ onMounted(async () => {
   }
 
   await nextTick()
+  await initAdditionalPhotoSortable()
   checkMobileFormDockScroll()
 })
 
 const handleWindowScrollForDock = () => { checkMobileFormDockScroll() }
 
 onUnmounted(() => {
+  destroyAdditionalPhotoSortable()
+  if (suppressAdditionalPhotoClickTimer !== undefined) {
+    window.clearTimeout(suppressAdditionalPhotoClickTimer)
+  }
   window.removeEventListener('resize', handleViewportChangeForDock)
   window.removeEventListener('scroll', handleWindowScrollForDock)
   cleanupNewPhotos()
@@ -2170,9 +2275,16 @@ onUnmounted(() => {
 :deep(.el-upload--picture-card) { border-color: var(--border-color); }
 :deep(.el-upload--picture-card:hover) { border-color: var(--primary-gold); }
 .additional-photos-section { width: 100%; }
-.existing-photos, .new-photos { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px; margin-bottom: 16px; }
-@media (max-width: 768px) { .existing-photos, .new-photos { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; } }
+.additional-photos-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 16px; margin-bottom: 16px; }
+.additional-photos-grid:empty { margin-bottom: 0; }
+@media (max-width: 768px) { .additional-photos-grid { grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 12px; } }
 .photo-item { position: relative; display: flex; flex-direction: column; gap: 8px; }
+.additional-photos-grid--sortable .photo-item { cursor: grab; transition: opacity 0.16s ease, transform 0.16s ease; }
+.additional-photos-grid--sorting .photo-item { cursor: grabbing; }
+.photo-item--ghost { opacity: 0.32; }
+.photo-item--ghost .photo-preview { border-color: var(--primary-gold); background: #fffaf0; }
+.photo-item--chosen { z-index: 1; }
+.photo-item--dragging { opacity: 0.72; cursor: grabbing; transform: scale(0.98); }
 .photo-preview { width: 100%; height: 120px; border-radius: 10px; border: 1px solid var(--border-color); overflow: hidden; }
 @media (max-width: 768px) { .photo-preview { height: 100px; } }
 .photo-actions { display: flex; gap: 8px; align-items: center; }

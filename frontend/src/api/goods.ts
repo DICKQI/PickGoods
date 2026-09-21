@@ -2,6 +2,7 @@ import request from '@/utils/request'
 import type {
   GoodsListItem,
   GoodsDetail,
+  GoodsAdditionalPhotosUploadResponse,
   GoodsCreateResponse,
   PaginatedResponse,
   GoodsSearchParams,
@@ -70,6 +71,7 @@ export function uploadAdditionalPhotos(
   options?: {
     photoIds?: number[]
     label?: string
+    clientUploadId?: string
   }
 ) {
   const formData = new FormData()
@@ -89,7 +91,13 @@ export function uploadAdditionalPhotos(
   if (options?.label !== undefined) {
     formData.append('label', options.label)
   }
-  return request.post<GoodsDetail>(`/api/goods/${id}/upload-additional-photos/`, formData)
+  if (options?.clientUploadId) {
+    formData.append('client_upload_id', options.clientUploadId)
+  }
+  return request.post<GoodsAdditionalPhotosUploadResponse>(
+    `/api/goods/${id}/upload-additional-photos/`,
+    formData,
+  )
 }
 
 // 只更新附加图片的标签（不修改图片文件）
@@ -101,6 +109,13 @@ export function updateAdditionalPhotoLabel(
   return uploadAdditionalPhotos(id, undefined, {
     photoIds,
     label: label || '',
+  })
+}
+
+// 按完整 ID 列表重排附件图片
+export function reorderAdditionalPhotos(id: string, photoIds: number[]) {
+  return request.post<GoodsDetail>(`/api/goods/${id}/additional-photos/reorder/`, {
+    photo_ids: photoIds,
   })
 }
 

@@ -28,6 +28,7 @@ export interface GoodsFormDeps {
   newAdditionalPhotoFiles: Ref<any[]>
   ensureThemeCreated: () => Promise<number | null>
   handleAdditionalPhotosUpload: (id: string) => Promise<void>
+  persistAdditionalPhotoOrder: (id: string) => Promise<void>
   onDuplicateDetected: (candidates: any[], payload: GoodsInput) => void
 }
 
@@ -56,7 +57,15 @@ export function useGoodsForm(deps: GoodsFormDeps) {
   const isEditMode = computed(() => Boolean(route.params.id))
   const formTitle = computed(() => (route.params.id ? '编辑谷子' : '新增谷子'))
 
-  const { formData, mainPhotoFile, newAdditionalPhotoFiles, ensureThemeCreated, handleAdditionalPhotosUpload, onDuplicateDetected } = deps
+  const {
+    formData,
+    mainPhotoFile,
+    newAdditionalPhotoFiles,
+    ensureThemeCreated,
+    handleAdditionalPhotosUpload,
+    persistAdditionalPhotoOrder,
+    onDuplicateDetected,
+  } = deps
 
   const rules: FormRules = {
     name: [{ required: true, message: '请输入谷子名称', trigger: 'blur' }],
@@ -118,6 +127,7 @@ export function useGoodsForm(deps: GoodsFormDeps) {
     if (newAdditionalPhotoFiles.value.length > 0) {
       await handleAdditionalPhotosUpload(id)
     }
+    await persistAdditionalPhotoOrder(id)
     if (result.merged) {
       ElMessage.success('已合并到已有谷子')
     } else if (result.saved_as_draft || mode === 'draft') {
@@ -153,6 +163,7 @@ export function useGoodsForm(deps: GoodsFormDeps) {
           await uploadMainPhoto(id, mainPhotoFile.value)
         }
         await handleAdditionalPhotosUpload(id)
+        await persistAdditionalPhotoOrder(id)
 
         ElMessage.success(mode === 'draft' ? '草稿已保存' : '更新成功')
         useMobileWorkspaceStore().goodsChanged = true

@@ -127,6 +127,7 @@
 | `guzi`  | FK -> `Goods`            | 所属谷子                                      |
 | `image` | Image(URL)               | 补充图片 URL                                  |
 | `label` | Char(100，可空)         | 图片标签，如：`背板细节`、`瑕疵点` 等         |
+| `order` | PositiveInteger          | 排序值，值越小越靠前；详情按该字段升序返回    |
 
 #### `Showcase` 展柜表
 
@@ -1061,12 +1062,14 @@ GET /api/goods/?group_by=theme&page=1&page_size=20
     {
       "id": 1,
       "image": "https://cdn.example.com/goods/extra/back_detail.jpg",
-      "label": "背板细节"
+      "label": "背板细节",
+      "order": 1
     },
     {
       "id": 2,
       "image": "https://cdn.example.com/goods/extra/defect.jpg",
-      "label": "瑕疵点"
+      "label": "瑕疵点",
+      "order": 2
     }
   ]
 }
@@ -1174,6 +1177,7 @@ main_photo: <file>
   - `additional_photos`（文件数组，可选）：可一次上传多张图片
   - `photo_ids`（整数数组，可选）：图片ID数组，用于更新已有图片
   - `label`（字符串，可选）：为本次上传的所有图片添加统一标签，例如："背板细节"、"瑕疵点"等
+  - `client_upload_id`（字符串，可选）：客户端幂等键；同一谷子重复提交相同键不会重复创建图片
 
 **使用场景**：
 
@@ -1187,6 +1191,7 @@ main_photo: <file>
 - 后台会自动压缩每张图片到约 300KB 以下（若需要）
 - 如果提供了 `label`，则本次操作的所有图片都会使用该标签
 - 如果不提供 `label`，则图片标签会被设置为空（更新模式下）
+- 新上传图片会追加到当前谷子的附件图片末尾，并返回连续递增的 `order`
 
 ##### 场景1：创建新图片（form-data，上传多张图片）
 
@@ -1246,9 +1251,27 @@ photo_ids: 11
 - 如果提供了 `label`，所有指定的图片都会更新为该标签
 - 如果不提供 `label` 或提供空字符串，标签会被清空
 
-响应：返回更新后的谷子详情（同 4.2），包含所有附加图片信息。
+响应：返回更新后的谷子详情（同 4.2），并额外包含：
 
-#### 4.3.3 删除附加图片接口
+- `created_photo_ids`：本次请求创建或命中的图片 ID 数组，供前端准确绑定重试后的图片记录。
+
+#### 4.3.3 附件图片重排接口
+
+- **URL**：`POST /api/goods/{id}/additional-photos/reorder/`
+- **请求方式**：`application/json`
+- **请求体**：
+
+```json
+{
+  "photo_ids": [3, 1, 2]
+}
+```
+
+- `photo_ids` 必须是整数数组，不能包含重复 ID。
+- 该数组必须完整包含当前谷子的全部附件图片；缺失、外来或重复 ID 会返回 `400 Bad Request`，且不会部分更新。
+- 成功后会按数组顺序写入 `order = 1..n`，并返回排序后的完整谷子详情（同 4.2）。
+
+#### 4.3.4 删除附加图片接口
 
 支持两种删除方式：删除单张图片或批量删除多张图片。
 

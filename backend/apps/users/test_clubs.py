@@ -908,6 +908,76 @@ class ClubFeatureAPITestCase(TestCase):
         cleared_goods = Goods.objects.exclude(id=copied_goods.id).get(user=self.collector)
         self.assertIsNone(cleared_goods.theme)
 
+    def test_import_preserves_club_photo_order(self):
+        for index, label in enumerate(("第一张", "第二张", "第三张"), start=1):
+            buf = BytesIO()
+            Image.new("RGB", (24, 24), color=(index * 40, index * 30, index * 20)).save(buf, format="JPEG")
+            buf.seek(0)
+            ClubCatalogImage.objects.create(
+                item=self.source,
+                image=SimpleUploadedFile(
+                    f"club-photo-{index}.jpg",
+                    buf.read(),
+                    content_type="image/jpeg",
+                ),
+                label=label,
+            )
+
+        self.client.force_authenticate(self.collector)
+        response = self.client.post(
+            f"/api/clubs/goods/{self.source.id}/import/",
+            {"status": "intended"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        goods = Goods.objects.get(user=self.collector)
+        photos = list(goods.additional_photos.order_by("order", "id"))
+        self.assertEqual([photo.label for photo in photos], ["第一张", "第二张", "第三张"])
+        self.assertEqual([photo.order for photo in photos], [1, 2, 3])
+
+    def test_import_can_reorder_and_omit_club_photos(self):
+        source_photos = []
+        for index, label in enumerate(("第一张", "第二张", "第三张"), start=1):
+            buf = BytesIO()
+            Image.new("RGB", (24, 24), color=(index * 30, index * 20, index * 10)).save(buf, format="JPEG")
+            buf.seek(0)
+            source_photos.append(ClubCatalogImage.objects.create(
+                item=self.source,
+                image=SimpleUploadedFile(
+                    f"ordered-club-photo-{index}.jpg",
+                    buf.read(),
+                    content_type="image/jpeg",
+                ),
+                label=label,
+            ))
+
+        self.client.force_authenticate(self.collector)
+        response = self.client.post(
+            f"/api/clubs/goods/{self.source.id}/import/",
+            {
+                "status": "intended",
+                "source_photo_ids": [
+                    source_photos[2].id,
+                    source_photos[0].id,
+                ],
+                "source_photo_labels": {
+                    str(source_photos[2].id): "第三张（改）",
+                    str(source_photos[0].id): "",
+                },
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_201_CREATED)
+        goods = Goods.objects.get(user=self.collector)
+        photos = list(goods.additional_photos.order_by("order", "id"))
+        self.assertEqual(
+            [photo.label or "" for photo in photos],
+            ["第三张（改）", ""],
+        )
+        self.assertEqual([photo.order for photo in photos], [1, 2])
+
     def test_duplicate_import_requires_confirmation_and_only_increases_quantity(self):
         self.client.force_authenticate(self.collector)
         first = self.client.post(f"/api/clubs/goods/{self.source.id}/import/", {"status": "intended"}, format="json")

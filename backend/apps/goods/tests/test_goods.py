@@ -822,6 +822,194 @@ class GoodsCRUDTestCase(TestCase):
         self.assertNotIn("Private", names)
 
 
+class GoodsAdditionalPhotoOrderTestCase(TestCase):
+    """附件图片顺序与重排接口。"""
+
+    def setUp(self):
+        self.client = APIClient()
+        self.role, _ = Role.objects.get_or_create(name='User')
+        self.user = User.objects.create(
+            username='photo_order_user',
+            password='testpass123',
+            role=self.role,
+        )
+        self.client.force_authenticate(user=self.user)
+        self.ip = IP.objects.create(name='附件排序测试IP', subject_type=4)
+        self.category = Category.objects.create(name='附件排序测试品类')
+        self.character = Character.objects.create(
+            ip=self.ip,
+            name='附件排序测试角色',
+            gender='female',
+        )
+        self.goods = Goods.objects.create(
+            user=self.user,
+            name='附件排序谷子',
+            ip=self.ip,
+            category=self.category,
+        )
+        self.goods.characters.add(self.character)
+
+    def _image_file(self, name: str, color: str):
+        buf = io.BytesIO()
+        Image.new('RGB', (32, 32), color=color).save(buf, format='JPEG')
+        buf.seek(0)
+        return SimpleUploadedFile(name, buf.read(), content_type='image/jpeg')
+
+    def test_retrieve_returns_photos_in_persisted_order(self):
+        later = self.goods.additional_photos.create(
+            image=self._image_file('later.jpg', 'red'),
+            order=20,
+        )
+        earlier = self.goods.additional_photos.create(
+            image=self._image_file('earlier.jpg', 'blue'),
+            order=10,
+        )
+
+        response = self.client.get(f'/api/goods/{self.goods.id}/')
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        photos = response.json()['additional_photos']
+        self.assertEqual([photo['id'] for photo in photos], [earlier.id, later.id])
+        self.assertEqual([photo['order'] for photo in photos], [10, 20])
+
+    def test_new_uploads_are_appended(self):
+        first = self.goods.additional_photos.create(
+            image=self._image_file('first.jpg', 'green'),
+            order=5,
+        )
+
+        response = self.client.post(
+            f'/api/goods/{self.goods.id}/upload-additional-photos/',
+            {'additional_photos': self._image_file('second.jpg', 'yellow')},
+            format='multipart',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(first.order, 5)
+        self.assertEqual(
+            response.json()['created_photo_ids'],
+            [
+                photo['id']
+                for photo in response.json()['additional_photos']
+                if photo['id'] != first.id
+            ],
+        )
+        new_photo_ids = [
+            photo['id']
+            for photo in response.json()['additional_photos']
+            if photo['id'] != first.id
+        ]
+        self.assertEqual(len(new_photo_ids), 1)
+        created = self.goods.additional_photos.get(id=new_photo_ids[0])
+        self.assertEqual(created.order, 6)
+
+    def test_upload_client_id_is_idempotent(self):
+        payload = {
+            'additional_photos': self._image_file('idempotent.jpg', 'cyan'),
+            'client_upload_id': 'same-upload',
+        }
+
+        first = self.client.post(
+            f'/api/goods/{self.goods.id}/upload-additional-photos/',
+            payload,
+            format='multipart',
+        )
+        second = self.client.post(
+            f'/api/goods/{self.goods.id}/upload-additional-photos/',
+            {
+                'additional_photos': self._image_file('retry.jpg', 'magenta'),
+                'client_upload_id': 'same-upload',
+            },
+            format='multipart',
+        )
+
+        self.assertEqual(first.status_code, status.HTTP_200_OK)
+        self.assertEqual(second.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            first.json()['created_photo_ids'],
+            second.json()['created_photo_ids'],
+        )
+        self.assertEqual(self.goods.additional_photos.count(), 1)
+
+    def test_reorder_updates_all_photos_atomically(self):
+        photos = [
+            self.goods.additional_photos.create(
+                image=self._image_file(f'photo-{index}.jpg', 'blue'),
+                order=index,
+            )
+            for index in range(1, 4)
+        ]
+
+        response = self.client.post(
+            f'/api/goods/{self.goods.id}/additional-photos/reorder/',
+            {'photo_ids': [photos[2].id, photos[0].id, photos[1].id]},
+            format='json',
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        returned = response.json()['additional_photos']
+        self.assertEqual(
+            [photo['id'] for photo in returned],
+            [photos[2].id, photos[0].id, photos[1].id],
+        )
+        self.assertEqual(
+            list(
+                self.goods.additional_photos.order_by('order', 'id')
+                .values_list('id', flat=True)
+            ),
+            [photos[2].id, photos[0].id, photos[1].id],
+        )
+
+    def test_reorder_rejects_duplicate_missing_and_foreign_ids(self):
+        photos = [
+            self.goods.additional_photos.create(
+                image=self._image_file(f'ordered-{index}.jpg', 'purple'),
+                order=index,
+            )
+            for index in range(1, 3)
+        ]
+        other_goods = Goods.objects.create(
+            user=self.user,
+            name='另一件谷子',
+            ip=self.ip,
+            category=self.category,
+        )
+        foreign = other_goods.additional_photos.create(
+            image=self._image_file('foreign.jpg', 'orange'),
+            order=1,
+        )
+        url = f'/api/goods/{self.goods.id}/additional-photos/reorder/'
+
+        duplicate = self.client.post(
+            url,
+            {'photo_ids': [photos[0].id, photos[0].id]},
+            format='json',
+        )
+        missing = self.client.post(
+            url,
+            {'photo_ids': [photos[0].id]},
+            format='json',
+        )
+        foreign_response = self.client.post(
+            url,
+            {'photo_ids': [photos[0].id, foreign.id]},
+            format='json',
+        )
+        invalid_body = self.client.post(url, [photos[0].id], format='json')
+
+        self.assertEqual(duplicate.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(foreign_response.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(invalid_body.status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertEqual(
+            list(
+                self.goods.additional_photos.order_by('order', 'id')
+                .values_list('id', flat=True)
+            ),
+            [photos[0].id, photos[1].id],
+        )
+
+
 class ThemeTemplateAPITestCase(TestCase):
     """主题模板 API 与主题图片池联动。"""
 

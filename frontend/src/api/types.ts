@@ -291,6 +291,7 @@ export interface GuziImage {
   id: number
   image: string
   label?: string | null
+  order: number
 }
 
 // 谷子列表项（瘦身版）
@@ -329,6 +330,10 @@ export interface GoodsDetail extends GoodsListItem {
   created_at: string
   updated_at: string
   additional_photos: GuziImage[]
+}
+
+export interface GoodsAdditionalPhotosUploadResponse extends GoodsDetail {
+  created_photo_ids: number[]
 }
 
 export type ClubPublicationStatus = 'draft' | 'listed' | 'unlisted'

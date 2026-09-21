@@ -2,8 +2,14 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
+import Sortable from 'sortablejs'
 import GoodsForm from '@/views/GoodsForm.vue'
-import { classifyGoodsImage, createGoods, getGoodsDetail, updateGoods } from '@/api/goods'
+import {
+  classifyGoodsImage,
+  createGoods,
+  getGoodsDetail,
+  updateGoods,
+} from '@/api/goods'
 import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { updateBaseURL } from '@/utils/request'
@@ -104,6 +110,13 @@ vi.mock('@/api/goods', () => ({
     additional_photos: [],
   })),
   uploadMainPhoto: vi.fn(async () => ({})),
+  uploadAdditionalPhotos: vi.fn(async () => ({
+    additional_photos: [],
+    created_photo_ids: [],
+  })),
+  updateAdditionalPhotoLabel: vi.fn(async () => ({})),
+  deleteAdditionalPhoto: vi.fn(async () => ({})),
+  reorderAdditionalPhotos: vi.fn(async () => ({ additional_photos: [] })),
   recognizeOrderImage: vi.fn(async () => ({})),
   classifyGoodsImage: vi.fn(async () => ({
     shape_type: 'round',
@@ -1273,6 +1286,38 @@ describe('GoodsForm mobile create wizard', () => {
     expect(fetch).toHaveBeenCalledWith('http://api.test/media/themes/extra/poster.jpg')
     expect(vm.newAdditionalPhotoFiles).toHaveLength(1)
     expect(vm.newAdditionalPhotoFiles[0].label).toBe('海报')
+  })
+
+  it('initializes attachment photo sorting only on desktop', async () => {
+    const createSpy = vi.spyOn(Sortable, 'create').mockReturnValue({
+      destroy: vi.fn(),
+    } as any)
+
+    const desktopWrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    await flushAsyncWork()
+    await (desktopWrapper.vm as any).initAdditionalPhotoSortable()
+    expect(createSpy).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      expect.objectContaining({ draggable: '.photo-item' }),
+    )
+
+    createSpy.mockClear()
+    const mobileWrapper = await mountGoodsForm({
+      width: 390,
+      height: 844,
+      maxTouchPoints: 1,
+    })
+    await flushAsyncWork()
+    await (mobileWrapper.vm as any).initAdditionalPhotoSortable()
+    expect(createSpy).not.toHaveBeenCalled()
+
+    desktopWrapper.unmount()
+    mobileWrapper.unmount()
+    createSpy.mockRestore()
   })
 
   it('keeps the theme image picker open and warns when selected theme image fetch fails', async () => {

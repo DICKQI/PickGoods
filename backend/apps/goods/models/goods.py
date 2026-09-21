@@ -182,10 +182,31 @@ class GuziImage(models.Model):
         verbose_name="图片标签",
         help_text="如：背板细节、瑕疵点",
     )
+    order = models.PositiveIntegerField(
+        default=0,
+        db_index=True,
+        verbose_name="排序值",
+        help_text="值越小越靠前",
+    )
+    client_upload_id = models.CharField(
+        max_length=64,
+        null=True,
+        blank=True,
+        db_index=True,
+        verbose_name="客户端上传幂等键",
+    )
 
     class Meta:
         verbose_name = "谷子补充图片"
         verbose_name_plural = "谷子补充图片"
+        ordering = ["order", "id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["guzi", "client_upload_id"],
+                condition=models.Q(client_upload_id__isnull=False),
+                name="unique_guziimage_client_upload",
+            ),
+        ]
 
     def __str__(self):
         return f"{self.guzi.name} - {self.label or '补充图'}"

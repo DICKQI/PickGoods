@@ -199,7 +199,12 @@ def _copy_theme_for_user(source_theme: Theme, user):
     return theme
 
 
-def _copy_catalog_media(source: ClubCatalogItem, target: Goods):
+def _copy_catalog_media(
+    source: ClubCatalogItem,
+    target: Goods,
+    additional_photos=None,
+    photo_labels=None,
+):
     if source.main_photo and source.main_photo.name:
         source.main_photo.open("rb")
         target.main_photo.save(
@@ -207,9 +212,12 @@ def _copy_catalog_media(source: ClubCatalogItem, target: Goods):
             ContentFile(source.main_photo.read()),
             save=True,
         )
-    for photo in source.additional_photos.all():
+    if additional_photos is None:
+        additional_photos = source.additional_photos.order_by("id")
+    for index, photo in enumerate(additional_photos, start=1):
         photo.image.open("rb")
-        copied = GuziImage(guzi=target, label=photo.label)
+        label = (photo_labels or {}).get(str(photo.id), photo.label)
+        copied = GuziImage(guzi=target, label=label, order=index)
         copied.image.save(photo.image.name.rsplit("/", 1)[-1], ContentFile(photo.image.read()), save=True)
 
 
@@ -880,6 +888,33 @@ class ClubGoodsImportView(viewsets.ViewSet):
                     status=status.HTTP_409_CONFLICT,
                 )
             snapshot = _catalog_snapshot(source)
+            source_photo_ids = values.get("source_photo_ids")
+            source_photo_labels = values.get("source_photo_labels") or {}
+            source_photos = None
+            if source_photo_ids is not None:
+                photos_by_id = {
+                    photo.id: photo
+                    for photo in source.additional_photos.order_by("id")
+                }
+                missing_photo_ids = [
+                    photo_id
+                    for photo_id in source_photo_ids
+                    if photo_id not in photos_by_id
+                ]
+                if missing_photo_ids:
+                    return Response(
+                        {
+                            "source_photo_ids": (
+                                "以下来源图片不存在或不属于该条目: "
+                                f"{missing_photo_ids}"
+                            )
+                        },
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                source_photos = [
+                    photos_by_id[photo_id]
+                    for photo_id in source_photo_ids
+                ]
             if existing:
                 existing.quantity += 1
                 existing.save(update_fields=["quantity", "updated_at"])
@@ -922,7 +957,12 @@ class ClubGoodsImportView(viewsets.ViewSet):
                     order=(Goods.objects.filter(user=target_user).aggregate(min_order=Min("order"))["min_order"] or 0) - 1000,
                 )
                 result.characters.set(values.get("character_ids") or source.characters.all())
-                _copy_catalog_media(source, result)
+                _copy_catalog_media(
+                    source,
+                    result,
+                    source_photos,
+                    source_photo_labels,
+                )
                 origin = existing_origin or ClubGoodsOrigin.objects.create(
                     collector=target_user,
                     club=source.club,

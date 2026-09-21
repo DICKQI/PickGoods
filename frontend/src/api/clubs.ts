@@ -128,6 +128,8 @@ export interface ClubImportPayload {
   purchase_date?: string | null
   notes?: string | null
   is_official?: boolean
+  source_photo_ids?: number[]
+  source_photo_labels?: Record<string, string>
 }
 
 export function importClubGoods(goodsId: string, data: ClubImportPayload) {

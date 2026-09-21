@@ -422,6 +422,20 @@ class ClubImportSerializer(serializers.Serializer):
     purchase_date = serializers.DateField(allow_null=True, required=False)
     notes = serializers.CharField(allow_blank=True, allow_null=True, required=False)
     is_official = serializers.BooleanField(required=False)
+    source_photo_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        required=False,
+        allow_empty=True,
+    )
+    source_photo_labels = serializers.DictField(
+        child=serializers.CharField(allow_blank=True),
+        required=False,
+    )
+
+    def validate_source_photo_ids(self, value):
+        if len(value) != len(set(value)):
+            raise serializers.ValidationError("source_photo_ids 不能包含重复 ID")
+        return value
 
 
 class ClubImportTemplateSerializer(serializers.Serializer):

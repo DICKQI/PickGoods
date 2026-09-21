@@ -1,7 +1,7 @@
 """
 谷子（Goods）相关的视图和过滤器
 """
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, DateField, DecimalField, ExpressionWrapper, F, Max, Min, Q, Sum, Value
 from django.db.models.functions import Cast, Coalesce, TruncDate, TruncMonth, TruncWeek
 from django.db import connection
@@ -945,6 +945,15 @@ class GoodsViewSet(viewsets.ModelViewSet):
         additional_photos = request.FILES.getlist("additional_photos")
         photo_ids = request.data.getlist("photo_ids")  # 图片ID数组，用于更新
         label = request.data.get("label", "").strip()
+        raw_client_upload_id = str(
+            request.data.get("client_upload_id") or ""
+        ).strip()
+
+        def client_upload_id_for(index):
+            if not raw_client_upload_id:
+                return None
+            suffix = f":{index + 1}" if len(additional_photos) > 1 else ""
+            return f"{raw_client_upload_id[:64 - len(suffix)]}{suffix}"
 
         # 如果既没有提供图片文件，也没有提供 photo_ids，则返回错误
         if not additional_photos and not photo_ids:
@@ -979,16 +988,28 @@ class GoodsViewSet(viewsets.ModelViewSet):
                         {"detail": f"图片 ID {photo_id_str} 不存在或不属于该谷子"},
                         status=status.HTTP_400_BAD_REQUEST,
                     )
-            
+
             # 更新谷子的 updated_at 时间戳
             instance.save(update_fields=["updated_at"])
+            getattr(instance, "_prefetched_objects_cache", {}).pop(
+                "additional_photos", None
+            )
             serializer = GoodsDetailSerializer(
                 instance, context=self.get_serializer_context()
             )
-            return Response(serializer.data, status=status.HTTP_200_OK)
+            payload = dict(serializer.data)
+            payload["created_photo_ids"] = []
+            return Response(payload, status=status.HTTP_200_OK)
 
         # 情况2：创建新图片或同时更新图片和 label
         updated_images = []
+        created_photo_ids = []
+        next_order = (
+            GuziImage.objects.filter(guzi=instance).aggregate(max_order=Max("order"))[
+                "max_order"
+            ]
+            or 0
+        ) + 1
         for idx, photo in enumerate(additional_photos):
             compressed = compress_image(photo, max_size_kb=300)
             image_file = compressed or photo
@@ -1012,16 +1033,98 @@ class GoodsViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             else:
+                photo_client_upload_id = client_upload_id_for(idx)
+                if photo_client_upload_id:
+                    existing = GuziImage.objects.filter(
+                        guzi=instance,
+                        client_upload_id=photo_client_upload_id,
+                    ).first()
+                    if existing:
+                        updated_images.append(existing)
+                        created_photo_ids.append(existing.id)
+                        continue
+
                 # 创建新图片
-                guzi_image = GuziImage.objects.create(
-                    guzi=instance,
-                    image=image_file,
-                    label=label if label else None,
-                )
+                create_kwargs = {
+                    "guzi": instance,
+                    "image": image_file,
+                    "label": label if label else None,
+                    "order": next_order + idx,
+                }
+                if photo_client_upload_id:
+                    create_kwargs["client_upload_id"] = photo_client_upload_id
+                try:
+                    guzi_image = GuziImage.objects.create(**create_kwargs)
+                except IntegrityError:
+                    if not photo_client_upload_id:
+                        raise
+                    guzi_image = GuziImage.objects.get(
+                        guzi=instance,
+                        client_upload_id=photo_client_upload_id,
+                    )
                 updated_images.append(guzi_image)
+                created_photo_ids.append(guzi_image.id)
 
         # 更新谷子的 updated_at 时间戳
         instance.save(update_fields=["updated_at"])
+        getattr(instance, "_prefetched_objects_cache", {}).pop(
+            "additional_photos", None
+        )
+
+        serializer = GoodsDetailSerializer(
+            instance, context=self.get_serializer_context()
+        )
+        payload = dict(serializer.data)
+        payload["created_photo_ids"] = created_photo_ids
+        return Response(payload, status=status.HTTP_200_OK)
+
+    @action(
+        detail=True,
+        methods=["post"],
+        url_path="additional-photos/reorder",
+    )
+    def reorder_additional_photos(self, request, pk=None):
+        """按完整 ID 列表重排当前谷子的全部附件图片。"""
+        instance = self.get_object()
+        if not isinstance(request.data, dict):
+            return Response(
+                {"detail": "请求体必须是 JSON 对象"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        photo_ids = request.data.get("photo_ids")
+
+        if not isinstance(photo_ids, list) or any(
+            not isinstance(photo_id, int) or isinstance(photo_id, bool)
+            for photo_id in photo_ids
+        ):
+            return Response(
+                {"detail": "photo_ids 必须是整数数组"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if len(photo_ids) != len(set(photo_ids)):
+            return Response(
+                {"detail": "photo_ids 不能包含重复图片 ID"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        with transaction.atomic():
+            current_ids = list(
+                GuziImage.objects.select_for_update()
+                .filter(guzi=instance)
+                .values_list("id", flat=True)
+            )
+            if set(photo_ids) != set(current_ids):
+                return Response(
+                    {"detail": "photo_ids 必须完整包含该谷子的全部附件图片"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+            for index, photo_id in enumerate(photo_ids, start=1):
+                GuziImage.objects.filter(id=photo_id, guzi=instance).update(order=index)
+            instance.save(update_fields=["updated_at"])
+            getattr(instance, "_prefetched_objects_cache", {}).pop(
+                "additional_photos", None
+            )
 
         serializer = GoodsDetailSerializer(
             instance, context=self.get_serializer_context()
@@ -1031,7 +1134,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
     @action(
         detail=True,
         methods=["delete"],
-        url_path="additional-photos/(?P<photo_id>[^/.]+)",
+        url_path="additional-photos/(?P<photo_id>[0-9]+)",
     )
     def delete_additional_photo(self, request, pk=None, photo_id=None):
         """
@@ -1051,6 +1154,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
 
         # 更新谷子的 updated_at 时间戳
         instance.save(update_fields=["updated_at"])
+        getattr(instance, "_prefetched_objects_cache", {}).pop(
+            "additional_photos", None
+        )
 
         serializer = GoodsDetailSerializer(
             instance, context=self.get_serializer_context()
@@ -1103,6 +1209,9 @@ class GoodsViewSet(viewsets.ModelViewSet):
 
             # 更新谷子的 updated_at 时间戳
             instance.save(update_fields=["updated_at"])
+            getattr(instance, "_prefetched_objects_cache", {}).pop(
+                "additional_photos", None
+            )
 
             serializer = GoodsDetailSerializer(
                 instance, context=self.get_serializer_context()
