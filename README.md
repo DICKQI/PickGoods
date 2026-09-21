@@ -2,7 +2,7 @@
 
 > 面向谷子、动漫和游戏周边收藏者的个人资产管理系统。
 
-**当前版本：`v1.5.0`**
+**当前版本：`v1.5.1`**
 
 **Vue 3 · Django 6 · Django REST Framework · Capacitor 8 · Android**
 
