@@ -2,13 +2,16 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia } from 'pinia'
+import type { Pinia } from 'pinia'
 import Sortable from 'sortablejs'
 import GoodsForm from '@/views/GoodsForm.vue'
+import { GOODS_DETAIL_CACHE_TTL, useGoodsDetailStore } from '@/stores/goodsDetail'
 import {
   classifyGoodsImage,
   createGoods,
   getGoodsDetail,
   updateGoods,
+  uploadMainPhoto,
 } from '@/api/goods'
 import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -236,11 +239,13 @@ const mountGoodsForm = async ({
   height,
   maxTouchPoints,
   params = {},
+  prepare,
 }: {
   width: number
   height: number
   maxTouchPoints: number
   params?: Record<string, string | undefined>
+  prepare?: (pinia: Pinia) => void | Promise<void>
 }) => {
   routeParams = params
   routeQuery = {}
@@ -255,9 +260,12 @@ const mountGoodsForm = async ({
     removeEventListener: vi.fn(),
   }))
 
+  const pinia = createPinia()
+  await prepare?.(pinia)
+
   const wrapper = mount(GoodsForm, {
     global: {
-      plugins: [createPinia()],
+      plugins: [pinia],
       stubs: {
         ElForm: ElFormStub,
         ElFormItem: ElFormItemStub,
@@ -441,10 +449,154 @@ describe('GoodsForm mobile create wizard', () => {
       maxTouchPoints: 0,
       params: { id: 'existing-id' },
     })
-    await flushAsyncWork()
+    await vi.waitFor(() => {
+      expect((wrapper.vm as any).formData.name).toBe('已有谷子')
+    })
 
-    expect(getGoodsDetail).toHaveBeenCalledWith('existing-id')
-    expect((wrapper.vm as any).formData.name).toBe('已有谷子')
+    expect(getGoodsDetail).toHaveBeenCalledWith('existing-id', { suppressGlobalError: true })
+  })
+
+  it('renders cached edit details on the first frame without refetching fresh data', async () => {
+    const cachedDetail = {
+      id: 'cached-id',
+      name: '缓存中的谷子',
+      ip: { id: 1, name: '咒术回战' },
+      characters: [{ id: 10, name: '五条悟', ip: { id: 1, name: '咒术回战' } }],
+      category: { id: 100, name: '吧唧' },
+      theme: null,
+      status: 'in_cabinet',
+      location: 9,
+      location_path: '书房/玻璃柜',
+      quantity: 2,
+      price: '88.00',
+      purchase_date: '2026-07-01',
+      is_official: true,
+      notes: '缓存备注',
+      main_photo: '/media/cached.png',
+      additional_photos: [],
+    }
+    vi.mocked(getGoodsDetail).mockResolvedValueOnce(cachedDetail as any)
+
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'cached-id' },
+      prepare: async (pinia) => {
+        await useGoodsDetailStore(pinia).ensureGoodsDetail('cached-id')
+      },
+    })
+
+    const vm = wrapper.vm as any
+    expect(wrapper.text()).toContain('基础信息')
+    expect(vm.formData.name).toBe('缓存中的谷子')
+    expect(vm.formData.location).toBe(9)
+    expect(vm.locationTreeData[0]?.label).toBe('玻璃柜')
+    expect(getGoodsDetail).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps user edits when a stale cached detail finishes refreshing', async () => {
+    let now = 1_000_000
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const cachedDetail = {
+      id: 'stale-id',
+      name: '缓存旧内容',
+      ip: { id: 1, name: '咒术回战' },
+      characters: [{ id: 10, name: '五条悟', ip: { id: 1, name: '咒术回战' } }],
+      category: { id: 100, name: '吧唧' },
+      theme: null,
+      status: 'in_cabinet',
+      location: null,
+      quantity: 1,
+      price: null,
+      purchase_date: '',
+      is_official: false,
+      notes: '',
+      main_photo: '',
+      additional_photos: [],
+    }
+    const refreshedDetail = {
+      ...cachedDetail,
+      name: '服务端最新内容',
+    }
+    let resolveRefresh!: (detail: typeof refreshedDetail) => void
+    vi.mocked(getGoodsDetail)
+      .mockResolvedValueOnce(cachedDetail as any)
+      .mockReturnValueOnce(new Promise((resolve) => {
+        resolveRefresh = resolve as typeof resolveRefresh
+      }) as any)
+
+    let detailStore!: ReturnType<typeof useGoodsDetailStore>
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'stale-id' },
+      prepare: async (pinia) => {
+        detailStore = useGoodsDetailStore(pinia)
+        await detailStore.ensureGoodsDetail('stale-id')
+        now += GOODS_DETAIL_CACHE_TTL + 1
+      },
+    })
+
+    const vm = wrapper.vm as any
+    vm.formData.name = '用户刚输入的内容'
+    resolveRefresh(refreshedDetail)
+    await vi.waitFor(() => {
+      expect(detailStore.getCachedGoodsDetail('stale-id')?.name).toBe('服务端最新内容')
+    })
+
+    expect(vm.formData.name).toBe('用户刚输入的内容')
+    nowSpy.mockRestore()
+  })
+
+  it('enters an error state when a stale cache refresh returns 404', async () => {
+    let now = 2_000_000
+    const nowSpy = vi.spyOn(Date, 'now').mockImplementation(() => now)
+    const cachedDetail = {
+      id: 'deleted-id',
+      name: '已被删除的谷子',
+      ip: { id: 1, name: '咒术回战' },
+      characters: [{ id: 10, name: '五条悟', ip: { id: 1, name: '咒术回战' } }],
+      category: { id: 100, name: '吧唧' },
+      theme: null,
+      status: 'in_cabinet',
+      location: null,
+      quantity: 1,
+      price: null,
+      purchase_date: '',
+      is_official: false,
+      notes: '',
+      main_photo: '',
+      additional_photos: [],
+    }
+    vi.mocked(getGoodsDetail)
+      .mockResolvedValueOnce(cachedDetail as any)
+      .mockRejectedValueOnce({
+        response: {
+          status: 404,
+          data: { detail: '资源不存在' },
+        },
+      })
+
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'deleted-id' },
+      prepare: async (pinia) => {
+        const store = useGoodsDetailStore(pinia)
+        await store.ensureGoodsDetail('deleted-id')
+        now += GOODS_DETAIL_CACHE_TTL + 1
+      },
+    })
+
+    await vi.waitFor(() => {
+      expect(wrapper.find('.goods-form-load-error').exists()).toBe(true)
+    })
+    expect((wrapper.vm as any).editLoadError).toBe('资源不存在')
+    expect(wrapper.find('.goods-el-form').exists()).toBe(false)
+    nowSpy.mockRestore()
   })
 
   it('opens the custom leave dialog before navigating away on mobile', async () => {
@@ -602,6 +754,9 @@ describe('GoodsForm mobile create wizard', () => {
       params: { id: 'existing-id' },
     })
 
+    await vi.waitFor(() => {
+      expect(wrapper.text()).toContain('基础信息')
+    })
     expect(wrapper.text()).toContain('编辑谷子')
     expect(wrapper.text()).toContain('基础信息')
     expect(wrapper.text()).toContain('数量与购入')
@@ -1101,6 +1256,33 @@ describe('GoodsForm mobile create wizard', () => {
     await flushAsyncWork()
 
     expect(vi.mocked(patchTheme)).not.toHaveBeenCalled()
+  })
+
+  it('invalidates cached details immediately after a successful update even if photo upload fails', async () => {
+    let detailStore!: ReturnType<typeof useGoodsDetailStore>
+    vi.mocked(uploadMainPhoto).mockRejectedValueOnce(new Error('upload failed'))
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+      params: { id: 'existing-id' },
+      prepare: (pinia) => {
+        detailStore = useGoodsDetailStore(pinia)
+      },
+    })
+    await vi.waitFor(() => {
+      expect((wrapper.vm as any).formData.name).toBe('已有谷子')
+    })
+
+    const vm = wrapper.vm as any
+    await fillRequiredBasicFields(wrapper)
+    vm.setMainPhotoFromFile(new File(['image'], 'main.png', { type: 'image/png' }))
+    await vm.submitByMode('publish')
+    await flushAsyncWork()
+
+    expect(vi.mocked(updateGoods)).toHaveBeenCalled()
+    expect(detailStore.getCachedGoodsDetail('existing-id')).toBeNull()
+    expect(vi.mocked(ElMessage.error)).toHaveBeenCalledWith('upload failed')
   })
 
   it('keeps the create flow moving when syncing new theme notes fails', async () => {

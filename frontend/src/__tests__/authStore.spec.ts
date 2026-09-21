@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { useAuthStore } from '@/stores/auth'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
 
 // Mock API modules
@@ -44,6 +45,22 @@ describe('useAuthStore', () => {
     store.setToken(null)
     expect(store.token).toBeNull()
     expect(localStorage.getItem(AUTH_TOKEN_KEY)).toBeNull()
+  })
+
+  it('setToken 在身份凭据变化时清空详情缓存', () => {
+    const detailStore = useGoodsDetailStore()
+    const clearSpy = vi.spyOn(detailStore, 'clearGoodsDetailCache')
+    const store = useAuthStore()
+
+    store.setToken('user-a')
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+
+    clearSpy.mockClear()
+    store.setToken('user-a')
+    expect(clearSpy).not.toHaveBeenCalled()
+
+    store.setToken('user-b')
+    expect(clearSpy).toHaveBeenCalledTimes(1)
   })
 
   it('isAuthenticated 响应式变化', () => {

@@ -176,9 +176,14 @@
             <el-table-column label="操作" width="150" fixed="right" align="right">
               <template #default="{ row }">
                 <div class="admin-action-inline">
-                  <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-                  <el-button link type="primary" @click="router.push(`/admin/goods/${row.id}/edit`)">编辑</el-button>
-                  <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+                  <el-button link type="primary" :disabled="isPreparing(row.id)" @click="openDetail(row)">详情</el-button>
+                  <el-button
+                    link
+                    type="primary"
+                    :loading="isPreparing(row.id)"
+                    @click="openGoodsEdit(row.id, 'AdminGoodsEdit')"
+                  >编辑</el-button>
+                  <el-button link type="danger" :disabled="isPreparing(row.id)" @click="handleDelete(row)">删除</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -291,7 +296,7 @@ import {
   type AdminIPListParams,
   type AdminThemeListParams,
 } from '@/api/admin'
-import { deleteGoods, getGoodsDetail } from '@/api/goods'
+import { deleteGoods } from '@/api/goods'
 import { getCategoryTree } from '@/api/metadata'
 import type {
   AdminGoodsListItem,
@@ -303,6 +308,8 @@ import type {
   GoodsStatus,
 } from '@/api/types'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useGoodsEditNavigation } from '@/composables/useGoodsEditNavigation'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import { createLatestRequestGuard } from '@/composables/useLatestRequest'
 import { downloadBlob } from '@/utils/download'
 import { formatDateTime } from '@/utils/datetime'
@@ -312,6 +319,8 @@ import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 const router = useRouter()
 const route = useRoute()
 const { isMobile } = useResponsiveDevice()
+const goodsDetailStore = useGoodsDetailStore()
+const { isPreparing, openGoodsEdit } = useGoodsEditNavigation()
 const loading = ref(false)
 const exporting = ref(false)
 const goodsList = ref<AdminGoodsListItem[]>([])
@@ -488,17 +497,20 @@ function hydrateFromQuery() {
 }
 
 async function openDetail(row: AdminGoodsListItem) {
-  selectedGoods.value = await getGoodsDetail(row.id)
+  if (isPreparing(row.id)) return
+  selectedGoods.value = await goodsDetailStore.ensureGoodsDetail(row.id, { waitForRefresh: true })
   detailVisible.value = true
 }
 
 async function handleDelete(row: AdminGoodsListItem) {
+  if (isPreparing(row.id)) return
   await ElMessageBox.confirm(
     `确定删除谷子“${row.name}”吗？此操作不可恢复。`,
     '删除谷子',
     { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
   )
   await deleteGoods(row.id)
+  goodsDetailStore.invalidateGoodsDetail(row.id)
   ElMessage.success('谷子已删除')
   await loadGoods()
 }
@@ -515,12 +527,14 @@ async function submitBulk() {
     return
   }
   bulkSubmitting.value = true
+  const affectedIds = selectedRows.value.map((row) => row.id)
   try {
     await bulkAdminGoods(
-      selectedRows.value.map((row) => row.id),
+      affectedIds,
       bulkAction.value,
       bulkValue.value,
     )
+    affectedIds.forEach((id) => goodsDetailStore.invalidateGoodsDetail(id))
     ElMessage.success(`已更新 ${selectedRows.value.length} 条谷子`)
     bulkVisible.value = false
     tableRef.value?.clearSelection()

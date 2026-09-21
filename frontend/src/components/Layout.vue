@@ -110,12 +110,22 @@
       'has-bottom-nav': showMobileBottomNav,
       'no-top-nav': hideTopNav,
       'mobile-detail-safe-area': false
-    }">
+      }">
       <router-view v-slot="{ Component, route }">
-        <KeepAlive v-if="isMobile" :key="workspace.epoch" :include="isMobile && mobileMode !== 'standalone' ? MOBILE_CACHE_COMPONENTS : []" :max="12">
-          <component :is="Component" :key="pageComponentKey(route)" />
-        </KeepAlive>
-        <Transition v-else :name="route.path.startsWith('/admin') ? 'no-transition' : 'page-fade'" mode="out-in">
+        <Transition
+          v-if="isMobile"
+          :name="route.path.startsWith('/admin') ? 'no-transition' : 'page-fade'"
+          mode="out-in"
+        >
+          <KeepAlive :key="workspace.epoch" :include="mobileMode !== 'standalone' ? MOBILE_CACHE_COMPONENTS : []" :max="12">
+            <component :is="Component" :key="pageComponentKey(route)" />
+          </KeepAlive>
+        </Transition>
+        <Transition
+          v-else
+          :name="route.path.startsWith('/admin') ? 'no-transition' : 'page-fade'"
+          mode="out-in"
+        >
           <component :is="Component" :key="pageComponentKey(route)" />
         </Transition>
       </router-view>

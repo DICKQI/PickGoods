@@ -38,7 +38,7 @@
       </div>
     </div>
 
-    <el-form ref="formRef" :model="formData" :rules="rules" label-width="100px" label-position="top" class="goods-el-form">
+    <el-form v-if="!isEditLoading && !editLoadError" ref="formRef" :model="formData" :rules="rules" label-width="100px" label-position="top" class="goods-el-form">
       <div class="goods-form-workbench">
         <div class="goods-form-main-column">
       <!-- 基础信息分区 -->
@@ -153,7 +153,7 @@
               <el-form-item label="位置" prop="location">
                 <el-tree-select
                   v-model="formData.location"
-                  :data="locationStore.treeData"
+                  :data="locationTreeData"
                   placeholder="选择位置"
                   clearable
                   filterable
@@ -401,8 +401,18 @@
       </div>
     </el-form>
 
+    <div v-else-if="isEditLoading" class="goods-form-loading-shell" aria-live="polite">
+      <el-skeleton :rows="10" animated />
+    </div>
+
+    <div v-else class="goods-form-loading-shell goods-form-load-error">
+      <el-alert :title="editLoadError || '加载谷子详情失败'" type="error" :closable="false" show-icon />
+      <el-button type="primary" @click="retryEditDetail">重新加载</el-button>
+      <el-button @click="router.back()">返回</el-button>
+    </div>
+
     <!-- 移动端：底部渐变遮罩 + 双按钮 -->
-    <div v-if="isMobile" class="mobile-form-dock-wrap" :class="{ 'mobile-form-dock-wrap--visible': useCreateWizard || mobileFormDockVisible, 'mobile-form-dock-wrap--wizard': useCreateWizard }" aria-label="表单主操作">
+    <div v-if="isMobile && !isEditLoading && !editLoadError" class="mobile-form-dock-wrap" :class="{ 'mobile-form-dock-wrap--visible': useCreateWizard || mobileFormDockVisible, 'mobile-form-dock-wrap--wizard': useCreateWizard }" aria-label="表单主操作">
       <div class="mobile-form-dock-stack">
         <div class="mobile-form-dock-fade" aria-hidden="true" />
         <div class="mobile-form-dock-actions">
@@ -621,10 +631,10 @@ import {
 import { Camera, CameraResultType, CameraSource } from '@capacitor/camera'
 import { Capacitor } from '@capacitor/core'
 import { useLocationStore } from '@/stores/location'
-import { createGoods, updateGoods, getGoodsDetail, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
+import { createGoods, updateGoods, uploadMainPhoto, recognizeOrderImage } from '@/api/goods'
 import { getAdminUsers } from '@/api/admin'
 import { copyThemeImagesFromGoods, getGoodsCraftList, getThemeTemplate, patchTheme, saveThemeTemplate } from '@/api/metadata'
-import type { AdminUser, GoodsCraft, GoodsCreateResponse, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
+import type { AdminUser, GoodsCraft, GoodsCreateResponse, GoodsDetail, GoodsInput, GoodsStatus, OcrResult, ThemeImage, ThemeTemplatePayload } from '@/api/types'
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import OcrBatchImportDialog from '@/views/goods-form/components/OcrBatchImportDialog.vue'
@@ -641,6 +651,8 @@ import { useDuplicateHandler } from '@/views/goods-form/composables/useDuplicate
 import { useImageClassifier } from '@/views/goods-form/composables/useImageClassifier'
 import { applyCraftToNotes } from '@/views/goods-form/craftNotes'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useGoodsEditNavigation } from '@/composables/useGoodsEditNavigation'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import { getCurrentBaseURL } from '@/utils/request'
 import { getClubs, getClubGoods, getClubGoodsImportTemplate, importClubGoods } from '@/api/clubs'
 import type { Club, ClubGoodsListItem, ClubImportTemplate } from '@/api/types'
@@ -650,10 +662,14 @@ const router = useRouter()
 const route = useRoute()
 const locationStore = useLocationStore()
 const clubImportQueue = useClubImportQueueStore()
+const goodsDetailStore = useGoodsDetailStore()
+const { openGoodsEdit } = useGoodsEditNavigation()
 const { isMobile } = useResponsiveDevice()
 
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+const isEditLoading = ref(false)
+const editLoadError = ref<string | null>(null)
 const leaveConfirmVisible = ref(false)
 const resetConfirmVisible = ref(false)
 const isEditMode = computed(() => Boolean(route.params.id))
@@ -748,9 +764,9 @@ const handleClubImportProcess = async (queueId: string, item: ClubImportQueueIte
   })
 }
 
-const handleClubImportEdit = (goodsId: string) => {
+const handleClubImportEdit = async (goodsId: string) => {
   clubImportVisible.value = false
-  void router.push({ name: 'GoodsEdit', params: { id: goodsId } })
+  await openGoodsEdit(goodsId, isAdminGoodsRoute.value ? 'AdminGoodsEdit' : 'GoodsEdit')
 }
 
 const openClubImport = async () => {
@@ -890,6 +906,17 @@ const favoriteLocationNodes = computed(() =>
     .filter((node) => !recentLocationNodes.value.some((recent) => recent.id === node.id))
     .slice(0, 4),
 )
+const fallbackLocationTree = ref<TreeNode[]>([])
+const locationTreeHasId = (nodes: TreeNode[], id: number): boolean =>
+  nodes.some((node) => node.id === id || (node.children ? locationTreeHasId(node.children, id) : false))
+const locationTreeData = computed(() => {
+  const tree = locationStore.treeData
+  if (tree.length === 0) return fallbackLocationTree.value
+  const missingFallbackNodes = fallbackLocationTree.value.filter(
+    (node) => !locationTreeHasId(tree, node.id),
+  )
+  return missingFallbackNodes.length > 0 ? [...tree, ...missingFallbackNodes] : tree
+})
 
 const filterLocationNode = (keyword: string, data?: TreeNode) => {
   if (!data) return false
@@ -933,7 +960,7 @@ const {
   categoryTreeOptions, selectedCategory,
   pendingThemeName, handleIpChange, handleIpFilter, handleCharacterFilter, handleThemeFilter, filterCategoryNode,
   handleThemeChange: applyThemeSelection, handleThemeCreate, ensureThemeCreated, loadMetadata,
-  wasThemeCreatedInCurrentFlow,
+  wasThemeCreatedInCurrentFlow, seedSelectionFromDetail,
 } = metadata
 
 const additionalPhotos = useAdditionalPhotos(goodsId)
@@ -1307,6 +1334,7 @@ const runNewThemePostSaveFlow = async (
 
 const onCreateOrMergeSuccess = async (result: GoodsCreateResponse, mode: 'draft' | 'publish', themeId?: number | null) => {
   const id = result.id
+  goodsDetailStore.invalidateGoodsDetail(id)
   if (mainPhotoFile.value) {
     await uploadMainPhoto(id, mainPhotoFile.value)
   }
@@ -1397,6 +1425,154 @@ const handleMainPhotoRemove = () => {
   mainPhotoList.value = []
   formData.value.main_photo = ''
   dismissSuggestions()
+}
+
+// ── Edit detail hydration ──
+
+const getEditableStateSnapshot = () => JSON.stringify({
+  formData: formData.value,
+  locationFallback: fallbackLocationTree.value.map((node) => ({
+    id: node.id,
+    label: node.label,
+    path: node.data?.path_name,
+  })),
+  mainPhotoFile: mainPhotoFile.value
+    ? {
+        name: mainPhotoFile.value.name,
+        size: mainPhotoFile.value.size,
+        type: mainPhotoFile.value.type,
+      }
+    : null,
+  mainPhotoList: mainPhotoList.value.map((file) => ({
+    name: file.name,
+    url: file.url,
+  })),
+  additionalPhotos: additionalPhotoItems.value.map((item) =>
+    item.kind === 'local'
+      ? {
+          kind: item.kind,
+          name: item.file.name,
+          size: item.file.size,
+          type: item.file.type,
+          label: item.label,
+          preview: item.preview,
+        }
+      : {
+          kind: item.kind,
+          id: item.id,
+          image: item.image,
+          label: item.label,
+          order: item.order,
+        },
+  ),
+})
+
+let editLoadSequence = 0
+let initialEditSnapshot = ''
+
+const setFallbackLocation = (detail: GoodsDetail) => {
+  if (!detail.location) {
+    fallbackLocationTree.value = []
+    return
+  }
+
+  const path = detail.location_path || ''
+  const name = path.split('/').map((segment) => segment.trim()).filter(Boolean).pop() || '已选位置'
+  fallbackLocationTree.value = [{
+    id: detail.location,
+    label: name,
+    children: [],
+    data: {
+      id: detail.location,
+      name,
+      parent: null,
+      path_name: path,
+      order: 0,
+    },
+  }]
+}
+
+const applyGoodsDetail = (data: GoodsDetail) => {
+  formData.value = {
+    name: data.name,
+    ip: data.ip.id,
+    characters: data.characters.map((character) => character.id),
+    category: data.category.id,
+    theme: data.theme?.id || null,
+    status: data.status as GoodsStatus,
+    location: data.location || undefined,
+    quantity: data.quantity ?? 1,
+    price: data.price ? parseFloat(data.price) : undefined,
+    purchase_date: data.purchase_date || '',
+    is_official: data.is_official,
+    notes: data.notes || '',
+    main_photo: data.main_photo || '',
+  }
+  seedSelectionFromDetail(data)
+  setFallbackLocation(data)
+  hasUserEditedGoodsName.value = Boolean(data.name?.trim())
+  lastAutoGeneratedName.value = ''
+  isOfficialTouched.value = false
+  mainPhotoFile.value = null
+  mainPhotoList.value = data.main_photo
+    ? [{ url: data.main_photo, name: 'main_photo' } as UploadFile]
+    : []
+  additionalPhotos.resetNewPhotos()
+  setExistingPhotos(data.additional_photos ?? [])
+  initialEditSnapshot = getEditableStateSnapshot()
+}
+
+const loadEditDetail = async (id: string, force = false) => {
+  const sequence = ++editLoadSequence
+  const cached = goodsDetailStore.getCachedGoodsDetail(id)
+
+  if (cached) {
+    applyGoodsDetail(cached)
+    isEditLoading.value = false
+    editLoadError.value = null
+  } else {
+    isEditLoading.value = true
+    editLoadError.value = null
+  }
+
+  try {
+    const data = await goodsDetailStore.ensureGoodsDetail(id, {
+      force: force || !cached,
+      silent: true,
+      waitForRefresh: Boolean(cached),
+    })
+    if (sequence !== editLoadSequence) return
+
+    if (!cached || getEditableStateSnapshot() === initialEditSnapshot) {
+      applyGoodsDetail(data)
+    }
+    isEditLoading.value = false
+    editLoadError.value = null
+  } catch (err: any) {
+    if (sequence !== editLoadSequence) return
+    const status = err?.response?.status
+    const isPermanentFailure = [401, 403, 404, 410].includes(status)
+    if (cached && !isPermanentFailure) {
+      console.warn('后台校验谷子详情失败，继续使用缓存内容:', err)
+    } else {
+      if (isPermanentFailure) goodsDetailStore.invalidateGoodsDetail(id)
+      editLoadError.value = err?.response?.data?.detail || err?.message || '加载谷子详情失败'
+    }
+    isEditLoading.value = false
+  }
+}
+
+const retryEditDetail = () => {
+  if (goodsId.value) void loadEditDetail(goodsId.value, true)
+}
+
+if (goodsId.value) {
+  const cachedDetail = goodsDetailStore.getCachedGoodsDetail(goodsId.value)
+  if (cachedDetail) {
+    applyGoodsDetail(cachedDetail)
+  } else {
+    isEditLoading.value = true
+  }
 }
 
 // ── Crop dialog state ──
@@ -1735,6 +1911,7 @@ const submitByMode = async (mode: 'draft' | 'publish') => {
     if (route.params.id) {
       const id = route.params.id as string
       await updateGoods(id, submitData)
+      goodsDetailStore.invalidateGoodsDetail(id)
       if (mainPhotoFile.value) await uploadMainPhoto(id, mainPhotoFile.value)
       await handleAdditionalPhotosUpload(id)
       await persistAdditionalPhotoOrder(id)
@@ -1923,6 +2100,19 @@ watch(
   () => { void syncClubImportRoute() },
 )
 
+watch(goodsId, (id, previousId) => {
+  if (id === previousId) return
+  if (!id) {
+    editLoadSequence += 1
+    isEditLoading.value = false
+    editLoadError.value = null
+    initialEditSnapshot = ''
+    resetForNewGoods()
+    return
+  }
+  void loadEditDetail(id)
+})
+
 watch(isMobile, () => {
   void initAdditionalPhotoSortable()
 })
@@ -1934,44 +2124,19 @@ onMounted(async () => {
   window.addEventListener('resize', handleViewportChangeForDock)
   window.addEventListener('scroll', handleWindowScrollForDock, { passive: true })
 
-  try { await loadMetadata() } catch { ElMessage.error('加载基础数据失败') }
+  const metadataTask = loadMetadata().catch(() => {
+    ElMessage.error('加载基础数据失败')
+  })
   if (showAdminOwnerSelect.value) void searchAdminOwners('')
   void loadGoodsCrafts()
-  await locationStore.fetchNodes()
+  const locationTask = locationStore.fetchNodes()
+  const editTask = goodsId.value ? loadEditDetail(goodsId.value) : Promise.resolve()
 
+  await Promise.allSettled([metadataTask, locationTask, editTask])
   await syncClubImportRoute()
 
   if (!route.params.id && !formData.value.notes) {
     formData.value.notes = DEFAULT_NOTES_TEMPLATE
-  }
-
-  if (route.params.id) {
-    try {
-      const data = await getGoodsDetail(route.params.id as string)
-      formData.value = {
-        name: data.name,
-        ip: data.ip.id,
-        characters: data.characters.map(c => c.id),
-        category: data.category.id,
-        theme: data.theme?.id || null,
-        status: data.status as GoodsStatus,
-        location: data.location || undefined,
-        quantity: data.quantity ?? 1,
-        price: data.price ? parseFloat(data.price) : undefined,
-        purchase_date: data.purchase_date || '',
-        is_official: data.is_official,
-        notes: data.notes || '',
-        main_photo: data.main_photo || '',
-      }
-      hasUserEditedGoodsName.value = Boolean(data.name?.trim())
-      lastAutoGeneratedName.value = ''
-      if (data.main_photo) {
-        mainPhotoList.value = [{ url: data.main_photo, name: 'main_photo' } as UploadFile]
-      }
-      if (data.additional_photos && data.additional_photos.length > 0) {
-        setExistingPhotos(data.additional_photos)
-      }
-    } catch { ElMessage.error('加载数据失败') }
   }
 
   await nextTick()
@@ -2000,6 +2165,21 @@ onUnmounted(() => {
 
 <style scoped>
 .goods-form { padding: 24px; max-width: 1200px; margin: 0 auto; }
+.goods-form-loading-shell {
+  min-height: 520px;
+  padding: 28px;
+  border: 1px solid rgba(212, 175, 55, 0.24);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 16px 40px rgba(28, 23, 12, 0.06);
+}
+.goods-form-load-error {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 16px;
+}
 .goods-form--desktop-workbench { max-width: 1320px; padding: 20px 24px 24px; }
 .goods-form--mobile-dock { padding-bottom: calc(100px + env(safe-area-inset-bottom, 0px)); }
 .goods-form-header { margin-bottom: 16px; }

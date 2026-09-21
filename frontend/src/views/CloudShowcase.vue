@@ -155,11 +155,14 @@
                 :goods="goods"
                 :selectable="guziStore.selectionMode"
                 :selected="guziStore.isGoodsSelected(goods.id)"
+                :loading="isPreparing(goods.id)"
                 :interactive-3d="true"
                 @click="handleCardClick"
                 @select="handleCardSelect"
                 @location-click="handleLocationClick"
                 @context-menu="handleCardContextMenu"
+                @prefetch="scheduleGoodsPrefetch"
+                @prefetch-cancel="cancelGoodsPrefetch"
               />
             </template>
           </div>
@@ -223,6 +226,7 @@
               <div
                 class="context-menu-item"
                 :class="{ 'is-disabled': moveDisabledToTop }"
+                :aria-disabled="moveDisabledToTop"
                 @click="handleMoveToTop"
               >
                 <el-icon class="context-menu-icon"><Top /></el-icon>
@@ -231,6 +235,7 @@
               <div
                 class="context-menu-item"
                 :class="{ 'is-disabled': moveDisabledForward }"
+                :aria-disabled="moveDisabledForward"
                 @click="handleMoveForward"
               >
                 <el-icon class="context-menu-icon"><ArrowLeft /></el-icon>
@@ -239,16 +244,30 @@
               <div
                 class="context-menu-item"
                 :class="{ 'is-disabled': moveDisabledBackward }"
+                :aria-disabled="moveDisabledBackward"
                 @click="handleMoveBackward"
               >
                 <el-icon class="context-menu-icon"><ArrowRight /></el-icon>
                 <span>后移</span>
               </div>
-              <div class="context-menu-item" @click="handleEditGoods">
-                <el-icon class="context-menu-icon"><Edit /></el-icon>
-                <span>编辑</span>
+              <div
+                class="context-menu-item"
+                :class="{ 'is-loading': isPreparing(contextMenuGoods?.id) }"
+                :aria-disabled="isPreparing(contextMenuGoods?.id)"
+                @click="handleEditGoods"
+              >
+                <el-icon class="context-menu-icon">
+                  <Loading v-if="isPreparing(contextMenuGoods?.id)" class="is-loading" />
+                  <Edit v-else />
+                </el-icon>
+                <span>{{ isPreparing(contextMenuGoods?.id) ? '正在准备...' : '编辑' }}</span>
               </div>
-              <div class="context-menu-item context-menu-item-danger" @click="handleDeleteGoods">
+              <div
+                class="context-menu-item context-menu-item-danger"
+                :class="{ 'is-disabled': contextMenuBusy }"
+                :aria-disabled="contextMenuBusy"
+                @click="handleDeleteGoods"
+              >
                 <el-icon class="context-menu-icon"><Delete /></el-icon>
                 <span>删除</span>
               </div>
@@ -324,6 +343,7 @@ import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { useJournalStore } from '@/stores/journal'
 import { useGuziStore } from '@/stores/guzi'
 import { useShowcaseStore } from '@/stores/showcase'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import SearchBar from '@/components/SearchBar.vue'
 import FilterPanel from '@/components/FilterPanel.vue'
 import GoodsCard from '@/components/GoodsCard.vue'
@@ -339,6 +359,7 @@ import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import { getContextMenuPosition } from '@/utils/contextMenuPosition'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import { useGoodsEditNavigation } from '@/composables/useGoodsEditNavigation'
 import type { GoodsListItem, JournalBook } from '@/api/types'
 import { deleteGoods, getGoodsList, moveGoods } from '@/api/goods'
 
@@ -346,7 +367,9 @@ const router = useRouter()
 const route = useRoute()
 const guziStore = useGuziStore()
 const showcaseStore = useShowcaseStore()
+const goodsDetailStore = useGoodsDetailStore()
 const { isMobile } = useResponsiveDevice()
+const { isPreparing, prefetchGoodsEdit, openGoodsEdit } = useGoodsEditNavigation()
 
 type CloudShowcaseTab = 'showcase' | 'barn' | 'stats' | 'journal'
 
@@ -486,6 +509,23 @@ const contextMenuRef = ref<HTMLElement | null>(null)
 const contextMenuPositioned = ref(false)
 let contextMenuPositionRequest = 0
 const moveLoading = ref(false)
+const goodsPrefetchTimers = new Map<string, number>()
+
+const scheduleGoodsPrefetch = (goods: GoodsListItem) => {
+  if (isMobile.value || guziStore.selectionMode || goodsPrefetchTimers.has(goods.id)) return
+  const timer = window.setTimeout(() => {
+    goodsPrefetchTimers.delete(goods.id)
+    prefetchGoodsEdit(goods.id)
+  }, 200)
+  goodsPrefetchTimers.set(goods.id, timer)
+}
+
+const cancelGoodsPrefetch = (goods: GoodsListItem) => {
+  const timer = goodsPrefetchTimers.get(goods.id)
+  if (timer === undefined) return
+  window.clearTimeout(timer)
+  goodsPrefetchTimers.delete(goods.id)
+}
 
 // 刷新状态
 const showcaseRefreshing = ref(false)
@@ -598,7 +638,7 @@ const contextMenuIndex = computed(() => {
 })
 
 const isFirstItemInList = computed(() => {
-  return contextMenuGoods.value && contextMenuIndex.value === 0
+  return Boolean(contextMenuGoods.value && contextMenuIndex.value === 0)
 })
 
 const isLastItemLastPage = computed(() => {
@@ -608,12 +648,16 @@ const isLastItemLastPage = computed(() => {
 })
 
 const isFirstItemInCurrentPage = computed(() => {
-  return contextMenuGoods.value && contextMenuIndex.value === 0
+  return Boolean(contextMenuGoods.value && contextMenuIndex.value === 0)
 })
 
-const moveDisabledToTop = computed(() => moveLoading.value || isFirstItemInCurrentPage.value)
-const moveDisabledForward = computed(() => moveLoading.value || isFirstItemInList.value)
-const moveDisabledBackward = computed(() => moveLoading.value || isLastItemLastPage.value)
+const contextMenuBusy = computed(() => {
+  const id = contextMenuGoods.value?.id
+  return moveLoading.value || Boolean(id && isPreparing(id))
+})
+const moveDisabledToTop = computed(() => contextMenuBusy.value || isFirstItemInCurrentPage.value)
+const moveDisabledForward = computed(() => contextMenuBusy.value || isFirstItemInList.value)
+const moveDisabledBackward = computed(() => contextMenuBusy.value || isLastItemLastPage.value)
 
 const handleCardClick = (goods: GoodsListItem) => {
   if (guziStore.selectionMode) {
@@ -669,6 +713,7 @@ const repositionContextMenu = () => {
 const handleCardContextMenu = async (payload: { goods: GoodsListItem; x: number; y: number }) => {
   if (guziStore.selectionMode) return
   contextMenuGoods.value = payload.goods
+  prefetchGoodsEdit(payload.goods.id)
   contextMenuAnchorX.value = payload.x
   contextMenuAnchorY.value = payload.y
   contextMenuX.value = payload.x
@@ -755,15 +800,16 @@ const handleContextMenuAfterLeave = () => {
   contextMenuTransformOrigin.value = 'top left'
 }
 
-const handleEditGoods = () => {
+const handleEditGoods = async () => {
   if (!contextMenuGoods.value) return
   const id = contextMenuGoods.value.id
-  closeContextMenu()
-  router.push({ name: 'GoodsEdit', params: { id } })
+  const opened = await openGoodsEdit(id)
+  if (opened) closeContextMenu()
 }
 
 const handleDeleteGoods = async () => {
   if (!contextMenuGoods.value) return
+  if (contextMenuBusy.value) return
   const goods = contextMenuGoods.value
   closeContextMenu()
   try {
@@ -777,6 +823,7 @@ const handleDeleteGoods = async () => {
       },
     )
     await deleteGoods(goods.id)
+    goodsDetailStore.invalidateGoodsDetail(goods.id)
     ElMessage.success('删除成功')
     guziStore.pagination.page = 1
     guziStore.searchGuziImmediate()
@@ -806,7 +853,7 @@ const fetchAnchorItem = async (page: number, take: 'first' | 'last') => {
 
 const handleMove = async (direction: 'forward' | 'backward') => {
   if (!contextMenuGoods.value) return
-  if (moveLoading.value) return
+  if (contextMenuBusy.value) return
 
   const goods = contextMenuGoods.value
   const idx = contextMenuIndex.value
@@ -910,7 +957,7 @@ const handleMoveBackward = () => {
 
 const handleMoveToTop = async () => {
   if (!contextMenuGoods.value) return
-  if (moveLoading.value) return
+  if (contextMenuBusy.value) return
   if (isFirstItemInCurrentPage.value) {
     ElMessage.info('当前商品已经是列表第一项')
     return
@@ -1083,6 +1130,8 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  goodsPrefetchTimers.forEach((timer) => window.clearTimeout(timer))
+  goodsPrefetchTimers.clear()
   if (sentinelObserver) {
     sentinelObserver.disconnect()
   }

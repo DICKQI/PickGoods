@@ -136,6 +136,7 @@
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { createGoods } from '@/api/goods'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import OcrRawTextViewer from './OcrRawTextViewer.vue'
 import type {
   Category,
@@ -195,6 +196,7 @@ const emit = defineEmits<{
 
 const rows = ref<ImportRow[]>([])
 const submitting = ref(false)
+const goodsDetailStore = useGoodsDetailStore()
 
 function createLocalId() {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
@@ -307,6 +309,7 @@ async function submitRow(row: ImportRow, payload: GoodsInput) {
   row.lastPayload = payload
   try {
     const result = await createGoods(payload)
+    goodsDetailStore.invalidateGoodsDetail(result.id)
     row.status = result.merged ? 'merged' : 'success'
     row.selected = false
     row.duplicateCandidates = []

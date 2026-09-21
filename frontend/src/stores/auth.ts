@@ -3,6 +3,7 @@ import { ref, computed } from 'vue'
 import * as authApi from '@/api/auth'
 import type { RegisterPayload, RegistrationPending, UserInfo } from '@/api/types'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 
 export const useAuthStore = defineStore('auth', () => {
   const token = ref<string | null>(null)
@@ -16,6 +17,9 @@ export const useAuthStore = defineStore('auth', () => {
   const isCollector = computed(() => isAdmin.value || user.value?.account_type === 'collector')
 
   function setToken(value: string | null) {
+    if (token.value !== value) {
+      useGoodsDetailStore().clearGoodsDetailCache()
+    }
     token.value = value
     if (typeof window !== 'undefined') {
       if (value) {
@@ -32,13 +36,14 @@ export const useAuthStore = defineStore('auth', () => {
     if (typeof window === 'undefined') return
     const saved = localStorage.getItem(AUTH_TOKEN_KEY)
     if (!saved) return
-    token.value = saved
+    setToken(saved)
     try {
       const data = await authApi.getCurrentUser()
       user.value = data
     } catch {
       token.value = null
       user.value = null
+      useGoodsDetailStore().clearGoodsDetailCache()
       localStorage.removeItem(AUTH_TOKEN_KEY)
     }
   }
@@ -74,6 +79,7 @@ export const useAuthStore = defineStore('auth', () => {
   function clearSession() {
     token.value = null
     user.value = null
+    useGoodsDetailStore().clearGoodsDetailCache()
     if (typeof window !== 'undefined') {
       localStorage.removeItem(AUTH_TOKEN_KEY)
     }

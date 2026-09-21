@@ -129,4 +129,29 @@ describe('useGoodsFormMetadata 拼音搜索', () => {
     expect(formData.value.theme).toBe(41)
     expect(createThemeMock).not.toHaveBeenCalled()
   })
+
+  it('基础数据后返回时仍保留详情中已选的实体选项', async () => {
+    const formData = ref({
+      ip: 99 as number | undefined,
+      characters: [199],
+      category: 88 as number | undefined,
+      theme: 77 as number | string | undefined | null,
+      notes: '',
+    })
+    const metadata = useGoodsFormMetadata(formData)
+
+    metadata.seedSelectionFromDetail({
+      ip: { id: 99, name: '详情 IP' },
+      characters: [{ id: 199, name: '详情角色', ip: { id: 99, name: '详情 IP' }, gender: 'other' }],
+      category: { id: 88, name: '详情品类', parent: null, path_name: '详情品类', order: 0 },
+      theme: { id: 77, name: '详情主题', description: null },
+    } as any)
+
+    await metadata.loadMetadata()
+
+    expect(metadata.ipOptions.value.map((item) => item.id)).toContain(99)
+    expect(metadata.characters.value.map((item) => item.id)).toContain(199)
+    expect(metadata.categoryOptions.value.map((item) => item.id)).toContain(88)
+    expect(metadata.themeOptions.value.map((item) => item.id)).toContain(77)
+  })
 })

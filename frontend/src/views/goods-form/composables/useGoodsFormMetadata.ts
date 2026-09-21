@@ -2,7 +2,7 @@ import { ref, computed, type Ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getIPList, getCharacterList, getCategoryList, getThemeList, createTheme } from '@/api/metadata'
 import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
-import type { IP, Character, Category, Theme } from '@/api/types'
+import type { IP, Character, Category, Theme, GoodsDetail } from '@/api/types'
 
 interface FormDataShape {
   ip: number | undefined
@@ -26,7 +26,7 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
   const filteredCharacters = computed(() => {
     if (!formData.value.ip) return []
     return characters.value
-      .filter((char) => char.ip.id === formData.value.ip)
+      .filter((char) => char.ip?.id === formData.value.ip)
       .filter((char) => matchesTextOrPinyin(characterSearchKeyword.value, char.name))
   })
 
@@ -197,11 +197,32 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
       getCategoryList(),
       getThemeList(),
     ])
-    ipOptions.value = ipList
-    characters.value = characterList
-    categoryOptions.value = categoryList
-    allThemes.value = themeList
-    themeOptions.value = themeList
+    const mergeById = <T extends { id: number }>(current: T[], incoming: T[]) => {
+      const next = new Map(current.map((item) => [item.id, item]))
+      incoming.forEach((item) => next.set(item.id, item))
+      return [...next.values()]
+    }
+    ipOptions.value = mergeById(ipOptions.value, ipList)
+    characters.value = mergeById(characters.value, characterList)
+    categoryOptions.value = mergeById(categoryOptions.value, categoryList)
+    allThemes.value = mergeById(allThemes.value, themeList)
+    themeOptions.value = mergeById(themeOptions.value, themeList)
+  }
+
+  const seedSelectionFromDetail = (detail: GoodsDetail) => {
+    const mergeById = <T extends { id: number }>(current: T[], incoming: T[]) => {
+      const next = new Map(current.map((item) => [item.id, item]))
+      incoming.forEach((item) => next.set(item.id, item))
+      return [...next.values()]
+    }
+
+    ipOptions.value = mergeById(ipOptions.value, [detail.ip])
+    characters.value = mergeById(characters.value, detail.characters)
+    categoryOptions.value = mergeById(categoryOptions.value, [detail.category])
+    if (detail.theme) {
+      allThemes.value = mergeById(allThemes.value, [detail.theme])
+      themeOptions.value = mergeById(themeOptions.value, [detail.theme])
+    }
   }
 
   return {
@@ -227,5 +248,6 @@ export function useGoodsFormMetadata(formData: Ref<FormDataShape>) {
     handleThemeCreate,
     ensureThemeCreated,
     loadMetadata,
+    seedSelectionFromDetail,
   }
 }

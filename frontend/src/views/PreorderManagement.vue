@@ -112,7 +112,15 @@
                 <el-button v-if="row.status === 'pending'" link type="primary" size="small" class="action-mark" @click="handleMarkPaid(row)">标记补款</el-button>
                 <el-button v-if="row.status === 'pending'" link type="warning" size="small" class="action-delay" @click="openDelay(row)">延期</el-button>
                 <el-button v-if="row.status === 'paid'" link type="primary" size="small" class="action-convert" @click="openConvert(row)">转正为谷子</el-button>
-                <el-button v-if="row.status === 'converted' && row.goods_id" link type="primary" size="small" class="action-goods" @click="goToGoods(row)">查看谷子</el-button>
+                <el-button
+                  v-if="row.status === 'converted' && row.goods_id"
+                  link
+                  type="primary"
+                  size="small"
+                  class="action-goods"
+                  :loading="isPreparing(row.goods_id)"
+                  @click="goToGoods(row)"
+                >查看谷子</el-button>
                 <el-button link type="info" size="small" class="action-edit" @click="openEdit(row)">编辑</el-button>
                 <el-button v-if="row.status === 'pending'" link type="warning" size="small" class="action-cancel" @click="handleCancelPreorder(row)">取消</el-button>
                 <el-button link type="danger" size="small" class="action-delete" @click="handleDelete(row)">删除</el-button>
@@ -411,6 +419,7 @@ import { useGamificationStore } from '@/stores/gamification'
 import { usePreorderList } from '@/composables/usePreorderList'
 import { usePreorderStats } from '@/composables/usePreorderStats'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
+import { useGoodsEditNavigation } from '@/composables/useGoodsEditNavigation'
 import BaseBottomSheet from '@/components/ui/BaseBottomSheet.vue'
 import OverflowMarquee from '@/components/ui/OverflowMarquee.vue'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
@@ -428,6 +437,7 @@ import type { Preorder, PreorderStatus } from '@/api/types'
 const route = useRoute()
 const router = useRouter()
 const { isMobile } = useResponsiveDevice()
+const { isPreparing, openGoodsEdit } = useGoodsEditNavigation()
 
 const STATUS_OPTIONS = PREORDER_STATUS_OPTIONS
 const statusLabel = preorderStatusLabel
@@ -865,9 +875,9 @@ watch(isMobile, () => {
   })
 })
 
-const goToGoods = (item: Preorder) => {
+const goToGoods = async (item: Preorder) => {
   if (item.goods_id) {
-    router.push('/goods/' + item.goods_id + '/edit')
+    await openGoodsEdit(item.goods_id)
   }
 }
 

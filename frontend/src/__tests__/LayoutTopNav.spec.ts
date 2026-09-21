@@ -106,6 +106,13 @@ const mountDesktopLayout = () => mountLayout({ width: 1197, path: '/theme' })
 const mountMobileLayout = (path: string) => mountLayout({ width: 390, path })
 
 describe('Layout top navigation', () => {
+  it('keeps the page fade for PC goods editing while admin routes stay instant', () => {
+    expect(layoutSource).toContain("route.path.startsWith('/admin') ? 'no-transition' : 'page-fade'")
+    expect(layoutSource).not.toContain("route.name === 'GoodsEdit'")
+    expect(layoutSource).toMatch(/<Transition\s+v-if="isMobile"/)
+    expect(layoutSource).toContain('<KeepAlive :key="workspace.epoch"')
+  })
+
   it('replaces the mobile brand bar with detail and tab headers', async () => {
     const wrapper = await mountMobileLayout('/clubs/1')
     expect(wrapper.find('.navbar').exists()).toBe(false)
@@ -125,12 +132,14 @@ describe('Layout top navigation', () => {
   it('changes mobile pages without retaining obsolete navbar padding', async () => {
     const wrapper = await mountLayout({ width: 390, path: '/clubs', realRouting: true })
     await wrapper.vm.$router.push('/clubs/1')
-    await flushPromises()
-    expect(wrapper.find('[data-test="club-detail"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-test="club-detail"]').exists()).toBe(true)
+    })
     expect(wrapper.get('main').element.style.paddingTop).toBe('')
     await wrapper.vm.$router.push('/clubs')
-    await flushPromises()
-    expect(wrapper.find('[data-test="club-directory"]').exists()).toBe(true)
+    await vi.waitFor(() => {
+      expect(wrapper.find('[data-test="club-directory"]').exists()).toBe(true)
+    })
     expect(wrapper.find('.navbar').exists()).toBe(false)
     wrapper.unmount()
   })

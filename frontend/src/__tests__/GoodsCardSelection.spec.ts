@@ -106,6 +106,20 @@ describe('GoodsCard selection mode', () => {
     expect(wrapper.findComponent(OverflowMarquee).exists()).toBe(false)
   })
 
+  it('keeps the preparation overlay while blocking card navigation', async () => {
+    const wrapper = mountCard({ loading: true })
+
+    expect(wrapper.text()).toContain('谷子正在准备中~')
+    expect(wrapper.find('.card-loading-overlay').exists()).toBe(true)
+
+    await wrapper.trigger('click')
+    await wrapper.trigger('contextmenu')
+
+    expect(wrapper.emitted('click')).toBeUndefined()
+    expect(wrapper.emitted('select')).toBeUndefined()
+    expect(wrapper.emitted('contextMenu')).toBeUndefined()
+  })
+
   it('保留 PC 卡片交互入口并隐藏未定位占位', () => {
     const source = goodsCardSource()
 

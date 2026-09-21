@@ -30,9 +30,11 @@
             v-for="goods in drafts"
             :key="goods.id"
             :goods="goods"
+            :loading="isPreparing(goods.id)"
             :show-menu="false"
             @click="handleCardClick"
             @location-click="handleLocationClick"
+            @prefetch="prefetchGoodsEdit(goods.id)"
           />
         </div>
       </Transition>
@@ -58,8 +60,10 @@ import { useRouter } from 'vue-router'
 import { getGoodsList } from '@/api/goods'
 import type { GoodsListItem, PaginatedResponse } from '@/api/types'
 import GoodsCard from '@/components/GoodsCard.vue'
+import { useGoodsEditNavigation } from '@/composables/useGoodsEditNavigation'
 
 const router = useRouter()
+const { isPreparing, prefetchGoodsEdit, openGoodsEdit } = useGoodsEditNavigation()
 
 const drafts = ref<GoodsListItem[]>([])
 const loading = ref(false)
@@ -111,8 +115,8 @@ const handlePageChange = async (page: number) => {
   window.scrollTo({ top: 0, behavior: 'smooth' })
 }
 
-const handleCardClick = (goods: GoodsListItem) => {
-  router.push({ name: 'GoodsEdit', params: { id: goods.id } })
+const handleCardClick = async (goods: GoodsListItem) => {
+  await openGoodsEdit(goods.id)
 }
 
 const handleLocationClick = (path: string) => {

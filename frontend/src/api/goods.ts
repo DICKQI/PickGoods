@@ -38,8 +38,10 @@ export function getCharacterStats(id: number) {
 }
 
 // 获取谷子详情
-export function getGoodsDetail(id: string) {
-  return request.get<GoodsDetail>(`/api/goods/${id}/`)
+export function getGoodsDetail(id: string, options?: { suppressGlobalError?: boolean }) {
+  return request.get<GoodsDetail>(`/api/goods/${id}/`, {
+    suppressGlobalError: options?.suppressGlobalError,
+  })
 }
 
 // 创建谷子（主数据 JSON）。201 新建成功返回详情，200 合并成功返回详情且 merged: true

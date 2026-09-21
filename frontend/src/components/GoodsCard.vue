@@ -10,10 +10,10 @@
     }"
     @click="handleClick"
     @contextmenu.prevent="handleContextMenu"
-    @pointerenter="handlePointerEnter"
+    @pointerenter="handleCardPointerEnter"
     @pointermove="handlePointerMove"
-    @pointerleave="handlePointerLeave"
-    @pointercancel="handlePointerCancel"
+    @pointerleave="handleCardPointerLeave"
+    @pointercancel="handleCardPointerCancel"
     @touchstart.stop="handleTouchStart"
     @touchend="handleTouchEnd"
     @touchcancel="handleTouchEnd"
@@ -150,12 +150,17 @@
       </button>
       </div>
     </div>
+
+    <div v-if="loading" class="card-loading-overlay" aria-live="polite" @click.stop>
+      <el-icon class="is-loading"><Loading /></el-icon>
+      <span>谷子正在准备中~</span>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { Picture, Location, CircleCheck, MoreFilled, Brush, Check } from '@element-plus/icons-vue'
+import { Picture, Location, CircleCheck, MoreFilled, Brush, Check, Loading } from '@element-plus/icons-vue'
 import SquarePaddedImage from '@/components/SquarePaddedImage.vue'
 import OverflowMarquee from '@/components/ui/OverflowMarquee.vue'
 import { getReadableMarqueeDuration } from '@/utils/readableMarquee'
@@ -167,6 +172,7 @@ interface Props {
   enableWatermark?: boolean
   selectable?: boolean
   selected?: boolean
+  loading?: boolean
   /**
    * 是否显示卡片右上角的“更多”按钮。
    * 默认显示；当外层页面已自定义右上角操作区时可关闭，避免冲突/重叠。
@@ -188,6 +194,7 @@ interface Props {
 const props = withDefaults(defineProps<Props>(), {
   selectable: false,
   selected: false,
+  loading: false,
   showMenu: true,
   interactive3d: false,
   locationLayout: 'inline',
@@ -215,6 +222,8 @@ const emit = defineEmits<{
   select: [goods: GoodsListItem]
   locationClick: [path: string]
   contextMenu: [{ goods: GoodsListItem; x: number; y: number }]
+  prefetch: [goods: GoodsListItem]
+  prefetchCancel: [goods: GoodsListItem]
 }>()
 
 const isLongPress = ref(false)
@@ -292,6 +301,7 @@ const categoryStyle = computed(() => {
 
 // --- 逻辑处理 ---
 const handleClick = () => {
+  if (props.loading) return
   if (isLongPress.value) {
     isLongPress.value = false
     return
@@ -323,8 +333,26 @@ const handleMenuButtonClick = (event: MouseEvent) => {
 
 const handleContextMenu = (event: MouseEvent) => {
   event.preventDefault()
+  if (props.loading) return
   if (selectable.value) return
   emit('contextMenu', { goods: props.goods, x: event.clientX, y: event.clientY })
+}
+
+const handleCardPointerEnter = (event: PointerEvent) => {
+  if (!props.loading && !selectable.value) {
+    emit('prefetch', props.goods)
+  }
+  handlePointerEnter(event)
+}
+
+const handleCardPointerLeave = () => {
+  emit('prefetchCancel', props.goods)
+  handlePointerLeave()
+}
+
+const handleCardPointerCancel = () => {
+  emit('prefetchCancel', props.goods)
+  handlePointerCancel()
 }
 
 const clearLongPressTimer = () => {
@@ -443,6 +471,26 @@ onBeforeUnmount(() => {
   border-radius: calc(var(--card-radius, 20px) - 1px);
   pointer-events: none;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.42);
+}
+
+.card-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border-radius: inherit;
+  color: var(--goods-card-gold-dark);
+  background: rgba(255, 255, 255, 0.86);
+  backdrop-filter: blur(4px);
+  cursor: wait;
+}
+
+.card-loading-overlay .el-icon {
+  font-size: 24px;
 }
 
 .goods-card:hover {

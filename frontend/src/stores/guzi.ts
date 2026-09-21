@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { getGoodsList, getGoodsDetail, getSimilarRandomGoodsList } from '@/api/goods'
+import { getGoodsList, getSimilarRandomGoodsList } from '@/api/goods'
+import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import type { GoodsListItem, GoodsDetail, GoodsSearchParams } from '@/api/types'
 import { debounce } from 'lodash-es'
 
@@ -177,7 +178,7 @@ export const useGuziStore = defineStore('guzi', () => {
   // 获取谷子详情
   async function fetchGoodsDetail(id: string): Promise<GoodsDetail | null> {
     try {
-      const data = await getGoodsDetail(id)
+      const data = await useGoodsDetailStore().ensureGoodsDetail(id, { waitForRefresh: true })
       return data
     } catch (err: any) {
       error.value = err.message || '获取详情失败'
