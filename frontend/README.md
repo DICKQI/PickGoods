@@ -67,7 +67,7 @@
 
 ## 环境要求
 
-- Node.js：`^20.19.0 || >=22.12.0`
+- Node.js：`>=22.12.0`
 - pnpm：`>=9.0.0`
 - 推荐执行器：`npx pnpm@9.15.4`
 
@@ -109,6 +109,7 @@ npx pnpm@9.15.4 dev
 npx pnpm@9.15.4 type-check
 npx pnpm@9.15.4 test:unit
 npx pnpm@9.15.4 lint
+npx pnpm@9.15.4 audit:prod
 npx pnpm@9.15.4 build
 npx pnpm@9.15.4 preview
 ```
@@ -118,6 +119,7 @@ npx pnpm@9.15.4 preview
 - `build` 会先执行 `type-check`，再执行 Vite 生产构建。
 - `lint` 带有 `--fix`，会直接修改可自动修复的文件。
 - `test:unit` 默认进入 Vitest 监听模式；CI 或一次性验证可追加 `--run`。
+- `audit:prod` 使用官方 npm registry 检查生产依赖，并阻断 moderate、high、critical 漏洞。
 - `deploy` 会先构建，再执行本地 `deploy.cjs` SFTP 上传脚本。
 - `build:apk:debug` 会构建并同步 Web 资源，自动准备 Java 21 并输出 Debug APK 到 `artifacts/`。
 

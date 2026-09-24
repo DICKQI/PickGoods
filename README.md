@@ -223,7 +223,7 @@ python manage.py runserver
 
 ### 2. 启动前端
 
-前端要求 Node.js `^20.19.0 || >=22.12.0`，建议使用 pnpm 9。
+前端要求 Node.js `>=22.12.0`，建议使用 pnpm 9。
 
 ```powershell
 cd frontend
@@ -264,6 +264,7 @@ npx pnpm@9.15.4 dev
 npx pnpm@9.15.4 type-check
 npx pnpm@9.15.4 test:unit
 npx pnpm@9.15.4 lint
+npx pnpm@9.15.4 audit:prod
 npx pnpm@9.15.4 build
 ```
 
