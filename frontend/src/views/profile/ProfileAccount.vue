@@ -292,6 +292,7 @@ function avatarErrorMessage(error: unknown): string {
 
 async function updateAccount() {
   const username = accountForm.value.username.trim()
+  const passwordChanged = Boolean(accountForm.value.new_password)
   if (!username) return ElMessage.error('请输入登录用户名')
   if (!accountForm.value.current_password) return ElMessage.error('请输入当前密码')
   if (accountForm.value.new_password && accountForm.value.new_password.length < 6) return ElMessage.error('新密码不能少于 6 个字符')
@@ -305,6 +306,13 @@ async function updateAccount() {
       current_password: accountForm.value.current_password,
       ...(accountForm.value.new_password ? { new_password: accountForm.value.new_password } : {}),
     })
+    if (passwordChanged) {
+      authStore.clearSession()
+      accountEditorVisible.value = false
+      ElMessage.success('密码已更新，请重新登录')
+      await router.push('/login')
+      return
+    }
     authStore.user = updated
     accountForm.value.username = updated.username
     accountForm.value.current_password = ''

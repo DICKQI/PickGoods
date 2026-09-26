@@ -104,7 +104,8 @@ class AdminPagination(PageNumberPagination):
         "仅 `role.name` 为 Admin 的账号可访问。\n\n"
         "- 支持分页：`?page=`、`?page_size=`（最大 100）。\n"
         "- 支持搜索：`?search=` 按 `username` 模糊匹配（icontains）。\n"
-        "- 不提供 DELETE：请使用 PATCH 将 `is_active` 设为 false 停用账号。"
+        "- 不提供 DELETE：请使用 PATCH 将 `is_active` 设为 false 停用账号。\n"
+        "- 重置密码或停用账号会撤销目标用户的全部历史 Token，重新启用不会恢复旧 Token。"
     ),
 )
 class AdminUserViewSet(
@@ -314,9 +315,12 @@ class AdminUserViewSet(
                     user.is_active = True
                     user.save(update_fields=["is_active", "updated_at"])
             else:
+                disabled_ids = []
                 for user in locked:
                     user.is_active = False
                     user.save(update_fields=["is_active", "updated_at"])
+                    disabled_ids.append(user.pk)
+                User.revoke_tokens_by_ids(disabled_ids)
 
             record_admin_action(
                 request,

@@ -65,7 +65,16 @@ def decode_hs256(token: str, secret: str) -> dict[str, Any]:
     return payload
 
 
-def build_access_payload(user_id: int, ttl_seconds: int) -> dict[str, Any]:
+def build_access_payload(
+    user_id: int,
+    token_version: int,
+    ttl_seconds: int,
+) -> dict[str, Any]:
     now = int(time.time())
-    return {"user_id": user_id, "iat": now, "exp": now + int(ttl_seconds)}
+    return {
+        "user_id": user_id,
+        "token_version": int(token_version),
+        "iat": now,
+        "exp": now + int(ttl_seconds),
+    }
 

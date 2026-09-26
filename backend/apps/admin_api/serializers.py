@@ -139,11 +139,20 @@ class AdminUserUpdateSerializer(serializers.ModelSerializer):
 
     def update(self, instance, validated_data):
         password = validated_data.pop("password", None)
+        revoke_tokens = bool(password)
+        if (
+            "is_active" in validated_data
+            and instance.is_active
+            and not validated_data["is_active"]
+        ):
+            revoke_tokens = True
         for attr, value in validated_data.items():
             setattr(instance, attr, value)
         if password:
             instance.set_password(password)
         instance.save()
+        if revoke_tokens:
+            instance.revoke_tokens()
         return instance
 
 

@@ -174,6 +174,7 @@ class AccountUpdateSerializer(serializers.Serializer):
             raise serializers.ValidationError("没有需要更新的账号信息")
         return attrs
 
+    @transaction.atomic
     def save(self, **kwargs):
         user = self.context["request"].user
         update_fields = []
@@ -186,6 +187,8 @@ class AccountUpdateSerializer(serializers.Serializer):
             user.set_password(new_password)
             update_fields.append("password")
         user.save(update_fields=[*update_fields, "updated_at"])
+        if new_password:
+            user.revoke_tokens()
         return user
 
 
@@ -196,7 +199,11 @@ class TokenResponseSerializer(serializers.Serializer):
 
 
 def build_token_response(*, user: User, secret: str, ttl_seconds: int) -> dict:
-    payload = build_access_payload(user_id=user.id, ttl_seconds=ttl_seconds)
+    payload = build_access_payload(
+        user_id=user.id,
+        token_version=user.token_version,
+        ttl_seconds=ttl_seconds,
+    )
     token = encode_hs256(payload, secret=secret)
     return {
         "access_token": token,

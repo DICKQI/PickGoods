@@ -94,8 +94,13 @@ class BuildAccessPayloadTestCase(TestCase):
     """core.jwt — build_access_payload"""
 
     def test_payload_contains_required_fields(self):
-        payload = build_access_payload(user_id=42, ttl_seconds=3600)
+        payload = build_access_payload(
+            user_id=42,
+            token_version=3,
+            ttl_seconds=3600,
+        )
         self.assertEqual(payload["user_id"], 42)
+        self.assertEqual(payload["token_version"], 3)
         self.assertIn("iat", payload)
         self.assertIn("exp", payload)
         self.assertEqual(payload["exp"] - payload["iat"], 3600)
@@ -103,7 +108,11 @@ class BuildAccessPayloadTestCase(TestCase):
     def test_iat_is_current_time(self):
         import time
         before = int(time.time())
-        payload = build_access_payload(user_id=1, ttl_seconds=600)
+        payload = build_access_payload(
+            user_id=1,
+            token_version=1,
+            ttl_seconds=600,
+        )
         after = int(time.time())
         self.assertGreaterEqual(payload["iat"], before)
         self.assertLessEqual(payload["iat"], after)
@@ -158,7 +167,12 @@ class JWTAuthenticationTestCase(TestCase):
 
     def test_valid_bearer_token_returns_user(self):
         token = encode_hs256(
-            {"user_id": self.user.id, "exp": 9999999999}, SECRET
+            {
+                "user_id": self.user.id,
+                "token_version": self.user.token_version,
+                "exp": 9999999999,
+            },
+            SECRET,
         )
         request = self._make_request(f"Bearer {token}")
         user, tok = self.auth.authenticate(request)
@@ -195,7 +209,34 @@ class JWTAuthenticationTestCase(TestCase):
         self.user.is_active = False
         self.user.save()
         token = encode_hs256(
-            {"user_id": self.user.id, "exp": 9999999999}, SECRET
+            {
+                "user_id": self.user.id,
+                "token_version": self.user.token_version,
+                "exp": 9999999999,
+            },
+            SECRET,
+        )
+        request = self._make_request(f"Bearer {token}")
+        with self.assertRaises(AuthenticationFailed):
+            self.auth.authenticate(request)
+
+    def test_missing_token_version_raises(self):
+        token = encode_hs256(
+            {"user_id": self.user.id, "exp": 9999999999},
+            SECRET,
+        )
+        request = self._make_request(f"Bearer {token}")
+        with self.assertRaises(AuthenticationFailed):
+            self.auth.authenticate(request)
+
+    def test_stale_token_version_raises(self):
+        token = encode_hs256(
+            {
+                "user_id": self.user.id,
+                "token_version": self.user.token_version - 1,
+                "exp": 9999999999,
+            },
+            SECRET,
         )
         request = self._make_request(f"Bearer {token}")
         with self.assertRaises(AuthenticationFailed):

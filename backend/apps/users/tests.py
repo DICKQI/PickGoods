@@ -14,6 +14,8 @@ from PIL import Image
 from rest_framework import status
 from rest_framework.test import APIClient
 
+from core.jwt import decode_hs256
+
 from .models import Role, User
 from .serializers import RegisterSerializer, LoginSerializer, build_token_response
 from .throttling import LoginIPRateThrottle, LoginUsernameRateThrottle, RegisterRateThrottle
@@ -84,6 +86,8 @@ class BuildTokenResponseTestCase(TestCase):
         self.assertEqual(result["expires_in"], 3600)
         self.assertIsInstance(result["access_token"], str)
         self.assertGreater(len(result["access_token"]), 0)
+        payload = decode_hs256(result["access_token"], SECRET)
+        self.assertEqual(payload["token_version"], user.token_version)
 
 
 # ─── Auth views ──────────────────────────────────────────────────────
@@ -335,11 +339,21 @@ class MeViewTestCase(TestCase):
     """GET/PATCH /api/auth/me/"""
 
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.role, _ = Role.objects.get_or_create(name="User")
         self.user = User.objects.create(username="meuser", role=self.role)
         self.user.set_password("pass123")
         self.user.save()
+
+    def _login_token(self, password="pass123"):
+        response = self.client.post(
+            "/api/auth/login/",
+            {"username": self.user.username, "password": password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["access_token"]
 
     def test_me_authenticated(self):
         self.client.force_authenticate(user=self.user)
@@ -385,8 +399,9 @@ class MeViewTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         self.assertIn("username", response.json())
 
-    def test_update_password_keeps_current_session_valid(self):
-        self.client.force_authenticate(user=self.user)
+    def test_update_password_revokes_all_existing_tokens(self):
+        old_token = self._login_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {old_token}")
         response = self.client.patch(
             "/api/auth/me/",
             {"current_password": "pass123", "new_password": "newpass456"},
@@ -396,7 +411,33 @@ class MeViewTestCase(TestCase):
         self.user.refresh_from_db()
         self.assertFalse(self.user.check_password("pass123"))
         self.assertTrue(self.user.check_password("newpass456"))
-        self.assertEqual(self.client.get("/api/auth/me/").status_code, status.HTTP_200_OK)
+        self.assertEqual(self.user.token_version, 2)
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+        self.client.credentials()
+        new_token = self._login_token("newpass456")
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_token}")
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_200_OK,
+        )
+
+    def test_update_username_keeps_current_token_valid(self):
+        token = self._login_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
+        response = self.client.patch(
+            "/api/auth/me/",
+            {"username": "renamed-user", "current_password": "pass123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_200_OK,
+        )
 
     def test_update_rejects_no_changes_and_unauthenticated_request(self):
         self.client.force_authenticate(user=self.user)
@@ -566,14 +607,41 @@ class LogoutViewTestCase(TestCase):
     """DELETE /api/auth/logout/"""
 
     def setUp(self):
+        cache.clear()
         self.client = APIClient()
         self.role, _ = Role.objects.get_or_create(name="User")
         self.user = User.objects.create(username="logoutuser", role=self.role)
+        self.user.set_password("pass123")
+        self.user.save()
+
+    def _login_token(self):
+        response = self.client.post(
+            "/api/auth/login/",
+            {"username": self.user.username, "password": "pass123"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["access_token"]
 
     def test_logout_authenticated(self):
-        self.client.force_authenticate(user=self.user)
+        token = self._login_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {token}")
         response = self.client.delete("/api/auth/logout/")
         self.assertEqual(response.status_code, status.HTTP_204_NO_CONTENT)
+        self.user.refresh_from_db()
+        self.assertEqual(self.user.token_version, 2)
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
+
+        self.client.credentials()
+        new_token = self._login_token()
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {new_token}")
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_200_OK,
+        )
 
     def test_logout_unauthenticated(self):
         response = self.client.delete("/api/auth/logout/")

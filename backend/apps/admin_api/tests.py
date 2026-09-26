@@ -24,6 +24,7 @@ class AdminUserViewSetTestCase(TestCase):
     """admin_api — AdminUserViewSet CRUD + 权限"""
 
     def setUp(self):
+        cache.clear()
         self.admin_role, _ = Role.objects.get_or_create(name="Admin")
         self.user_role, _ = Role.objects.get_or_create(name="User")
         self.admin = User.objects.create(
@@ -37,6 +38,15 @@ class AdminUserViewSetTestCase(TestCase):
         self.normal_user.set_password("userpass")
         self.normal_user.save()
         self.client = APIClient()
+
+    def _login_token(self, user, password):
+        response = self.client.post(
+            "/api/auth/login/",
+            {"username": user.username, "password": password},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        return response.json()["access_token"]
 
     def test_normal_user_cannot_list_users(self):
         self.client.force_authenticate(user=self.normal_user)
@@ -118,6 +128,8 @@ class AdminUserViewSetTestCase(TestCase):
         self.assertEqual(response.json()["username"], "normal1")
 
     def test_admin_can_update_user(self):
+        old_token = self._login_token(self.normal_user, "userpass")
+        original_version = self.normal_user.token_version
         self.client.force_authenticate(user=self.admin)
         response = self.client.patch(
             f"/api/admin/users/{self.normal_user.id}/",
@@ -127,8 +139,24 @@ class AdminUserViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.normal_user.refresh_from_db()
         self.assertFalse(self.normal_user.is_active)
+        self.assertEqual(self.normal_user.token_version, original_version + 1)
+
+        reenabled = self.client.patch(
+            f"/api/admin/users/{self.normal_user.id}/",
+            {"is_active": True},
+            format="json",
+        )
+        self.assertEqual(reenabled.status_code, status.HTTP_200_OK)
+        self.client.force_authenticate(user=None)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {old_token}")
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
 
     def test_admin_can_update_password(self):
+        old_token = self._login_token(self.normal_user, "userpass")
+        original_version = self.normal_user.token_version
         self.client.force_authenticate(user=self.admin)
         response = self.client.patch(
             f"/api/admin/users/{self.normal_user.id}/",
@@ -138,6 +166,13 @@ class AdminUserViewSetTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.normal_user.refresh_from_db()
         self.assertTrue(self.normal_user.check_password("newsecurepass"))
+        self.assertEqual(self.normal_user.token_version, original_version + 1)
+        self.client.force_authenticate(user=None)
+        self.client.credentials(HTTP_AUTHORIZATION=f"Bearer {old_token}")
+        self.assertEqual(
+            self.client.get("/api/auth/me/").status_code,
+            status.HTTP_401_UNAUTHORIZED,
+        )
 
     def test_unauthenticated_cannot_access(self):
         response = self.client.get("/api/admin/users/")
@@ -397,6 +432,7 @@ class AdminBulkActionTestCase(TestCase):
         self.client.force_authenticate(self.admin)
 
     def test_bulk_user_disable_is_atomic_and_audited(self):
+        original_version = self.user.token_version
         response = self.client.post(
             "/api/admin/users/bulk-action/",
             {"ids": [self.user.pk], "action": "disable"},
@@ -405,6 +441,7 @@ class AdminBulkActionTestCase(TestCase):
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         self.user.refresh_from_db()
         self.assertFalse(self.user.is_active)
+        self.assertEqual(self.user.token_version, original_version + 1)
         self.assertTrue(
             AdminAuditLog.objects.filter(action="user.bulk_disable").exists()
         )

@@ -14,6 +14,11 @@ class JWTAuthentication(BaseAuthentication):
 
     keyword = "Bearer"
 
+    def authenticate_header(self, request):
+        if request.headers.get("Authorization"):
+            return self.keyword
+        return None
+
     def authenticate(self, request):
         auth = request.headers.get("Authorization", "")
         if not auth:
@@ -52,6 +57,14 @@ class JWTAuthentication(BaseAuthentication):
 
         if not getattr(user, "is_active", True):
             raise AuthenticationFailed("User inactive.")
+
+        token_version = payload.get("token_version")
+        if (
+            isinstance(token_version, bool)
+            or not isinstance(token_version, int)
+            or token_version != user.token_version
+        ):
+            raise AuthenticationFailed("Token revoked.")
 
         return (user, token)
 

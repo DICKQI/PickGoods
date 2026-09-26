@@ -4,7 +4,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ProfileAccount from '@/views/profile/ProfileAccount.vue'
 import { useAuthStore } from '@/stores/auth'
 
-vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
+const routerPush = vi.fn()
+vi.mock('vue-router', () => ({ useRouter: () => ({ push: routerPush }) }))
 vi.mock('element-plus', () => ({
   ElMessage: { success: vi.fn(), error: vi.fn() },
   ElMessageBox: { confirm: vi.fn() },
@@ -156,8 +157,35 @@ describe('ProfileAccount 账号页', () => {
     expect(drawer.attributes('data-size')).toBe('480px')
   })
 
-  it('吃谷人可以修改登录用户名和密码并同步当前用户', async () => {
+  it('仅修改登录用户名时同步当前用户并保持登录', async () => {
     const { wrapper, authStore } = mountPage()
+    await wrapper.get('[data-test="account-edit-trigger"]').trigger('click')
+    const vm = wrapper.vm as unknown as AccountVm
+    Object.assign(vm.accountForm, {
+      username: 'collector-renamed',
+      current_password: 'old-pass',
+      new_password: '',
+      confirm_password: '',
+    })
+    vi.mocked(updateCurrentAccount).mockResolvedValue({ ...authStore.user!, username: 'collector-renamed' })
+
+    await vm.updateAccount()
+    await flushPromises()
+
+    expect(updateCurrentAccount).toHaveBeenCalledWith({
+      username: 'collector-renamed',
+      current_password: 'old-pass',
+    })
+    expect(authStore.user?.username).toBe('collector-renamed')
+    expect(vm.accountForm.current_password).toBe('')
+    expect(vm.accountForm.new_password).toBe('')
+    expect(vm.accountEditorVisible).toBe(false)
+    expect(ElMessage.success).toHaveBeenCalledWith('登录信息已更新')
+  })
+
+  it('修改密码后清理会话并跳转登录页', async () => {
+    const { wrapper, authStore } = mountPage()
+    authStore.setToken('old-token')
     await wrapper.get('[data-test="account-edit-trigger"]').trigger('click')
     const vm = wrapper.vm as unknown as AccountVm
     Object.assign(vm.accountForm, {
@@ -176,11 +204,10 @@ describe('ProfileAccount 账号页', () => {
       current_password: 'old-pass',
       new_password: 'new-pass',
     })
-    expect(authStore.user?.username).toBe('collector-renamed')
-    expect(vm.accountForm.current_password).toBe('')
-    expect(vm.accountForm.new_password).toBe('')
-    expect(vm.accountEditorVisible).toBe(false)
-    expect(ElMessage.success).toHaveBeenCalledWith('登录信息已更新')
+    expect(authStore.token).toBeNull()
+    expect(authStore.user).toBeNull()
+    expect(routerPush).toHaveBeenCalledWith('/login')
+    expect(ElMessage.success).toHaveBeenCalledWith('密码已更新，请重新登录')
   })
 
   it('密码确认不一致或缺少当前密码时不请求账号接口', async () => {
@@ -234,8 +261,8 @@ describe('ProfileAccount 账号页', () => {
     Object.assign(vm.accountForm, {
       username: 'club-renamed',
       current_password: 'old-pass',
-      new_password: 'new-club-pass',
-      confirm_password: 'new-club-pass',
+      new_password: '',
+      confirm_password: '',
     })
 
     await vm.updateAccount()
@@ -244,7 +271,6 @@ describe('ProfileAccount 账号页', () => {
     expect(updateCurrentAccount).toHaveBeenCalledWith({
       username: 'club-renamed',
       current_password: 'old-pass',
-      new_password: 'new-club-pass',
     })
     expect(authStore.user?.username).toBe('club-renamed')
   })

@@ -96,12 +96,14 @@ class ClubFeatureAPITestCase(TestCase):
         self.assertEqual(PublicClubGoodsDetailView.throttle_scope, "club_public_read")
 
     def test_soft_deleted_club_is_hidden_and_deactivates_owner(self):
+        original_version = self.club_user.token_version
         self.club.delete()
         self.club.refresh_from_db()
         self.club_user.refresh_from_db()
 
         self.assertIsNotNone(self.club.deleted_at)
         self.assertFalse(self.club_user.is_active)
+        self.assertEqual(self.club_user.token_version, original_version + 1)
         response = APIClient().get(f"/api/clubs/{self.club.id}/")
         self.assertEqual(response.status_code, 404)
 

@@ -33,6 +33,11 @@ class User(models.Model):
     )
     username = models.CharField(max_length=150, unique=True, db_index=True, verbose_name="用户名")
     password = models.CharField(max_length=255, verbose_name="密码哈希")
+    token_version = models.PositiveBigIntegerField(
+        default=1,
+        editable=False,
+        verbose_name="Token版本",
+    )
     avatar = models.ImageField(upload_to="users/avatars/", null=True, blank=True, verbose_name="用户头像")
     role = models.ForeignKey(
         Role,
@@ -80,6 +85,21 @@ class User(models.Model):
 
     def check_password(self, raw_password: str) -> bool:
         return check_password(raw_password, self.password)
+
+    @classmethod
+    def revoke_tokens_by_ids(cls, user_ids) -> int:
+        ids = {int(user_id) for user_id in user_ids if user_id is not None}
+        if not ids:
+            return 0
+        return cls.objects.filter(pk__in=ids).update(
+            token_version=models.F("token_version") + 1
+        )
+
+    def revoke_tokens(self) -> int:
+        count = self.__class__.revoke_tokens_by_ids([self.pk])
+        if count:
+            self.refresh_from_db(fields=["token_version"])
+        return count
 
 
 class Club(models.Model):
@@ -130,6 +150,7 @@ class Club(models.Model):
             if self.user_id and self.user.is_active:
                 self.user.is_active = False
                 self.user.save(update_fields=["is_active", "updated_at"])
+                self.user.revoke_tokens()
 
     def delete(self, *args, **kwargs):
         if self.deleted_at is None:
