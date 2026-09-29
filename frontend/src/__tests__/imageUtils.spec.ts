@@ -5,12 +5,14 @@ import {
   rgbToHsl,
   hslToRgb,
   classifyHueToColorName,
+  getHslAdjustmentWeights,
   isAllHslAdjustmentsZero,
   isFilterStateDefault,
   isColorFilterStateDefault,
   isTransformStateDefault,
   createDefaultFilterState,
   computeCropperStyle,
+  applyHslPerColorToImageData,
 } from '@/views/goods-form/imageUtils'
 import { createDefaultHslAdjustments } from '@/views/goods-form/cropHistory'
 
@@ -99,6 +101,47 @@ describe('classifyHueToColorName', () => {
   it('350° → red', () => expect(classifyHueToColorName(350)).toBe('red'))
 })
 
+describe('getHslAdjustmentWeights', () => {
+  it('主色锚点只返回单一通道', () => {
+    expect(getHslAdjustmentWeights(120).green).toBe(1)
+  })
+
+  it('两个颜色锚点之间平滑分配权重', () => {
+    const weights = getHslAdjustmentWeights(90)
+    expect(weights.yellow).toBeCloseTo(0.5)
+    expect(weights.green).toBeCloseTo(0.5)
+  })
+
+  it('红色环绕区间也能平滑过渡', () => {
+    const weights = getHslAdjustmentWeights(330)
+    expect(weights.purple).toBeCloseTo(0.5)
+    expect(weights.red).toBeCloseTo(0.5)
+  })
+
+  it('权重总和始终为 1', () => {
+    const weights = getHslAdjustmentWeights(173)
+    const sum = Object.values(weights).reduce((total, value) => total + value, 0)
+    expect(sum).toBeCloseTo(1)
+  })
+})
+
+describe('applyHslPerColorToImageData', () => {
+  it('灰阶像素不会被红色通道误调整', () => {
+    const imageData = {
+      data: new Uint8ClampedArray([128, 128, 128, 255]),
+      width: 1,
+      height: 1,
+      colorSpace: 'srgb',
+    } as ImageData
+    const adjustments = createDefaultHslAdjustments()
+    adjustments.red.l = 80
+
+    applyHslPerColorToImageData(imageData, adjustments)
+
+    expect(Array.from(imageData.data)).toEqual([128, 128, 128, 255])
+  })
+})
+
 describe('isAllHslAdjustmentsZero', () => {
   it('全零返回 true', () => {
     expect(isAllHslAdjustmentsZero(createDefaultHslAdjustments())).toBe(true)
@@ -145,24 +188,24 @@ describe('computeCropperStyle', () => {
     const style = computeCropperStyle(defaultState)
     expect(style['--brightness']).toBe('100%')
     expect(style['--contrast']).toBe('100%')
-    expect(style.transform).toBeUndefined()
+    expect('transform' in style).toBe(false)
   })
 
-  it('有旋转时含 rotate transform', () => {
+  it('旋转由 CropperJS 处理，不再给画布叠加 CSS transform', () => {
     const state = { ...defaultState, rotation: 45 }
     const style = computeCropperStyle(state)
-    expect(style.transform).toContain('rotate(45deg)')
+    expect('transform' in style).toBe(false)
   })
 
-  it('有透视时含 rotateY', () => {
+  it('水平透视不会破坏画布指针坐标', () => {
     const state = { ...defaultState, perspectiveHorizontal: 50 }
     const style = computeCropperStyle(state)
-    expect(style.transform).toContain('rotateY')
+    expect('transform' in style).toBe(false)
   })
 
-  it('有垂直透视时含 rotateX', () => {
+  it('垂直透视不会破坏画布指针坐标', () => {
     const state = { ...defaultState, perspectiveVertical: -30 }
     const style = computeCropperStyle(state)
-    expect(style.transform).toContain('rotateX')
+    expect('transform' in style).toBe(false)
   })
 })

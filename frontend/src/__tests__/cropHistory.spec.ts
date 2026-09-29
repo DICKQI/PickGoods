@@ -7,6 +7,7 @@ import {
   pushCropHistorySnapshot,
   moveCropHistoryBackward,
   moveCropHistoryForward,
+  CROP_HISTORY_LIMIT,
   type CropEditSnapshot,
   type CropHistoryState,
   type CropFilterState,
@@ -139,6 +140,19 @@ describe('pushCropHistorySnapshot', () => {
     const history: CropHistoryState = { past: [makeSnapshot()], future: [] }
     const result = pushCropHistorySnapshot(history, makeSnapshot({ roundedRadius: 50 }))
     expect(result.past).toHaveLength(2)
+  })
+
+  it('历史最多保留 50 个快照', () => {
+    const snapshots = Array.from({ length: CROP_HISTORY_LIMIT + 5 }, (_, index) => (
+      makeSnapshot({ roundedRadius: index })
+    ))
+    const history: CropHistoryState = { past: snapshots, future: [] }
+
+    const result = pushCropHistorySnapshot(history, makeSnapshot({ roundedRadius: 999 }))
+
+    expect(result.past).toHaveLength(CROP_HISTORY_LIMIT)
+    expect(result.past[0]?.roundedRadius).toBe(6)
+    expect(result.past[result.past.length - 1]?.roundedRadius).toBe(999)
   })
 })
 

@@ -83,6 +83,8 @@ export interface CropHistoryState {
   future: CropEditSnapshot[]
 }
 
+export const CROP_HISTORY_LIMIT = 50
+
 const ROUND_PRECISION = 1000
 
 const roundNumber = (value: number) => {
@@ -153,7 +155,7 @@ export const pushCropHistorySnapshot = (
   }
 
   return {
-    past: [...history.past, normalizedSnapshot],
+    past: [...history.past, normalizedSnapshot].slice(-CROP_HISTORY_LIMIT),
     future: [],
   }
 }

@@ -2,44 +2,46 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const imageCropperSource = readFileSync(resolve(process.cwd(), 'src/views/goods-form/components/ImageCropper.vue'), 'utf8')
+const source = (relativePath: string) => (
+  readFileSync(resolve(process.cwd(), relativePath), 'utf8')
+)
 
-const cssRuleBlock = (source: string, selector: string) => {
-  const start = source.indexOf(`\n${selector} {`)
-  expect(start).toBeGreaterThan(-1)
+describe('ImageCropper layout', () => {
+  const cropperSource = source('src/views/goods-form/components/ImageCropper.vue')
+  const previewSource = source('src/views/goods-form/components/ImageEditPreview.vue')
 
-  const open = source.indexOf('{', start)
-  const close = source.indexOf('}', open)
-  expect(open).toBeGreaterThan(start)
-  expect(close).toBeGreaterThan(open)
-
-  return source.slice(open + 1, close)
-}
-
-describe('ImageCropper dialog layout', () => {
-  it('keeps the desktop cropper dialog inside the viewport with fixed footer space', () => {
-    const dialogRule = cssRuleBlock(imageCropperSource, '.crop-dialog :deep(.el-dialog)')
-    const bodyRule = cssRuleBlock(imageCropperSource, '.crop-dialog :deep(.el-dialog__body)')
-    const layoutRule = cssRuleBlock(imageCropperSource, '.crop-layout-inner')
-
-    expect(dialogRule).toContain('max-height: calc(100dvh - 48px);')
-    expect(dialogRule).toContain('display: flex;')
-    expect(dialogRule).toContain('flex-direction: column;')
-    expect(bodyRule).toContain('overflow: hidden;')
-    expect(layoutRule).toContain('height: min(520px, calc(100dvh - 360px));')
+  it('桌面使用受视口约束的沉浸式三栏布局', () => {
+    expect(cropperSource).toContain('编辑谷子主图')
+    expect(cropperSource).not.toContain('编辑商品主图')
+    expect(cropperSource).toContain("'min(1440px, calc(100vw - 48px))'")
+    expect(cropperSource).toContain(':global(.image-editor-dialog.el-dialog) {')
+    expect(cropperSource).toContain('max-height: min(860px, calc(100dvh - 48px));')
+    expect(cropperSource).toContain('margin: 24px auto;')
+    expect(cropperSource).toContain('grid-template-columns: 72px minmax(0, 1fr) 376px;')
+    expect(cropperSource).toContain('overflow: hidden;')
   })
 
-  it('bounds the live preview panel instead of letting it fill over the footer', () => {
-    const previewViewRule = cssRuleBlock(imageCropperSource, '.crop-preview-view')
-    const previewCardRule = cssRuleBlock(imageCropperSource, '.crop-preview-view .live-preview-card')
-    const previewImageRule = cssRuleBlock(imageCropperSource, '.crop-preview-view .live-preview-img')
-    const basePreviewImageRule = cssRuleBlock(imageCropperSource, '.live-preview-img')
+  it('中等屏检查器贴边常驻，移动端使用全屏布局', () => {
+    expect(cropperSource).toContain('@media (max-width: 1199px) and (min-width: 769px)')
+    expect(cropperSource).toContain('position: absolute;')
+    expect(cropperSource).toContain('@media (max-width: 768px)')
+    expect(cropperSource).toContain('grid-template-columns: minmax(0, 1fr);')
+  })
 
-    expect(previewViewRule).toContain('max-width: 420px;')
-    expect(previewCardRule).toContain('height: min(420px, 100%);')
-    expect(previewCardRule).not.toContain('flex: 1;')
-    expect(previewImageRule).toContain('max-height: 100%;')
-    expect(previewImageRule).toContain('width: auto;')
-    expect(basePreviewImageRule).not.toContain('border-radius:')
+  it('输出预览有固定尺寸且不会撑破检查器', () => {
+    expect(previewSource).toContain('height: 188px;')
+    expect(previewSource).toContain('max-width: calc(100% - 20px);')
+    expect(previewSource).toContain('max-height: calc(100% - 20px);')
+    expect(cropperSource).toContain('.image-editor-inspector__preview {')
+    expect(cropperSource).toContain('flex: 0 0 auto;')
+    expect(cropperSource).toContain('.image-editor-inspector__scroll {')
+    expect(cropperSource).toContain('overflow-y: auto;')
+    expect(cropperSource).toContain('overscroll-behavior: contain;')
+  })
+
+  it('画布接线右键拖图且不改变现有左键裁剪模式', () => {
+    expect(cropperSource).toContain('@pointerdown="handleRightDragPointerDown"')
+    expect(cropperSource).toContain('@contextmenu="handleRightDragContextMenu"')
+    expect(cropperSource).toContain("dragMode: 'crop'")
   })
 })

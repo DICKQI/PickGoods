@@ -1,5 +1,4 @@
-import { ref, computed, type Ref } from 'vue'
-import { nextTick } from 'vue'
+import { computed, nextTick, ref, type Ref } from 'vue'
 import {
   areCropSnapshotsEqual,
   cloneCropSnapshot,
@@ -7,13 +6,14 @@ import {
   moveCropHistoryForward,
   pushCropHistorySnapshot,
   type CropEditSnapshot,
+  type CropFilterState,
   type CropNumericState,
 } from '@/views/goods-form/cropHistory'
 
 export interface CropHistoryContext {
   cropDialogVisible: Ref<boolean>
   selectedAspectRatio: Ref<string>
-  filterState: Ref<any>
+  filterState: Ref<CropFilterState>
   enableRoundedRect: Ref<boolean>
   roundedRadius: Ref<number>
   enableMargin: Ref<boolean>
@@ -25,83 +25,55 @@ export interface CropHistoryContext {
 export function useCropHistory(ctx: CropHistoryContext) {
   const cropHistoryPast = ref<CropEditSnapshot[]>([])
   const cropHistoryFuture = ref<CropEditSnapshot[]>([])
+  const isCropEditDirty = ref(false)
   const suppressCropHistory = ref(false)
 
-  let cropHistoryTimer: number | undefined
   let pendingCropSnapshotApply: CropEditSnapshot | null = null
-  let cropHistoryReadyTimer: number | undefined
+  let initialSnapshot: CropEditSnapshot | null = null
 
   const canUndoCropEdit = computed(() => cropHistoryPast.value.length > 1)
   const canRedoCropEdit = computed(() => cropHistoryFuture.value.length > 0)
 
-  const clearCropHistoryTimer = () => {
-    if (cropHistoryTimer) {
-      window.clearTimeout(cropHistoryTimer)
-      cropHistoryTimer = undefined
-    }
+  const cloneNumericState = (value: CropNumericState | null | undefined) => (
+    value ? { ...value } : null
+  )
+
+  const createCropEditSnapshot = (): CropEditSnapshot => ({
+    selectedAspectRatio: ctx.selectedAspectRatio.value,
+    filterState: ctx.filterState.value,
+    enableRoundedRect: ctx.enableRoundedRect.value,
+    roundedRadius: ctx.roundedRadius.value,
+    enableMargin: ctx.enableMargin.value,
+    marginPercent: ctx.marginPercent.value,
+    cropData: cloneNumericState(ctx.getCropperNumericState('getData')),
+    cropBoxData: cloneNumericState(ctx.getCropperNumericState('getCropBoxData')),
+    canvasData: cloneNumericState(ctx.getCropperNumericState('getCanvasData')),
+  })
+
+  const updateDirtyFromSnapshot = (snapshot: CropEditSnapshot) => {
+    isCropEditDirty.value = initialSnapshot
+      ? !areCropSnapshotsEqual(initialSnapshot, snapshot)
+      : false
   }
 
-  const clearCropHistoryReadyTimer = () => {
-    if (cropHistoryReadyTimer) {
-      window.clearTimeout(cropHistoryReadyTimer)
-      cropHistoryReadyTimer = undefined
-    }
+  const markCropEditDirty = () => {
+    if (!suppressCropHistory.value) isCropEditDirty.value = true
   }
 
   const resetCropHistorySession = () => {
-    clearCropHistoryTimer()
-    clearCropHistoryReadyTimer()
     cropHistoryPast.value = []
     cropHistoryFuture.value = []
+    isCropEditDirty.value = false
     suppressCropHistory.value = false
     pendingCropSnapshotApply = null
-  }
-
-  const cloneCropNumericState = (value: CropNumericState | null | undefined): CropNumericState | null => {
-    if (!value) return null
-    return { ...value }
-  }
-
-  const createCropEditSnapshot = (): CropEditSnapshot | null => {
-    return {
-      selectedAspectRatio: ctx.selectedAspectRatio.value,
-      filterState: (() => {
-        const src = ctx.filterState.value
-        const next: any = {
-          brightness: src.brightness,
-          contrast: src.contrast,
-          saturation: src.saturation,
-          hslAdjustments: (() => {
-            const def: any = {}
-            const keys = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
-            for (const k of keys) {
-              const entry = (src.hslAdjustments || {})[k] || { h: 0, s: 0, l: 0 }
-              def[k] = { h: entry.h ?? 0, s: entry.s ?? 0, l: entry.l ?? 0 }
-            }
-            return def
-          })(),
-          rotation: src.rotation ?? 0,
-          perspectiveHorizontal: src.perspectiveHorizontal ?? 0,
-          perspectiveVertical: src.perspectiveVertical ?? 0,
-        }
-        return next
-      })(),
-      enableRoundedRect: ctx.enableRoundedRect.value,
-      roundedRadius: ctx.roundedRadius.value,
-      enableMargin: ctx.enableMargin.value,
-      marginPercent: ctx.marginPercent.value,
-      cropData: cloneCropNumericState(ctx.getCropperNumericState('getData')),
-      cropBoxData: cloneCropNumericState(ctx.getCropperNumericState('getCropBoxData')),
-      canvasData: cloneCropNumericState(ctx.getCropperNumericState('getCanvasData')),
-    }
+    initialSnapshot = null
   }
 
   const commitCropHistorySnapshot = () => {
     if (!ctx.cropDialogVisible.value || suppressCropHistory.value) return
 
     const snapshot = createCropEditSnapshot()
-    if (!snapshot) return
-
+    if (!initialSnapshot) initialSnapshot = cloneCropSnapshot(snapshot)
     const nextHistory = pushCropHistorySnapshot(
       {
         past: cropHistoryPast.value,
@@ -112,61 +84,37 @@ export function useCropHistory(ctx: CropHistoryContext) {
 
     cropHistoryPast.value = nextHistory.past
     cropHistoryFuture.value = nextHistory.future
+    updateDirtyFromSnapshot(snapshot)
   }
 
-  const scheduleCropHistorySnapshot = (delay = 180) => {
-    if (!ctx.cropDialogVisible.value || suppressCropHistory.value) return
-    clearCropHistoryTimer()
-    cropHistoryTimer = window.setTimeout(() => {
-      cropHistoryTimer = undefined
+  const initializeCropHistory = () => {
+    if (cropHistoryPast.value.length === 0) {
       commitCropHistorySnapshot()
-    }, delay)
+    }
   }
 
   const finishCropSnapshotRestore = () => {
-    clearCropHistoryTimer()
-    clearCropHistoryReadyTimer()
     pendingCropSnapshotApply = null
     suppressCropHistory.value = false
   }
 
+  const applyFilterState = (state: CropFilterState) => {
+    const next: CropFilterState = {
+      ...state,
+      hslAdjustments: Object.fromEntries(
+        (Object.keys(state.hslAdjustments) as Array<keyof CropFilterState['hslAdjustments']>)
+          .map((key) => [key, { ...state.hslAdjustments[key] }]),
+      ) as CropFilterState['hslAdjustments'],
+    }
+    ctx.filterState.value = next
+  }
+
   const restoreCropEditSnapshot = async (snapshot: CropEditSnapshot) => {
-    clearCropHistoryTimer()
-    clearCropHistoryReadyTimer()
     suppressCropHistory.value = true
     pendingCropSnapshotApply = cloneCropSnapshot(snapshot)
 
     ctx.selectedAspectRatio.value = snapshot.selectedAspectRatio
-    ctx.filterState.value = (() => {
-      const src: any = snapshot.filterState as any
-      const next: any = {
-        brightness: src.brightness,
-        contrast: src.contrast,
-        saturation: src.saturation,
-        hslAdjustments: (() => {
-          const def: any = {}
-          const keys = ['red', 'orange', 'yellow', 'green', 'cyan', 'blue', 'purple']
-          for (const k of keys) {
-            def[k] = { h: 0, s: 0, l: 0 }
-          }
-          return def
-        })(),
-        rotation: src.rotation ?? 0,
-        perspectiveHorizontal: src.perspectiveHorizontal ?? 0,
-        perspectiveVertical: src.perspectiveVertical ?? 0,
-      }
-      if (src.hslAdjustments) {
-        for (const key of Object.keys(src.hslAdjustments)) {
-          const entry = src.hslAdjustments[key] || { h: 0, s: 0, l: 0 }
-          next.hslAdjustments[key] = {
-            h: entry.h ?? 0,
-            s: entry.s ?? 0,
-            l: entry.l ?? 0,
-          }
-        }
-      }
-      return next
-    })()
+    applyFilterState(snapshot.filterState)
     ctx.enableRoundedRect.value = snapshot.enableRoundedRect
     ctx.roundedRadius.value = snapshot.roundedRadius
     ctx.enableMargin.value = snapshot.enableMargin
@@ -175,7 +123,9 @@ export function useCropHistory(ctx: CropHistoryContext) {
     await nextTick()
 
     if (pendingCropSnapshotApply && ctx.applyCropperStateFromSnapshot(pendingCropSnapshotApply)) {
+      const restored = pendingCropSnapshotApply
       finishCropSnapshotRestore()
+      updateDirtyFromSnapshot(restored)
     }
   }
 
@@ -189,9 +139,9 @@ export function useCropHistory(ctx: CropHistoryContext) {
 
     cropHistoryPast.value = nextHistory.past
     cropHistoryFuture.value = nextHistory.future
-
     if (nextHistory.current) {
       await restoreCropEditSnapshot(nextHistory.current)
+      updateDirtyFromSnapshot(nextHistory.current)
     }
   }
 
@@ -205,37 +155,23 @@ export function useCropHistory(ctx: CropHistoryContext) {
 
     cropHistoryPast.value = nextHistory.past
     cropHistoryFuture.value = nextHistory.future
-
     if (nextHistory.current) {
       await restoreCropEditSnapshot(nextHistory.current)
+      updateDirtyFromSnapshot(nextHistory.current)
     }
   }
 
   const handleCropperReady = () => {
-    clearCropHistoryReadyTimer()
-
-    const run = async () => {
-      await nextTick()
-      if (!ctx.cropDialogVisible.value) return
-
-      if (pendingCropSnapshotApply) {
-        if (ctx.applyCropperStateFromSnapshot(pendingCropSnapshotApply)) {
-          finishCropSnapshotRestore()
-        }
-        return
+    if (pendingCropSnapshotApply) {
+      if (ctx.applyCropperStateFromSnapshot(pendingCropSnapshotApply)) {
+        const restored = pendingCropSnapshotApply
+        finishCropSnapshotRestore()
+        updateDirtyFromSnapshot(restored)
       }
-
-      if (!cropHistoryPast.value.length) {
-        commitCropHistorySnapshot()
-      } else {
-        scheduleCropHistorySnapshot(120)
-      }
+      return
     }
 
-    cropHistoryReadyTimer = window.setTimeout(() => {
-      cropHistoryReadyTimer = undefined
-      void run()
-    }, 30)
+    initializeCropHistory()
   }
 
   return {
@@ -243,11 +179,11 @@ export function useCropHistory(ctx: CropHistoryContext) {
     cropHistoryFuture,
     canUndoCropEdit,
     canRedoCropEdit,
-    clearCropHistoryTimer,
-    clearCropHistoryReadyTimer,
+    isCropEditDirty,
     resetCropHistorySession,
+    initializeCropHistory,
     commitCropHistorySnapshot,
-    scheduleCropHistorySnapshot,
+    markCropEditDirty,
     handleCropUndo,
     handleCropRedo,
     handleCropperReady,

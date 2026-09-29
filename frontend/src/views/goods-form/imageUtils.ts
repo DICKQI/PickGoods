@@ -1,4 +1,4 @@
-import type { HslAdjustments } from './cropHistory'
+import type { HslAdjustments, HslColorKey } from './cropHistory'
 import { createDefaultHslAdjustments } from './cropHistory'
 
 // ── HSL color utilities ──
@@ -98,6 +98,64 @@ export const classifyHueToColorName = (h: number) => {
   return 'purple'
 }
 
+const HSL_COLOR_KEYS: HslColorKey[] = [
+  'red',
+  'orange',
+  'yellow',
+  'green',
+  'cyan',
+  'blue',
+  'purple',
+]
+
+const HSL_HUE_ANCHORS: Array<{ key: HslColorKey; hue: number }> = [
+  { key: 'red', hue: 0 },
+  { key: 'orange', hue: 30 },
+  { key: 'yellow', hue: 60 },
+  { key: 'green', hue: 120 },
+  { key: 'cyan', hue: 180 },
+  { key: 'blue', hue: 240 },
+  { key: 'purple', hue: 300 },
+  { key: 'red', hue: 360 },
+]
+
+const buildHslWeightTable = () => {
+  return Array.from({ length: 360 }, (_, hue): Record<HslColorKey, number> => {
+    const normalizedHue = normalizeHue(hue)
+    const weights: Record<HslColorKey, number> = {
+      red: 0,
+      orange: 0,
+      yellow: 0,
+      green: 0,
+      cyan: 0,
+      blue: 0,
+      purple: 0,
+    }
+
+    for (let index = 0; index < HSL_HUE_ANCHORS.length - 1; index += 1) {
+      const left = HSL_HUE_ANCHORS[index]
+      const right = HSL_HUE_ANCHORS[index + 1]
+      if (!left || !right || normalizedHue < left.hue || normalizedHue > right.hue) continue
+
+      const span = right.hue - left.hue
+      const rightWeight = span > 0 ? (normalizedHue - left.hue) / span : 0
+      const leftWeight = 1 - rightWeight
+      weights[left.key] += leftWeight
+      weights[right.key] += rightWeight
+      break
+    }
+
+    return weights
+  })
+}
+
+const HSL_WEIGHT_TABLE = buildHslWeightTable()
+
+export const getHslAdjustmentWeights = (hue: number): Record<HslColorKey, number> => {
+  const normalizedHue = normalizeHue(hue)
+  return HSL_WEIGHT_TABLE[Math.min(359, Math.floor(normalizedHue))]!
+}
+
 // ── Filter state ──
 
 export interface CropFilterStateInput {
@@ -105,7 +163,7 @@ export interface CropFilterStateInput {
   contrast: number
   saturation: number
   hslAdjustments: HslAdjustments
-  rotation: number
+  rotation?: number
   perspectiveHorizontal: number
   perspectiveVertical: number
 }
@@ -178,16 +236,31 @@ export const applyHslPerColorToImageData = (
     const b = data[i + 2]
 
     const hsl = rgbToHsl(r || 0, g || 0, b || 0)
-    const colorName = classifyHueToColorName(hsl.h)
-    const adjust = hslAdjustments[colorName] || { h: 0, s: 0, l: 0 }
+    if (hsl.s < 0.002) continue
 
-    if (!adjust || (!adjust.h && !adjust.s && !adjust.l)) {
+    const weights = getHslAdjustmentWeights(hsl.h)
+    let adjustH = 0
+    let adjustS = 0
+    let adjustL = 0
+
+    const saturationStrength = Math.min(1, hsl.s / 0.12)
+    for (const key of HSL_COLOR_KEYS) {
+      const weight = weights[key]
+      if (!weight) continue
+      const entry = hslAdjustments[key]
+      if (!entry) continue
+      adjustH += (entry.h ?? 0) * weight * saturationStrength
+      adjustS += (entry.s ?? 0) * weight * saturationStrength
+      adjustL += (entry.l ?? 0) * weight * saturationStrength
+    }
+
+    if (!adjustH && !adjustS && !adjustL) {
       continue
     }
 
-    const nextH = normalizeHue(hsl.h + (adjust.h ?? 0))
-    let nextS = hsl.s * (1 + (adjust.s ?? 0) / 100)
-    let nextL = hsl.l * (1 + (adjust.l ?? 0) / 100)
+    const nextH = normalizeHue(hsl.h + adjustH)
+    let nextS = hsl.s * (1 + adjustS / 100)
+    let nextL = hsl.l * (1 + adjustL / 100)
 
     nextS = clamp01(nextS)
     nextL = clamp01(nextL)
@@ -221,6 +294,121 @@ export const blobToImageBitmap = async (blob: Blob): Promise<ImageBitmap | HTMLI
   }
 }
 
+export const assertImageDecodable = async (blob: Blob): Promise<void> => {
+  const bitmapOrImg = await blobToImageBitmap(blob)
+  if ('close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') {
+    bitmapOrImg.close()
+  }
+}
+
+export const detectImageTransparency = async (blob: Blob, sampleMaxSide = 256): Promise<boolean> => {
+  let bitmapOrImg: ImageBitmap | HTMLImageElement | null = null
+  try {
+    bitmapOrImg = await blobToImageBitmap(blob)
+    const sourceWidth = Math.max(1, Number((bitmapOrImg as any).width) || 1)
+    const sourceHeight = Math.max(1, Number((bitmapOrImg as any).height) || 1)
+    const scale = Math.min(1, sampleMaxSide / Math.max(sourceWidth, sourceHeight))
+    const width = Math.max(1, Math.round(sourceWidth * scale))
+    const height = Math.max(1, Math.round(sourceHeight * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = width
+    canvas.height = height
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })
+    if (!ctx) return blob.type === 'image/png' || blob.type === 'image/webp'
+
+    ctx.clearRect(0, 0, width, height)
+    ctx.drawImage(bitmapOrImg as any, 0, 0, width, height)
+    const pixels = ctx.getImageData(0, 0, width, height).data
+    for (let index = 3; index < pixels.length; index += 4) {
+      if ((pixels[index] ?? 255) < 255) return true
+    }
+    return false
+  } catch {
+    return blob.type === 'image/png' || blob.type === 'image/webp'
+  } finally {
+    if (bitmapOrImg && 'close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') {
+      bitmapOrImg.close()
+    }
+  }
+}
+
+export const convertImageFile = async (
+  input: Blob,
+  mimeType: string,
+  quality = 0.92,
+  fileName = 'main_photo',
+): Promise<File> => {
+  const normalizedMime = mimeType === 'image/png' ? 'image/png' : 'image/jpeg'
+  if (input.type === normalizedMime && input instanceof File) {
+    return new File([input], fileName, { type: normalizedMime })
+  }
+
+  const bitmapOrImg = await blobToImageBitmap(input)
+  const width = Math.max(1, Number((bitmapOrImg as any).width) || 1)
+  const height = Math.max(1, Number((bitmapOrImg as any).height) || 1)
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 不可用')
+
+  if (normalizedMime === 'image/jpeg') {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, width, height)
+  }
+  ctx.drawImage(bitmapOrImg as any, 0, 0, width, height)
+
+  const output = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('图片编码失败'))),
+      normalizedMime,
+      quality,
+    )
+  })
+  if ('close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') {
+    bitmapOrImg.close()
+  }
+  const extension = normalizedMime === 'image/png' ? 'png' : 'jpg'
+  return new File([output], `${fileName}.${extension}`, { type: normalizedMime })
+}
+
+export const resizeImageToMaxSide = async (
+  input: Blob,
+  maxSide: number,
+): Promise<File> => {
+  const bitmapOrImg = await blobToImageBitmap(input)
+  const width = Math.max(1, Number((bitmapOrImg as any).width) || 1)
+  const height = Math.max(1, Number((bitmapOrImg as any).height) || 1)
+  const safeMaxSide = Math.max(1, maxSide)
+  const scale = Math.min(1, safeMaxSide / Math.max(width, height, 1))
+  if (scale >= 1) {
+    if ('close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') bitmapOrImg.close()
+    return input instanceof File ? input : new File([input], 'image_edit.png', { type: input.type || 'image/png' })
+  }
+
+  const targetWidth = Math.max(1, Math.round(width * scale))
+  const targetHeight = Math.max(1, Math.round(height * scale))
+  const canvas = document.createElement('canvas')
+  canvas.width = targetWidth
+  canvas.height = targetHeight
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 不可用')
+  ctx.clearRect(0, 0, targetWidth, targetHeight)
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
+  ctx.drawImage(bitmapOrImg as any, 0, 0, targetWidth, targetHeight)
+
+  const output = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('图片缩放失败'))),
+      'image/png',
+      0.94,
+    )
+  })
+  if ('close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') bitmapOrImg.close()
+  return new File([output], 'image_edit.png', { type: 'image/png' })
+}
+
 // ── Filters pipeline ──
 
 export const applyFiltersToImage = async (
@@ -249,7 +437,9 @@ export const applyFiltersToImage = async (
     const adjusted = applyHslPerColorToImageData(imageData, filterState.hslAdjustments)
     ctx.putImageData(adjusted, 0, 0)
   } catch {
-    // ignore HSL errors
+    if (!isAllHslAdjustmentsZero(filterState.hslAdjustments)) {
+      throw new Error('无法读取图片像素，请确认图片可访问后重试')
+    }
   }
 
   ctx.filter = 'none'
@@ -270,9 +460,6 @@ export const computeCropperStyle = (
   const baseBrightness = filterState.brightness
   const baseContrast = filterState.contrast
   const baseSaturation = filterState.saturation
-  const baseRotation = filterState.rotation ?? 0
-  const perspectiveHorizontal = filterState.perspectiveHorizontal ?? 0
-  const perspectiveVertical = filterState.perspectiveVertical ?? 0
 
   const hslAdj = filterState.hslAdjustments
   let sumH = 0
@@ -301,25 +488,11 @@ export const computeCropperStyle = (
   const cssSaturation = Math.max(0, baseSaturation * (1 + avgS / 100))
   const cssHueRotate = avgH
 
-  const transformParts: string[] = []
-  const rotateYDeg = (perspectiveHorizontal / 100) * -20
-  const rotateXDeg = (perspectiveVertical / 100) * 20
-  if (perspectiveHorizontal !== 0) {
-    transformParts.push(`rotateY(${rotateYDeg}deg)`)
-  }
-  if (perspectiveVertical !== 0) {
-    transformParts.push(`rotateX(${rotateXDeg}deg)`)
-  }
-  if (baseRotation) {
-    transformParts.push(`rotate(${baseRotation}deg)`)
-  }
-
   return {
     '--brightness': `${cssBrightness}%`,
     '--contrast': `${baseContrast}%`,
     '--saturate': `${cssSaturation}%`,
     '--hue-rotate': `${cssHueRotate}deg`,
-    transform: transformParts.length ? `perspective(800px) ${transformParts.join(' ')}` : undefined,
     transformOrigin: 'center center',
   }
 }

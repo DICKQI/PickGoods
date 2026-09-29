@@ -775,7 +775,7 @@ describe('GoodsForm mobile create wizard', () => {
     vi.mocked(classifyGoodsImage).mockClear()
 
     const file = new File(['image'], 'main.png', { type: 'image/png' })
-    ;(wrapper.vm as any).handleCropDialogConfirm(file, 'blob:preview')
+    ;(wrapper.vm as any).handleCropDialogConfirm(file)
     await flushAsyncWork()
 
     expect(vi.mocked(classifyGoodsImage)).not.toHaveBeenCalled()
@@ -792,7 +792,7 @@ describe('GoodsForm mobile create wizard', () => {
     await nextTick()
 
     const file = new File(['image'], 'main.png', { type: 'image/png' })
-    vm.handleCropDialogConfirm(file, 'blob:preview')
+    vm.handleCropDialogConfirm(file)
     await flushAsyncWork()
 
     expect(vi.mocked(classifyGoodsImage)).not.toHaveBeenCalled()
@@ -807,7 +807,7 @@ describe('GoodsForm mobile create wizard', () => {
     const vm = wrapper.vm as any
 
     const file = new File(['image'], 'main.png', { type: 'image/png' })
-    vm.handleCropDialogConfirm(file, 'blob:preview')
+    vm.handleCropDialogConfirm(file)
     await flushAsyncWork()
 
     expect(vm.classifyResult?.suggestions?.length).toBe(1)

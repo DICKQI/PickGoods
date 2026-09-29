@@ -1,462 +1,277 @@
 <template>
   <el-dialog
     v-model="dialogVisible"
-    :title="'编辑图片'"
-    :width="isMobile ? '95%' : '1600px'"
+    :fullscreen="isMobileEditor"
+    :width="isMobileEditor ? '100%' : 'min(1440px, calc(100vw - 48px))'"
+    :show-close="false"
     :close-on-click-modal="false"
-    class="crop-dialog"
-    @close="handleCropDialogClose"
+    class="image-editor-dialog"
+    :before-close="handleBeforeClose"
+    @opened="handleDialogOpened"
+    @closed="cleanupEditor"
   >
-    <div v-if="isMobile" class="crop-container">
-      <div class="crop-glass-panel">
-        <div class="crop-header-row">
-          <div class="crop-header-copy">
-            <div class="crop-title">主图编辑</div>
-            <div class="crop-subtitle">调一调比例和滤镜，让图片和主题更合拍吧~</div>
-          </div>
-          <div class="crop-history-actions">
-            <el-button size="small" :disabled="!canUndoCropEdit" @click="handleCropUndo">撤回</el-button>
-            <el-button size="small" :disabled="!canRedoCropEdit" @click="handleCropRedo">恢复</el-button>
+    <template #header>
+      <header class="image-editor-header">
+        <div class="image-editor-header__copy">
+          <span>GOODS COVER</span>
+          <div>
+            <strong>编辑谷子主图</strong>
+            <small>先裁剪构图，再按需调整色彩和外形</small>
           </div>
         </div>
 
-        <div class="aspect-ratio-selector">
-          <div class="ratio-label">选择比例</div>
-          <div class="ratio-segmented">
-            <div class="ratio-segmented-track">
-              <div
-                class="ratio-segmented-thumb"
-                :style="{ '--active-index': aspectRatios.findIndex(r => r.value === selectedAspectRatio) }"
-              ></div>
-              <button
-                v-for="ratio in aspectRatios"
-                :key="ratio.value"
-                type="button"
-                class="ratio-segmented-item"
-                :class="{ 'is-active': selectedAspectRatio === ratio.value }"
-                @click="selectedAspectRatio = ratio.value"
-              >
-                <span class="ratio-icon" :class="`ratio-icon--${ratio.value}`"></span>
-                <span class="ratio-text">{{ ratio.label }}</span>
-              </button>
-            </div>
+        <ImageEditToolbar
+          :can-undo="canUndoCropEdit"
+          :can-redo="canRedoCropEdit"
+          :confirming="confirming"
+          :ready="sourceReady"
+          :comparing="comparingOriginal"
+          @undo="handleUndo"
+          @redo="handleRedo"
+          @reset="handleReset"
+          @cancel="handleCancel"
+          @confirm="handleConfirm"
+          @compare-start="comparingOriginal = true"
+          @compare-stop="comparingOriginal = false"
+        />
+      </header>
+    </template>
+
+    <div
+      class="image-editor-shell"
+      :class="{ 'is-compact': !isMobileEditor, 'is-inspector-collapsed': inspectorCollapsed }"
+    >
+      <ImageEditToolRail
+        :active-tool="activeTool"
+        :disabled="!sourceReady"
+        @change="handleToolChange"
+      />
+
+      <main class="image-editor-canvas">
+        <div class="image-editor-canvas__stage">
+          <div
+            class="cropper-wrapper"
+            :class="{
+              'circle-crop': selectedAspectRatio === 'circle' || selectedAspectRatio.endsWith('-ellipse'),
+              'rounded-rect-preview': showRoundedControls && enableRoundedRect,
+            }"
+            :style="cropperWrapperStyle"
+            @pointerdown="handleRightDragPointerDown"
+            @pointermove="handleRightDragPointerMove"
+            @pointerup="handleRightDragPointerEnd"
+            @pointercancel="handleRightDragPointerEnd"
+            @lostpointercapture="handleRightDragLostPointerCapture"
+            @contextmenu="handleRightDragContextMenu"
+          >
+            <vue-picture-cropper
+              v-show="!comparingOriginal"
+              ref="pictureCropperRef"
+              :key="`cropper-${selectedAspectRatio}`"
+              :img="sourceUrl"
+              :options="cropperOptions"
+              :style="cropperStyle"
+            />
+            <img
+              v-if="comparingOriginal"
+              :src="sourceUrl"
+              class="original-image"
+              alt="编辑前原图"
+            />
+          </div>
+
+          <div v-if="comparingOriginal" class="compare-badge">原图</div>
+          <div v-if="!sourceReady && !sourceError" class="canvas-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>正在载入图片...</span>
+          </div>
+          <div v-if="sourceError" class="canvas-error">
+            <el-icon><WarningFilled /></el-icon>
+            <span>{{ sourceError }}</span>
+            <el-button text @click="handleCancel">关闭编辑器</el-button>
           </div>
         </div>
 
-        <div class="image-filters">
-          <div class="filters-header-row">
-            <span class="filters-title">图像微调</span>
-            <el-button class="filter-reset-btn" text circle :icon="RefreshLeft" @click="resetFilters" />
+        <footer class="image-editor-canvas__footer">
+          <span>拖动图片调整位置，滚轮或双指缩放</span>
+          <div class="canvas-tools">
+            <el-button
+              class="inspector-toggle"
+              :icon="Operation"
+              :aria-pressed="!inspectorCollapsed"
+              @click="inspectorCollapsed = !inspectorCollapsed"
+            >
+              参数
+            </el-button>
+            <el-tooltip content="缩小" placement="top">
+              <el-button circle :icon="ZoomOut" aria-label="缩小" @click="handleZoom(-0.1)" />
+            </el-tooltip>
+            <el-tooltip content="适配画布" placement="top">
+              <el-button circle :icon="FullScreen" aria-label="适配画布" @click="handleFit" />
+            </el-tooltip>
+            <el-tooltip content="放大" placement="top">
+              <el-button circle :icon="ZoomIn" aria-label="放大" @click="handleZoom(0.1)" />
+            </el-tooltip>
           </div>
-          <div class="filter-item">
-            <span class="filter-label">亮度</span>
-            <el-slider v-model="filterState.brightness" :min="0" :max="200" :format-tooltip="(val: number) => val + '%'" />
-            <span class="filter-value">{{ filterState.brightness }}%</span>
-          </div>
-          <div class="filter-item">
-            <span class="filter-label">对比度</span>
-            <el-slider v-model="filterState.contrast" :min="0" :max="200" :format-tooltip="(val: number) => val + '%'" />
-            <span class="filter-value">{{ filterState.contrast }}%</span>
-          </div>
-          <div class="filter-item">
-            <span class="filter-label">饱和度</span>
-            <el-slider v-model="filterState.saturation" :min="0" :max="200" :format-tooltip="(val: number) => val + '%'" />
-            <span class="filter-value">{{ filterState.saturation }}%</span>
-          </div>
-          <div class="filter-item">
-            <span class="filter-label">旋转</span>
-            <el-slider v-model="filterState.rotation" :min="-180" :max="180" :format-tooltip="(val: number) => `${val}°`" />
-            <span class="filter-value">{{ filterState.rotation }}°</span>
-          </div>
-          <div class="perspective-panel">
-            <div class="perspective-title">透视矫正</div>
-            <div class="filter-item" style="margin-bottom: 10px;">
-              <span class="filter-label">水平透视</span>
-              <el-slider v-model="filterState.perspectiveHorizontal" :min="-100" :max="100" :format-tooltip="(val: number) => val + '%'" />
-              <span class="filter-value">{{ filterState.perspectiveHorizontal > 0 ? '+' : '' }}{{ filterState.perspectiveHorizontal }}%</span>
-            </div>
-            <div class="filter-item" style="margin-bottom: 0;">
-              <span class="filter-label">垂直透视</span>
-              <el-slider v-model="filterState.perspectiveVertical" :min="-100" :max="100" :format-tooltip="(val: number) => val + '%'" />
-              <span class="filter-value">{{ filterState.perspectiveVertical > 0 ? '+' : '' }}{{ filterState.perspectiveVertical }}%</span>
-            </div>
-          </div>
-          <div class="hsl-panel">
-            <div class="hsl-header-row">
-              <span class="hsl-title">HSL 调节</span>
-            </div>
-            <div class="hsl-color-tabs">
-              <button
-                v-for="tab in hslColorTabs" :key="tab.key" type="button"
-                :class="['hsl-color-tab', `hsl-color-tab--${tab.key}`, { 'is-active': activeHslColor === tab.key }]"
-                @click="activeHslColor = tab.key"
-              >{{ tab.label }}</button>
-              <el-button class="hsl-color-reset-btn" text size="small" @click="resetCurrentHslColor">重置当前色</el-button>
-            </div>
-            <div class="hsl-sliders">
-              <div class="filter-item">
-                <span class="filter-label">色相 (°)</span>
-                <el-slider v-model="filterState.hslAdjustments[activeHslColor].h" :min="-180" :max="180" :format-tooltip="(val: number) => val + '°'" />
-                <span class="filter-value">{{ filterState.hslAdjustments[activeHslColor].h }}°</span>
-              </div>
-              <div class="filter-item">
-                <span class="filter-label">饱和度偏移</span>
-                <el-slider v-model="filterState.hslAdjustments[activeHslColor].s" :min="-100" :max="100" :format-tooltip="(val: number) => (val > 0 ? '+' : '') + val + '%'" />
-                <span class="filter-value">{{ filterState.hslAdjustments[activeHslColor].s > 0 ? '+' : '' }}{{ filterState.hslAdjustments[activeHslColor].s }}%</span>
-              </div>
-              <div class="filter-item">
-                <span class="filter-label">亮度偏移</span>
-                <el-slider v-model="filterState.hslAdjustments[activeHslColor].l" :min="-100" :max="100" :format-tooltip="(val: number) => (val > 0 ? '+' : '') + val + '%'" />
-                <span class="filter-value">{{ filterState.hslAdjustments[activeHslColor].l > 0 ? '+' : '' }}{{ filterState.hslAdjustments[activeHslColor].l }}%</span>
-              </div>
-            </div>
-          </div>
-        </div>
+        </footer>
+      </main>
 
-        <div v-if="showRoundedControls" class="rounded-rect-settings">
-          <div class="rounded-header-row">
-            <span class="rounded-title">圆角矩形</span>
-            <el-switch v-model="enableRoundedRect" size="small" />
-          </div>
-          <div class="rounded-radius-row" :class="{ 'is-disabled': !enableRoundedRect }">
-            <span class="rounded-label">圆角大小</span>
-            <el-slider v-model="roundedRadius" :min="0" :max="50" :disabled="!enableRoundedRect" :format-tooltip="(val: number) => val + '%'" />
-            <span class="rounded-value">{{ roundedRadius }}%</span>
-          </div>
-        </div>
-
-        <div class="margin-settings">
-          <div class="rounded-header-row">
-            <span class="rounded-title">边距</span>
-            <el-switch v-model="enableMargin" size="small" />
-          </div>
-          <div class="rounded-radius-row" :class="{ 'is-disabled': !enableMargin }">
-            <span class="rounded-label">边距大小</span>
-            <el-slider v-model="marginPercent" :min="0" :max="30" :disabled="!enableMargin" :format-tooltip="(val: number) => val + '%'" />
-            <span class="rounded-value">{{ marginPercent }}%</span>
-          </div>
-        </div>
-
-        <div
-          class="cropper-wrapper"
-          :class="{
-            'circle-crop': selectedAspectRatio === 'circle' || selectedAspectRatio.endsWith('-ellipse'),
-            'rounded-rect-preview': showRoundedControls && enableRoundedRect
-          }"
-          :style="cropperWrapperStyle"
-        >
-          <vue-picture-cropper
-            v-if="cropImageSrc"
-            ref="pictureCropperRef"
-            :key="`cropper-${selectedAspectRatio}`"
-            :box-style="{ width: '100%', height: '300px', backgroundColor: '#f8f8f8', margin: '0 auto' }"
-            :img="cropImageSrc"
-            :options="cropperOptions"
-            :style="cropperStyle"
+      <aside class="image-editor-inspector">
+        <div class="image-editor-inspector__preview">
+          <ImageEditPreview
+            :url="livePreviewUrl"
+            :loading="livePreviewLoading"
+            :error="livePreviewError"
+            @retry="scheduleLivePreviewRefresh"
           />
         </div>
-
-        <div class="live-preview">
-          <div class="live-preview-header">
-            <span class="live-preview-title">输出预览</span>
-            <span class="live-preview-hint">低清预览</span>
-          </div>
-          <div class="live-preview-card" :class="{ 'is-loading': livePreviewLoading }">
-            <img v-if="livePreviewUrl" :src="livePreviewUrl" class="live-preview-img" />
-            <div v-else class="live-preview-placeholder">
-              {{ livePreviewLoading ? '预览生成中...' : '调整裁切框或参数以生成预览' }}
-            </div>
-          </div>
+        <div class="image-editor-inspector__scroll">
+          <ImageEditInspector
+            :active-tool="activeTool"
+            :selected-aspect-ratio="selectedAspectRatio"
+            :filter-state="filterState"
+            :active-hsl-color="activeHslColor"
+            :enable-rounded-rect="enableRoundedRect"
+            :rounded-radius="roundedRadius"
+            :enable-margin="enableMargin"
+            :margin-percent="marginPercent"
+            :source-has-transparency="sourceHasTransparency"
+            :disabled="!sourceReady"
+            @update:selected-aspect-ratio="updateAspectRatio"
+            @update:active-hsl-color="activeHslColor = $event"
+            @update:enable-rounded-rect="enableRoundedRect = $event"
+            @update:rounded-radius="roundedRadius = $event"
+            @update:enable-margin="enableMargin = $event"
+            @update:margin-percent="marginPercent = $event"
+            @update-filter="updateFilter"
+            @update-hsl="updateHsl"
+            @quick-rotate="handleQuickRotate"
+            @reset-current-hsl="resetCurrentHsl"
+            @commit="handleCommittedChange"
+          />
         </div>
-      </div>
+      </aside>
     </div>
-
-    <div v-else class="crop-container crop-layout">
-      <div class="crop-glass-panel">
-        <div class="crop-header-row">
-          <div class="crop-header-copy">
-            <div class="crop-title">主图编辑</div>
-            <div class="crop-subtitle">调一调比例和滤镜，让图片和主题更合拍吧~</div>
-          </div>
-          <div class="crop-history-actions">
-            <el-button size="small" :disabled="!canUndoCropEdit" @click="handleCropUndo">撤回</el-button>
-            <el-button size="small" :disabled="!canRedoCropEdit" @click="handleCropRedo">恢复</el-button>
-          </div>
-        </div>
-
-        <div class="crop-layout-inner">
-          <div class="crop-left-panel">
-            <div class="aspect-ratio-selector">
-              <div class="ratio-label">选择比例</div>
-              <div class="ratio-segmented">
-                <div class="ratio-segmented-track">
-                  <div
-                    class="ratio-segmented-thumb"
-                    :style="{ '--active-index': aspectRatios.findIndex(r => r.value === selectedAspectRatio) }"
-                  ></div>
-                  <button
-                    v-for="ratio in aspectRatios" :key="ratio.value" type="button"
-                    class="ratio-segmented-item"
-                    :class="{ 'is-active': selectedAspectRatio === ratio.value }"
-                    @click="selectedAspectRatio = ratio.value"
-                  >
-                    <span class="ratio-icon" :class="`ratio-icon--${ratio.value}`"></span>
-                    <span class="ratio-text">{{ ratio.label }}</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div class="image-filters">
-              <div class="filters-header-row">
-                <span class="filters-title">图像微调</span>
-                <el-button class="filter-reset-btn" text circle :icon="RefreshLeft" @click="resetFilters" />
-              </div>
-              <div class="filter-item">
-                <span class="filter-label">亮度</span>
-                <el-slider v-model="filterState.brightness" :min="0" :max="200" :format-tooltip="(val: number) => val + '%'" />
-                <span class="filter-value">{{ filterState.brightness }}%</span>
-              </div>
-              <div class="filter-item">
-                <span class="filter-label">对比度</span>
-                <el-slider v-model="filterState.contrast" :min="0" :max="200" :format-tooltip="(val: number) => val + '%'" />
-                <span class="filter-value">{{ filterState.contrast }}%</span>
-              </div>
-              <div class="filter-item">
-                <span class="filter-label">饱和度</span>
-                <el-slider v-model="filterState.saturation" :min="0" :max="200" :format-tooltip="(val: number) => val + '%'" />
-                <span class="filter-value">{{ filterState.saturation }}%</span>
-              </div>
-              <div class="filter-item">
-                <span class="filter-label">旋转</span>
-                <el-slider v-model="filterState.rotation" :min="-180" :max="180" :format-tooltip="(val: number) => `${val}°`" />
-                <span class="filter-value">{{ filterState.rotation }}°</span>
-              </div>
-              <div class="perspective-panel">
-                <div class="perspective-title">透视矫正</div>
-                <div class="filter-item" style="margin-bottom: 10px;">
-                  <span class="filter-label">水平透视</span>
-                  <el-slider v-model="filterState.perspectiveHorizontal" :min="-100" :max="100" :format-tooltip="(val: number) => val + '%'" />
-                  <span class="filter-value">{{ filterState.perspectiveHorizontal > 0 ? '+' : '' }}{{ filterState.perspectiveHorizontal }}%</span>
-                </div>
-                <div class="filter-item" style="margin-bottom: 0;">
-                  <span class="filter-label">垂直透视</span>
-                  <el-slider v-model="filterState.perspectiveVertical" :min="-100" :max="100" :format-tooltip="(val: number) => val + '%'" />
-                  <span class="filter-value">{{ filterState.perspectiveVertical > 0 ? '+' : '' }}{{ filterState.perspectiveVertical }}%</span>
-                </div>
-              </div>
-              <div class="hsl-panel">
-                <div class="hsl-header-row"><span class="hsl-title">HSL 调节</span></div>
-                <div class="hsl-color-tabs">
-                  <button v-for="tab in hslColorTabs" :key="tab.key" type="button"
-                    :class="['hsl-color-tab', `hsl-color-tab--${tab.key}`, { 'is-active': activeHslColor === tab.key }]"
-                    @click="activeHslColor = tab.key">{{ tab.label }}</button>
-                  <el-button class="hsl-color-reset-btn" text size="small" @click="resetCurrentHslColor">重置当前色</el-button>
-                </div>
-                <div class="hsl-sliders">
-                  <div class="filter-item">
-                    <span class="filter-label">色相 (°)</span>
-                    <el-slider v-model="filterState.hslAdjustments[activeHslColor].h" :min="-180" :max="180" :format-tooltip="(val: number) => val + '°'" />
-                    <span class="filter-value">{{ filterState.hslAdjustments[activeHslColor].h }}°</span>
-                  </div>
-                  <div class="filter-item">
-                    <span class="filter-label">饱和度偏移</span>
-                    <el-slider v-model="filterState.hslAdjustments[activeHslColor].s" :min="-100" :max="100" />
-                    <span class="filter-value">{{ filterState.hslAdjustments[activeHslColor].s > 0 ? '+' : '' }}{{ filterState.hslAdjustments[activeHslColor].s }}%</span>
-                  </div>
-                  <div class="filter-item">
-                    <span class="filter-label">亮度偏移</span>
-                    <el-slider v-model="filterState.hslAdjustments[activeHslColor].l" :min="-100" :max="100" />
-                    <span class="filter-value">{{ filterState.hslAdjustments[activeHslColor].l > 0 ? '+' : '' }}{{ filterState.hslAdjustments[activeHslColor].l }}%</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="showRoundedControls" class="rounded-rect-settings">
-              <div class="rounded-header-row">
-                <span class="rounded-title">圆角矩形</span>
-                <el-switch v-model="enableRoundedRect" size="small" />
-              </div>
-              <div class="rounded-radius-row" :class="{ 'is-disabled': !enableRoundedRect }">
-                <span class="rounded-label">圆角大小</span>
-                <el-slider v-model="roundedRadius" :min="0" :max="50" :disabled="!enableRoundedRect" />
-                <span class="rounded-value">{{ roundedRadius }}%</span>
-              </div>
-            </div>
-
-            <div class="margin-settings">
-              <div class="rounded-header-row">
-                <span class="rounded-title">边距</span>
-                <el-switch v-model="enableMargin" size="small" />
-              </div>
-              <div class="rounded-radius-row" :class="{ 'is-disabled': !enableMargin }">
-                <span class="rounded-label">边距大小</span>
-                <el-slider v-model="marginPercent" :min="0" :max="30" :disabled="!enableMargin" />
-                <span class="rounded-value">{{ marginPercent }}%</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="crop-right-panel">
-            <div class="crop-main-view">
-              <div
-                class="cropper-wrapper"
-                :class="{
-                  'circle-crop': selectedAspectRatio === 'circle' || selectedAspectRatio.endsWith('-ellipse'),
-                  'rounded-rect-preview': showRoundedControls && enableRoundedRect
-                }"
-                :style="cropperWrapperStyle"
-              >
-                <vue-picture-cropper
-                  v-if="cropImageSrc"
-                  ref="pictureCropperRef"
-                  :key="`cropper-${selectedAspectRatio}`"
-                  :box-style="{ width: '100%', height: '100%', backgroundColor: '#f8f8f8', margin: '0 auto' }"
-                  :img="cropImageSrc"
-                  :options="cropperOptions"
-                  :style="cropperStyle"
-                />
-              </div>
-            </div>
-
-            <div class="crop-preview-view">
-              <div class="live-preview">
-                <div class="live-preview-header">
-                  <span class="live-preview-title">输出预览</span>
-                  <span class="live-preview-hint">低清预览</span>
-                </div>
-                <div class="live-preview-card" :class="{ 'is-loading': livePreviewLoading }">
-                  <img v-if="livePreviewUrl" :src="livePreviewUrl" class="live-preview-img" />
-                  <div v-else class="live-preview-placeholder">
-                    {{ livePreviewLoading ? '预览生成中...' : '调整裁切框或参数以生成预览' }}
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-
-    <template #footer>
-      <div class="dialog-footer">
-        <el-button @click="handleCropCancel">取消</el-button>
-        <el-button type="primary" @click="handleCropConfirm" :loading="cropping">确认</el-button>
-      </div>
-    </template>
   </el-dialog>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from 'vue'
-import { RefreshLeft } from '@element-plus/icons-vue'
-import VuePictureCropper, { cropper } from 'vue-picture-cropper'
-import type { CropEditSnapshot, CropNumericState } from '@/views/goods-form/cropHistory'
-import { createDefaultFilterState, isTransformStateDefault, applyFiltersToImage, computeCropperStyle, blobToImageBitmap } from '@/views/goods-form/imageUtils'
-import { applyCircleMaskToBlob, applyEllipseMaskToBlob, applyRoundedRectMaskToBlob, applyMarginToBlob } from '@/views/goods-form/imageMask'
-import { applyPerspectiveAndRotateToBlob } from '@/views/goods-form/imageTransform'
+import {
+  computed,
+  nextTick,
+  onBeforeUnmount,
+  onMounted,
+  ref,
+  watch,
+} from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { FullScreen, Loading, Operation, WarningFilled, ZoomIn, ZoomOut } from '@element-plus/icons-vue'
+import VuePictureCropper from 'vue-picture-cropper'
+import ImageEditInspector from '@/views/goods-form/components/ImageEditInspector.vue'
+import ImageEditPreview from '@/views/goods-form/components/ImageEditPreview.vue'
+import ImageEditToolbar from '@/views/goods-form/components/ImageEditToolbar.vue'
+import ImageEditToolRail from '@/views/goods-form/components/ImageEditToolRail.vue'
+import {
+  applyCropperStateFromSnapshot,
+  exportCropperFile,
+  fitCropper,
+  getCropperNumericState,
+  moveCropper,
+  rotateCropperTo,
+  zoomCropper,
+} from '@/views/goods-form/imageCropperAdapter'
+import {
+  assertImageDecodable,
+  createDefaultFilterState,
+  computeCropperStyle,
+  detectImageTransparency,
+} from '@/views/goods-form/imageUtils'
+import {
+  getCropOutputDimensions,
+  processCroppedImage,
+} from '@/views/goods-form/imageRenderPipeline'
+import type {
+  CropEditSnapshot,
+  CropFilterState,
+  HslColorKey,
+} from '@/views/goods-form/cropHistory'
 import { useCropHistory } from '@/views/goods-form/composables/useCropHistory'
+import { useCropperRightDrag } from '@/views/goods-form/composables/useCropperRightDrag'
 import { useLivePreview } from '@/views/goods-form/composables/useLivePreview'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import type { ImageEditorTool } from '@/views/goods-form/imageEditorConfig'
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   visible: boolean
-  imageSrc: string
   imageFile: File
-}>()
+  imageUrl?: string
+  maxOutputSize?: number
+}>(), {
+  imageUrl: '',
+  maxOutputSize: 2000,
+})
 
 const emit = defineEmits<{
-  confirm: [file: File, previewUrl: string]
+  confirm: [file: File]
   cancel: []
   'update:visible': [value: boolean]
 }>()
 
 const dialogVisible = computed({
   get: () => props.visible,
-  set: (v) => emit('update:visible', v),
+  set: (value) => emit('update:visible', value),
 })
 
-const { isMobile } = useResponsiveDevice()
-
-const cropImageSrc = computed(() => props.imageSrc)
-const cropImageFile = computed(() => props.imageFile)
-
+const { isMobile, viewportWidth } = useResponsiveDevice()
+const isMobileEditor = computed(() => isMobile.value || viewportWidth.value <= 768)
 const pictureCropperRef = ref<any>(null)
-const cropping = ref(false)
+const internalImageUrl = ref('')
+const sourceReady = ref(false)
+const cropperReady = ref(false)
+const transparencyChecked = ref(false)
+const sourceError = ref('')
+const sourceHasTransparency = ref(false)
+const confirming = ref(false)
+const comparingOriginal = ref(false)
+const inspectorCollapsed = ref(false)
+const activeTool = ref<ImageEditorTool>('crop')
 
 const aspectRatios = [
   { label: '自由', value: 'free' },
   { label: '1:1', value: '1:1' },
   { label: '圆形', value: 'circle' },
-  { label: '47:65 (椭圆)', value: '47:65-ellipse' },
-  { label: '63:93 (椭圆)', value: '63:93-ellipse' },
+  { label: '47:65', value: '47:65-ellipse' },
+  { label: '63:93', value: '63:93-ellipse' },
 ]
 
 const selectedAspectRatio = ref('free')
+const filterState = ref<CropFilterState>(createDefaultFilterState())
 const enableRoundedRect = ref(false)
 const roundedRadius = ref(20)
-const showRoundedControls = computed(() => selectedAspectRatio.value === 'free' || selectedAspectRatio.value === '1:1')
 const enableMargin = ref(false)
 const marginPercent = ref(8)
+const activeHslColor = ref<HslColorKey>('red')
+const roundedRectPreviewPx = ref(0)
 
-const filterState = ref(createDefaultFilterState())
-const resetFilters = () => { filterState.value = createDefaultFilterState() }
+const sourceUrl = computed(() => props.imageUrl || internalImageUrl.value)
+const showRoundedControls = computed(() => (
+  selectedAspectRatio.value === 'free' || selectedAspectRatio.value === '1:1'
+))
 
-const hslColorTabs = [
-  { key: 'red', label: '红' }, { key: 'orange', label: '橙' }, { key: 'yellow', label: '黄' },
-  { key: 'green', label: '绿' }, { key: 'cyan', label: '青' }, { key: 'blue', label: '蓝' },
-  { key: 'purple', label: '紫' },
-] as const
-type HslColorKeyLocal = (typeof hslColorTabs)[number]['key']
-const activeHslColor = ref<HslColorKeyLocal>('red')
+const getCurrentCropperNumericState = (method: 'getData' | 'getCropBoxData' | 'getCanvasData') => (
+  getCropperNumericState(pictureCropperRef.value, method)
+)
 
-const resetCurrentHslColor = () => {
-  const key = activeHslColor.value
-  const adj = filterState.value.hslAdjustments[key]
-  if (!adj) return
-  adj.h = 0; adj.s = 0; adj.l = 0
-}
-
-const getCropperInstance = (): any => {
-  if (cropper && (typeof cropper.getDataURL === 'function' || typeof cropper.getBlob === 'function' || typeof cropper.getFile === 'function')) {
-    return cropper
-  }
-  if (pictureCropperRef.value) {
-    const c = pictureCropperRef.value
-    if (c.$refs?.cropper) return c.$refs.cropper
-    if (c.cropper) return c.cropper
-    if ((c as any).setupState?.cropper) return (c as any).setupState.cropper
-    if ((c as any).__cropper) return (c as any).__cropper
-  }
-  return null
-}
-
-const getCropperNumericState = (method: 'getData' | 'getCropBoxData' | 'getCanvasData'): CropNumericState | null => {
-  const instance = getCropperInstance()
-  if (!instance || typeof instance[method] !== 'function') return null
-  try {
-    const val = instance[method]()
-    return val ? { ...val } : null
-  } catch { return null }
-}
-
-const applyCropperStateFromSnapshot = (snapshot: CropEditSnapshot): boolean => {
-  const instance = getCropperInstance()
-  if (!instance) return false
-  try {
-    if (snapshot.canvasData && typeof instance.setCanvasData === 'function') {
-      instance.setCanvasData({ ...snapshot.canvasData })
-    }
-    if (snapshot.cropData && typeof instance.setData === 'function') {
-      instance.setData({ ...snapshot.cropData })
-    }
-    if (snapshot.cropBoxData && typeof instance.setCropBoxData === 'function') {
-      instance.setCropBoxData({ ...snapshot.cropBoxData })
-    }
-    return true
-  } catch { return false }
-}
+const getCurrentSnapshot = (): CropEditSnapshot => ({
+  selectedAspectRatio: selectedAspectRatio.value,
+  filterState: filterState.value,
+  enableRoundedRect: enableRoundedRect.value,
+  roundedRadius: roundedRadius.value,
+  enableMargin: enableMargin.value,
+  marginPercent: marginPercent.value,
+  cropData: getCurrentCropperNumericState('getData'),
+  cropBoxData: getCurrentCropperNumericState('getCropBoxData'),
+  canvasData: getCurrentCropperNumericState('getCanvasData'),
+})
 
 const cropHistory = useCropHistory({
   cropDialogVisible: dialogVisible,
@@ -466,570 +281,844 @@ const cropHistory = useCropHistory({
   roundedRadius,
   enableMargin,
   marginPercent,
-  getCropperNumericState,
-  applyCropperStateFromSnapshot,
+  getCropperNumericState: getCurrentCropperNumericState,
+  applyCropperStateFromSnapshot: (snapshot) => (
+    applyCropperStateFromSnapshot(pictureCropperRef.value, snapshot)
+  ),
 })
 
-const { canUndoCropEdit, canRedoCropEdit, handleCropUndo, handleCropRedo, handleCropperReady, resetCropHistorySession, scheduleCropHistorySnapshot } = cropHistory
+const {
+  canUndoCropEdit,
+  canRedoCropEdit,
+  isCropEditDirty,
+  resetCropHistorySession,
+  commitCropHistorySnapshot,
+  markCropEditDirty,
+  handleCropUndo,
+  handleCropRedo,
+  handleCropperReady,
+} = cropHistory
 
-const roundedRectPreviewPx = ref(0)
-const updateRoundedRectPreviewRadius = () => {
-  if (!showRoundedControls.value || !enableRoundedRect.value) {
-    roundedRectPreviewPx.value = 0; return
+const cropperOptions = computed(() => {
+  const options: Record<string, unknown> = {
+    outputSize: 1,
+    outputType: 'png',
+    canScale: true,
+    autoCrop: true,
+    centerBox: true,
+    high: true,
+    cropData: {},
+    enlarge: 1,
+    mode: 'contain',
+    maxImgSize: 2000,
+    limitMinSize: [16, 16],
+    minCropBoxWidth: 16,
+    minCropBoxHeight: 16,
+    autoCropArea: 0.78,
+    viewMode: 1,
+    dragMode: 'crop',
+    cropBoxMovable: true,
+    cropBoxResizable: true,
+    strict: true,
+    ready: handleCropperReadyInternal,
+    crop: () => {
+      updateRoundedRectPreviewRadius()
+      scheduleLivePreviewRefresh()
+    },
+    cropend: () => {
+      updateRoundedRectPreviewRadius()
+      handleCommittedChange()
+    },
+    zoom: () => {
+      updateRoundedRectPreviewRadius()
+      markCropEditDirty()
+      scheduleLivePreviewRefresh()
+    },
+    zoomend: handleCommittedChange,
   }
-  const cropBox = getCropperNumericState('getCropBoxData')
-  const w = cropBox?.width; const h = cropBox?.height
-  if (!w || !h) return
-  const p = Math.max(0, Math.min(roundedRadius.value, 50))
-  const radius = (p / 100) * (Math.min(w, h) / 2)
-  roundedRectPreviewPx.value = Number.isFinite(radius) ? radius : 0
-}
 
+  if (selectedAspectRatio.value === 'circle') {
+    options.aspectRatio = 1
+    options.fixed = true
+    options.fixedNumber = [1, 1]
+  } else if (selectedAspectRatio.value.endsWith('-ellipse')) {
+    const parts = selectedAspectRatio.value.replace('-ellipse', '').split(':').map(Number)
+    if (parts[0] && parts[1]) {
+      options.aspectRatio = parts[0] / parts[1]
+      options.fixed = true
+      options.fixedNumber = parts
+    }
+  } else if (selectedAspectRatio.value !== 'free') {
+    const parts = selectedAspectRatio.value.split(':').map(Number)
+    if (parts[0] && parts[1]) {
+      options.aspectRatio = parts[0] / parts[1]
+      options.fixed = true
+      options.fixedNumber = parts
+    }
+  } else {
+    options.aspectRatio = Number.NaN
+    options.fixed = false
+  }
+
+  return options
+})
+
+const cropperStyle = computed(() => computeCropperStyle(filterState.value))
 const cropperWrapperStyle = computed(() => ({
   '--rounded-radius-px': `${roundedRectPreviewPx.value}px`,
 }))
 
-const cropperOptions = computed(() => {
-  const base: any = {
-    outputSize: 1, outputType: 'png', canScale: true, autoCrop: true,
-    centerBox: true, high: true, cropData: {}, enlarge: 1, mode: 'contain',
-    maxImgSize: 2000, limitMinSize: [16, 16], minCropBoxWidth: 16, minCropBoxHeight: 16, autoCropArea: 0.78, viewMode: 1,
-    dragMode: 'crop', cropBoxMovable: true, cropBoxResizable: true, strict: true,
-    ready: () => handleCropperReady(),
-    crop: () => { updateRoundedRectPreviewRadius(); scheduleLivePreviewRefresh() },
-    cropend: () => scheduleCropHistorySnapshot(120),
-    zoom: () => { updateRoundedRectPreviewRadius(); scheduleLivePreviewRefresh(); scheduleCropHistorySnapshot(180) },
-  }
-  if (selectedAspectRatio.value === 'circle') {
-    base.aspectRatio = 1; base.fixed = true; base.fixedNumber = [1, 1]
-  } else if (selectedAspectRatio.value.endsWith('-ellipse')) {
-    const parts = selectedAspectRatio.value.replace('-ellipse', '').split(':').map(Number)
-    if (parts[0] && parts[1]) { base.aspectRatio = parts[0] / parts[1]; base.fixed = true; base.fixedNumber = parts }
-  } else if (selectedAspectRatio.value !== 'free') {
-    const parts = selectedAspectRatio.value.split(':').map(Number)
-    if (parts[0] && parts[1]) { base.aspectRatio = parts[0] / parts[1]; base.fixed = true; base.fixedNumber = parts }
-    else { base.aspectRatio = NaN; base.fixed = false }
-  } else {
-    base.aspectRatio = NaN; base.fixed = false
-  }
-  return base
-})
-
-const cropperStyle = computed(() => computeCropperStyle(filterState.value))
-
 const livePreview = useLivePreview()
 const { livePreviewUrl, livePreviewLoading } = livePreview
-
+const livePreviewError = ref('')
 let livePreviewSeq = 0
-const clearLivePreviewUrl = livePreview.clearUrl
+let sourceLoadingTimer: number | undefined
 
-type ImageDimensions = { width: number; height: number }
+const updateRoundedRectPreviewRadius = () => {
+  if (!showRoundedControls.value || !enableRoundedRect.value) {
+    roundedRectPreviewPx.value = 0
+    return
+  }
+  const cropBox = getCurrentCropperNumericState('getCropBoxData')
+  const width = cropBox?.width
+  const height = cropBox?.height
+  if (!width || !height) return
+  const percent = Math.max(0, Math.min(roundedRadius.value, 50))
+  const radius = (percent / 100) * (Math.min(width, height) / 2)
+  roundedRectPreviewPx.value = Number.isFinite(radius) ? radius : 0
+}
 
-const getBlobDimensions = async (blob: Blob): Promise<ImageDimensions> => {
-  const bitmapOrImg = await blobToImageBitmap(blob)
-  return {
-    width: Math.max(1, Math.round((bitmapOrImg as any).width || 1)),
-    height: Math.max(1, Math.round((bitmapOrImg as any).height || 1)),
+const releaseInternalImageUrl = () => {
+  if (internalImageUrl.value.startsWith('blob:')) {
+    URL.revokeObjectURL(internalImageUrl.value)
+  }
+  internalImageUrl.value = ''
+}
+
+const resolveSourceUrl = () => {
+  releaseInternalImageUrl()
+  sourceReady.value = false
+  cropperReady.value = false
+  transparencyChecked.value = false
+  sourceError.value = ''
+  sourceHasTransparency.value = false
+
+  if (props.imageUrl) return
+  if (props.imageFile) {
+    internalImageUrl.value = URL.createObjectURL(props.imageFile)
   }
 }
 
-const getCircleMaskOptions = (dimensions: ImageDimensions | null) => (
-  dimensions ? { outputSize: Math.min(dimensions.width, dimensions.height) } : undefined
-)
-
-const getEllipseMaskOptions = (dimensions: ImageDimensions | null) => (
-  dimensions ? { outputWidth: dimensions.width, outputHeight: dimensions.height } : undefined
-)
-
-const parseAspectRatioParts = (value: string): [number, number] | null => {
-  const ratioText = value.replace('-ellipse', '')
-  const parts = ratioText.split(':').map(Number)
-  if (!parts[0] || !parts[1]) return null
-  return [parts[0], parts[1]]
+const refreshTransparencyState = async () => {
+  sourceHasTransparency.value = await detectImageTransparency(props.imageFile)
 }
 
-const scaleDimensionsToMaxSide = (width: number, height: number, maxSide: number): ImageDimensions => {
-  const safeWidth = Number.isFinite(width) && width > 0 ? width : maxSide
-  const safeHeight = Number.isFinite(height) && height > 0 ? height : maxSide
-  const scale = maxSide / Math.max(safeWidth, safeHeight, 1)
-  return {
-    width: Math.max(1, Math.round(safeWidth * scale)),
-    height: Math.max(1, Math.round(safeHeight * scale)),
-  }
+const scheduleLivePreviewRefresh = (delay = 220) => {
+  if (!dialogVisible.value || !sourceReady.value) return
+  livePreview.scheduleRefresh(() => {
+    void refreshLivePreview()
+  }, delay)
 }
 
-const getCurrentCropDimensions = (): ImageDimensions | null => {
-  const cropData = getCropperNumericState('getData')
-  const cropBoxData = getCropperNumericState('getCropBoxData')
-  const width = cropData?.width || cropBoxData?.width
-  const height = cropData?.height || cropBoxData?.height
-
-  if (!width || !height) return null
-  return { width, height }
-}
-
-const getCropOutputDimensions = (maxSide: number): ImageDimensions => {
-  if (selectedAspectRatio.value === 'circle' || selectedAspectRatio.value === '1:1') {
-    return { width: maxSide, height: maxSide }
-  }
-
-  const fixedRatio = parseAspectRatioParts(selectedAspectRatio.value)
-  if (fixedRatio) {
-    return scaleDimensionsToMaxSide(fixedRatio[0], fixedRatio[1], maxSide)
-  }
-
-  const currentCropDimensions = getCurrentCropDimensions()
-  if (currentCropDimensions) {
-    return scaleDimensionsToMaxSide(currentCropDimensions.width, currentCropDimensions.height, maxSide)
-  }
-
-  return { width: maxSide, height: maxSide }
-}
-
-const getCropperExportOptions = (maxSide: number, mimeType: string, quality: number) => ({
-  ...getCropOutputDimensions(maxSide),
-  mimeType,
-  quality,
-})
-
-const getBaseCropMime = () => (
-  selectedAspectRatio.value === 'circle' || selectedAspectRatio.value.endsWith('-ellipse')
-    ? 'image/png'
-    : (props.imageFile.type || 'image/png')
-)
-
-const getMimeExtension = (mime: string) => {
-  const ext = mime.includes('/') ? mime.split('/')[1] : 'png'
-  return ext === 'jpeg' ? 'jpg' : ext
-}
-
-const scheduleLivePreviewRefresh = () => {
-  if (!dialogVisible.value) return
-  livePreview.scheduleRefresh(refreshLivePreview, 280)
+const renderCurrentImage = async (maxOutputSize: number, quality: number) => {
+  const snapshot = getCurrentSnapshot()
+  const dimensions = getCropOutputDimensions(
+    snapshot.selectedAspectRatio,
+    snapshot.cropData,
+    snapshot.cropBoxData,
+    maxOutputSize,
+  )
+  const cropFile = await exportCropperFile(pictureCropperRef.value, {
+    ...dimensions,
+    mimeType: 'image/png',
+    quality: 0.94,
+  })
+  return await processCroppedImage(cropFile, snapshot, {
+    maxOutputSize,
+    sourceHasTransparency: sourceHasTransparency.value,
+    quality,
+  })
 }
 
 const refreshLivePreview = async () => {
-  if (!dialogVisible.value) return
-  const seq = ++livePreviewSeq
+  if (!dialogVisible.value || !sourceReady.value) return
+
+  const sequence = ++livePreviewSeq
   livePreviewLoading.value = true
-
   try {
-    const instance = getCropperInstance()
-    if (!instance) return
-    updateRoundedRectPreviewRadius()
+    const previewFile = await renderCurrentImage(768, 0.9)
+    if (sequence !== livePreviewSeq || !dialogVisible.value) return
 
-    let baseBlob: Blob | null = null
-    const previewExportOptions = getCropperExportOptions(768, 'image/png', 0.92)
-    if (typeof instance.getBlob === 'function') {
-      try { baseBlob = await instance.getBlob(previewExportOptions) } catch { baseBlob = null }
-    }
-    if (!baseBlob && typeof instance.getDataURL === 'function') {
-      try {
-        const dataURL = instance.getDataURL(previewExportOptions)
-        if (dataURL) { const resp = await fetch(dataURL); baseBlob = await resp.blob() }
-      } catch { baseBlob = null }
-    }
-    if (!baseBlob) return
-
-    let workingFile = new File([baseBlob], `preview_${Date.now()}.png`, { type: 'image/png' })
-    const usesOvalMask = selectedAspectRatio.value === 'circle' || selectedAspectRatio.value.endsWith('-ellipse')
-    const maskReferenceDimensions = usesOvalMask ? await getBlobDimensions(workingFile) : null
-
-    if (!isTransformStateDefault(filterState.value)) {
-      try {
-        const transformedBlob = await applyPerspectiveAndRotateToBlob(workingFile, {
-          rotation: filterState.value.rotation,
-          perspectiveHorizontal: filterState.value.perspectiveHorizontal,
-          perspectiveVertical: filterState.value.perspectiveVertical,
-        })
-        workingFile = new File([transformedBlob], `preview_${Date.now()}.png`, { type: 'image/png' })
-      } catch { /* ignore */ }
-    }
-
-    if (selectedAspectRatio.value === 'circle') {
-      const masked = await applyCircleMaskToBlob(workingFile, getCircleMaskOptions(maskReferenceDimensions))
-      workingFile = new File([masked], `preview_${Date.now()}.png`, { type: 'image/png' })
-    } else if (selectedAspectRatio.value.endsWith('-ellipse')) {
-      const masked = await applyEllipseMaskToBlob(workingFile, getEllipseMaskOptions(maskReferenceDimensions))
-      workingFile = new File([masked], `preview_${Date.now()}.png`, { type: 'image/png' })
-    } else if (selectedAspectRatio.value === 'free') {
-      if (enableRoundedRect.value && roundedRadius.value > 0) {
-        workingFile = await applyRoundedRectMaskToBlob(workingFile, roundedRadius.value)
-      }
-    } else if (selectedAspectRatio.value === '1:1') {
-      if (enableRoundedRect.value && roundedRadius.value > 0) {
-        workingFile = await applyRoundedRectMaskToBlob(workingFile, roundedRadius.value)
-      }
-    }
-
-    if (enableMargin.value && marginPercent.value > 0) {
-      const marginBlob = await applyMarginToBlob(workingFile, marginPercent.value)
-      workingFile = new File([marginBlob], `preview_${Date.now()}.png`, { type: 'image/png' })
-    }
-
-    const filtered = await applyFiltersToImage(workingFile, filterState.value)
-
-    if (seq !== livePreviewSeq) return
-    const nextUrl = URL.createObjectURL(filtered)
-    const prevUrl = livePreviewUrl.value
+    const nextUrl = URL.createObjectURL(previewFile)
+    const previousUrl = livePreviewUrl.value
     livePreviewUrl.value = nextUrl
-    if (prevUrl?.startsWith('blob:')) URL.revokeObjectURL(prevUrl)
-  } catch { /* preview errors silently ignored */ }
-  finally { if (seq === livePreviewSeq) livePreviewLoading.value = false }
+    livePreviewError.value = ''
+    if (previousUrl.startsWith('blob:')) URL.revokeObjectURL(previousUrl)
+  } catch (error: any) {
+    if (sequence === livePreviewSeq) {
+      livePreviewError.value = error?.message || '预览生成失败，请重试'
+    }
+  } finally {
+    if (sequence === livePreviewSeq) livePreviewLoading.value = false
+  }
 }
 
-watch(
-  () => [selectedAspectRatio.value, enableRoundedRect.value, roundedRadius.value, enableMargin.value, marginPercent.value],
-  () => { scheduleLivePreviewRefresh(); updateRoundedRectPreviewRadius(); scheduleCropHistorySnapshot() },
-)
-watch(filterState, () => { scheduleLivePreviewRefresh(); scheduleCropHistorySnapshot() }, { deep: true })
-watch(dialogVisible, (open) => {
-  if (!open) { livePreview.cancelRefresh(); clearLivePreviewUrl() }
-  else { scheduleLivePreviewRefresh() }
+const clearSourceLoadingTimer = () => {
+  if (sourceLoadingTimer !== undefined) {
+    window.clearTimeout(sourceLoadingTimer)
+    sourceLoadingTimer = undefined
+  }
+}
+
+const startSourceLoadingTimer = () => {
+  clearSourceLoadingTimer()
+  sourceLoadingTimer = window.setTimeout(() => {
+    if (!cropperReady.value) {
+      sourceReady.value = false
+      sourceError.value = '图片编辑器加载超时，请关闭后重试'
+    }
+  }, 12000)
+}
+
+const handleCropperReadyInternal = () => {
+  clearSourceLoadingTimer()
+  handleCropperReady()
+  if (Math.abs(filterState.value.rotation ?? 0) > 1e-8) {
+    rotateCropperTo(pictureCropperRef.value, filterState.value.rotation ?? 0)
+  }
+  commitCropHistorySnapshot()
+  cropperReady.value = true
+  sourceReady.value = cropperReady.value && transparencyChecked.value
+  sourceError.value = ''
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
+}
+
+const handleDialogOpened = async () => {
+  startSourceLoadingTimer()
+  try {
+    await nextTick()
+    await assertImageDecodable(props.imageFile)
+    await refreshTransparencyState()
+    transparencyChecked.value = true
+    sourceReady.value = cropperReady.value && transparencyChecked.value
+    if (sourceUrl.value) {
+      scheduleLivePreviewRefresh()
+    }
+  } catch (error: any) {
+    clearSourceLoadingTimer()
+    sourceReady.value = false
+    sourceError.value = error?.message || '图片载入失败'
+  }
+}
+
+const handleToolChange = (tool: ImageEditorTool) => {
+  activeTool.value = tool
+}
+
+const updateAspectRatio = (value: string) => {
+  if (!cropperReady.value) return
+  if (selectedAspectRatio.value === value) return
+  sourceReady.value = false
+  selectedAspectRatio.value = value
+  if (!showRoundedControls.value) enableRoundedRect.value = false
+  markCropEditDirty()
+  void nextTick(() => scheduleLivePreviewRefresh())
+}
+
+const updateFilter = (patch: Partial<CropFilterState>) => {
+  if (!cropperReady.value) return
+  filterState.value = {
+    ...filterState.value,
+    ...patch,
+  }
+  if (patch.rotation !== undefined) {
+    rotateCropperTo(pictureCropperRef.value, patch.rotation)
+  }
+  markCropEditDirty()
+  scheduleLivePreviewRefresh()
+}
+
+const updateHsl = (key: HslColorKey, axis: 'h' | 's' | 'l', value: number) => {
+  if (!cropperReady.value) return
+  const current = filterState.value.hslAdjustments[key] ?? { h: 0, s: 0, l: 0 }
+  filterState.value = {
+    ...filterState.value,
+    hslAdjustments: {
+      ...filterState.value.hslAdjustments,
+      [key]: {
+        ...current,
+        [axis]: value,
+      },
+    },
+  }
+  markCropEditDirty()
+  scheduleLivePreviewRefresh()
+}
+
+const resetCurrentHsl = () => {
+  if (!cropperReady.value) return
+  const key = activeHslColor.value
+  filterState.value = {
+    ...filterState.value,
+    hslAdjustments: {
+      ...filterState.value.hslAdjustments,
+      [key]: { h: 0, s: 0, l: 0 },
+    },
+  }
+  markCropEditDirty()
+  commitCropHistorySnapshot()
+  scheduleLivePreviewRefresh()
+}
+
+const normalizeRotation = (value: number) => {
+  let next = value % 360
+  if (next > 180) next -= 360
+  if (next <= -180) next += 360
+  return next
+}
+
+const handleQuickRotate = (degrees: number) => {
+  if (!cropperReady.value) return
+  updateFilter({
+    rotation: normalizeRotation((filterState.value.rotation ?? 0) + degrees),
+  })
+  commitCropHistorySnapshot()
+}
+
+const handleCommittedChange = () => {
+  if (!cropperReady.value) return
+  markCropEditDirty()
+  commitCropHistorySnapshot()
+}
+
+const {
+  handlePointerDown: handleRightDragPointerDown,
+  handlePointerMove: handleRightDragPointerMove,
+  handlePointerEnd: handleRightDragPointerEnd,
+  handleLostPointerCapture: handleRightDragLostPointerCapture,
+  handleContextMenu: handleRightDragContextMenu,
+} = useCropperRightDrag({
+  canDrag: () => cropperReady.value && sourceReady.value,
+  moveBy: (offsetX, offsetY) => moveCropper(pictureCropperRef.value, offsetX, offsetY),
+  onMoved: () => {
+    markCropEditDirty()
+    scheduleLivePreviewRefresh(160)
+  },
+  onDragEnd: () => {
+    handleCommittedChange()
+    scheduleLivePreviewRefresh(0)
+  },
 })
 
-const handleCropConfirm = async () => {
-  if (!pictureCropperRef.value || !props.imageFile) { return }
-
-  cropping.value = true
-  try {
-    const cropperInstance = getCropperInstance()
-    if (!cropperInstance) { cropping.value = false; return }
-
-    let croppedFile: File | null = null
-    let previewUrl: string = ''
-    const cropMime = getBaseCropMime()
-    const cropExportOptions = getCropperExportOptions(2000, cropMime, 0.9)
-
-    if (typeof cropperInstance.getFile === 'function') {
-      try {
-        croppedFile = await cropperInstance.getFile(cropExportOptions)
-        if (croppedFile) previewUrl = URL.createObjectURL(croppedFile)
-      } catch { /* fall through */ }
-    }
-
-    if (!croppedFile && typeof cropperInstance.getBlob === 'function') {
-      try {
-        const mime = cropExportOptions.mimeType
-        const blob = await cropperInstance.getBlob(cropExportOptions)
-        if (blob) {
-          const ext = getMimeExtension(mime)
-          croppedFile = new File([blob], `main_photo_${Date.now()}.${ext}`, { type: mime })
-          previewUrl = URL.createObjectURL(blob)
-        }
-      } catch { /* fall through */ }
-    }
-
-    if (!croppedFile && typeof cropperInstance.getDataURL === 'function') {
-      try {
-        const mime = cropExportOptions.mimeType
-        const dataURL = cropperInstance.getDataURL(cropExportOptions)
-        if (dataURL) {
-          const response = await fetch(dataURL)
-          const blob = await response.blob()
-          const ext = getMimeExtension(mime)
-          croppedFile = new File([blob], `main_photo_${Date.now()}.${ext}`, { type: mime })
-          previewUrl = dataURL
-        }
-      } catch { /* fall through */ }
-    }
-
-    if (!croppedFile) {
-      const nativeCropper = pictureCropperRef.value.cropper || pictureCropperRef.value.$cropper || (cropperInstance.cropper || null)
-      if (nativeCropper && typeof nativeCropper.getCroppedCanvas === 'function') {
-        try {
-          const canvas = nativeCropper.getCroppedCanvas({ width: cropExportOptions.width, height: cropExportOptions.height, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' })
-          if (canvas) {
-            const mime = cropExportOptions.mimeType
-            const blob = await new Promise<Blob>((resolve, reject) => {
-              canvas.toBlob((b: Blob | null) => b ? resolve(b) : reject(new Error('Canvas toBlob failed')), mime, 0.9)
-            })
-            const ext = getMimeExtension(mime)
-            croppedFile = new File([blob], `main_photo_${Date.now()}.${ext}`, { type: mime })
-            previewUrl = URL.createObjectURL(blob)
-          }
-        } catch { /* fall through */ }
-      }
-    }
-
-    if (!croppedFile) { cropping.value = false; return }
-
-    const usesOvalMask = selectedAspectRatio.value === 'circle' || selectedAspectRatio.value.endsWith('-ellipse')
-    const maskReferenceDimensions = usesOvalMask ? await getBlobDimensions(croppedFile) : null
-
-    if (!isTransformStateDefault(filterState.value)) {
-      try {
-        const transformedBlob = await applyPerspectiveAndRotateToBlob(croppedFile, {
-          rotation: filterState.value.rotation,
-          perspectiveHorizontal: filterState.value.perspectiveHorizontal,
-          perspectiveVertical: filterState.value.perspectiveVertical,
-        })
-        if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-        croppedFile = new File([transformedBlob], `main_photo_${Date.now()}.png`, { type: 'image/png' })
-        previewUrl = URL.createObjectURL(transformedBlob)
-      } catch (e: any) { /* ignore */ }
-    }
-
-    if (selectedAspectRatio.value === 'circle') {
-      try {
-        const maskedBlob = await applyCircleMaskToBlob(croppedFile, getCircleMaskOptions(maskReferenceDimensions))
-        if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-        croppedFile = new File([maskedBlob], `main_photo_${Date.now()}.png`, { type: 'image/png' })
-        previewUrl = URL.createObjectURL(maskedBlob)
-      } catch { cropping.value = false; return }
-    } else if (selectedAspectRatio.value.endsWith('-ellipse')) {
-      try {
-        const maskedBlob = await applyEllipseMaskToBlob(croppedFile, getEllipseMaskOptions(maskReferenceDimensions))
-        if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-        croppedFile = new File([maskedBlob], `main_photo_${Date.now()}.png`, { type: 'image/png' })
-        previewUrl = URL.createObjectURL(maskedBlob)
-      } catch { cropping.value = false; return }
-    } else if (selectedAspectRatio.value === 'free') {
-      try {
-        if (enableRoundedRect.value && roundedRadius.value > 0) {
-          const roundedFile = await applyRoundedRectMaskToBlob(croppedFile, roundedRadius.value)
-          if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-          croppedFile = roundedFile; previewUrl = URL.createObjectURL(roundedFile)
-        }
-      } catch { cropping.value = false; return }
-    }
-
-    if (selectedAspectRatio.value === '1:1' && enableRoundedRect.value && roundedRadius.value > 0) {
-      try {
-        const roundedFile = await applyRoundedRectMaskToBlob(croppedFile, roundedRadius.value)
-        if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-        croppedFile = roundedFile; previewUrl = URL.createObjectURL(roundedFile)
-      } catch { /* ignore */ }
-    }
-
-    if (enableMargin.value && marginPercent.value > 0) {
-      try {
-        const marginBlob = await applyMarginToBlob(croppedFile, marginPercent.value)
-        if (previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previewUrl)
-        croppedFile = new File([marginBlob], `main_photo_${Date.now()}.png`, { type: 'image/png' })
-        previewUrl = URL.createObjectURL(marginBlob)
-      } catch { /* ignore */ }
-    }
-
-    const filteredFile = await applyFiltersToImage(croppedFile, filterState.value)
-    const finalPreviewUrl = URL.createObjectURL(filteredFile)
-
-    if (previewUrl && previewUrl !== finalPreviewUrl && previewUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(previewUrl)
-    }
-
-    emit('confirm', filteredFile, finalPreviewUrl)
-    emit('update:visible', false)
-    cropping.value = false
-  } catch { cropping.value = false }
+const handleZoom = (delta: number) => {
+  if (!cropperReady.value) return
+  if (!zoomCropper(pictureCropperRef.value, delta)) return
+  markCropEditDirty()
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
 }
 
-const handleCropCancel = () => {
+const handleFit = () => {
+  if (!cropperReady.value) return
+  if (!fitCropper(pictureCropperRef.value)) return
+  markCropEditDirty()
+  updateRoundedRectPreviewRadius()
+  commitCropHistorySnapshot()
+  scheduleLivePreviewRefresh()
+}
+
+const handleUndo = async () => {
+  if (!cropperReady.value) return
+  await handleCropUndo()
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
+}
+
+const handleRedo = async () => {
+  if (!cropperReady.value) return
+  await handleCropRedo()
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
+}
+
+const handleReset = async () => {
+  if (!cropperReady.value) return
+  const ratioChanged = selectedAspectRatio.value !== 'free'
+  sourceReady.value = false
+  selectedAspectRatio.value = 'free'
+  filterState.value = createDefaultFilterState()
+  enableRoundedRect.value = false
+  roundedRadius.value = 20
+  enableMargin.value = false
+  marginPercent.value = 8
+  activeHslColor.value = 'red'
+  fitCropper(pictureCropperRef.value)
+  markCropEditDirty()
+  await nextTick()
+  if (!ratioChanged) {
+    sourceReady.value = true
+    commitCropHistorySnapshot()
+  } else {
+    markCropEditDirty()
+  }
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
+}
+
+const handleConfirm = async () => {
+  if (!sourceReady.value || confirming.value) return
+  confirming.value = true
+  try {
+    const output = await renderCurrentImage(props.maxOutputSize, 0.92)
+    emit('confirm', output)
+    emit('update:visible', false)
+  } catch (error: any) {
+    ElMessage.error(error?.message || '图片保存失败，请重试')
+  } finally {
+    confirming.value = false
+  }
+}
+
+const confirmDiscard = async () => {
+  if (!isCropEditDirty.value) return true
+  try {
+    await ElMessageBox.confirm(
+      '当前编辑尚未保存，确定放弃本次修改吗？',
+      '放弃编辑',
+      {
+        confirmButtonText: '放弃修改',
+        cancelButtonText: '继续编辑',
+        type: 'warning',
+      },
+    )
+    return true
+  } catch {
+    return false
+  }
+}
+
+const handleCancel = async () => {
+  if (confirming.value || !(await confirmDiscard())) return
   emit('cancel')
   emit('update:visible', false)
 }
 
-const handleCropDialogClose = () => {
-  resetCropHistorySession()
-  if (cropImageSrc.value && cropImageSrc.value.startsWith('blob:')) {
-    URL.revokeObjectURL(cropImageSrc.value)
+const handleBeforeClose = async (done: () => void) => {
+  if (confirming.value) return
+  if (await confirmDiscard()) {
+    emit('cancel')
+    done()
   }
-  livePreview.cancelRefresh()
-  clearLivePreviewUrl()
 }
+
+const cleanupEditor = () => {
+  clearSourceLoadingTimer()
+  livePreviewSeq += 1
+  livePreview.cancelRefresh()
+  livePreview.clearUrl()
+  livePreviewError.value = ''
+  comparingOriginal.value = false
+  sourceReady.value = false
+  resetCropHistorySession()
+}
+
+const handleKeydown = (event: KeyboardEvent) => {
+  if (!dialogVisible.value || confirming.value || event.isComposing) return
+  const target = event.target as HTMLElement | null
+  if (target?.matches('input, textarea, select, [contenteditable="true"]')) return
+
+  const modKey = event.ctrlKey || event.metaKey
+  if (!modKey || event.key.toLowerCase() !== 'z') return
+
+  event.preventDefault()
+  if (event.shiftKey) {
+    void handleRedo()
+  } else {
+    void handleUndo()
+  }
+}
+
+watch(
+  () => [props.imageUrl, props.imageFile],
+  () => resolveSourceUrl(),
+  { immediate: true },
+)
+
+watch(
+  [showRoundedControls, enableRoundedRect, roundedRadius],
+  () => updateRoundedRectPreviewRadius(),
+)
+
+watch(dialogVisible, (visible) => {
+  if (!visible) cleanupEditor()
+})
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', handleKeydown)
+  cleanupEditor()
+  releaseInternalImageUrl()
+})
+
+defineExpose({
+  aspectRatios,
+  selectedAspectRatio,
+  filterState,
+})
 </script>
 
 <style scoped>
-.crop-dialog { z-index: 3000; }
-.crop-container { width: 100%; padding-top: 4px; }
-.crop-dialog :deep(.el-dialog) { max-width: calc(100vw - 48px); max-height: calc(100dvh - 48px); display: flex; flex-direction: column; }
-.crop-dialog :deep(.el-dialog__body) { flex: 1 1 auto; min-height: 0; overflow: hidden; }
-.crop-dialog :deep(.el-dialog__footer) { flex: 0 0 auto; }
-.crop-layout .crop-glass-panel { box-sizing: border-box; display: flex; flex-direction: column; min-height: 0; }
-.crop-layout-inner { display: flex; gap: 18px; height: min(520px, calc(100dvh - 360px)); min-height: 0; max-height: 520px; }
-.crop-left-panel { flex: 0 0 360px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; padding-right: 8px; }
-.crop-right-panel { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: row; gap: 14px; }
-.crop-main-view, .crop-preview-view { min-height: 0; }
-.crop-main-view { flex: 1 1 0; border-radius: 14px; overflow: hidden; background: #f8f8f8; }
-.crop-preview-view { flex: 0 1 420px; max-width: 420px; min-width: 280px; display: flex; flex-direction: column; }
-.crop-preview-view .live-preview { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.crop-preview-view .live-preview-card { flex: 0 1 auto; height: min(420px, 100%); max-height: 100%; }
-.crop-preview-view .live-preview-img { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
-.crop-right-panel .cropper-wrapper { height: 100%; margin: 0; }
-.crop-right-panel .live-preview-card { min-height: 0; }
-
-@media (max-width: 768px) {
-  .crop-layout-inner { flex-direction: column; }
-  .crop-left-panel { max-height: none; overflow: visible; }
+:global(.image-editor-dialog) {
+  --editor-border: rgba(29, 33, 41, 0.09);
+  --editor-surface: #fff;
+  --editor-canvas: #20242b;
 }
 
-.crop-glass-panel { position: relative; padding: 18px 20px 20px; border-radius: 18px; background: radial-gradient(circle at top left, rgba(255,255,255,0.32), rgba(255,255,255,0.08)); border: 1px solid rgba(255,255,255,0.22); box-shadow: 0 18px 45px rgba(15,23,42,0.22), 0 0 0 1px rgba(255,255,255,0.12); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-.crop-header-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
-.hsl-panel { margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.06); }
-.hsl-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.hsl-title { font-size: 13px; font-weight: 500; color: #606266; }
-.perspective-panel { margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(0,0,0,0.06); }
-.perspective-title { font-size: 13px; font-weight: 500; color: #606266; margin-bottom: 6px; }
-.hsl-color-tabs { display: flex; align-items: center; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
-.hsl-color-tab { border: none; padding: 4px 10px; border-radius: 999px; background: #f4f4f5; font-size: 12px; color: #606266; cursor: pointer; transition: background-color 0.15s, color 0.15s, box-shadow 0.15s; }
-.hsl-color-tab--red { color: #c45b5b; }
-.hsl-color-tab--orange { color: #c27a3b; }
-.hsl-color-tab--yellow { color: #b89b2f; }
-.hsl-color-tab--green { color: #4a9b6b; }
-.hsl-color-tab--cyan { color: #3a8f9c; }
-.hsl-color-tab--blue { color: #4a74c4; }
-.hsl-color-tab--purple { color: #7b63c4; }
-.hsl-color-tab.is-active { color: #fff; box-shadow: 0 4px 10px rgba(163,150,255,0.25); }
-.hsl-color-tab--red.is-active { background: linear-gradient(135deg,#d87373 0%,#c13a3a 100%); }
-.hsl-color-tab--orange.is-active { background: linear-gradient(135deg,#e9a45b 0%,#cf7c2c 100%); }
-.hsl-color-tab--yellow.is-active { background: linear-gradient(135deg,#ecd47a 0%,#d4b23a 100%); }
-.hsl-color-tab--green.is-active { background: linear-gradient(135deg,#7bc193 0%,#45a264 100%); }
-.hsl-color-tab--cyan.is-active { background: linear-gradient(135deg,#65b9c7 0%,#3c90a0 100%); }
-.hsl-color-tab--blue.is-active { background: linear-gradient(135deg,#7d9ee0 0%,#496fbe 100%); }
-.hsl-color-tab--purple.is-active { background: linear-gradient(135deg,#a396ff 0%,#7f63d6 100%); }
-.hsl-color-reset-btn { margin-left: auto; }
-.hsl-sliders { margin-top: 4px; }
-.crop-header-copy { display: flex; flex-direction: column; gap: 4px; }
-.crop-title { font-size: 15px; font-weight: 600; color: #303133; }
-.crop-subtitle { font-size: 12px; color: #909399; }
-.crop-history-actions { display: inline-flex; align-items: center; gap: 8px; }
-.crop-history-actions :deep(.el-button) { border-radius: 999px; }
-
-.aspect-ratio-selector { margin-bottom: 14px; padding: 10px 10px 8px; background: transparent; border-radius: 14px; }
-.ratio-label { font-size: 14px; color: #606266; margin-bottom: 12px; font-weight: 500; }
-.ratio-segmented { width: 100%; }
-.ratio-segmented-track { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background-color: rgba(0,0,0,0.04); border-radius: 999px; padding: 2px; }
-.ratio-segmented-thumb { position: absolute; top: 2px; bottom: 2px; left: 2px; width: calc((100% - 4px) / 5); border-radius: 999px; background-color: var(--primary-gold); box-shadow: 0 10px 24px rgba(0,0,0,0.18); transform: translateX(calc(var(--active-index, 0) * 100%)); transition: transform 0.18s ease-out; pointer-events: none; }
-.ratio-segmented-item { position: relative; z-index: 1; border: none; background: transparent; color: #606266; display: inline-flex; align-items: center; justify-content: center; gap: 4px; padding: 6px 4px; font-size: 12px; cursor: pointer; }
-.ratio-segmented-item.is-active { color: #fff; }
-.ratio-icon { display: inline-block; width: 14px; height: 14px; border-radius: 3px; border: 1px solid currentColor; }
-.ratio-icon--free { border-style: dashed; }
-.ratio-icon--1\:1 { border-radius: 2px; }
-.ratio-icon--circle { border-radius: 999px; }
-.ratio-icon--47\:65-ellipse, .ratio-icon--63\:93-ellipse { border-radius: 999px; transform: scaleX(1.3); }
-
-.image-filters { margin-bottom: 12px; padding: 10px 10px 8px; background: rgba(255,255,255,0.16); border-radius: 14px; border: 1px solid rgba(255,255,255,0.22); }
-.filters-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.filters-title { font-size: 13px; color: #606266; }
-.filter-reset-btn { color: var(--primary-gold); }
-.filter-item { display: flex; align-items: center; margin-bottom: 6px; }
-.filter-label { width: 60px; font-size: 14px; color: #606266; white-space: nowrap; }
-.filter-item .el-slider { flex: 1; margin-left: 12px; margin-right: 12px; }
-.filter-value { width: 40px; text-align: right; font-size: 12px; color: #909399; }
-.image-filters :deep(.el-slider__runway) { background-color: #e4e7ed; }
-.image-filters :deep(.el-slider__bar) { background-color: var(--primary-gold); }
-.image-filters :deep(.el-slider__button) { border-color: transparent; background-color: #fff; box-shadow: 0 4px 10px rgba(15,23,42,0.22); }
-.image-filters :deep(.el-slider__runway::before) { content: ''; position: absolute; top: 2px; bottom: 2px; left: 50%; width: 1px; background-color: rgba(0,0,0,0.08); transform: translateX(-0.5px); }
-
-.rounded-rect-settings, .margin-settings { margin-bottom: 12px; padding: 10px 10px 8px; background: rgba(255,255,255,0.16); border-radius: 14px; border: 1px solid rgba(255,255,255,0.22); }
-.rounded-header-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.rounded-title { font-size: 13px; color: #606266; }
-.rounded-radius-row { display: flex; align-items: center; gap: 8px; }
-.rounded-label { width: 60px; font-size: 14px; color: #606266; white-space: nowrap; }
-.rounded-radius-row .el-slider { flex: 1; }
-.rounded-value { width: 40px; text-align: right; font-size: 12px; color: #909399; }
-.rounded-radius-row.is-disabled { opacity: 0.5; }
-.rounded-rect-settings :deep(.el-slider__runway), .margin-settings :deep(.el-slider__runway) { position: relative; }
-.rounded-rect-settings :deep(.el-slider__runway::before), .margin-settings :deep(.el-slider__runway::before) { content: ''; position: absolute; top: 2px; bottom: 2px; left: 50%; width: 1px; background-color: rgba(0,0,0,0.08); transform: translateX(-0.5px); }
-.rounded-rect-settings :deep(.el-slider__bar), .margin-settings :deep(.el-slider__bar) { background-color: var(--primary-gold); }
-.rounded-rect-settings :deep(.el-slider__button), .margin-settings :deep(.el-slider__button) { border-color: transparent; background-color: #fff; box-shadow: 0 4px 10px rgba(15,23,42,0.22); }
-
-.live-preview { margin-top: 12px; }
-.live-preview-header { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 8px; }
-.live-preview-title { font-size: 13px; color: #606266; }
-.live-preview-hint { font-size: 12px; color: #909399; }
-.live-preview-card { border-radius: 14px; border: 1px solid rgba(15,23,42,0.12); background: linear-gradient(45deg,rgba(15,23,42,0.05) 25%,transparent 25%),linear-gradient(-45deg,rgba(15,23,42,0.05) 25%,transparent 25%),linear-gradient(45deg,transparent 75%,rgba(15,23,42,0.05) 75%),linear-gradient(-45deg,transparent 75%,rgba(15,23,42,0.05) 75%),#f7f8fa; background-size: 18px 18px; background-position: 0 0,0 9px,9px -9px,-9px 0px,0 0; padding: 10px; min-height: 160px; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-.live-preview-img { max-width: 100%; max-height: 160px; width: auto; height: auto; object-fit: contain; display: block; box-shadow: 0 0 0 1px rgba(15,23,42,0.18), 0 12px 28px rgba(15,23,42,0.18); }
-.live-preview-placeholder { font-size: 12px; color: #909399; }
-
-.cropper-wrapper { --rounded-radius: v-bind('roundedRadius + "%"'); box-sizing: border-box; width: 100%; max-width: 100%; margin: 12px auto 0; padding: 8px; overflow: hidden; border-radius: 18px; background: radial-gradient(circle at top, rgba(255,255,255,0.26), rgba(255,255,255,0.06)); border: 1px solid rgba(255,255,255,0.24); box-shadow: 0 20px 48px rgba(15,23,42,0.28), 0 0 0 1px rgba(255,255,255,0.16); }
-.cropper-wrapper :deep(.cropper-container) { max-width: 100% !important; max-height: 100% !important; }
-:deep(.cropper-canvas img), :deep(.cropper-view-box img) { filter: brightness(var(--brightness, 100%)) contrast(var(--contrast, 100%)) saturate(var(--saturate, 100%)) hue-rotate(var(--hue-rotate, 0deg)) !important; }
-
-.cropper-wrapper.circle-crop :deep(.cropper-view-box), .cropper-wrapper.circle-crop :deep(.cropper-face) { border-radius: 50%; }
-.cropper-wrapper.rounded-rect-preview :deep(.cropper-view-box), .cropper-wrapper.rounded-rect-preview :deep(.cropper-face) { border-radius: var(--rounded-radius-px, var(--rounded-radius)); }
-
-@media (max-width: 768px) {
-  .crop-dialog :deep(.el-dialog) { margin: 5vh auto 0; max-height: 90vh; }
-  .crop-dialog :deep(.el-dialog__body) { padding: 14px 14px 18px; max-height: calc(90vh - 120px); overflow-y: auto; }
-  .ratio-label { font-size: 13px; margin-bottom: 10px; }
-  .crop-glass-panel { padding: 14px 14px 16px; border-radius: 16px; }
-  .crop-header-row { flex-direction: column; align-items: stretch; }
-  .crop-history-actions { width: 100%; }
-  .crop-history-actions :deep(.el-button) { flex: 1; }
-  .live-preview-img { max-height: 160px; }
-  .dialog-footer { gap: 8px; }
-  .dialog-footer :deep(.el-button) { flex: 1; }
+:global(.image-editor-dialog.el-dialog) {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  max-width: calc(100vw - 48px);
+  max-height: min(860px, calc(100dvh - 48px));
+  margin: 24px auto;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--editor-surface);
 }
 
-@media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
-  .crop-layout-inner {
-    flex-direction: column;
-    height: auto;
-    min-height: 0;
-    max-height: none;
+:global(.image-editor-dialog .el-dialog__header) {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--editor-border);
+}
+
+:global(.image-editor-dialog .el-dialog__body) {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+:global(.image-editor-dialog.is-fullscreen) {
+  height: 100dvh;
+  margin: 0;
+  border-radius: 0;
+}
+
+:global(.image-editor-dialog.is-fullscreen .el-dialog__body) {
+  height: calc(100dvh - 82px);
+}
+
+.image-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  min-width: 0;
+}
+
+.image-editor-header__copy {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.image-editor-header__copy > span {
+  color: var(--primary-gold-dark);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.image-editor-header__copy > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.image-editor-header__copy strong {
+  color: #282e37;
+  font-size: 16px;
+}
+
+.image-editor-header__copy small {
+  color: #8a919d;
+  font-size: 11px;
+}
+
+.image-editor-shell {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr) 376px;
+  height: min(760px, calc(100dvh - 134px));
+  min-height: 520px;
+  overflow: hidden;
+  background: #f6f7f9;
+}
+
+.image-editor-canvas {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  background: var(--editor-canvas);
+}
+
+.image-editor-canvas__stage {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+  justify-content: stretch;
+  padding: 18px;
+  overflow: hidden;
+}
+
+.cropper-wrapper {
+  --rounded-radius: v-bind('roundedRadius + "%"');
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  padding: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.035);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.24);
+}
+
+.cropper-wrapper :deep(.cropper-container) {
+  max-width: 100% !important;
+  max-height: 100% !important;
+}
+
+.cropper-wrapper :deep(.vue-picture-cropper),
+.cropper-wrapper :deep(.vue--picture-cropper__wrap) {
+  width: 100% !important;
+  height: 100% !important;
+}
+
+:deep(.cropper-canvas img),
+:deep(.cropper-view-box img) {
+  filter:
+    brightness(var(--brightness, 100%))
+    contrast(var(--contrast, 100%))
+    saturate(var(--saturate, 100%))
+    hue-rotate(var(--hue-rotate, 0deg)) !important;
+}
+
+.cropper-wrapper.circle-crop :deep(.cropper-view-box),
+.cropper-wrapper.circle-crop :deep(.cropper-face) {
+  border-radius: 50%;
+}
+
+.cropper-wrapper.rounded-rect-preview :deep(.cropper-view-box),
+.cropper-wrapper.rounded-rect-preview :deep(.cropper-face) {
+  border-radius: var(--rounded-radius-px, var(--rounded-radius));
+}
+
+.original-image {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.compare-badge {
+  position: absolute;
+  top: 26px;
+  left: 26px;
+  z-index: 3;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(18, 21, 26, 0.76);
+  color: #fff;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  pointer-events: none;
+}
+
+.canvas-loading,
+.canvas-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 9px;
+  padding: 24px;
+  background: rgba(25, 29, 35, 0.9);
+  color: #d8dbe0;
+  font-size: 12px;
+  text-align: center;
+}
+
+.canvas-error {
+  color: #ffd9d9;
+}
+
+.image-editor-canvas__footer {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 52px;
+  padding: 8px 14px 8px 18px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  background: #1a1e24;
+  color: #aeb4be;
+  font-size: 11px;
+}
+
+.canvas-tools {
+  display: flex;
+  gap: 6px;
+}
+
+.inspector-toggle {
+  display: none;
+}
+
+.canvas-tools :deep(.el-button) {
+  color: #e8e9eb;
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.canvas-tools :deep(.el-button:hover) {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.image-editor-inspector {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border-left: 1px solid var(--editor-border);
+  background: var(--editor-surface);
+}
+
+.image-editor-inspector__preview {
+  position: relative;
+  z-index: 2;
+  flex: 0 0 auto;
+  background: var(--editor-surface);
+}
+
+.image-editor-inspector__scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+@media (max-width: 1199px) and (min-width: 769px) {
+  .image-editor-shell {
+    grid-template-columns: 64px minmax(0, 1fr);
+    position: relative;
   }
 
-  .crop-preview-view {
-    width: 100%;
+  .image-editor-inspector {
+    position: absolute;
+    right: 12px;
+    top: 12px;
+    bottom: 12px;
+    z-index: 5;
+    width: min(360px, calc(100% - 88px));
+    border: 1px solid rgba(29, 33, 41, 0.12);
+    border-radius: 14px;
+    box-shadow: 0 16px 42px rgba(12, 16, 22, 0.22);
+  }
+
+  .image-editor-canvas__stage {
+    padding-right: min(380px, calc(100% - 88px));
+  }
+
+  .image-editor-shell.is-inspector-collapsed .image-editor-canvas__stage {
+    padding-right: 18px;
+  }
+
+  .image-editor-shell.is-inspector-collapsed .image-editor-inspector {
+    display: none;
+  }
+
+  .inspector-toggle {
+    display: inline-flex;
+  }
+}
+
+@media (max-width: 768px) {
+  :global(.image-editor-dialog.el-dialog) {
     max-width: none;
-    min-width: 0;
-  }
-
-  .crop-preview-view .live-preview-card {
-    height: auto;
-    min-height: 160px;
-  }
-
-  .crop-left-panel {
     max-height: none;
-    overflow: visible;
   }
 
-  .crop-dialog :deep(.el-dialog) {
-    margin: 5dvh auto 0;
-    max-height: 90dvh;
+  :global(.image-editor-dialog .el-dialog__header) {
+    padding: calc(10px + env(safe-area-inset-top)) 12px 10px;
   }
 
-  .crop-dialog :deep(.el-dialog__body) {
-    padding: 14px 14px 18px;
-    max-height: calc(90dvh - 120px);
-    overflow-y: auto;
-  }
-
-  .ratio-label {
-    font-size: 13px;
-    margin-bottom: 10px;
-  }
-
-  .crop-glass-panel {
-    padding: 14px 14px 16px;
-    border-radius: 16px;
-  }
-
-  .crop-header-row {
-    flex-direction: column;
+  .image-editor-header {
     align-items: stretch;
-  }
-
-  .crop-history-actions {
-    width: 100%;
-  }
-
-  .crop-history-actions :deep(.el-button) {
-    flex: 1;
-  }
-
-  .dialog-footer {
+    flex-direction: column;
     gap: 8px;
   }
 
-  .dialog-footer :deep(.el-button) {
-    flex: 1;
+  .image-editor-header__copy small {
+    display: none;
+  }
+
+  .image-editor-shell {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(300px, 48dvh) minmax(260px, auto);
+    height: calc(100dvh - 92px - env(safe-area-inset-top));
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .image-editor-canvas {
+    min-height: 300px;
+  }
+
+  .image-editor-canvas__stage {
+    padding: 12px;
+  }
+
+  .image-editor-canvas__footer {
+    min-height: 48px;
+    padding-left: 12px;
+  }
+
+  .image-editor-canvas__footer > span {
+    display: none;
+  }
+
+  .image-editor-shell.is-inspector-collapsed {
+    grid-template-rows: auto minmax(300px, 1fr) 0;
+  }
+
+  .image-editor-inspector {
+    height: clamp(360px, 58dvh, 540px);
+    overflow: hidden;
+    border-top: 1px solid var(--editor-border);
+    border-left: 0;
+  }
+
+  .image-editor-shell.is-inspector-collapsed .image-editor-inspector {
+    display: none;
   }
 }
-
-.dialog-footer { display: flex; justify-content: flex-end; gap: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.26); }
-.dialog-footer :deep(.el-button) { border-radius: 999px; }
-.dialog-footer :deep(.el-button--primary) { background-color: var(--primary-gold); border-color: var(--primary-gold); box-shadow: 0 10px 26px rgba(15,23,42,0.25); }
 </style>
