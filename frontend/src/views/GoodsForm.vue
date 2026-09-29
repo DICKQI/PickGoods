@@ -103,14 +103,8 @@
                   <el-icon class="is-loading"><Loading /></el-icon>
                   <span>正在识别图片形状...</span>
                 </div>
-                <div v-else-if="classifyError" class="classify-status classify-status--error">
-                  {{ classifyError }}
-                </div>
                 <div v-else-if="classifyResult?.shape_type === 'unknown'" class="classify-status">
                   {{ classifyResult.detail || '图片形状暂时无法可靠判断，请手动选择品类' }}
-                </div>
-                <div v-else-if="classifyResult?.shape_type === null && classifyResult.detail" class="classify-status classify-status--error">
-                  {{ classifyResult.detail }}
                 </div>
                 <div v-else-if="!selectedCategory && classifyResult?.suggestions?.length && classifyResult.shape_type" class="classify-suggestions">
                   <span class="classify-suggestions__label">{{ formatClassifyShape(classifyResult.shape_type) }}，疑似品类：</span>
@@ -1293,7 +1287,7 @@ const applySelectedThemeImages = async () => {
 }
 
 const imageClassifier = useImageClassifier()
-const { classifying, classifyResult, classifyError, dismissSuggestions, runClassification } = imageClassifier
+const { classifying, classifyResult, dismissSuggestions, runClassification } = imageClassifier
 
 const formatClassifyShape = (shapeType: 'round' | 'square' | 'rectangle' | 'unknown' | null) => ({
   round: '圆形',
@@ -3199,10 +3193,6 @@ onUnmounted(() => {
   margin-top: 8px;
   color: var(--el-text-color-secondary);
   font-size: 12px;
-}
-
-.classify-status--error {
-  color: var(--el-color-danger);
 }
 
 .classify-suggestions {

@@ -10,6 +10,20 @@
     @opened="handleDialogOpened"
     @closed="cleanupEditor"
   >
+    <svg
+      class="shape-clip-defs"
+      width="0"
+      height="0"
+      aria-hidden="true"
+      focusable="false"
+    >
+      <defs>
+        <clipPath :id="heartClipId" clipPathUnits="objectBoundingBox">
+          <path :d="heartClipPath" />
+        </clipPath>
+      </defs>
+    </svg>
+
     <template #header>
       <header class="image-editor-header">
         <div class="image-editor-header__copy">
@@ -52,7 +66,12 @@
           <div
             class="cropper-wrapper"
             :class="{
-              'circle-crop': selectedAspectRatio === 'circle' || selectedAspectRatio.endsWith('-ellipse'),
+              'circle-crop': (
+                selectedAspectRatio === 'circle'
+                || selectedAspectRatio === 'custom-ellipse'
+                || selectedAspectRatio.endsWith('-ellipse')
+              ),
+              'heart-crop': selectedAspectRatio === 'heart',
               'rounded-rect-preview': showRoundedControls && enableRoundedRect,
             }"
             :style="cropperWrapperStyle"
@@ -134,6 +153,8 @@
             :rounded-radius="roundedRadius"
             :enable-margin="enableMargin"
             :margin-percent="marginPercent"
+            :heart-width-percent="heartWidthPercent"
+            :heart-height-percent="heartHeightPercent"
             :source-has-transparency="sourceHasTransparency"
             :disabled="!sourceReady"
             @update:selected-aspect-ratio="updateAspectRatio"
@@ -142,6 +163,8 @@
             @update:rounded-radius="roundedRadius = $event"
             @update:enable-margin="enableMargin = $event"
             @update:margin-percent="marginPercent = $event"
+            @update:heart-width-percent="updateHeartWidthPercent"
+            @update:heart-height-percent="updateHeartHeightPercent"
             @update-filter="updateFilter"
             @update-hsl="updateHsl"
             @quick-rotate="handleQuickRotate"
@@ -161,6 +184,7 @@ import {
   onBeforeUnmount,
   onMounted,
   ref,
+  useId,
   watch,
 } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -176,6 +200,7 @@ import {
   fitCropper,
   getCropperNumericState,
   moveCropper,
+  registerCropperInstance,
   rotateCropperTo,
   zoomCropper,
 } from '@/views/goods-form/imageCropperAdapter'
@@ -199,6 +224,7 @@ import { useCropperRightDrag } from '@/views/goods-form/composables/useCropperRi
 import { useLivePreview } from '@/views/goods-form/composables/useLivePreview'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import type { ImageEditorTool } from '@/views/goods-form/imageEditorConfig'
+import { getHeartSvgPath } from '@/views/goods-form/imageShape'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -239,8 +265,10 @@ const aspectRatios = [
   { label: '自由', value: 'free' },
   { label: '1:1', value: '1:1' },
   { label: '圆形', value: 'circle' },
+  { label: '心形', value: 'heart' },
   { label: '47:65', value: '47:65-ellipse' },
   { label: '63:93', value: '63:93-ellipse' },
+  { label: '自定义', value: 'custom-ellipse' },
 ]
 
 const selectedAspectRatio = ref('free')
@@ -249,12 +277,18 @@ const enableRoundedRect = ref(false)
 const roundedRadius = ref(20)
 const enableMargin = ref(false)
 const marginPercent = ref(8)
+const heartWidthPercent = ref(100)
+const heartHeightPercent = ref(100)
 const activeHslColor = ref<HslColorKey>('red')
 const roundedRectPreviewPx = ref(0)
+const heartClipId = `image-editor-heart-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
 
 const sourceUrl = computed(() => props.imageUrl || internalImageUrl.value)
 const showRoundedControls = computed(() => (
   selectedAspectRatio.value === 'free' || selectedAspectRatio.value === '1:1'
+))
+const heartClipPath = computed(() => (
+  getHeartSvgPath(heartWidthPercent.value, heartHeightPercent.value)
 ))
 
 const getCurrentCropperNumericState = (method: 'getData' | 'getCropBoxData' | 'getCanvasData') => (
@@ -268,6 +302,8 @@ const getCurrentSnapshot = (): CropEditSnapshot => ({
   roundedRadius: roundedRadius.value,
   enableMargin: enableMargin.value,
   marginPercent: marginPercent.value,
+  heartWidthPercent: heartWidthPercent.value,
+  heartHeightPercent: heartHeightPercent.value,
   cropData: getCurrentCropperNumericState('getData'),
   cropBoxData: getCurrentCropperNumericState('getCropBoxData'),
   canvasData: getCurrentCropperNumericState('getCanvasData'),
@@ -281,6 +317,8 @@ const cropHistory = useCropHistory({
   roundedRadius,
   enableMargin,
   marginPercent,
+  heartWidthPercent,
+  heartHeightPercent,
   getCropperNumericState: getCurrentCropperNumericState,
   applyCropperStateFromSnapshot: (snapshot) => (
     applyCropperStateFromSnapshot(pictureCropperRef.value, snapshot)
@@ -337,7 +375,11 @@ const cropperOptions = computed(() => {
     zoomend: handleCommittedChange,
   }
 
-  if (selectedAspectRatio.value === 'circle') {
+  if (selectedAspectRatio.value === 'custom-ellipse') {
+    options.autoCropArea = 0.55
+    options.aspectRatio = Number.NaN
+    options.fixed = false
+  } else if (selectedAspectRatio.value === 'circle' || selectedAspectRatio.value === 'heart') {
     options.aspectRatio = 1
     options.fixed = true
     options.fixedNumber = [1, 1]
@@ -366,6 +408,7 @@ const cropperOptions = computed(() => {
 const cropperStyle = computed(() => computeCropperStyle(filterState.value))
 const cropperWrapperStyle = computed(() => ({
   '--rounded-radius-px': `${roundedRectPreviewPx.value}px`,
+  '--heart-clip-url': `url(#${heartClipId})`,
 }))
 
 const livePreview = useLivePreview()
@@ -482,11 +525,14 @@ const startSourceLoadingTimer = () => {
 
 const handleCropperReadyInternal = () => {
   clearSourceLoadingTimer()
-  handleCropperReady()
+  registerCropperInstance(pictureCropperRef.value)
+  const restoredPendingSnapshot = handleCropperReady()
   if (Math.abs(filterState.value.rotation ?? 0) > 1e-8) {
     rotateCropperTo(pictureCropperRef.value, filterState.value.rotation ?? 0)
   }
-  commitCropHistorySnapshot()
+  if (!restoredPendingSnapshot) {
+    commitCropHistorySnapshot()
+  }
   cropperReady.value = true
   sourceReady.value = cropperReady.value && transparencyChecked.value
   sourceError.value = ''
@@ -552,6 +598,20 @@ const updateHsl = (key: HslColorKey, axis: 'h' | 's' | 'l', value: number) => {
       },
     },
   }
+  markCropEditDirty()
+  scheduleLivePreviewRefresh()
+}
+
+const updateHeartWidthPercent = (value: number) => {
+  if (!cropperReady.value) return
+  heartWidthPercent.value = value
+  markCropEditDirty()
+  scheduleLivePreviewRefresh()
+}
+
+const updateHeartHeightPercent = (value: number) => {
+  if (!cropperReady.value) return
+  heartHeightPercent.value = value
   markCropEditDirty()
   scheduleLivePreviewRefresh()
 }
@@ -652,6 +712,8 @@ const handleReset = async () => {
   roundedRadius.value = 20
   enableMargin.value = false
   marginPercent.value = 8
+  heartWidthPercent.value = 100
+  heartHeightPercent.value = 100
   activeHslColor.value = 'red'
   fitCropper(pictureCropperRef.value)
   markCropEditDirty()
@@ -812,7 +874,7 @@ defineExpose({
 }
 
 :global(.image-editor-dialog.is-fullscreen .el-dialog__body) {
-  height: calc(100dvh - 82px);
+  height: auto;
 }
 
 .image-editor-header {
@@ -920,9 +982,23 @@ defineExpose({
   border-radius: 50%;
 }
 
+.cropper-wrapper.heart-crop :deep(.cropper-view-box),
+.cropper-wrapper.heart-crop :deep(.cropper-face) {
+  border-radius: 0;
+  clip-path: var(--heart-clip-url);
+}
+
 .cropper-wrapper.rounded-rect-preview :deep(.cropper-view-box),
 .cropper-wrapper.rounded-rect-preview :deep(.cropper-face) {
   border-radius: var(--rounded-radius-px, var(--rounded-radius));
+}
+
+.shape-clip-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+  pointer-events: none;
 }
 
 .original-image {
@@ -1084,7 +1160,7 @@ defineExpose({
   .image-editor-shell {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: auto minmax(300px, 48dvh) minmax(260px, auto);
-    height: calc(100dvh - 92px - env(safe-area-inset-top));
+    height: 100%;
     min-height: 0;
     overflow-y: auto;
   }

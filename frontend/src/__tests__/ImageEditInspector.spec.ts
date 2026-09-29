@@ -12,10 +12,21 @@ const ButtonStub = {
 const SliderStub = {
   props: ['modelValue', 'min', 'max', 'disabled'],
   emits: ['update:modelValue', 'change'],
-  template: '<input type="range" :value="modelValue" :disabled="disabled" />',
+  template: `
+    <input
+      type="range"
+      :value="modelValue"
+      :disabled="disabled"
+      @input="$emit('update:modelValue', Number($event.target.value))"
+      @change="$emit('change')"
+    />
+  `,
 }
 
-function mountInspector(activeTool = 'crop') {
+function mountInspector(
+  activeTool = 'crop',
+  overrides: Record<string, unknown> = {},
+) {
   return mount(ImageEditInspector, {
     props: {
       activeTool: activeTool as any,
@@ -26,7 +37,10 @@ function mountInspector(activeTool = 'crop') {
       roundedRadius: 20,
       enableMargin: false,
       marginPercent: 8,
+      heartWidthPercent: 100,
+      heartHeightPercent: 100,
       sourceHasTransparency: false,
+      ...overrides,
     },
     global: {
       stubs: {
@@ -46,18 +60,54 @@ function mountInspector(activeTool = 'crop') {
 describe('ImageEditInspector', () => {
   it('裁剪页展示全部现有比例并发出比例变更', async () => {
     const wrapper = mountInspector()
-    const options = wrapper.findAll('.ratio-option')
+    const baseOptions = wrapper.get('.ratio-grid').findAll('.ratio-option')
 
-    expect(options.map(option => option.text())).toEqual([
+    expect(baseOptions.map(option => option.text())).toEqual([
       expect.stringContaining('自由'),
       expect.stringContaining('1:1'),
       expect.stringContaining('圆形'),
-      expect.stringContaining('47:65'),
-      expect.stringContaining('63:93'),
+      expect.stringContaining('心形'),
     ])
 
-    await options[1]!.trigger('click')
+    await baseOptions[1]!.trigger('click')
     expect(wrapper.emitted('update:selectedAspectRatio')?.[0]).toEqual(['1:1'])
+  })
+
+  it('椭圆聚合区默认折叠，展开后保留预设与自定义入口', async () => {
+    const wrapper = mountInspector()
+    const toggle = wrapper.get('.ellipse-group__toggle')
+    const body = wrapper.get('.ellipse-group__body')
+
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(body.isVisible()).toBe(false)
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    expect(body.attributes('style')).not.toContain('display: none')
+    expect(body.text()).toContain('47:65')
+    expect(body.text()).toContain('63:93')
+    expect(body.text()).toContain('自定义')
+
+    await body.findAll('.ratio-option')[2]!.trigger('click')
+    const ratioEvents = wrapper.emitted('update:selectedAspectRatio') ?? []
+    expect(ratioEvents[ratioEvents.length - 1]).toEqual(['custom-ellipse'])
+  })
+
+  it('心形模式展示宽高滑杆并发送更新事件', async () => {
+    const wrapper = mountInspector('crop', {
+      selectedAspectRatio: 'heart',
+      heartWidthPercent: 80,
+      heartHeightPercent: 90,
+    })
+    const sliders = wrapper.get('.heart-size-panel').findAll('input[type="range"]')
+
+    expect(sliders).toHaveLength(2)
+    await sliders[0]!.setValue('65')
+    await sliders[1]!.setValue('72')
+
+    expect(wrapper.emitted('update:heartWidthPercent')?.[0]).toEqual([65])
+    expect(wrapper.emitted('update:heartHeightPercent')?.[0]).toEqual([72])
+    expect(wrapper.emitted('commit')).toHaveLength(2)
   })
 
   it('高级色彩默认折叠并可展开', async () => {

@@ -32,6 +32,13 @@ describe('getCropOutputDimensions', () => {
     })
   })
 
+  it('心形没有裁切数据时按正方形最长边计算', () => {
+    expect(getCropOutputDimensions('heart', null, null, 2000)).toEqual({
+      width: 2000,
+      height: 2000,
+    })
+  })
+
   it('优先使用 getData 的尺寸而不是裁切框尺寸', () => {
     expect(getCropOutputDimensions(
       'free',
@@ -62,6 +69,8 @@ describe('resolveOutputMime', () => {
   it('圆形与椭圆输出 PNG', () => {
     expect(resolveOutputMime({ ...base, selectedAspectRatio: 'circle' }, false)).toBe('image/png')
     expect(resolveOutputMime({ ...base, selectedAspectRatio: '47:65-ellipse' }, false)).toBe('image/png')
+    expect(resolveOutputMime({ ...base, selectedAspectRatio: 'custom-ellipse' }, false)).toBe('image/png')
+    expect(resolveOutputMime({ ...base, selectedAspectRatio: 'heart' }, false)).toBe('image/png')
   })
 
   it('启用圆角时输出 PNG', () => {

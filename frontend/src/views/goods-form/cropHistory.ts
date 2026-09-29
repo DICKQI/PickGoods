@@ -73,6 +73,8 @@ export interface CropEditSnapshot {
   roundedRadius: number
   enableMargin: boolean
   marginPercent: number
+  heartWidthPercent: number
+  heartHeightPercent: number
   cropData: CropNumericState | null
   cropBoxData: CropNumericState | null
   canvasData: CropNumericState | null
@@ -112,6 +114,8 @@ export const cloneCropSnapshot = (snapshot: CropEditSnapshot): CropEditSnapshot 
     roundedRadius: snapshot.roundedRadius,
     enableMargin: snapshot.enableMargin,
     marginPercent: snapshot.marginPercent,
+    heartWidthPercent: snapshot.heartWidthPercent ?? 100,
+    heartHeightPercent: snapshot.heartHeightPercent ?? 100,
     cropData: snapshot.cropData ? { ...snapshot.cropData } : null,
     cropBoxData: snapshot.cropBoxData ? { ...snapshot.cropBoxData } : null,
     canvasData: snapshot.canvasData ? { ...snapshot.canvasData } : null,
@@ -132,6 +136,8 @@ export const normalizeCropSnapshot = (snapshot: CropEditSnapshot): CropEditSnaps
     },
     roundedRadius: roundNumber(snapshot.roundedRadius),
     marginPercent: roundNumber(snapshot.marginPercent),
+    heartWidthPercent: roundNumber(snapshot.heartWidthPercent ?? 100),
+    heartHeightPercent: roundNumber(snapshot.heartHeightPercent ?? 100),
     cropData: normalizeNumericState(snapshot.cropData),
     cropBoxData: normalizeNumericState(snapshot.cropBoxData),
     canvasData: normalizeNumericState(snapshot.canvasData),

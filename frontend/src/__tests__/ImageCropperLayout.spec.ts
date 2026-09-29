@@ -44,4 +44,11 @@ describe('ImageCropper layout', () => {
     expect(cropperSource).toContain('@contextmenu="handleRightDragContextMenu"')
     expect(cropperSource).toContain("dragMode: 'crop'")
   })
+
+  it('提供自定义椭圆与心形裁剪模式', () => {
+    expect(cropperSource).toContain("selectedAspectRatio.value === 'custom-ellipse'")
+    expect(cropperSource).toContain("selectedAspectRatio.value === 'heart'")
+    expect(cropperSource).toContain('clipPathUnits="objectBoundingBox"')
+    expect(cropperSource).toContain('clip-path: var(--heart-clip-url);')
+  })
 })

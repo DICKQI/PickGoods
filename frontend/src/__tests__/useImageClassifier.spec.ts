@@ -57,7 +57,27 @@ describe('useImageClassifier', () => {
     await run
 
     expect(classifier.classifyResult.value).toBeNull()
-    expect(classifier.classifyError.value).toBeNull()
     expect(classifier.classifying.value).toBe(false)
+    expect('classifyError' in classifier).toBe(false)
+  })
+
+  it.each([
+    ['400', Object.assign(new Error('Request failed with status code 400'), {
+      response: { status: 400, data: { image: ['invalid'] } },
+    })],
+    ['422', Object.assign(new Error('Request failed with status code 422'), {
+      response: { status: 422, data: { detail: '无法识别图片', shape_type: null } },
+    })],
+    ['network', new Error('Network Error')],
+    ['timeout', Object.assign(new Error('timeout of 30000ms exceeded'), { code: 'ECONNABORTED' })],
+  ])('%s 分类失败完全静默', async (_label, error) => {
+    vi.mocked(classifyGoodsImage).mockRejectedValueOnce(error)
+
+    const classifier = useImageClassifier()
+    await classifier.runClassification(new File(['image'], 'image.jpg'))
+
+    expect(classifier.classifyResult.value).toBeNull()
+    expect(classifier.classifying.value).toBe(false)
+    expect('classifyError' in classifier).toBe(false)
   })
 })

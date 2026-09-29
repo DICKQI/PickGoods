@@ -399,9 +399,12 @@ describe('GoodsForm mobile create wizard', () => {
     expect(goodsFormSource).toContain('现在填写的内容会恢复到刚进入页面时的状态哦~')
   })
 
-  it('shows the classifier detail when the image cannot be decoded', () => {
-    expect(goodsFormSource).toContain('classifyResult?.shape_type === null && classifyResult.detail')
-    expect(goodsFormSource).toContain('{{ classifyResult.detail }}')
+  it('keeps classifier failures silent in the user interface', () => {
+    expect(goodsFormSource).toContain("classifyResult?.shape_type === 'unknown'")
+    expect(goodsFormSource).not.toContain('classifyError')
+    expect(goodsFormSource).not.toContain('classify-status--error')
+    expect(goodsFormSource).not.toContain('Request failed with status code')
+    expect(goodsFormSource).not.toContain("classifyResult?.shape_type === null && classifyResult.detail")
   })
 
   it('loads craft options and applies the selected craft to notes', async () => {
@@ -815,6 +818,27 @@ describe('GoodsForm mobile create wizard', () => {
     await nextTick()
 
     expect(vm.classifyResult).toBeNull()
+  })
+
+  it('分类接口 400 时不在页面呈现任何错误信息', async () => {
+    const wrapper = await mountGoodsForm({
+      width: 1440,
+      height: 900,
+      maxTouchPoints: 0,
+    })
+    vi.mocked(classifyGoodsImage).mockRejectedValueOnce(
+      Object.assign(new Error('Request failed with status code 400'), {
+        response: { status: 400, data: { image: ['Upload a valid image.'] } },
+      }),
+    )
+
+    const file = new File(['image'], 'main.png', { type: 'image/png' })
+    ;(wrapper.vm as any).handleCropDialogConfirm(file)
+    await flushAsyncWork()
+
+    expect(wrapper.text()).not.toContain('Request failed with status code 400')
+    expect(wrapper.text()).not.toContain('Upload a valid image.')
+    expect(wrapper.find('.classify-status--error').exists()).toBe(false)
   })
 
   it('keeps desktop creation as the full single-page form', async () => {

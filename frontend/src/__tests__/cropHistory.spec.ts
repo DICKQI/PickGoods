@@ -30,6 +30,8 @@ const makeSnapshot = (overrides: Partial<CropEditSnapshot> = {}): CropEditSnapsh
   roundedRadius: 0,
   enableMargin: false,
   marginPercent: 0,
+  heartWidthPercent: 100,
+  heartHeightPercent: 100,
   cropData: null,
   cropBoxData: null,
   canvasData: null,
@@ -67,6 +69,14 @@ describe('cloneCropSnapshot', () => {
     cloned.filterState.hslAdjustments.red.h = 0
     expect(original.filterState.hslAdjustments.red.h).toBe(42)
   })
+
+  it('心形百分比独立复制', () => {
+    const original = makeSnapshot({ heartWidthPercent: 75, heartHeightPercent: 85 })
+    const cloned = cloneCropSnapshot(original)
+    cloned.heartWidthPercent = 100
+    expect(original.heartWidthPercent).toBe(75)
+    expect(original.heartHeightPercent).toBe(85)
+  })
 })
 
 describe('normalizeCropSnapshot', () => {
@@ -74,6 +84,8 @@ describe('normalizeCropSnapshot', () => {
     const snap = makeSnapshot({
       roundedRadius: 33.3336,
       marginPercent: 12.9999,
+      heartWidthPercent: 73.3336,
+      heartHeightPercent: 81.9999,
       filterState: {
         ...makeDefaultFilterState(),
         brightness: 100.5555,
@@ -83,8 +95,16 @@ describe('normalizeCropSnapshot', () => {
     const normalized = normalizeCropSnapshot(snap)
     expect(normalized.roundedRadius).toBe(33.334)
     expect(normalized.marginPercent).toBe(13)
+    expect(normalized.heartWidthPercent).toBe(73.334)
+    expect(normalized.heartHeightPercent).toBe(82)
     expect(normalized.filterState.brightness).toBe(100.556)
     expect(normalized.filterState.rotation).toBe(15.778)
+  })
+
+  it('心形百分比参与快照比较', () => {
+    const a = makeSnapshot({ heartWidthPercent: 80, heartHeightPercent: 90 })
+    const b = makeSnapshot({ heartWidthPercent: 80, heartHeightPercent: 70 })
+    expect(areCropSnapshotsEqual(a, b)).toBe(false)
   })
 
   it('null cropData 保持 null', () => {

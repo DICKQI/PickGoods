@@ -16,27 +16,46 @@ const getNativeCropper = (componentRef: unknown) => {
   return value.cropper || value.$cropper || value.$refs?.cropper || value.setupState?.cropper || null
 }
 
-export const getCropperInstance = (componentRef?: unknown): any => {
-  if (
-    cropper
+const registeredCroppers = new WeakMap<object, any>()
+
+const isCropperInstance = (value: unknown) => {
+  const instance = value as any
+  return Boolean(
+    instance
+    && typeof instance === 'object'
     && (
-      typeof (cropper as any).getDataURL === 'function'
-      || typeof (cropper as any).getBlob === 'function'
-      || typeof (cropper as any).getFile === 'function'
-    )
-  ) {
-    return cropper
+      typeof instance.getData === 'function'
+      || typeof instance.getCroppedCanvas === 'function'
+      || typeof instance.getFile === 'function'
+      || typeof instance.getBlob === 'function'
+      || typeof instance.getDataURL === 'function'
+      || typeof instance.getCanvasData === 'function'
+    ),
+  )
+}
+
+export const getCropperInstance = (componentRef?: unknown): any => {
+  const value = componentRef as any
+  if (value && typeof value === 'object') {
+    const registered = registeredCroppers.get(value)
+    if (registered) return registered
+
+    const direct = getNativeCropper(value)
+    return isCropperInstance(direct) ? direct : null
   }
 
+  return isCropperInstance(cropper) ? cropper : null
+}
+
+export const registerCropperInstance = (componentRef: unknown): boolean => {
   const value = componentRef as any
-  if (!value) return null
-  return (
-    value.$refs?.cropper
-    || value.cropper
-    || value.setupState?.cropper
-    || value.__cropper
-    || null
-  )
+  const candidate = getNativeCropper(value) ?? cropper
+  if (!value || typeof value !== 'object' || !isCropperInstance(candidate)) {
+    return false
+  }
+
+  registeredCroppers.set(value, candidate)
+  return true
 }
 
 export const getCropperNumericState = (
@@ -54,7 +73,8 @@ export const getCropperNumericState = (
 }
 
 const getSnapshotAspectRatio = (value: string): number | null => {
-  if (value === 'circle' || value === '1:1') return 1
+  if (value === 'circle' || value === '1:1' || value === 'heart') return 1
+  if (value === 'custom-ellipse') return null
   const parts = value.replace('-ellipse', '').split(':').map(Number)
   if (!parts[0] || !parts[1]) return null
   return parts[0] / parts[1]

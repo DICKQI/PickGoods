@@ -1,4 +1,5 @@
 import { blobToImageBitmap } from './imageUtils'
+import { getHeartBounds, traceHeartPath } from './imageShape'
 
 export interface CircleMaskOptions {
   outputSize?: number
@@ -7,6 +8,12 @@ export interface CircleMaskOptions {
 export interface EllipseMaskOptions {
   outputWidth?: number
   outputHeight?: number
+  preserveCanvasSize?: boolean
+}
+
+export interface HeartMaskOptions {
+  widthPercent?: number
+  heightPercent?: number
 }
 
 const normalizeSize = (value: number | undefined, fallback: number) => {
@@ -28,6 +35,30 @@ const getCenteredSourceRect = (
     sy: (sourceHeight - sh) / 2,
     sw,
     sh,
+  }
+}
+
+export const getEllipseMaskLayout = (
+  sourceWidth: number,
+  sourceHeight: number,
+  options: EllipseMaskOptions = {},
+) => {
+  const width = Math.max(1, Number.isFinite(sourceWidth) ? sourceWidth : 1)
+  const height = Math.max(1, Number.isFinite(sourceHeight) ? sourceHeight : 1)
+  const ellipseWidth = normalizeSize(options.outputWidth, width)
+  const ellipseHeight = normalizeSize(options.outputHeight, height)
+  const canvasSize = options.preserveCanvasSize
+    ? { width: ellipseWidth, height: ellipseHeight }
+    : { width: Math.max(ellipseWidth, ellipseHeight), height: Math.max(ellipseWidth, ellipseHeight) }
+
+  return {
+    canvasWidth: canvasSize.width,
+    canvasHeight: canvasSize.height,
+    ellipseWidth,
+    ellipseHeight,
+    offsetX: (canvasSize.width - ellipseWidth) / 2,
+    offsetY: (canvasSize.height - ellipseHeight) / 2,
+    sourceRect: getCenteredSourceRect(width, height, ellipseWidth, ellipseHeight),
   }
 }
 
@@ -74,30 +105,39 @@ export const applyEllipseMaskToBlob = async (input: Blob, options: EllipseMaskOp
   const bitmapOrImg = await blobToImageBitmap(input)
   const width = (bitmapOrImg as any).width
   const height = (bitmapOrImg as any).height
-
-  const ellipseWidth = normalizeSize(options.outputWidth, width)
-  const ellipseHeight = normalizeSize(options.outputHeight, height)
-  const size = Math.max(ellipseWidth, ellipseHeight)
-  const sourceRect = getCenteredSourceRect(width, height, ellipseWidth, ellipseHeight)
+  const {
+    canvasWidth,
+    canvasHeight,
+    ellipseWidth,
+    ellipseHeight,
+    offsetX,
+    offsetY,
+    sourceRect,
+  } = getEllipseMaskLayout(width, height, options)
 
   const canvas = document.createElement('canvas')
-  canvas.width = size
-  canvas.height = size
+  canvas.width = canvasWidth
+  canvas.height = canvasHeight
   const ctx = canvas.getContext('2d')
   if (!ctx) throw new Error('Canvas 不可用')
 
-  ctx.clearRect(0, 0, size, size)
-
-  const offsetX = (size - ellipseWidth) / 2
-  const offsetY = (size - ellipseHeight) / 2
+  ctx.clearRect(0, 0, canvasWidth, canvasHeight)
 
   ctx.save()
   ctx.beginPath()
 
   if (typeof ctx.ellipse === 'function') {
-    ctx.ellipse(size / 2, size / 2, ellipseWidth / 2, ellipseHeight / 2, 0, 0, Math.PI * 2)
+    ctx.ellipse(
+      canvasWidth / 2,
+      canvasHeight / 2,
+      ellipseWidth / 2,
+      ellipseHeight / 2,
+      0,
+      0,
+      Math.PI * 2,
+    )
   } else {
-    ctx.translate(size / 2, size / 2)
+    ctx.translate(canvasWidth / 2, canvasHeight / 2)
     ctx.scale(ellipseWidth / 2, ellipseHeight / 2)
     ctx.arc(0, 0, 1, 0, Math.PI * 2)
   }
@@ -126,6 +166,41 @@ export const applyEllipseMaskToBlob = async (input: Blob, options: EllipseMaskOp
     canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('导出椭圆图片失败'))), 'image/png', 0.92)
   })
   return outBlob
+}
+
+export const applyHeartMaskToBlob = async (input: Blob, options: HeartMaskOptions = {}) => {
+  const bitmapOrImg = await blobToImageBitmap(input)
+  const width = Math.max(1, Number((bitmapOrImg as any).width) || 1)
+  const height = Math.max(1, Number((bitmapOrImg as any).height) || 1)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 不可用')
+
+  ctx.clearRect(0, 0, width, height)
+  const bounds = getHeartBounds(
+    width,
+    height,
+    options.widthPercent,
+    options.heightPercent,
+  )
+  traceHeartPath(ctx, bounds)
+  ctx.clip()
+  ctx.drawImage(bitmapOrImg as any, 0, 0, width, height)
+
+  if ('close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') {
+    bitmapOrImg.close()
+  }
+
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('导出心形图片失败'))),
+      'image/png',
+      0.92,
+    )
+  })
 }
 
 export const applyRoundedRectMaskToBlob = async (input: File, radiusPercent: number): Promise<File> => {

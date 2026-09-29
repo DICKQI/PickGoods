@@ -22,6 +22,7 @@ vi.mock('@/views/goods-form/imageCropperAdapter', () => ({
   exportCropperFile: vi.fn(async () => new File(['crop'], 'crop.png', { type: 'image/png' })),
   zoomCropper: vi.fn(() => true),
   moveCropper: vi.fn(() => true),
+  registerCropperInstance: vi.fn(() => true),
   rotateCropperTo: vi.fn(() => true),
   fitCropper: vi.fn(() => true),
 }))
@@ -42,6 +43,7 @@ vi.mock('@/views/goods-form/imageUtils', async (importOriginal) => {
 
 import ImageCropper from '@/views/goods-form/components/ImageCropper.vue'
 import { moveCropper } from '@/views/goods-form/imageCropperAdapter'
+import { processCroppedImage } from '@/views/goods-form/imageRenderPipeline'
 
 const DialogStub = {
   props: ['modelValue', 'fullscreen'],
@@ -66,18 +68,32 @@ const CropperStub = {
 }
 
 const ToolbarStub = {
+  props: ['canUndo', 'canRedo'],
   emits: ['confirm', 'cancel', 'undo', 'redo', 'reset', 'compare-start', 'compare-stop'],
   template: `
     <div>
       <button data-test="confirm" @click="$emit('confirm')">confirm</button>
       <button data-test="cancel" @click="$emit('cancel')">cancel</button>
+      <button data-test="undo" :disabled="!canUndo" @click="$emit('undo')">undo</button>
+      <button data-test="redo" :disabled="!canRedo" @click="$emit('redo')">redo</button>
     </div>
   `,
 }
 
 const InspectorStub = {
-  emits: ['quick-rotate'],
-  template: '<button data-test="rotate" @click="$emit(\'quick-rotate\', 90)">rotate</button>',
+  emits: [
+    'quick-rotate',
+    'update:selectedAspectRatio',
+    'update:heartWidthPercent',
+  ],
+  template: `
+    <div>
+      <button data-test="rotate" @click="$emit('quick-rotate', 90)">rotate</button>
+      <button data-test="custom-ellipse" @click="$emit('update:selectedAspectRatio', 'custom-ellipse')">ellipse</button>
+      <button data-test="heart" @click="$emit('update:selectedAspectRatio', 'heart')">heart</button>
+      <button data-test="heart-width" @click="$emit('update:heartWidthPercent', 64)">width</button>
+    </div>
+  `,
 }
 
 const passthrough = {
@@ -176,6 +192,54 @@ describe('ImageCropper', () => {
     await flushPromises()
 
     expect(moveCropper).toHaveBeenCalledWith(expect.anything(), 26, -12)
+  })
+
+  it('自定义椭圆使用自由外接框和椭圆预览', async () => {
+    const wrapper = mountCropper()
+    await flushPromises()
+
+    await wrapper.get('[data-test="custom-ellipse"]').trigger('click')
+    await flushPromises()
+
+    const options = wrapper.findComponent(CropperStub).props('options') as Record<string, unknown>
+    expect(options.autoCropArea).toBe(0.55)
+    expect(Number.isNaN(options.aspectRatio)).toBe(true)
+    expect(wrapper.get('.cropper-wrapper').classes()).toContain('circle-crop')
+  })
+
+  it('心形锁定正方形并使用最新宽高百分比导出', async () => {
+    const wrapper = mountCropper()
+    await flushPromises()
+
+    await wrapper.get('[data-test="heart"]').trigger('click')
+    await flushPromises()
+    const options = wrapper.findComponent(CropperStub).props('options') as Record<string, unknown>
+    expect(options.aspectRatio).toBe(1)
+    expect(wrapper.get('.cropper-wrapper').classes()).toContain('heart-crop')
+
+    await wrapper.get('[data-test="heart-width"]').trigger('click')
+    await wrapper.get('[data-test="confirm"]').trigger('click')
+    await flushPromises()
+
+    const calls = vi.mocked(processCroppedImage).mock.calls
+    const snapshot = calls[calls.length - 1]?.[1]
+    expect(snapshot?.selectedAspectRatio).toBe('heart')
+    expect(snapshot?.heartWidthPercent).toBe(64)
+    expect(snapshot?.heartHeightPercent).toBe(100)
+  })
+
+  it('跨裁剪模式撤回后仍保留可恢复记录', async () => {
+    const wrapper = mountCropper()
+    await flushPromises()
+
+    await wrapper.get('[data-test="custom-ellipse"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="heart"]').trigger('click')
+    await flushPromises()
+    await wrapper.get('[data-test="undo"]').trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-test="redo"]').attributes('disabled')).toBeUndefined()
   })
 
   it('输出预览固定在参数滚动区之前', async () => {

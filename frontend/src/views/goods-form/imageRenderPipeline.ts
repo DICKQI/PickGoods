@@ -8,6 +8,7 @@ import {
 import {
   applyCircleMaskToBlob,
   applyEllipseMaskToBlob,
+  applyHeartMaskToBlob,
   applyMarginToBlob,
   applyRoundedRectMaskToBlob,
 } from './imageMask'
@@ -64,7 +65,11 @@ export const getCropOutputDimensions = (
     return scaleDimensionsToMaxSide(width, height, maxSide)
   }
 
-  if (selectedAspectRatio === 'circle' || selectedAspectRatio === '1:1') {
+  if (
+    selectedAspectRatio === 'circle'
+    || selectedAspectRatio === '1:1'
+    || selectedAspectRatio === 'heart'
+  ) {
     return { width: Math.max(1, maxSide), height: Math.max(1, maxSide) }
   }
 
@@ -95,6 +100,8 @@ export const resolveOutputMime = (
 
   const needsTransparentCanvas = (
     snapshot.selectedAspectRatio === 'circle'
+    || snapshot.selectedAspectRatio === 'custom-ellipse'
+    || snapshot.selectedAspectRatio === 'heart'
     || snapshot.selectedAspectRatio.endsWith('-ellipse')
     || (snapshot.enableRoundedRect && snapshot.roundedRadius > 0)
   )
@@ -125,9 +132,20 @@ export const processCroppedImage = async (
   if (snapshot.selectedAspectRatio === 'circle') {
     const masked = await applyCircleMaskToBlob(workingFile)
     workingFile = asFile(masked, 'image_edit_circle.png')
-  } else if (snapshot.selectedAspectRatio.endsWith('-ellipse')) {
-    const masked = await applyEllipseMaskToBlob(workingFile)
+  } else if (
+    snapshot.selectedAspectRatio === 'custom-ellipse'
+    || snapshot.selectedAspectRatio.endsWith('-ellipse')
+  ) {
+    const masked = await applyEllipseMaskToBlob(workingFile, {
+      preserveCanvasSize: snapshot.selectedAspectRatio === 'custom-ellipse',
+    })
     workingFile = asFile(masked, 'image_edit_ellipse.png')
+  } else if (snapshot.selectedAspectRatio === 'heart') {
+    const masked = await applyHeartMaskToBlob(workingFile, {
+      widthPercent: snapshot.heartWidthPercent,
+      heightPercent: snapshot.heartHeightPercent,
+    })
+    workingFile = asFile(masked, 'image_edit_heart.png')
   } else if (snapshot.enableRoundedRect && snapshot.roundedRadius > 0) {
     workingFile = await applyRoundedRectMaskToBlob(workingFile, snapshot.roundedRadius)
   }
@@ -157,6 +175,8 @@ export const createImageEditSnapshot = (
     roundedRadius: number
     enableMargin: boolean
     marginPercent: number
+    heartWidthPercent: number
+    heartHeightPercent: number
   },
   cropData: CropNumericState | null,
   cropBoxData: CropNumericState | null,
@@ -168,6 +188,8 @@ export const createImageEditSnapshot = (
   roundedRadius: state.roundedRadius,
   enableMargin: state.enableMargin,
   marginPercent: state.marginPercent,
+  heartWidthPercent: state.heartWidthPercent,
+  heartHeightPercent: state.heartHeightPercent,
   cropData,
   cropBoxData,
   canvasData,

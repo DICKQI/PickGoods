@@ -18,7 +18,7 @@
         <span class="edit-panel__label">画面比例</span>
         <div class="ratio-grid">
           <button
-            v-for="ratio in ASPECT_RATIOS"
+            v-for="ratio in BASE_ASPECT_RATIOS"
             :key="ratio.value"
             type="button"
             class="ratio-option"
@@ -30,6 +30,67 @@
             <small>{{ ratio.description }}</small>
           </button>
         </div>
+
+        <div class="ellipse-group" :class="{ 'is-open': ellipseGroupOpen }">
+          <button
+            type="button"
+            class="ellipse-group__toggle"
+            :aria-expanded="ellipseGroupOpen"
+            aria-controls="ellipse-ratio-options"
+            @click="ellipseGroupOpen = !ellipseGroupOpen"
+          >
+            <span>
+              <strong>椭圆</strong>
+              <small>{{ activeEllipseOption?.label ?? '预设与自定义' }}</small>
+            </span>
+            <el-icon :class="{ 'is-open': ellipseGroupOpen }"><ArrowDown /></el-icon>
+          </button>
+
+          <div
+            v-show="ellipseGroupOpen"
+            id="ellipse-ratio-options"
+            class="ellipse-group__body"
+          >
+            <div class="ratio-grid">
+              <button
+                v-for="ratio in ELLIPSE_ASPECT_RATIOS"
+                :key="ratio.value"
+                type="button"
+                class="ratio-option"
+                :class="{ 'is-active': ratio.value === selectedAspectRatio }"
+                @click="selectAspectRatio(ratio.value)"
+              >
+                <span class="ratio-option__shape" :class="`ratio-option__shape--${ratio.value}`" />
+                <span class="ratio-option__label">{{ ratio.label }}</span>
+                <small>{{ ratio.description }}</small>
+              </button>
+            </div>
+            <p class="ellipse-group__hint">自定义椭圆可直接在画布上拖画，并使用八个手柄缩放。</p>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="selectedAspectRatio === HEART_VALUE" class="edit-panel__section heart-size-panel">
+        <span class="edit-panel__label">心形尺寸</span>
+        <p class="field-hint">调整心形在正方形透明画布中的占比。</p>
+        <SliderControl
+          label="宽度"
+          :model-value="heartWidthPercent"
+          :min="30"
+          :max="100"
+          suffix="%"
+          @update:model-value="emit('update:heartWidthPercent', $event)"
+          @change="emit('commit')"
+        />
+        <SliderControl
+          label="高度"
+          :model-value="heartHeightPercent"
+          :min="30"
+          :max="100"
+          suffix="%"
+          @update:model-value="emit('update:heartHeightPercent', $event)"
+          @change="emit('commit')"
+        />
       </div>
 
       <div class="edit-panel__section">
@@ -245,7 +306,9 @@ import {
 import { ElSlider } from 'element-plus'
 import type { CropFilterState, HslColorKey } from '@/views/goods-form/cropHistory'
 import {
-  ASPECT_RATIOS,
+  BASE_ASPECT_RATIOS,
+  ELLIPSE_ASPECT_RATIOS,
+  HEART_VALUE,
   HSL_COLOR_TABS,
   IMAGE_EDITOR_TOOLS,
   type ImageEditorTool,
@@ -296,6 +359,8 @@ const props = defineProps<{
   roundedRadius: number
   enableMargin: boolean
   marginPercent: number
+  heartWidthPercent: number
+  heartHeightPercent: number
   sourceHasTransparency: boolean
   disabled?: boolean
 }>()
@@ -307,6 +372,8 @@ const emit = defineEmits<{
   'update:roundedRadius': [value: number]
   'update:enableMargin': [value: boolean]
   'update:marginPercent': [value: number]
+  'update:heartWidthPercent': [value: number]
+  'update:heartHeightPercent': [value: number]
   'update-filter': [patch: Partial<CropFilterState>]
   'update-hsl': [key: HslColorKey, axis: 'h' | 's' | 'l', value: number]
   'quick-rotate': [degrees: number]
@@ -316,6 +383,7 @@ const emit = defineEmits<{
 
 const colorAdvancedOpen = ref(false)
 const perspectiveAdvancedOpen = ref(false)
+const ellipseGroupOpen = ref(false)
 
 const activeToolMeta = computed(() => (
   IMAGE_EDITOR_TOOLS.find((tool) => tool.key === props.activeTool)
@@ -331,11 +399,17 @@ const roundedAvailable = computed(() => (
   props.selectedAspectRatio === 'free' || props.selectedAspectRatio === '1:1'
 ))
 
+const activeEllipseOption = computed(() => (
+  ELLIPSE_ASPECT_RATIOS.find((ratio) => ratio.value === props.selectedAspectRatio) ?? null
+))
+
 const producesTransparency = computed(() => (
   !(props.enableMargin && props.marginPercent > 0)
   && (
     props.sourceHasTransparency
     || props.selectedAspectRatio === 'circle'
+    || props.selectedAspectRatio === 'heart'
+    || props.selectedAspectRatio === 'custom-ellipse'
     || props.selectedAspectRatio.endsWith('-ellipse')
     || (props.enableRoundedRect && props.roundedRadius > 0)
   )
@@ -483,10 +557,32 @@ const updateMarginEnabled = (value: boolean | string | number) => {
 }
 
 .ratio-option__shape--47\:65-ellipse,
-.ratio-option__shape--63\:93-ellipse {
+.ratio-option__shape--63\:93-ellipse,
+.ratio-option__shape--custom-ellipse {
   width: 18px;
   height: 25px;
   border-radius: 50%;
+}
+
+.ratio-option__shape--heart {
+  width: 24px;
+  height: 22px;
+  border: 0;
+  background: currentColor;
+  clip-path: polygon(
+    50% 100%,
+    8% 58%,
+    2% 36%,
+    7% 15%,
+    24% 5%,
+    43% 13%,
+    50% 25%,
+    57% 13%,
+    76% 5%,
+    93% 15%,
+    98% 36%,
+    92% 58%
+  );
 }
 
 .ratio-option__label {
@@ -508,6 +604,80 @@ const updateMarginEnabled = (value: boolean | string | number) => {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
+}
+
+.ellipse-group {
+  margin-top: 10px;
+  overflow: hidden;
+  border: 1px solid #e6e8ed;
+  border-radius: 11px;
+  background: #fafbfc;
+}
+
+.ellipse-group.is-open {
+  border-color: rgba(184, 148, 31, 0.35);
+  background: #fffdf7;
+}
+
+.ellipse-group__toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  color: #4f5662;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ellipse-group__toggle > span {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ellipse-group__toggle strong {
+  font-size: 12px;
+}
+
+.ellipse-group__toggle small {
+  overflow: hidden;
+  color: #9299a4;
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ellipse-group__toggle .el-icon {
+  flex: none;
+  transition: transform 0.18s ease;
+}
+
+.ellipse-group__toggle .el-icon.is-open {
+  transform: rotate(180deg);
+}
+
+.ellipse-group__body {
+  padding: 8px;
+  border-top: 1px solid rgba(29, 33, 41, 0.08);
+  background: #fff;
+}
+
+.ellipse-group__hint {
+  margin: 8px 2px 0;
+  color: #8b929e;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.heart-size-panel {
+  padding-top: 14px;
+  border-top: 1px solid rgba(29, 33, 41, 0.08);
 }
 
 .quick-actions :deep(.el-button) {

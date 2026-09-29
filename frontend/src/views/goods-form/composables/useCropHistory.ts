@@ -18,6 +18,8 @@ export interface CropHistoryContext {
   roundedRadius: Ref<number>
   enableMargin: Ref<boolean>
   marginPercent: Ref<number>
+  heartWidthPercent: Ref<number>
+  heartHeightPercent: Ref<number>
   getCropperNumericState: (method: 'getData' | 'getCropBoxData' | 'getCanvasData') => CropNumericState | null
   applyCropperStateFromSnapshot: (snapshot: CropEditSnapshot) => boolean
 }
@@ -45,6 +47,8 @@ export function useCropHistory(ctx: CropHistoryContext) {
     roundedRadius: ctx.roundedRadius.value,
     enableMargin: ctx.enableMargin.value,
     marginPercent: ctx.marginPercent.value,
+    heartWidthPercent: ctx.heartWidthPercent.value,
+    heartHeightPercent: ctx.heartHeightPercent.value,
     cropData: cloneNumericState(ctx.getCropperNumericState('getData')),
     cropBoxData: cloneNumericState(ctx.getCropperNumericState('getCropBoxData')),
     canvasData: cloneNumericState(ctx.getCropperNumericState('getCanvasData')),
@@ -119,6 +123,8 @@ export function useCropHistory(ctx: CropHistoryContext) {
     ctx.roundedRadius.value = snapshot.roundedRadius
     ctx.enableMargin.value = snapshot.enableMargin
     ctx.marginPercent.value = snapshot.marginPercent
+    ctx.heartWidthPercent.value = snapshot.heartWidthPercent ?? 100
+    ctx.heartHeightPercent.value = snapshot.heartHeightPercent ?? 100
 
     await nextTick()
 
@@ -168,10 +174,11 @@ export function useCropHistory(ctx: CropHistoryContext) {
         finishCropSnapshotRestore()
         updateDirtyFromSnapshot(restored)
       }
-      return
+      return true
     }
 
     initializeCropHistory()
+    return false
   }
 
   return {
