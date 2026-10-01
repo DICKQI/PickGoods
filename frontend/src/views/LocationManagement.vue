@@ -1398,7 +1398,12 @@ async function handleDeleteNode(node: StorageNode) {
         ? `将删除 ${childrenIds.length} 个位置，并将 ${impactCount} 件谷子设为未定位。确认删除？`
         : `将把 ${impactCount} 件谷子设为未定位。确认删除？`,
       '删除位置',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
+      {
+        type: 'warning',
+        confirmButtonText: '删除',
+        cancelButtonText: '取消',
+        confirmButtonType: 'danger',
+      },
     )
     await deleteLocationNode(node.id)
     ElMessage.success('删除成功')

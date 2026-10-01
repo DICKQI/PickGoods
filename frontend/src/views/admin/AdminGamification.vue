@@ -849,7 +849,10 @@ async function saveSet() {
 
 async function removeSet(row: AdminGamificationSet) {
   try {
-    await ElMessageBox.confirm(`删除系列“${row.name}”会同时删除其成就规则，确认继续？`, '删除系列', { type: 'warning' })
+    await ElMessageBox.confirm(`删除系列“${row.name}”会同时删除其成就规则，确认继续？`, '删除系列', {
+      type: 'warning',
+      confirmButtonType: 'danger',
+    })
     await deleteAdminGamificationSet(row.id)
     await Promise.all([loadSets(), loadAchievements()])
     ElMessage.success('系列已删除')
@@ -966,7 +969,10 @@ function ruleSummary(row: AdminGamificationAchievement) {
 
 async function removeAchievement(row: AdminGamificationAchievement) {
   try {
-    await ElMessageBox.confirm(`确认删除成就“${row.name}”？已解锁记录会随成就一起移除。`, '删除成就', { type: 'warning' })
+    await ElMessageBox.confirm(`确认删除成就“${row.name}”？已解锁记录会随成就一起移除。`, '删除成就', {
+      type: 'warning',
+      confirmButtonType: 'danger',
+    })
     await deleteAdminGamificationAchievement(row.id)
     await loadAchievements()
     ElMessage.success('成就已删除')
@@ -1040,7 +1046,10 @@ async function uploadAsset(event: Event) {
 
 async function removeReward(row: AdminGamificationReward) {
   try {
-    await ElMessageBox.confirm(`确认删除奖励“${row.name}”？若已有发放或成就关联，系统将阻止删除。`, '删除奖励', { type: 'warning' })
+    await ElMessageBox.confirm(`确认删除奖励“${row.name}”？若已有发放或成就关联，系统将阻止删除。`, '删除奖励', {
+      type: 'warning',
+      confirmButtonType: 'danger',
+    })
     await deleteAdminGamificationReward(row.id)
     await loadRewards()
     ElMessage.success('奖励已删除')

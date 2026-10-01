@@ -388,6 +388,16 @@ describe('GoodsForm mobile create wizard', () => {
     expect(goodsFormSource).toContain('goods-leave-sheet-leave')
     expect(goodsFormSource).toContain('离开编辑？')
     expect(goodsFormSource).toContain('未保存的谷子信息不会保留')
+    expect(goodsFormSource).toContain('aria-label="离开编辑？"')
+    expect(goodsFormSource).toContain(':show-close="false"')
+    expect(goodsFormSource).not.toContain(":title=\"isMobile ? undefined : '离开编辑？'\"")
+    expect(goodsFormSource).toContain(':global(.el-dialog.goods-leave-dialog:not(.is-goods-leave-mobile))')
+    expect(goodsFormSource).toContain(
+      'background: linear-gradient(135deg, var(--dialog-primary) 0%, var(--dialog-primary-hover) 100%);',
+    )
+    expect(goodsFormSource).toContain(
+      'background: linear-gradient(135deg, var(--dialog-danger) 0%, var(--dialog-danger-hover) 100%);',
+    )
   })
 
   it('defines a responsive custom reset confirmation dialog with mobile sheet animation', () => {
@@ -397,6 +407,11 @@ describe('GoodsForm mobile create wizard', () => {
     expect(goodsFormSource).toContain('goods-reset-sheet-leave')
     expect(goodsFormSource).toContain('重置表单？')
     expect(goodsFormSource).toContain('现在填写的内容会恢复到刚进入页面时的状态哦~')
+    expect(goodsFormSource).toContain('aria-label="重置表单？"')
+    expect(goodsFormSource).toContain(':show-close="false"')
+    expect(goodsFormSource).not.toContain(":title=\"isMobile ? undefined : '重置表单？'\"")
+    expect(goodsFormSource).toContain(':global(.el-dialog.goods-reset-dialog:not(.is-goods-reset-mobile))')
+    expect(goodsFormSource).toContain('color: var(--dialog-warning-ink);')
   })
 
   it('keeps classifier failures silent in the user interface', () => {

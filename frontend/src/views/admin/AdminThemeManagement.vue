@@ -343,7 +343,7 @@ async function removeTheme(row: AdminThemeListItem) {
   await ElMessageBox.confirm(
     `删除主题“${row.name}”后关联谷子将解除主题关系，确认继续？`,
     '删除主题',
-    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning', confirmButtonType: 'danger' },
   )
   await deleteTheme(row.id)
   ElMessage.success('主题已删除')

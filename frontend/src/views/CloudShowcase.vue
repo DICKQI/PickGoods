@@ -466,6 +466,7 @@ const deleteJournalBook = async (book: JournalBook) => {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
+      confirmButtonType: 'danger',
     })
     await journalStore.removeBook(book.id)
   } catch {
@@ -820,6 +821,7 @@ const handleDeleteGoods = async () => {
         confirmButtonText: '删除',
         cancelButtonText: '取消',
         type: 'warning',
+        confirmButtonType: 'danger',
       },
     )
     await deleteGoods(goods.id)

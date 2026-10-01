@@ -507,7 +507,12 @@ async function handleDelete(row: AdminGoodsListItem) {
   await ElMessageBox.confirm(
     `确定删除谷子“${row.name}”吗？此操作不可恢复。`,
     '删除谷子',
-    { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
+    {
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonType: 'danger',
+    },
   )
   await deleteGoods(row.id)
   goodsDetailStore.invalidateGoodsDetail(row.id)

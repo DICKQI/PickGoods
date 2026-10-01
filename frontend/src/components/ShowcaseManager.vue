@@ -584,6 +584,7 @@ const handleDeleteShowcase = async () => {
       type: 'warning',
       confirmButtonText: '确认删除',
       cancelButtonText: '取消',
+      confirmButtonType: 'danger',
     })
     const ok = await showcaseStore.removeOne(showcaseStore.activeShowcaseId)
     if (ok) {
@@ -601,6 +602,7 @@ const handleDeleteShowcaseById = async (id: string) => {
       type: 'warning',
       confirmButtonText: '确认删除',
       cancelButtonText: '取消',
+      confirmButtonType: 'danger',
     })
     const ok = await showcaseStore.removeOne(id)
     if (ok) {

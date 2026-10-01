@@ -166,7 +166,7 @@
 import { useMobileWorkspaceStore } from '@/stores/mobileWorkspace'
 import { nextTick, onMounted, onUnmounted, reactive, ref, computed, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules, UploadFile, UploadRawFile } from 'element-plus'
 import { ArrowLeft, Check, Plus } from '@element-plus/icons-vue'
 import {
@@ -381,9 +381,24 @@ async function save(publicationStatus: ClubEditorPublicationStatus) {
 onMounted(load)
 watch(form, () => { if (!loading.value) isDirty.value = true }, { deep: true })
 watch(publishAtLocal, () => { if (!loading.value) isDirty.value = true })
-onBeforeRouteLeave(() => {
-  if (isDirty.value && !window.confirm('当前页面有未保存的修改，确定离开吗？')) return false
-  return true
+onBeforeRouteLeave(async () => {
+  if (!isDirty.value) return true
+  try {
+    await ElMessageBox.confirm(
+      '当前页面有未保存的修改，确定离开吗？',
+      '离开编辑？',
+      {
+        confirmButtonText: '离开页面',
+        cancelButtonText: '留在页面',
+        type: 'warning',
+        confirmButtonType: 'danger',
+        closeOnClickModal: false,
+      },
+    )
+    return true
+  } catch {
+    return false
+  }
 })
 onMounted(() => window.addEventListener('beforeunload', handleBeforeUnload))
 onUnmounted(() => { const url = mainPhotoList.value[0]?.url; if (url?.startsWith('blob:')) URL.revokeObjectURL(url); window.removeEventListener('beforeunload', handleBeforeUnload) })

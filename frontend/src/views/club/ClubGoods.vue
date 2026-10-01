@@ -380,7 +380,16 @@ async function executeBulkAction() {
   const ids = [...selectedGoodsIds.value]
   if (!action || !ids.length || bulkLoading.value) return
   try {
-    await ElMessageBox.confirm(`确定${action === 'delete' ? '删除' : '下架'}选中的 ${ids.length} 条社团谷子吗？`, action === 'delete' ? '批量删除' : '批量下架', { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' })
+    await ElMessageBox.confirm(
+      `确定${action === 'delete' ? '删除' : '下架'}选中的 ${ids.length} 条社团谷子吗？`,
+      action === 'delete' ? '批量删除' : '批量下架',
+      {
+        confirmButtonText: '确定',
+        cancelButtonText: '取消',
+        type: 'warning',
+        confirmButtonType: action === 'delete' ? 'danger' : 'primary',
+      },
+    )
   } catch (error) {
     if (error !== 'cancel' && error !== 'close') ElMessage.error(getBulkErrorMessage(error))
     return

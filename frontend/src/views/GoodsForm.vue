@@ -437,15 +437,24 @@
 
     <el-dialog
       v-model="leaveConfirmVisible"
-      :title="isMobile ? undefined : '离开编辑？'"
       width="min(90vw, 360px)"
       :class="['goods-leave-dialog', { 'is-goods-leave-mobile': isMobile }]"
       :align-center="!isMobile"
-      :show-close="!isMobile"
+      :show-close="false"
       :lock-scroll="!isMobile"
       :close-on-click-modal="false"
+      aria-label="离开编辑？"
     >
       <div class="goods-leave-content">
+        <button
+          v-if="!isMobile"
+          type="button"
+          class="goods-leave-close"
+          aria-label="关闭离开编辑确认框"
+          @click="stayOnGoodsForm"
+        >
+          <el-icon><Close /></el-icon>
+        </button>
         <div class="goods-leave-icon" aria-hidden="true">
           <el-icon><Close /></el-icon>
         </div>
@@ -467,15 +476,24 @@
 
     <el-dialog
       v-model="resetConfirmVisible"
-      :title="isMobile ? undefined : '重置表单？'"
       width="min(90vw, 360px)"
       :class="['goods-reset-dialog', { 'is-goods-reset-mobile': isMobile }]"
       :align-center="!isMobile"
-      :show-close="!isMobile"
+      :show-close="false"
       :lock-scroll="!isMobile"
       :close-on-click-modal="false"
+      aria-label="重置表单？"
     >
       <div class="goods-reset-content">
+        <button
+          v-if="!isMobile"
+          type="button"
+          class="goods-reset-close"
+          aria-label="关闭重置表单确认框"
+          @click="cancelResetGoodsForm"
+        >
+          <el-icon><Close /></el-icon>
+        </button>
         <div class="goods-reset-icon" aria-hidden="true">
           <el-icon><Refresh /></el-icon>
         </div>
@@ -2500,6 +2518,14 @@ onUnmounted(() => {
 .sheet-cancel { margin-top: 8px; background: #fff; padding: 16px; text-align: center; font-size: 16px; color: #333; cursor: pointer; }
 .sheet-cancel:active { background: #f5f5f5; }
 
+:global(.goods-leave-dialog:not(.is-goods-leave-mobile) .el-dialog),
+:global(.el-dialog.goods-leave-dialog:not(.is-goods-leave-mobile)),
+:global(.goods-reset-dialog:not(.is-goods-reset-mobile) .el-dialog),
+:global(.el-dialog.goods-reset-dialog:not(.is-goods-reset-mobile)) {
+  border-radius: 24px;
+  overflow: hidden;
+}
+
 .goods-leave-dialog :deep(.el-dialog__header),
 .goods-reset-dialog :deep(.el-dialog__header) {
   padding: 14px 16px 0;
@@ -2525,10 +2551,47 @@ onUnmounted(() => {
 
 .goods-leave-content,
 .goods-reset-content {
+  position: relative;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+}
+
+.goods-leave-close,
+.goods-reset-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid rgba(144, 147, 153, 0.18);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.78);
+  color: #675f73;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    background-color var(--transition-fast),
+    border-color var(--transition-fast),
+    box-shadow var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.goods-leave-close:hover,
+.goods-leave-close:focus-visible,
+.goods-reset-close:hover,
+.goods-reset-close:focus-visible {
+  border-color: rgba(142, 125, 255, 0.36);
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(196, 181, 253, 0.2);
+  color: var(--dialog-primary-hover);
+  outline: none;
 }
 
 .goods-leave-icon,
@@ -2539,7 +2602,7 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   border-radius: 14px;
-  color: #8e7dff;
+  color: var(--dialog-primary);
   background:
     linear-gradient(135deg, rgba(212, 175, 55, 0.18), rgba(142, 125, 255, 0.16)),
     #fffaf0;
@@ -2549,7 +2612,7 @@ onUnmounted(() => {
 }
 
 .goods-reset-icon {
-  color: #d18500;
+  color: var(--dialog-warning-ink);
   background:
     linear-gradient(135deg, rgba(255, 186, 73, 0.18), rgba(142, 125, 255, 0.12)),
     #fff8eb;
@@ -2563,6 +2626,7 @@ onUnmounted(() => {
 .goods-leave-copy,
 .goods-reset-copy {
   min-width: 0;
+  padding-right: 34px;
 }
 
 .goods-leave-copy h3,
@@ -2620,16 +2684,36 @@ onUnmounted(() => {
 
 .goods-leave-stay,
 .goods-reset-cancel {
-  background: linear-gradient(135deg, #a396ff 0%, var(--primary-gold) 100%);
+  color: #fff;
+  background: linear-gradient(135deg, var(--dialog-primary) 0%, var(--dialog-primary-hover) 100%);
   border: none;
-  box-shadow: 0 10px 22px -16px rgba(142, 125, 255, 0.72);
+  box-shadow: 0 8px 18px rgba(91, 79, 214, 0.24);
+}
+
+.goods-leave-stay:hover,
+.goods-leave-stay:focus-visible,
+.goods-reset-cancel:hover,
+.goods-reset-cancel:focus-visible {
+  color: #fff;
+  background: linear-gradient(135deg, var(--dialog-primary-hover) 0%, #493eb8 100%);
+  box-shadow: 0 10px 22px rgba(91, 79, 214, 0.32);
 }
 
 .goods-leave-confirm,
 .goods-reset-confirm {
-  color: #c45656;
-  border-color: rgba(196, 86, 86, 0.24);
-  background: rgba(254, 240, 240, 0.68);
+  color: #fff;
+  border: none;
+  background: linear-gradient(135deg, var(--dialog-danger) 0%, var(--dialog-danger-hover) 100%);
+  box-shadow: 0 8px 18px rgba(169, 47, 47, 0.22);
+}
+
+.goods-leave-confirm:hover,
+.goods-leave-confirm:focus-visible,
+.goods-reset-confirm:hover,
+.goods-reset-confirm:focus-visible {
+  color: #fff;
+  background: linear-gradient(135deg, var(--dialog-danger-hover) 0%, #8f2424 100%);
+  box-shadow: 0 10px 22px rgba(169, 47, 47, 0.3);
 }
 
 .duplicate-dialog :deep(.el-dialog__body) { padding-top: 12px; }
@@ -2835,7 +2919,7 @@ onUnmounted(() => {
     width: 100vw !important;
     max-width: 100vw;
     margin: 0 !important;
-    border-radius: 20px 20px 0 0;
+    border-radius: 24px 24px 0 0;
     overflow: hidden;
     background:
       linear-gradient(180deg, rgba(255, 252, 246, 0.98) 0%, rgba(255, 255, 255, 0.98) 42%),

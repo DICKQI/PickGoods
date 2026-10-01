@@ -254,6 +254,7 @@ async function removeCraft(row: GoodsCraft) {
     confirmButtonText: '删除',
     cancelButtonText: '取消',
     type: 'warning',
+    confirmButtonType: 'danger',
   })
   await deleteAdminGoodsCraft(row.id)
   ElMessage.success('工艺已删除')

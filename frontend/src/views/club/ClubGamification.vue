@@ -1004,7 +1004,7 @@ async function removeSet(row: AdminGamificationSet) {
     await ElMessageBox.confirm(
       `确认删除系列“${row.name}”？已有用户进度时系统会阻止删除。`,
       '删除系列',
-      { type: 'warning' },
+      { type: 'warning', confirmButtonType: 'danger' },
     )
     await deleteClubGamificationSet(row.id)
     await refreshAll()
@@ -1019,7 +1019,7 @@ async function removeAchievement(row: AdminGamificationAchievement) {
     await ElMessageBox.confirm(
       `确认删除成就“${row.name}”？已有用户进度时应改为停用。`,
       '删除成就',
-      { type: 'warning' },
+      { type: 'warning', confirmButtonType: 'danger' },
     )
     await deleteClubGamificationAchievement(row.id)
     await refreshAll()
@@ -1034,7 +1034,7 @@ async function removeReward(row: AdminGamificationReward) {
     await ElMessageBox.confirm(
       `确认删除奖励“${row.name}”？已发放或仍被成就引用时会阻止删除。`,
       '删除奖励',
-      { type: 'warning' },
+      { type: 'warning', confirmButtonType: 'danger' },
     )
     await deleteClubGamificationReward(row.id)
     await refreshAll()

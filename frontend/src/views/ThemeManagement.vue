@@ -893,6 +893,7 @@ const handleDelete = async (row: Theme) => {
         confirmButtonText: '确定',
         cancelButtonText: '取消',
         type: 'warning',
+        confirmButtonType: 'danger',
       }
     )
     await deleteTheme(row.id)
@@ -962,6 +963,7 @@ const handleRemoveExistingThemePhoto = async (photoId: number) => {
       confirmButtonText: '确定',
       cancelButtonText: '取消',
       type: 'warning',
+      confirmButtonType: 'danger',
     })
     await deleteThemeImage(editingId.value, photoId)
     existingThemeImages.value = existingThemeImages.value.filter((p) => p.id !== photoId)

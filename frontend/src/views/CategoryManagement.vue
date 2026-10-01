@@ -834,7 +834,12 @@ const handleEdit = (row: Category) => {
 
 const handleDelete = async (row: Category) => {
   try {
-    await ElMessageBox.confirm(`确定删除品类《${row.name}》吗？`, '提示')
+    await ElMessageBox.confirm(`确定删除品类《${row.name}》吗？`, '提示', {
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonType: 'danger',
+    })
     await deleteCategory(row.id)
     ElMessage.success('已删除')
     fetchCategoryList(true)

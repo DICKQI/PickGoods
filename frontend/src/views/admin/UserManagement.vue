@@ -507,7 +507,12 @@ async function handleReject(row: AdminUser) {
   await ElMessageBox.confirm(
     '拒绝后会直接删除账号及社团资料，无法恢复。确认继续？',
     '拒绝申请',
-    { confirmButtonText: '拒绝并删除', cancelButtonText: '取消', type: 'warning' },
+    {
+      confirmButtonText: '拒绝并删除',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonType: 'danger',
+    },
   )
   await rejectAdminUser(row.id)
   ElMessage.success('申请已拒绝并删除')

@@ -752,6 +752,7 @@ const confirmDiscard = async () => {
         confirmButtonText: '放弃修改',
         cancelButtonText: '继续编辑',
         type: 'warning',
+        confirmButtonType: 'danger',
       },
     )
     return true

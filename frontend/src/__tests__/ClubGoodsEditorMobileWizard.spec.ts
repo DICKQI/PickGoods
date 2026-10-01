@@ -10,6 +10,8 @@ const {
   createClubGoodsMock,
   fetchAllMock,
   fetchIPCharactersMock,
+  messageBoxConfirmMock,
+  onBeforeRouteLeaveMock,
   pushMock,
   validateFieldMock,
   validateMock,
@@ -17,13 +19,15 @@ const {
   createClubGoodsMock: vi.fn(),
   fetchAllMock: vi.fn(),
   fetchIPCharactersMock: vi.fn(),
+  messageBoxConfirmMock: vi.fn(),
+  onBeforeRouteLeaveMock: vi.fn(),
   pushMock: vi.fn(),
   validateFieldMock: vi.fn(),
   validateMock: vi.fn(),
 }))
 
 vi.mock('vue-router', () => ({
-  onBeforeRouteLeave: vi.fn(),
+  onBeforeRouteLeave: onBeforeRouteLeaveMock,
   useRoute: () => ({ params: {} }),
   useRouter: () => ({ push: pushMock }),
 }))
@@ -53,6 +57,7 @@ vi.mock('@/api/clubs', () => ({
 
 vi.mock('element-plus', () => ({
   ElMessage: { error: vi.fn(), success: vi.fn() },
+  ElMessageBox: { confirm: messageBoxConfirmMock },
 }))
 
 const passthrough = (name: string, tag = 'div') => defineComponent({
@@ -109,6 +114,7 @@ describe('ClubGoodsEditor 移动端新增向导', () => {
     validateFieldMock.mockResolvedValue(true)
     validateMock.mockResolvedValue(true)
     createClubGoodsMock.mockResolvedValue({ id: 'new-goods' })
+    messageBoxConfirmMock.mockResolvedValue(undefined)
   })
 
   it('将新增流程拆分为基础信息、图片、说明与发布三步', async () => {
@@ -161,5 +167,32 @@ describe('ClubGoodsEditor 移动端新增向导', () => {
 
     expect(source).toContain('.editor-wizard-section-leave-active { position: absolute; width: 100%; opacity: 0; pointer-events: none; transition: none; }')
     expect(source).not.toMatch(/editor-wizard-section-(?:enter|leave)[^{]*\{[^}]*filter:/)
+  })
+
+  it('离开未保存的编辑页时使用统一的危险确认框', async () => {
+    const wrapper = await mountEditor()
+    const guard = onBeforeRouteLeaveMock.mock.calls[0]?.[0] as () => Promise<boolean>
+    ;(wrapper.vm as unknown as { isDirty: boolean }).isDirty = true
+
+    await expect(guard()).resolves.toBe(true)
+    expect(messageBoxConfirmMock).toHaveBeenCalledWith(
+      '当前页面有未保存的修改，确定离开吗？',
+      '离开编辑？',
+      expect.objectContaining({
+        confirmButtonText: '离开页面',
+        cancelButtonText: '留在页面',
+        type: 'warning',
+        confirmButtonType: 'danger',
+      }),
+    )
+  })
+
+  it('取消离开确认时阻止路由离开', async () => {
+    const wrapper = await mountEditor()
+    const guard = onBeforeRouteLeaveMock.mock.calls[0]?.[0] as () => Promise<boolean>
+    ;(wrapper.vm as unknown as { isDirty: boolean }).isDirty = true
+    messageBoxConfirmMock.mockRejectedValueOnce('cancel')
+
+    await expect(guard()).resolves.toBe(false)
   })
 })

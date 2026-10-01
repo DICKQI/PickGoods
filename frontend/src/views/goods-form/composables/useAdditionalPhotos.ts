@@ -163,6 +163,7 @@ export function useAdditionalPhotos(goodsId: Ref<string | undefined>) {
           confirmButtonText: '确定',
           cancelButtonText: '取消',
           type: 'warning',
+          confirmButtonType: 'danger',
         })
 
         await deleteAdditionalPhoto(goodsId.value, photoId)

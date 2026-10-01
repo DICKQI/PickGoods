@@ -347,6 +347,7 @@ async function removeAvatar() {
       confirmButtonText: '恢复默认',
       cancelButtonText: '取消',
       type: 'warning',
+      confirmButtonType: 'danger',
       lockScroll: true,
     })
   } catch (error) {

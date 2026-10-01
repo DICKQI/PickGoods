@@ -298,7 +298,7 @@ async function removeCategory(category: Category) {
   await ElMessageBox.confirm(
     `删除“${category.path_name}”会级联删除其子品类；关联谷子将受后端保护。确认继续？`,
     '删除品类',
-    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning', confirmButtonType: 'danger' },
   )
   await deleteCategory(category.id)
   ElMessage.success('品类已删除')

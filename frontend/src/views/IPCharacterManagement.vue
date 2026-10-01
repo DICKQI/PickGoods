@@ -2074,6 +2074,7 @@ const handleDeleteIP = async (row: IP) => {
         confirmButtonText: '确定删除',
         cancelButtonText: '点错了',
         type: 'warning',
+        confirmButtonType: 'danger',
         buttonSize: 'default',
       }
     )
@@ -2188,6 +2189,7 @@ const handleDeleteCharacter = async (row: Character) => {
         type: 'warning',
         confirmButtonText: '确定删除',
         cancelButtonText: '取消',
+        confirmButtonType: 'danger',
       }
     )
     await deleteCharacter(row.id)

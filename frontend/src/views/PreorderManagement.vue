@@ -654,7 +654,12 @@ const handleMarkPaid = async (item: Preorder) => {
   await ElMessageBox.confirm(
     '确认将「' + item.name + '」标记为已补款？此操作不可撤销。',
     '标记已补款',
-    { type: 'warning', confirmButtonText: '确认补款', cancelButtonText: '再想想' }
+    {
+      type: 'warning',
+      confirmButtonText: '确认补款',
+      cancelButtonText: '再想想',
+      confirmButtonType: 'danger',
+    }
   )
   await performMarkPaid(item)
 }
@@ -663,7 +668,12 @@ const handleCancelPreorder = async (item: Preorder) => {
   await ElMessageBox.confirm(
     '确认取消「' + item.name + '」的预购登记？相关提醒将失效。',
     '取消预购',
-    { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '再想想' }
+    {
+      type: 'warning',
+      confirmButtonText: '确认取消',
+      cancelButtonText: '再想想',
+      confirmButtonType: 'danger',
+    }
   )
   await performCancelPreorder(item)
 }
@@ -673,6 +683,7 @@ const handleDelete = async (item: Preorder) => {
     type: 'warning',
     confirmButtonText: '删除',
     cancelButtonText: '取消',
+    confirmButtonType: 'danger',
   })
   await performDelete(item)
 }

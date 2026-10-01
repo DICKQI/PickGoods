@@ -201,7 +201,12 @@ export function useGoodsForm(deps: GoodsFormDeps) {
       await ElMessageBox.confirm(
         '确定要重置表单吗？当前填写内容将恢复为进入页面时的状态（未保存的修改会丢失）。',
         '重置表单',
-        { type: 'warning', confirmButtonText: '重置', cancelButtonText: '取消' },
+        {
+          type: 'warning',
+          confirmButtonText: '重置',
+          cancelButtonText: '取消',
+          confirmButtonType: 'danger',
+        },
       )
       formRef.value?.resetFields()
     } catch {
@@ -214,7 +219,12 @@ export function useGoodsForm(deps: GoodsFormDeps) {
       await ElMessageBox.confirm(
         '确定要离开吗？未保存的修改将丢失。',
         '离开页面',
-        { type: 'warning', confirmButtonText: '离开', cancelButtonText: '留在页面' },
+        {
+          type: 'warning',
+          confirmButtonText: '离开',
+          cancelButtonText: '留在页面',
+          confirmButtonType: 'danger',
+        },
       )
       router.back()
     } catch {

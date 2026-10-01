@@ -1301,6 +1301,7 @@ const deleteBook = async () => {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
+      confirmButtonType: 'danger',
     })
     await journalStore.removeBook(journalStore.activeBook.id)
   } catch {
@@ -1395,6 +1396,7 @@ const deletePage = async (pageId: string) => {
       confirmButtonText: '删除',
       cancelButtonText: '取消',
       type: 'warning',
+      confirmButtonType: 'danger',
     })
     const deleted = await journalStore.removePage(page.id)
     if (deleted) ElMessage.success('页面已删除')
@@ -1818,6 +1820,7 @@ watch(
         confirmButtonText: '刷新页面',
         cancelButtonText: '稍后处理',
         type: 'warning',
+        confirmButtonType: 'danger',
       })
       await journalStore.fetchPageDetail(conflict.pageId)
       journalStore.clearRevisionConflict()

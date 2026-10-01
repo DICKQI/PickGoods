@@ -698,7 +698,7 @@ async function removeIP(row: AdminIPListItem) {
   await ElMessageBox.confirm(
     `删除 IP “${row.name}”会受关联谷子和角色保护，确认继续？`,
     '删除 IP',
-    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning' },
+    { confirmButtonText: '删除', cancelButtonText: '取消', type: 'warning', confirmButtonType: 'danger' },
   )
   await deleteIP(row.id)
   ElMessage.success('IP 已删除')
@@ -710,6 +710,7 @@ async function removeCharacter(row: AdminCharacterListItem) {
     confirmButtonText: '删除',
     cancelButtonText: '取消',
     type: 'warning',
+    confirmButtonType: 'danger',
   })
   await deleteCharacter(row.id)
   ElMessage.success('角色已删除')
