@@ -32,6 +32,8 @@ const makeSnapshot = (overrides: Partial<CropEditSnapshot> = {}): CropEditSnapsh
   marginPercent: 0,
   heartWidthPercent: 100,
   heartHeightPercent: 100,
+  polygonSides: 3,
+  polygonRotation: 0,
   cropData: null,
   cropBoxData: null,
   canvasData: null,
@@ -77,6 +79,15 @@ describe('cloneCropSnapshot', () => {
     expect(original.heartWidthPercent).toBe(75)
     expect(original.heartHeightPercent).toBe(85)
   })
+
+  it('多边形边数与旋转独立复制', () => {
+    const original = makeSnapshot({ polygonSides: 7, polygonRotation: 88 })
+    const cloned = cloneCropSnapshot(original)
+    cloned.polygonSides = 3
+    cloned.polygonRotation = 0
+    expect(original.polygonSides).toBe(7)
+    expect(original.polygonRotation).toBe(88)
+  })
 })
 
 describe('normalizeCropSnapshot', () => {
@@ -86,6 +97,8 @@ describe('normalizeCropSnapshot', () => {
       marginPercent: 12.9999,
       heartWidthPercent: 73.3336,
       heartHeightPercent: 81.9999,
+      polygonSides: 7.6,
+      polygonRotation: 89.7777,
       filterState: {
         ...makeDefaultFilterState(),
         brightness: 100.5555,
@@ -97,6 +110,8 @@ describe('normalizeCropSnapshot', () => {
     expect(normalized.marginPercent).toBe(13)
     expect(normalized.heartWidthPercent).toBe(73.334)
     expect(normalized.heartHeightPercent).toBe(82)
+    expect(normalized.polygonSides).toBe(8)
+    expect(normalized.polygonRotation).toBe(89.778)
     expect(normalized.filterState.brightness).toBe(100.556)
     expect(normalized.filterState.rotation).toBe(15.778)
   })
@@ -105,6 +120,25 @@ describe('normalizeCropSnapshot', () => {
     const a = makeSnapshot({ heartWidthPercent: 80, heartHeightPercent: 90 })
     const b = makeSnapshot({ heartWidthPercent: 80, heartHeightPercent: 70 })
     expect(areCropSnapshotsEqual(a, b)).toBe(false)
+  })
+
+  it('旧快照缺少多边形字段时使用三边和 0 度', () => {
+    const legacy = makeSnapshot()
+    delete (legacy as unknown as Record<string, unknown>).polygonSides
+    delete (legacy as unknown as Record<string, unknown>).polygonRotation
+    const normalized = normalizeCropSnapshot(legacy)
+    expect(normalized.polygonSides).toBe(3)
+    expect(normalized.polygonRotation).toBe(0)
+  })
+
+  it('多边形角度归一化到 -180 至 180 度', () => {
+    const normalized = normalizeCropSnapshot(makeSnapshot({ polygonRotation: 270 }))
+    expect(normalized.polygonRotation).toBe(-90)
+  })
+
+  it('损坏的多边形边数回退到三边', () => {
+    const normalized = normalizeCropSnapshot(makeSnapshot({ polygonSides: Number.NaN }))
+    expect(normalized.polygonSides).toBe(3)
   })
 
   it('null cropData 保持 null', () => {

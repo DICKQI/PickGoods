@@ -10,6 +10,8 @@ export interface AspectRatioOption {
 
 export const CUSTOM_ELLIPSE_VALUE = 'custom-ellipse'
 export const HEART_VALUE = 'heart'
+export const POLYGON_VALUE = 'polygon'
+export const POLYGON_SIDE_OPTIONS = [3, 4, 5, 6, 7, 8] as const
 
 export const BASE_ASPECT_RATIOS: AspectRatioOption[] = [
   { label: '自由', value: 'free', description: '自定义裁切范围' },

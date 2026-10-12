@@ -1,5 +1,9 @@
 import { blobToImageBitmap } from './imageUtils'
-import { getHeartBounds, traceHeartPath } from './imageShape'
+import {
+  getHeartBounds,
+  traceHeartPath,
+  tracePolygonPath,
+} from './imageShape'
 
 export interface CircleMaskOptions {
   outputSize?: number
@@ -14,6 +18,12 @@ export interface EllipseMaskOptions {
 export interface HeartMaskOptions {
   widthPercent?: number
   heightPercent?: number
+}
+
+export interface PolygonMaskOptions {
+  sides?: number
+  rotation?: number
+  cornerRadiusPercent?: number
 }
 
 const normalizeSize = (value: number | undefined, fallback: number) => {
@@ -197,6 +207,45 @@ export const applyHeartMaskToBlob = async (input: Blob, options: HeartMaskOption
   return await new Promise<Blob>((resolve, reject) => {
     canvas.toBlob(
       (blob) => (blob ? resolve(blob) : reject(new Error('导出心形图片失败'))),
+      'image/png',
+      0.92,
+    )
+  })
+}
+
+export const applyPolygonMaskToBlob = async (
+  input: Blob,
+  options: PolygonMaskOptions = {},
+) => {
+  const bitmapOrImg = await blobToImageBitmap(input)
+  const width = Math.max(1, Number((bitmapOrImg as any).width) || 1)
+  const height = Math.max(1, Number((bitmapOrImg as any).height) || 1)
+
+  const canvas = document.createElement('canvas')
+  canvas.width = width
+  canvas.height = height
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('Canvas 不可用')
+
+  ctx.clearRect(0, 0, width, height)
+  tracePolygonPath(
+    ctx,
+    width,
+    height,
+    options.sides ?? 3,
+    options.rotation ?? 0,
+    options.cornerRadiusPercent ?? 0,
+  )
+  ctx.clip()
+  ctx.drawImage(bitmapOrImg as any, 0, 0, width, height)
+
+  if ('close' in bitmapOrImg && typeof bitmapOrImg.close === 'function') {
+    bitmapOrImg.close()
+  }
+
+  return await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('导出多边形图片失败'))),
       'image/png',
       0.92,
     )

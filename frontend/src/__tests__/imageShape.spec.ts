@@ -3,7 +3,13 @@ import {
   getHeartBounds,
   getHeartPathDefinition,
   getHeartSvgPath,
+  getPolygonPathDefinition,
+  getPolygonPoints,
+  getPolygonSvgPath,
+  getPolygonSvgPoints,
+  snapPolygonRotation,
   traceHeartPath,
+  tracePolygonPath,
 } from '@/views/goods-form/imageShape'
 
 describe('imageShape', () => {
@@ -49,5 +55,52 @@ describe('imageShape', () => {
     )
     expect(context.bezierCurveTo).toHaveBeenCalledTimes(path.curves.length)
     expect(context.closePath).toHaveBeenCalledOnce()
+  })
+
+  it('多边形支持 3–8 个归一化顶点', () => {
+    for (let sides = 3; sides <= 8; sides += 1) {
+      const points = getPolygonPoints(sides, 0)
+      expect(points).toHaveLength(sides)
+      expect(Math.min(...points.map(point => point.x))).toBeCloseTo(0)
+      expect(Math.max(...points.map(point => point.x))).toBeCloseTo(1)
+      expect(Math.min(...points.map(point => point.y))).toBeCloseTo(0)
+      expect(Math.max(...points.map(point => point.y))).toBeCloseTo(1)
+    }
+  })
+
+  it('多边形旋转接近直角时吸附', () => {
+    expect(snapPolygonRotation(88)).toBe(90)
+    expect(snapPolygonRotation(-87)).toBe(-90)
+    expect(snapPolygonRotation(-179)).toBe(-180)
+    expect(snapPolygonRotation(45)).toBe(45)
+  })
+
+  it('SVG 与 Canvas 多边形使用同一组点', () => {
+    const context = {
+      beginPath: vi.fn(),
+      moveTo: vi.fn(),
+      lineTo: vi.fn(),
+      quadraticCurveTo: vi.fn(),
+      closePath: vi.fn(),
+    } as unknown as CanvasRenderingContext2D
+
+    tracePolygonPath(context, 200, 100, 5, 45)
+
+    expect(context.moveTo).toHaveBeenCalledTimes(1)
+    expect(context.lineTo).toHaveBeenCalledTimes(4)
+    expect(context.closePath).toHaveBeenCalledOnce()
+    expect(getPolygonSvgPoints(5, 45)).toContain('%')
+  })
+
+  it('多边形圆角路径替换顶点并保持首尾闭合', () => {
+    const straight = getPolygonSvgPath(6, 0, 0)
+    const rounded = getPolygonSvgPath(6, 0, 20)
+    const corners = getPolygonPathDefinition(6, 0, 20)
+
+    expect(rounded).toContain(' Q ')
+    expect(rounded.endsWith('Z')).toBe(true)
+    expect(rounded).not.toBe(straight)
+    expect(corners[0]?.start).not.toEqual(corners[0]?.control)
+    expect(corners[0]?.end).not.toEqual(corners[0]?.control)
   })
 })

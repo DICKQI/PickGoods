@@ -21,6 +21,9 @@
         <clipPath :id="heartClipId" clipPathUnits="objectBoundingBox">
           <path :d="heartClipPath" />
         </clipPath>
+        <clipPath :id="polygonClipId" clipPathUnits="objectBoundingBox">
+          <path :d="polygonClipPath" />
+        </clipPath>
       </defs>
     </svg>
 
@@ -72,6 +75,7 @@
                 || selectedAspectRatio.endsWith('-ellipse')
               ),
               'heart-crop': selectedAspectRatio === 'heart',
+              'polygon-crop': selectedAspectRatio === POLYGON_VALUE,
               'rounded-rect-preview': showRoundedControls && enableRoundedRect,
             }"
             :style="cropperWrapperStyle"
@@ -155,16 +159,20 @@
             :margin-percent="marginPercent"
             :heart-width-percent="heartWidthPercent"
             :heart-height-percent="heartHeightPercent"
+            :polygon-sides="polygonSides"
+            :polygon-rotation="polygonRotation"
             :source-has-transparency="sourceHasTransparency"
             :disabled="!sourceReady"
             @update:selected-aspect-ratio="updateAspectRatio"
             @update:active-hsl-color="activeHslColor = $event"
-            @update:enable-rounded-rect="enableRoundedRect = $event"
-            @update:rounded-radius="roundedRadius = $event"
+            @update:enable-rounded-rect="updateRoundedEnabled"
+            @update:rounded-radius="updateRoundedRadius"
             @update:enable-margin="enableMargin = $event"
             @update:margin-percent="marginPercent = $event"
             @update:heart-width-percent="updateHeartWidthPercent"
             @update:heart-height-percent="updateHeartHeightPercent"
+            @select-polygon="handlePolygonSidesChange"
+            @update:polygon-rotation="updatePolygonRotation"
             @update-filter="updateFilter"
             @update-hsl="updateHsl"
             @quick-rotate="handleQuickRotate"
@@ -223,8 +231,15 @@ import { useCropHistory } from '@/views/goods-form/composables/useCropHistory'
 import { useCropperRightDrag } from '@/views/goods-form/composables/useCropperRightDrag'
 import { useLivePreview } from '@/views/goods-form/composables/useLivePreview'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
-import type { ImageEditorTool } from '@/views/goods-form/imageEditorConfig'
-import { getHeartSvgPath } from '@/views/goods-form/imageShape'
+import {
+  POLYGON_VALUE,
+  type ImageEditorTool,
+} from '@/views/goods-form/imageEditorConfig'
+import {
+  getHeartSvgPath,
+  getPolygonSvgPath,
+  normalizePolygonSides,
+} from '@/views/goods-form/imageShape'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -269,6 +284,7 @@ const aspectRatios = [
   { label: '47:65', value: '47:65-ellipse' },
   { label: '63:93', value: '63:93-ellipse' },
   { label: '自定义', value: 'custom-ellipse' },
+  { label: '多边形', value: POLYGON_VALUE },
 ]
 
 const selectedAspectRatio = ref('free')
@@ -279,16 +295,29 @@ const enableMargin = ref(false)
 const marginPercent = ref(8)
 const heartWidthPercent = ref(100)
 const heartHeightPercent = ref(100)
+const polygonSides = ref(3)
+const polygonRotation = ref(0)
 const activeHslColor = ref<HslColorKey>('red')
 const roundedRectPreviewPx = ref(0)
 const heartClipId = `image-editor-heart-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
+const polygonClipId = `image-editor-polygon-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`
 
 const sourceUrl = computed(() => props.imageUrl || internalImageUrl.value)
 const showRoundedControls = computed(() => (
   selectedAspectRatio.value === 'free' || selectedAspectRatio.value === '1:1'
 ))
+const roundedMaskAvailable = computed(() => (
+  showRoundedControls.value || selectedAspectRatio.value === POLYGON_VALUE
+))
 const heartClipPath = computed(() => (
   getHeartSvgPath(heartWidthPercent.value, heartHeightPercent.value)
+))
+const polygonClipPath = computed(() => (
+  getPolygonSvgPath(
+    polygonSides.value,
+    polygonRotation.value,
+    enableRoundedRect.value ? roundedRadius.value : 0,
+  )
 ))
 
 const getCurrentCropperNumericState = (method: 'getData' | 'getCropBoxData' | 'getCanvasData') => (
@@ -304,6 +333,8 @@ const getCurrentSnapshot = (): CropEditSnapshot => ({
   marginPercent: marginPercent.value,
   heartWidthPercent: heartWidthPercent.value,
   heartHeightPercent: heartHeightPercent.value,
+  polygonSides: polygonSides.value,
+  polygonRotation: polygonRotation.value,
   cropData: getCurrentCropperNumericState('getData'),
   cropBoxData: getCurrentCropperNumericState('getCropBoxData'),
   canvasData: getCurrentCropperNumericState('getCanvasData'),
@@ -319,6 +350,8 @@ const cropHistory = useCropHistory({
   marginPercent,
   heartWidthPercent,
   heartHeightPercent,
+  polygonSides,
+  polygonRotation,
   getCropperNumericState: getCurrentCropperNumericState,
   applyCropperStateFromSnapshot: (snapshot) => (
     applyCropperStateFromSnapshot(pictureCropperRef.value, snapshot)
@@ -375,7 +408,10 @@ const cropperOptions = computed(() => {
     zoomend: handleCommittedChange,
   }
 
-  if (selectedAspectRatio.value === 'custom-ellipse') {
+  if (
+    selectedAspectRatio.value === 'custom-ellipse'
+    || selectedAspectRatio.value === POLYGON_VALUE
+  ) {
     options.autoCropArea = 0.55
     options.aspectRatio = Number.NaN
     options.fixed = false
@@ -409,6 +445,7 @@ const cropperStyle = computed(() => computeCropperStyle(filterState.value))
 const cropperWrapperStyle = computed(() => ({
   '--rounded-radius-px': `${roundedRectPreviewPx.value}px`,
   '--heart-clip-url': `url(#${heartClipId})`,
+  '--polygon-clip-url': `url(#${polygonClipId})`,
 }))
 
 const livePreview = useLivePreview()
@@ -567,7 +604,7 @@ const updateAspectRatio = (value: string) => {
   if (selectedAspectRatio.value === value) return
   sourceReady.value = false
   selectedAspectRatio.value = value
-  if (!showRoundedControls.value) enableRoundedRect.value = false
+  if (!roundedMaskAvailable.value) enableRoundedRect.value = false
   markCropEditDirty()
   void nextTick(() => scheduleLivePreviewRefresh())
 }
@@ -602,6 +639,22 @@ const updateHsl = (key: HslColorKey, axis: 'h' | 's' | 'l', value: number) => {
   scheduleLivePreviewRefresh()
 }
 
+const updateRoundedEnabled = (value: boolean) => {
+  if (!cropperReady.value) return
+  enableRoundedRect.value = value
+  markCropEditDirty()
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
+}
+
+const updateRoundedRadius = (value: number) => {
+  if (!cropperReady.value) return
+  roundedRadius.value = value
+  markCropEditDirty()
+  updateRoundedRectPreviewRadius()
+  scheduleLivePreviewRefresh()
+}
+
 const updateHeartWidthPercent = (value: number) => {
   if (!cropperReady.value) return
   heartWidthPercent.value = value
@@ -612,6 +665,25 @@ const updateHeartWidthPercent = (value: number) => {
 const updateHeartHeightPercent = (value: number) => {
   if (!cropperReady.value) return
   heartHeightPercent.value = value
+  markCropEditDirty()
+  scheduleLivePreviewRefresh()
+}
+
+const handlePolygonSidesChange = (value: number) => {
+  if (!cropperReady.value) return
+  polygonSides.value = normalizePolygonSides(value)
+  if (selectedAspectRatio.value !== POLYGON_VALUE) {
+    updateAspectRatio(POLYGON_VALUE)
+    return
+  }
+  markCropEditDirty()
+  scheduleLivePreviewRefresh()
+  commitCropHistorySnapshot()
+}
+
+const updatePolygonRotation = (value: number) => {
+  if (!cropperReady.value) return
+  polygonRotation.value = value
   markCropEditDirty()
   scheduleLivePreviewRefresh()
 }
@@ -714,6 +786,8 @@ const handleReset = async () => {
   marginPercent.value = 8
   heartWidthPercent.value = 100
   heartHeightPercent.value = 100
+  polygonSides.value = 3
+  polygonRotation.value = 0
   activeHslColor.value = 'red'
   fitCropper(pictureCropperRef.value)
   markCropEditDirty()
@@ -987,6 +1061,12 @@ defineExpose({
 .cropper-wrapper.heart-crop :deep(.cropper-face) {
   border-radius: 0;
   clip-path: var(--heart-clip-url);
+}
+
+.cropper-wrapper.polygon-crop :deep(.cropper-view-box),
+.cropper-wrapper.polygon-crop :deep(.cropper-face) {
+  border-radius: 0;
+  clip-path: var(--polygon-clip-url);
 }
 
 .cropper-wrapper.rounded-rect-preview :deep(.cropper-view-box),

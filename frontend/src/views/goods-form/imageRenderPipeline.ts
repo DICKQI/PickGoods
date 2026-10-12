@@ -10,6 +10,7 @@ import {
   applyEllipseMaskToBlob,
   applyHeartMaskToBlob,
   applyMarginToBlob,
+  applyPolygonMaskToBlob,
   applyRoundedRectMaskToBlob,
 } from './imageMask'
 import { applyPerspectiveAndRotateToBlob } from './imageTransform'
@@ -102,6 +103,7 @@ export const resolveOutputMime = (
     snapshot.selectedAspectRatio === 'circle'
     || snapshot.selectedAspectRatio === 'custom-ellipse'
     || snapshot.selectedAspectRatio === 'heart'
+    || snapshot.selectedAspectRatio === 'polygon'
     || snapshot.selectedAspectRatio.endsWith('-ellipse')
     || (snapshot.enableRoundedRect && snapshot.roundedRadius > 0)
   )
@@ -146,6 +148,15 @@ export const processCroppedImage = async (
       heightPercent: snapshot.heartHeightPercent,
     })
     workingFile = asFile(masked, 'image_edit_heart.png')
+  } else if (snapshot.selectedAspectRatio === 'polygon') {
+    const masked = await applyPolygonMaskToBlob(workingFile, {
+      sides: snapshot.polygonSides,
+      rotation: snapshot.polygonRotation,
+      cornerRadiusPercent: snapshot.enableRoundedRect
+        ? snapshot.roundedRadius
+        : 0,
+    })
+    workingFile = asFile(masked, 'image_edit_polygon.png')
   } else if (snapshot.enableRoundedRect && snapshot.roundedRadius > 0) {
     workingFile = await applyRoundedRectMaskToBlob(workingFile, snapshot.roundedRadius)
   }
@@ -177,6 +188,8 @@ export const createImageEditSnapshot = (
     marginPercent: number
     heartWidthPercent: number
     heartHeightPercent: number
+    polygonSides: number
+    polygonRotation: number
   },
   cropData: CropNumericState | null,
   cropBoxData: CropNumericState | null,
@@ -190,6 +203,8 @@ export const createImageEditSnapshot = (
   marginPercent: state.marginPercent,
   heartWidthPercent: state.heartWidthPercent,
   heartHeightPercent: state.heartHeightPercent,
+  polygonSides: state.polygonSides,
+  polygonRotation: state.polygonRotation,
   cropData,
   cropBoxData,
   canvasData,

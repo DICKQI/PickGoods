@@ -85,6 +85,10 @@ const InspectorStub = {
     'quick-rotate',
     'update:selectedAspectRatio',
     'update:heartWidthPercent',
+    'select-polygon',
+    'update:polygonRotation',
+    'update:enableRoundedRect',
+    'update:roundedRadius',
   ],
   template: `
     <div>
@@ -92,6 +96,10 @@ const InspectorStub = {
       <button data-test="custom-ellipse" @click="$emit('update:selectedAspectRatio', 'custom-ellipse')">ellipse</button>
       <button data-test="heart" @click="$emit('update:selectedAspectRatio', 'heart')">heart</button>
       <button data-test="heart-width" @click="$emit('update:heartWidthPercent', 64)">width</button>
+      <button data-test="polygon" @click="$emit('select-polygon', 7)">polygon</button>
+      <button data-test="polygon-rotation" @click="$emit('update:polygonRotation', 88)">rotation</button>
+      <button data-test="polygon-rounded" @click="$emit('update:enableRoundedRect', true)">rounded</button>
+      <button data-test="polygon-radius" @click="$emit('update:roundedRadius', 30)">radius</button>
     </div>
   `,
 }
@@ -221,11 +229,41 @@ describe('ImageCropper', () => {
     await wrapper.get('[data-test="confirm"]').trigger('click')
     await flushPromises()
 
-    const calls = vi.mocked(processCroppedImage).mock.calls
-    const snapshot = calls[calls.length - 1]?.[1]
+    const snapshot = vi.mocked(processCroppedImage).mock.calls
+      .map((call) => call[1])
+      .reverse()
+      .find((item) => item?.selectedAspectRatio === 'heart')
     expect(snapshot?.selectedAspectRatio).toBe('heart')
     expect(snapshot?.heartWidthPercent).toBe(64)
     expect(snapshot?.heartHeightPercent).toBe(100)
+  })
+
+  it('多边形使用自由外接框并导出最新边数和旋转', async () => {
+    const wrapper = mountCropper()
+    await flushPromises()
+
+    await wrapper.get('[data-test="polygon"]').trigger('click')
+    await flushPromises()
+    const options = wrapper.findComponent(CropperStub).props('options') as Record<string, unknown>
+    expect(options.autoCropArea).toBe(0.55)
+    expect(Number.isNaN(options.aspectRatio)).toBe(true)
+    expect(wrapper.get('.cropper-wrapper').classes()).toContain('polygon-crop')
+
+    await wrapper.get('[data-test="polygon-rotation"]').trigger('click')
+    await wrapper.get('[data-test="polygon-rounded"]').trigger('click')
+    await wrapper.get('[data-test="polygon-radius"]').trigger('click')
+    await wrapper.get('[data-test="confirm"]').trigger('click')
+    await flushPromises()
+
+    const snapshot = vi.mocked(processCroppedImage).mock.calls
+      .map((call) => call[1])
+      .reverse()
+      .find((item) => item?.selectedAspectRatio === 'polygon')
+    expect(snapshot?.selectedAspectRatio).toBe('polygon')
+    expect(snapshot?.polygonSides).toBe(7)
+    expect(snapshot?.polygonRotation).toBe(88)
+    expect(snapshot?.enableRoundedRect).toBe(true)
+    expect(snapshot?.roundedRadius).toBe(30)
   })
 
   it('跨裁剪模式撤回后仍保留可恢复记录', async () => {

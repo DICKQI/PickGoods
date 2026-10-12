@@ -51,4 +51,11 @@ describe('ImageCropper layout', () => {
     expect(cropperSource).toContain('clipPathUnits="objectBoundingBox"')
     expect(cropperSource).toContain('clip-path: var(--heart-clip-url);')
   })
+
+  it('提供三到八边规则多边形裁剪模式', () => {
+    expect(cropperSource).toContain('polygon-crop')
+    expect(cropperSource).toContain('getPolygonSvgPath')
+    expect(cropperSource).toContain('clip-path: var(--polygon-clip-url);')
+    expect(cropperSource).toContain("selectedAspectRatio.value === POLYGON_VALUE")
+  })
 })

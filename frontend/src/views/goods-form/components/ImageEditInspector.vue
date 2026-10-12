@@ -31,10 +31,10 @@
           </button>
         </div>
 
-        <div class="ellipse-group" :class="{ 'is-open': ellipseGroupOpen }">
+        <div class="shape-group ellipse-group" :class="{ 'is-open': ellipseGroupOpen }">
           <button
             type="button"
-            class="ellipse-group__toggle"
+            class="shape-group__toggle ellipse-group__toggle"
             :aria-expanded="ellipseGroupOpen"
             aria-controls="ellipse-ratio-options"
             @click="ellipseGroupOpen = !ellipseGroupOpen"
@@ -49,7 +49,7 @@
           <div
             v-show="ellipseGroupOpen"
             id="ellipse-ratio-options"
-            class="ellipse-group__body"
+            class="shape-group__body ellipse-group__body"
           >
             <div class="ratio-grid">
               <button
@@ -65,7 +65,72 @@
                 <small>{{ ratio.description }}</small>
               </button>
             </div>
-            <p class="ellipse-group__hint">自定义椭圆可直接在画布上拖画，并使用八个手柄缩放。</p>
+            <p class="shape-group__hint">自定义椭圆可直接在画布上拖画，并使用八个手柄缩放。</p>
+          </div>
+        </div>
+
+        <div class="shape-group polygon-group" :class="{ 'is-open': polygonGroupOpen }">
+          <button
+            type="button"
+            class="shape-group__toggle polygon-group__toggle"
+            :aria-expanded="polygonGroupOpen"
+            aria-controls="polygon-options"
+            @click="polygonGroupOpen = !polygonGroupOpen"
+          >
+            <span>
+              <strong>多边形</strong>
+              <small>
+                {{ selectedAspectRatio === POLYGON_VALUE ? `${polygonSides} 边 · ${polygonRotation}°` : '3–8 边规则形状' }}
+              </small>
+            </span>
+            <el-icon :class="{ 'is-open': polygonGroupOpen }"><ArrowDown /></el-icon>
+          </button>
+
+          <div
+            v-show="polygonGroupOpen"
+            id="polygon-options"
+            class="shape-group__body polygon-group__body"
+          >
+            <button
+              type="button"
+              class="ratio-option polygon-activate"
+              :class="{ 'is-active': selectedAspectRatio === POLYGON_VALUE }"
+              @click="selectPolygon()"
+            >
+              <span class="ratio-option__shape ratio-option__shape--polygon" />
+              <span class="ratio-option__label">多边形裁切</span>
+              <small>自由外接框 · 透明画布</small>
+            </button>
+
+            <div class="polygon-sides">
+              <span class="polygon-sides__label">边数</span>
+              <div class="polygon-side-grid">
+                <button
+                  v-for="side in POLYGON_SIDE_OPTIONS"
+                  :key="side"
+                  type="button"
+                  class="polygon-side-option"
+                  :class="{ 'is-active': polygonSides === side }"
+                  :aria-pressed="polygonSides === side"
+                  @click="selectPolygon(side)"
+                >
+                  {{ side }}边
+                </button>
+              </div>
+            </div>
+
+            <SliderControl
+              label="旋转"
+              :model-value="polygonRotation"
+              :min="-180"
+              :max="180"
+              suffix="°"
+              show-sign
+              :disabled="selectedAspectRatio !== POLYGON_VALUE"
+              @update:model-value="updatePolygonRotation"
+              @change="emit('commit')"
+            />
+            <p class="shape-group__hint">拖动裁切框缩放多边形，旋转接近 0°、90° 等角度时会自动吸附。</p>
           </div>
         </div>
       </div>
@@ -243,8 +308,12 @@
     <div v-else class="edit-panel">
       <div class="switch-row">
         <div>
-          <strong>圆角矩形</strong>
-          <span>圆角外区域将保持透明</span>
+          <strong>{{ selectedAspectRatio === POLYGON_VALUE ? '多边形圆角' : '圆角矩形' }}</strong>
+          <span>
+            {{ selectedAspectRatio === POLYGON_VALUE
+              ? '多边形顶点将使用平滑圆角'
+              : '圆角外区域将保持透明' }}
+          </span>
         </div>
         <el-switch
           :model-value="enableRoundedRect"
@@ -262,7 +331,7 @@
         @update:model-value="emit('update:roundedRadius', $event)"
         @change="emit('commit')"
       />
-      <p v-if="!roundedAvailable" class="field-hint">圆形和椭圆比例已自带形状裁切。</p>
+      <p v-if="!roundedAvailable" class="field-hint">圆形、椭圆和心形比例已自带形状裁切。</p>
 
       <div class="edit-panel__divider" />
 
@@ -311,8 +380,11 @@ import {
   HEART_VALUE,
   HSL_COLOR_TABS,
   IMAGE_EDITOR_TOOLS,
+  POLYGON_SIDE_OPTIONS,
+  POLYGON_VALUE,
   type ImageEditorTool,
 } from '@/views/goods-form/imageEditorConfig'
+import { snapPolygonRotation } from '@/views/goods-form/imageShape'
 
 const SliderControl: Component = {
   props: {
@@ -361,6 +433,8 @@ const props = defineProps<{
   marginPercent: number
   heartWidthPercent: number
   heartHeightPercent: number
+  polygonSides: number
+  polygonRotation: number
   sourceHasTransparency: boolean
   disabled?: boolean
 }>()
@@ -374,6 +448,8 @@ const emit = defineEmits<{
   'update:marginPercent': [value: number]
   'update:heartWidthPercent': [value: number]
   'update:heartHeightPercent': [value: number]
+  'select-polygon': [sides: number]
+  'update:polygonRotation': [value: number]
   'update-filter': [patch: Partial<CropFilterState>]
   'update-hsl': [key: HslColorKey, axis: 'h' | 's' | 'l', value: number]
   'quick-rotate': [degrees: number]
@@ -384,6 +460,7 @@ const emit = defineEmits<{
 const colorAdvancedOpen = ref(false)
 const perspectiveAdvancedOpen = ref(false)
 const ellipseGroupOpen = ref(false)
+const polygonGroupOpen = ref(false)
 
 const activeToolMeta = computed(() => (
   IMAGE_EDITOR_TOOLS.find((tool) => tool.key === props.activeTool)
@@ -396,7 +473,9 @@ const activeHsl = computed(() => (
 ))
 
 const roundedAvailable = computed(() => (
-  props.selectedAspectRatio === 'free' || props.selectedAspectRatio === '1:1'
+  props.selectedAspectRatio === 'free'
+  || props.selectedAspectRatio === '1:1'
+  || props.selectedAspectRatio === POLYGON_VALUE
 ))
 
 const activeEllipseOption = computed(() => (
@@ -410,6 +489,7 @@ const producesTransparency = computed(() => (
     || props.selectedAspectRatio === 'circle'
     || props.selectedAspectRatio === 'heart'
     || props.selectedAspectRatio === 'custom-ellipse'
+    || props.selectedAspectRatio === POLYGON_VALUE
     || props.selectedAspectRatio.endsWith('-ellipse')
     || (props.enableRoundedRect && props.roundedRadius > 0)
   )
@@ -425,6 +505,14 @@ const updateHsl = (axis: 'h' | 's' | 'l', value: number) => {
 
 const selectAspectRatio = (value: string) => {
   emit('update:selectedAspectRatio', value)
+}
+
+const selectPolygon = (sides = props.polygonSides) => {
+  emit('select-polygon', sides)
+}
+
+const updatePolygonRotation = (value: number) => {
+  emit('update:polygonRotation', snapPolygonRotation(value))
 }
 
 const updateRoundedEnabled = (value: boolean | string | number) => {
@@ -585,6 +673,14 @@ const updateMarginEnabled = (value: boolean | string | number) => {
   );
 }
 
+.ratio-option__shape--polygon {
+  width: 24px;
+  height: 22px;
+  border: 0;
+  background: currentColor;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+}
+
 .ratio-option__label {
   align-self: end;
   font-size: 12px;
@@ -606,7 +702,7 @@ const updateMarginEnabled = (value: boolean | string | number) => {
   gap: 8px;
 }
 
-.ellipse-group {
+.shape-group {
   margin-top: 10px;
   overflow: hidden;
   border: 1px solid #e6e8ed;
@@ -614,12 +710,12 @@ const updateMarginEnabled = (value: boolean | string | number) => {
   background: #fafbfc;
 }
 
-.ellipse-group.is-open {
+.shape-group.is-open {
   border-color: rgba(184, 148, 31, 0.35);
   background: #fffdf7;
 }
 
-.ellipse-group__toggle {
+.shape-group__toggle {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -634,18 +730,18 @@ const updateMarginEnabled = (value: boolean | string | number) => {
   cursor: pointer;
 }
 
-.ellipse-group__toggle > span {
+.shape-group__toggle > span {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 2px;
 }
 
-.ellipse-group__toggle strong {
+.shape-group__toggle strong {
   font-size: 12px;
 }
 
-.ellipse-group__toggle small {
+.shape-group__toggle small {
   overflow: hidden;
   color: #9299a4;
   font-size: 10px;
@@ -653,26 +749,79 @@ const updateMarginEnabled = (value: boolean | string | number) => {
   white-space: nowrap;
 }
 
-.ellipse-group__toggle .el-icon {
+.shape-group__toggle .el-icon {
   flex: none;
   transition: transform 0.18s ease;
 }
 
-.ellipse-group__toggle .el-icon.is-open {
+.shape-group__toggle .el-icon.is-open {
   transform: rotate(180deg);
 }
 
-.ellipse-group__body {
+.shape-group__body {
   padding: 8px;
   border-top: 1px solid rgba(29, 33, 41, 0.08);
   background: #fff;
 }
 
-.ellipse-group__hint {
+.shape-group__hint {
   margin: 8px 2px 0;
   color: #8b929e;
   font-size: 10px;
   line-height: 1.5;
+}
+
+.polygon-group__body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.polygon-activate {
+  width: 100%;
+}
+
+.polygon-sides {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.polygon-sides__label {
+  color: #59606b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.polygon-side-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.polygon-side-option {
+  min-height: 32px;
+  border: 1px solid #e6e8ed;
+  border-radius: 8px;
+  background: #fff;
+  color: #656c77;
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.polygon-side-option:hover,
+.polygon-side-option:focus-visible {
+  outline: none;
+  border-color: rgba(184, 148, 31, 0.45);
+  background: #fffcf4;
+}
+
+.polygon-side-option.is-active {
+  border-color: rgba(184, 148, 31, 0.58);
+  background: #fff9ea;
+  color: #705f23;
+  font-weight: 700;
 }
 
 .heart-size-panel {

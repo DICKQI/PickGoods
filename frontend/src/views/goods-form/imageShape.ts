@@ -1,11 +1,26 @@
 export const MIN_HEART_DIMENSION_PERCENT = 30
 export const MAX_HEART_DIMENSION_PERCENT = 100
+export const MIN_POLYGON_SIDES = 3
+export const MAX_POLYGON_SIDES = 8
+export const POLYGON_ROTATION_SNAP_THRESHOLD = 3
+export const POLYGON_ROTATION_SNAP_ANGLES = [-180, -90, 0, 90, 180]
 
 export interface ShapeBounds {
   x: number
   y: number
   width: number
   height: number
+}
+
+export interface ShapePoint {
+  x: number
+  y: number
+}
+
+export interface PolygonPathCorner {
+  start: ShapePoint
+  control: ShapePoint
+  end: ShapePoint
 }
 
 interface HeartPathPoint {
@@ -67,6 +82,8 @@ const clampHeartPercent = (value: number) => {
 
 const formatPathNumber = (value: number) => Number(value.toFixed(6)).toString()
 
+const clampUnit = (value: number) => Math.max(0, Math.min(1, value))
+
 const mapPoint = (
   point: HeartPathPoint,
   bounds: ShapeBounds,
@@ -92,6 +109,176 @@ export const getHeartBounds = (
     width: boundedWidth,
     height: boundedHeight,
   }
+}
+
+export const normalizePolygonSides = (value: number) => {
+  const rounded = Number.isFinite(value) ? Math.round(value) : MIN_POLYGON_SIDES
+  return Math.max(MIN_POLYGON_SIDES, Math.min(MAX_POLYGON_SIDES, rounded))
+}
+
+export const normalizePolygonRotation = (value: number) => {
+  if (!Number.isFinite(value)) return 0
+  let normalized = value % 360
+  if (normalized > 180) normalized -= 360
+  if (normalized < -180) normalized += 360
+  return normalized
+}
+
+export const snapPolygonRotation = (
+  value: number,
+  threshold = POLYGON_ROTATION_SNAP_THRESHOLD,
+) => {
+  const normalized = normalizePolygonRotation(value)
+  const safeThreshold = Math.max(0, Number.isFinite(threshold) ? threshold : 0)
+
+  for (const angle of POLYGON_ROTATION_SNAP_ANGLES) {
+    if (Math.abs(normalized - angle) <= safeThreshold) return angle
+  }
+  return normalized
+}
+
+export const getPolygonPoints = (
+  sides: number,
+  rotation = 0,
+): ShapePoint[] => {
+  const sideCount = normalizePolygonSides(sides)
+  const rotationRadians = (normalizePolygonRotation(rotation) * Math.PI) / 180
+  const rawPoints = Array.from({ length: sideCount }, (_, index) => {
+    const angle = -Math.PI / 2 + rotationRadians + (index * Math.PI * 2) / sideCount
+    return {
+      x: Math.cos(angle),
+      y: Math.sin(angle),
+    }
+  })
+
+  const xValues = rawPoints.map((point) => point.x)
+  const yValues = rawPoints.map((point) => point.y)
+  const minX = Math.min(...xValues)
+  const maxX = Math.max(...xValues)
+  const minY = Math.min(...yValues)
+  const maxY = Math.max(...yValues)
+  const width = Math.max(Number.EPSILON, maxX - minX)
+  const height = Math.max(Number.EPSILON, maxY - minY)
+
+  return rawPoints.map((point) => ({
+    x: clampUnit((point.x - minX) / width),
+    y: clampUnit((point.y - minY) / height),
+  }))
+}
+
+export const getPolygonSvgPoints = (
+  sides: number,
+  rotation = 0,
+) => getPolygonPoints(sides, rotation)
+  .map((point) => (
+    `${formatPathNumber(point.x * 100)}% ${formatPathNumber(point.y * 100)}%`
+  ))
+  .join(', ')
+
+export const getPolygonPathDefinition = (
+  sides: number,
+  rotation = 0,
+  cornerRadiusPercent = 0,
+): PolygonPathCorner[] => {
+  const points = getPolygonPoints(sides, rotation)
+  const pointCount = points.length
+  const radiusPercent = Math.max(0, Math.min(50, Number.isFinite(cornerRadiusPercent)
+    ? cornerRadiusPercent
+    : 0))
+
+  return points.map((point, index) => {
+    const previous = points[(index - 1 + pointCount) % pointCount]!
+    const next = points[(index + 1) % pointCount]!
+    const toPrevious = {
+      x: previous.x - point.x,
+      y: previous.y - point.y,
+    }
+    const toNext = {
+      x: next.x - point.x,
+      y: next.y - point.y,
+    }
+    const previousLength = Math.hypot(toPrevious.x, toPrevious.y)
+    const nextLength = Math.hypot(toNext.x, toNext.y)
+    const safePreviousLength = Math.max(Number.EPSILON, previousLength)
+    const safeNextLength = Math.max(Number.EPSILON, nextLength)
+    const cornerOffset = Math.min(previousLength, nextLength) * (radiusPercent / 100)
+
+    return {
+      start: {
+        x: point.x + (toPrevious.x / safePreviousLength) * cornerOffset,
+        y: point.y + (toPrevious.y / safePreviousLength) * cornerOffset,
+      },
+      control: { ...point },
+      end: {
+        x: point.x + (toNext.x / safeNextLength) * cornerOffset,
+        y: point.y + (toNext.y / safeNextLength) * cornerOffset,
+      },
+    }
+  })
+}
+
+export const getPolygonSvgPath = (
+  sides: number,
+  rotation = 0,
+  cornerRadiusPercent = 0,
+) => {
+  const corners = getPolygonPathDefinition(sides, rotation, cornerRadiusPercent)
+  const first = corners[0]
+  if (!first) return ''
+
+  const commands = [
+    `M ${formatPathNumber(first.start.x)} ${formatPathNumber(first.start.y)}`,
+  ]
+
+  corners.forEach((corner, index) => {
+    const nextCorner = corners[(index + 1) % corners.length]
+    commands.push(
+      `Q ${formatPathNumber(corner.control.x)} ${formatPathNumber(corner.control.y)} `
+      + `${formatPathNumber(corner.end.x)} ${formatPathNumber(corner.end.y)}`,
+    )
+    if (nextCorner && index < corners.length - 1) {
+      commands.push(
+        `L ${formatPathNumber(nextCorner.start.x)} ${formatPathNumber(nextCorner.start.y)}`,
+      )
+    }
+  })
+
+  commands.push('Z')
+  return commands.join(' ')
+}
+
+export const tracePolygonPath = (
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  sides: number,
+  rotation = 0,
+  cornerRadiusPercent = 0,
+) => {
+  const safeWidth = Math.max(1, Number.isFinite(width) ? width : 1)
+  const safeHeight = Math.max(1, Number.isFinite(height) ? height : 1)
+  const corners = getPolygonPathDefinition(sides, rotation, cornerRadiusPercent)
+  const first = corners[0]
+  if (!first) return
+
+  context.beginPath()
+  context.moveTo(first.start.x * safeWidth, first.start.y * safeHeight)
+  corners.forEach((corner, index) => {
+    const nextCorner = corners[(index + 1) % corners.length]
+    context.quadraticCurveTo(
+      corner.control.x * safeWidth,
+      corner.control.y * safeHeight,
+      corner.end.x * safeWidth,
+      corner.end.y * safeHeight,
+    )
+    if (nextCorner && index < corners.length - 1) {
+      context.lineTo(
+        nextCorner.start.x * safeWidth,
+        nextCorner.start.y * safeHeight,
+      )
+    }
+  })
+  context.closePath()
 }
 
 export const getHeartPathDefinition = (): HeartPathDefinition => ({

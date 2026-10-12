@@ -74,7 +74,7 @@ export const getCropperNumericState = (
 
 const getSnapshotAspectRatio = (value: string): number | null => {
   if (value === 'circle' || value === '1:1' || value === 'heart') return 1
-  if (value === 'custom-ellipse') return null
+  if (value === 'custom-ellipse' || value === 'polygon') return null
   const parts = value.replace('-ellipse', '').split(':').map(Number)
   if (!parts[0] || !parts[1]) return null
   return parts[0] / parts[1]

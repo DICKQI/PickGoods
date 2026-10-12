@@ -20,6 +20,8 @@ export interface CropHistoryContext {
   marginPercent: Ref<number>
   heartWidthPercent: Ref<number>
   heartHeightPercent: Ref<number>
+  polygonSides: Ref<number>
+  polygonRotation: Ref<number>
   getCropperNumericState: (method: 'getData' | 'getCropBoxData' | 'getCanvasData') => CropNumericState | null
   applyCropperStateFromSnapshot: (snapshot: CropEditSnapshot) => boolean
 }
@@ -49,6 +51,8 @@ export function useCropHistory(ctx: CropHistoryContext) {
     marginPercent: ctx.marginPercent.value,
     heartWidthPercent: ctx.heartWidthPercent.value,
     heartHeightPercent: ctx.heartHeightPercent.value,
+    polygonSides: ctx.polygonSides.value,
+    polygonRotation: ctx.polygonRotation.value,
     cropData: cloneNumericState(ctx.getCropperNumericState('getData')),
     cropBoxData: cloneNumericState(ctx.getCropperNumericState('getCropBoxData')),
     canvasData: cloneNumericState(ctx.getCropperNumericState('getCanvasData')),
@@ -125,6 +129,8 @@ export function useCropHistory(ctx: CropHistoryContext) {
     ctx.marginPercent.value = snapshot.marginPercent
     ctx.heartWidthPercent.value = snapshot.heartWidthPercent ?? 100
     ctx.heartHeightPercent.value = snapshot.heartHeightPercent ?? 100
+    ctx.polygonSides.value = snapshot.polygonSides ?? 3
+    ctx.polygonRotation.value = snapshot.polygonRotation ?? 0
 
     await nextTick()
 

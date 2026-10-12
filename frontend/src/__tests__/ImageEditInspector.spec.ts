@@ -39,6 +39,8 @@ function mountInspector(
       marginPercent: 8,
       heartWidthPercent: 100,
       heartHeightPercent: 100,
+      polygonSides: 3,
+      polygonRotation: 0,
       sourceHasTransparency: false,
       ...overrides,
     },
@@ -108,6 +110,56 @@ describe('ImageEditInspector', () => {
     expect(wrapper.emitted('update:heartWidthPercent')?.[0]).toEqual([65])
     expect(wrapper.emitted('update:heartHeightPercent')?.[0]).toEqual([72])
     expect(wrapper.emitted('commit')).toHaveLength(2)
+  })
+
+  it('多边形聚合区默认折叠并支持三到八边选择', async () => {
+    const wrapper = mountInspector()
+    const toggle = wrapper.get('.polygon-group__toggle')
+    const body = wrapper.get('.polygon-group__body')
+
+    expect(toggle.attributes('aria-expanded')).toBe('false')
+    expect(body.isVisible()).toBe(false)
+
+    await toggle.trigger('click')
+    expect(toggle.attributes('aria-expanded')).toBe('true')
+    const sideButtons = body.findAll('.polygon-side-option')
+    expect(sideButtons.map(button => button.text())).toEqual([
+      '3边',
+      '4边',
+      '5边',
+      '6边',
+      '7边',
+      '8边',
+    ])
+
+    await sideButtons[2]!.trigger('click')
+    expect(wrapper.emitted('select-polygon')?.[0]).toEqual([5])
+  })
+
+  it('多边形旋转滑杆在 88 度吸附到 90 度', async () => {
+    const wrapper = mountInspector('crop', {
+      selectedAspectRatio: 'polygon',
+      polygonSides: 6,
+      polygonRotation: 88,
+    })
+    const rotation = wrapper.get('.polygon-group .slider-control input')
+
+    await rotation.setValue('88')
+
+    expect(wrapper.emitted('update:polygonRotation')?.[0]).toEqual([90])
+    expect(wrapper.emitted('commit')).toHaveLength(1)
+  })
+
+  it('多边形启用圆角后大小滑杆可用', () => {
+    const wrapper = mountInspector('shape', {
+      selectedAspectRatio: 'polygon',
+      enableRoundedRect: true,
+      roundedRadius: 32,
+    })
+
+    expect(wrapper.text()).toContain('多边形圆角')
+    expect(wrapper.get('button[role="switch"]').attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('.edit-panel input[type="range"]').attributes('disabled')).toBeUndefined()
   })
 
   it('高级色彩默认折叠并可展开', async () => {

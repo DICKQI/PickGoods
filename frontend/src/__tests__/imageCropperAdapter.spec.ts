@@ -34,6 +34,8 @@ const snapshot = (overrides: Partial<CropEditSnapshot> = {}): CropEditSnapshot =
   marginPercent: 8,
   heartWidthPercent: 100,
   heartHeightPercent: 100,
+  polygonSides: 3,
+  polygonRotation: 0,
   cropData: { x: 1, y: 2, width: 100, height: 100 },
   cropBoxData: { left: 1, top: 2, width: 100, height: 100 },
   canvasData: { left: 0, top: 0, width: 200, height: 200 },
@@ -91,6 +93,19 @@ describe('imageCropperAdapter', () => {
     expect(applyCropperStateFromSnapshot(
       null,
       snapshot({ selectedAspectRatio: 'custom-ellipse' }),
+    )).toBe(true)
+  })
+
+  it('多边形允许自由比例并恢复参数快照', () => {
+    mockCropper.ready = true
+    ;(mockCropper as any).options = { aspectRatio: Number.NaN }
+    expect(applyCropperStateFromSnapshot(
+      null,
+      snapshot({
+        selectedAspectRatio: 'polygon',
+        polygonSides: 7,
+        polygonRotation: 88,
+      }),
     )).toBe(true)
   })
 
