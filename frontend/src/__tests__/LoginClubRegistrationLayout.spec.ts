@@ -33,4 +33,12 @@ describe('Login club registration layout', () => {
     expect(loginSource).toContain('.login-container::-webkit-scrollbar')
     expect(loginSource).toContain('watch([mode, () => formData.accountType, clubRegistrationStep], triggerCardResize)')
   })
+
+  it('does not render a server-settings entry in the login page header', () => {
+    // 顶部右上角的“服务设置”入口已移除；卡片底部的“服务器设置”入口保留
+    expect(loginSource).not.toContain('login-service-settings')
+    expect(loginSource).not.toContain('服务设置')
+    expect(loginSource).not.toMatch(/<RouterLink[^>]*to="\/settings"/)
+    expect(loginSource).toContain('服务器设置')
+  })
 })
