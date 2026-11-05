@@ -318,7 +318,12 @@
             <article
               v-for="item in goodsItems"
               :key="item.id"
-              class="goods-card"
+              class="goods-card is-interactive-3d"
+              :class="{ 'is-tilting': isTilting && tiltTargetId === item.id }"
+              @pointerenter="beginCardTilt($event, item)"
+              @pointermove="moveCardTilt($event, item)"
+              @pointerleave="endCardTilt"
+              @pointercancel="endCardTilt"
             >
               <button
                 type="button"
@@ -341,6 +346,7 @@
                 <div v-else class="goods-card__image goods-card__image--placeholder" aria-label="暂无图片">
                   <el-icon><Picture /></el-icon>
                 </div>
+                <span class="goods-card__glare" aria-hidden="true"></span>
               </div>
 
               <div class="goods-card__body">
@@ -529,6 +535,7 @@ import { getClubGamification } from '@/api/clubGamification'
 import { claimGamificationAchievement } from '@/api/gamification'
 import { useGamificationStore } from '@/stores/gamification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useCardTilt } from '@/composables/useCardTilt'
 import { useAuthStore } from '@/stores/auth'
 import ClubGoodsDetailDrawer from '@/components/club/ClubGoodsDetailDrawer.vue'
 import ClubPublicGoodsFilterPanel from '@/views/club/ClubPublicGoodsFilterPanel.vue'
@@ -597,6 +604,63 @@ const gamification = ref<ClubGamificationOverview>({
   sets: [],
 })
 const claimingAchievementId = ref<number | null>(null)
+
+// ===== 谷子卡片悬停随鼠标轻微倾斜（复用谷仓 GoodsCard 的 useCardTilt） =====
+const tiltTarget = ref<HTMLElement | null>(null)
+const tiltTargetId = ref<string | null>(null)
+const {
+  isTilting,
+  handlePointerEnter: handleCardTiltEnter,
+  handlePointerMove: handleCardTiltMove,
+  handlePointerLeave: handleCardTiltLeave,
+} = useCardTilt(tiltTarget, {
+  // 与谷仓卡片保持同一幅度与透视，图片做同距离反向视差
+  maxTilt: 6,
+  perspective: 900,
+  imageParallax: 3,
+  enabled: () => !isMobile.value,
+})
+
+/** 高光位置由 composable 写入，离开时清掉，回到 CSS 默认的 50% 50% */
+const clearTiltGlareVars = (el: HTMLElement | null) => {
+  el?.style.removeProperty('--card-glare-x')
+  el?.style.removeProperty('--card-glare-y')
+}
+
+const endCardTilt = () => {
+  handleCardTiltLeave()
+  clearTiltGlareVars(tiltTarget.value)
+  tiltTargetId.value = null
+}
+
+const beginCardTilt = (event: PointerEvent, item: ClubGoodsListItem) => {
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  if (tiltTarget.value && tiltTarget.value !== el) endCardTilt()
+  tiltTarget.value = el
+  tiltTargetId.value = item.id
+  handleCardTiltEnter(event)
+}
+
+const moveCardTilt = (event: PointerEvent, item: ClubGoodsListItem) => {
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  if (tiltTarget.value !== el) {
+    beginCardTilt(event, item)
+    return
+  }
+  handleCardTiltMove(event)
+}
+
+// 窗口失焦、滚动重测失败、能力变化时 useCardTilt 会自己复位，这里同步清掉归属
+watch(isTilting, (value) => {
+  if (value) return
+  clearTiltGlareVars(tiltTarget.value)
+  tiltTargetId.value = null
+})
+
+// 搜索/筛选/翻页会整体替换列表，旧卡片收不到 pointerleave，必须主动复位
+watch(goodsItems, () => endCardTilt())
 
 type PlatformKey = 'taobao_url' | 'xiaohongshu_url' | 'weidian_url'
 const platformLinkDefinitions: Array<{ key: PlatformKey; label: string; logo: string }> = [
@@ -1862,6 +1926,89 @@ onUnmounted(() => {
   font-size: 32px;
 }
 
+/* 指针位置的柔和点光：只在精细指针的桌面视口显示，层级低于「已导入」角标。 */
+.goods-card__glare {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: none;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    110px 90px at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
+    rgba(255, 255, 255, 0.3),
+    rgba(255, 255, 255, 0.08) 40%,
+    rgba(255, 255, 255, 0) 72%
+  );
+  mix-blend-mode: screen;
+  transition: opacity 0.24s ease;
+}
+
+/* ===== 指针跟随 3D + 轻薄亚克力（复用谷仓卡片的 useCardTilt 变量） =====
+   默认不产生合成层；只有精细指针的桌面视口悬停时才启用，其余环境保持原有 -3px 悬停。 */
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .goods-card.is-interactive-3d {
+    --card-transform:
+      perspective(var(--card-perspective, 900px))
+      rotateX(var(--card-tilt-x, 0deg))
+      rotateY(var(--card-tilt-y, 0deg))
+      translate3d(0, var(--card-lift, 0px), 0);
+
+    transform-origin: 50% 50%;
+    transition:
+      transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+      box-shadow 0.35s ease,
+      border-color 0.24s ease;
+  }
+
+  .goods-card.is-interactive-3d:hover,
+  .goods-card.is-interactive-3d.is-tilting {
+    transform: var(--card-transform);
+  }
+
+  .goods-card.is-interactive-3d:hover {
+    --card-lift: -6px;
+    border-color: rgba(212, 175, 55, 0.62);
+    box-shadow:
+      calc(var(--card-tilt-y-ratio, 0) * -10px)
+        calc(18px + var(--card-tilt-x-ratio, 0) * 6px)
+        38px -16px rgba(28, 23, 12, 0.22),
+      calc(var(--card-tilt-y-ratio, 0) * -6px) 0 24px rgba(212, 175, 55, 0.18),
+      var(--shadow-md),
+      0 0 0 3px rgba(212, 175, 55, 0.08);
+  }
+
+  .goods-card.is-interactive-3d .goods-card__glare {
+    display: block;
+  }
+
+  .goods-card.is-interactive-3d:hover .goods-card__glare,
+  .goods-card.is-interactive-3d.is-tilting .goods-card__glare {
+    opacity: 0.68;
+  }
+
+  /* 图片反向位移形成夹层深度；位移叠加在原有 hover 放大上，并由 media 的 overflow 裁切 */
+  .goods-card.is-interactive-3d:hover .goods-card__image,
+  .goods-card.is-interactive-3d.is-tilting .goods-card__image {
+    transform: translate3d(
+        var(--card-image-shift-x, 0px),
+        var(--card-image-shift-y, 0px),
+        0
+      )
+      scale(1.025);
+    transition-duration: 0.12s;
+  }
+
+  .goods-card.is-interactive-3d.is-tilting {
+    transition:
+      transform 0.12s ease-out,
+      box-shadow 0.35s ease,
+      border-color 0.24s ease;
+    will-change: transform;
+  }
+}
+
 .goods-card__body {
   display: flex;
   min-width: 0;
@@ -2663,6 +2810,19 @@ onUnmounted(() => {
   .store-link:hover,
   .status-option:active {
     transform: none;
+  }
+
+  .goods-card.is-interactive-3d,
+  .goods-card.is-interactive-3d:hover,
+  .goods-card.is-interactive-3d.is-tilting,
+  .goods-card.is-interactive-3d:hover .goods-card__image,
+  .goods-card.is-interactive-3d.is-tilting .goods-card__image {
+    transform: none !important;
+    transition: none !important;
+  }
+
+  .goods-card__glare {
+    display: none !important;
   }
 
 }

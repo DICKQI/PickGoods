@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 import { defineComponent, nextTick } from 'vue'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ClubDetail from '@/views/ClubDetail.vue'
 import { useAuthStore } from '@/stores/auth'
 import type { Club, ClubCatalogItem } from '@/api/types'
@@ -732,5 +732,208 @@ describe('ClubDetail 社团对外页', () => {
     await wrapper.get('.state-panel__action').trigger('click')
     await flushPromises()
     expect(wrapper.get('#club-title').text()).toBe('星光社团')
+  })
+})
+
+// ===== 谷子卡片指针跟随 3D =====
+
+const DESKTOP_TILT_MEDIA: Record<string, boolean> = {
+  '(hover: hover) and (pointer: fine)': true,
+  '(min-width: 769px)': true,
+  '(prefers-reduced-motion: reduce)': false,
+}
+
+let originalMatchMedia: typeof window.matchMedia | undefined
+let hadMatchMedia = false
+
+const stubMatchMedia = (matches: Record<string, boolean>) => {
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: matches[query] ?? false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+  })) as unknown as typeof window.matchMedia
+}
+
+const stubCardRect = (el: HTMLElement) => {
+  el.getBoundingClientRect = () =>
+    ({
+      left: 100,
+      top: 50,
+      width: 200,
+      height: 100,
+      right: 300,
+      bottom: 150,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    }) as DOMRect
+}
+
+const dispatchPointer = async (
+  target: HTMLElement,
+  type: string,
+  init: { pointerType?: string; clientX?: number; clientY?: number } = {},
+) => {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperties(event, {
+    pointerType: { value: init.pointerType ?? 'mouse' },
+    clientX: { value: init.clientX ?? 0 },
+    clientY: { value: init.clientY ?? 0 },
+  })
+  target.dispatchEvent(event)
+  await nextTick()
+}
+
+const flushTiltFrames = async () => {
+  if (typeof window.requestAnimationFrame === 'function') {
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+  }
+}
+
+const readTiltNumber = (el: HTMLElement, variable: string, fallback = Number.NaN) => {
+  const raw = el.style.getPropertyValue(variable)
+  if (!raw) return fallback
+  const parsed = Number.parseFloat(raw)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+describe('ClubDetail 谷子卡片悬停 3D', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1024 })
+    Object.defineProperty(window, 'innerHeight', { configurable: true, writable: true, value: 768 })
+    localStorage.clear()
+    pushMock.mockReset()
+    replaceMock.mockReset()
+    routeMock.query = {}
+    vi.clearAllMocks()
+    mockSuccessfulLoad()
+    hadMatchMedia = typeof window.matchMedia === 'function'
+    originalMatchMedia = window.matchMedia
+  })
+
+  afterEach(() => {
+    if (hadMatchMedia && originalMatchMedia) {
+      window.matchMedia = originalMatchMedia
+      return
+    }
+    delete (window as unknown as { matchMedia?: unknown }).matchMedia
+  })
+
+  it('桌面悬停时只有指针所在卡片倾斜，高光跟随指针并在离开后复位', async () => {
+    stubMatchMedia(DESKTOP_TILT_MEDIA)
+    vi.mocked(clubApi.getClubGoods).mockResolvedValue({
+      count: 2,
+      page: 1,
+      page_size: 20,
+      next: null,
+      previous: null,
+      results: [goods, { ...goods, id: 'goods-2', name: '第二款谷子' }],
+    })
+    const wrapper = await mountPage()
+    const cards = wrapper.findAll('.goods-card')
+    expect(cards).toHaveLength(2)
+
+    const first = cards[0]!.element as HTMLElement
+    const second = cards[1]!.element as HTMLElement
+    stubCardRect(first)
+    stubCardRect(second)
+
+    await dispatchPointer(first, 'pointerenter', { clientX: 300, clientY: 150 })
+    await dispatchPointer(first, 'pointermove', { clientX: 300, clientY: 150 })
+    await flushTiltFrames()
+
+    expect(first.classList.contains('is-tilting')).toBe(true)
+    expect(second.classList.contains('is-tilting')).toBe(false)
+    expect(readTiltNumber(first, '--card-tilt-x')).toBeCloseTo(6, 2)
+    expect(readTiltNumber(first, '--card-tilt-y')).toBeCloseTo(-6, 2)
+    expect(first.style.getPropertyValue('--card-perspective')).toBe('900px')
+    expect(first.style.getPropertyValue('--card-glare-x')).toBe('100.00%')
+    expect(first.style.getPropertyValue('--card-glare-y')).toBe('100.00%')
+    expect(readTiltNumber(first, '--card-image-shift-x')).toBeCloseTo(-3, 2)
+    expect(readTiltNumber(first, '--card-image-shift-y')).toBeCloseTo(-3, 2)
+
+    await dispatchPointer(first, 'pointerleave')
+    await flushTiltFrames()
+
+    expect(first.classList.contains('is-tilting')).toBe(false)
+    expect(readTiltNumber(first, '--card-tilt-x', 0)).toBe(0)
+    expect(readTiltNumber(first, '--card-tilt-y', 0)).toBe(0)
+    expect(first.style.getPropertyValue('--card-glare-x')).toBe('')
+    expect(first.style.getPropertyValue('--card-glare-y')).toBe('')
+  })
+
+  it('触屏或缺少精细指针能力时不启用倾斜', async () => {
+    stubMatchMedia({
+      '(hover: hover) and (pointer: fine)': false,
+      '(min-width: 769px)': true,
+      '(prefers-reduced-motion: reduce)': false,
+    })
+    const wrapper = await mountPage()
+    const card = wrapper.get('.goods-card').element as HTMLElement
+    stubCardRect(card)
+
+    await dispatchPointer(card, 'pointerenter', { clientX: 300, clientY: 150 })
+    await dispatchPointer(card, 'pointermove', { clientX: 300, clientY: 150 })
+    await flushTiltFrames()
+
+    expect(card.classList.contains('is-tilting')).toBe(false)
+    expect(card.style.getPropertyValue('--card-tilt-x')).toBe('')
+    expect(card.style.getPropertyValue('--card-tilt-y')).toBe('')
+  })
+
+  it('移动端视口不启用倾斜', async () => {
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 390 })
+    stubMatchMedia(DESKTOP_TILT_MEDIA)
+    const wrapper = await mountPage()
+    expect(wrapper.classes()).toContain('is-mobile')
+    const card = wrapper.get('.goods-card').element as HTMLElement
+    stubCardRect(card)
+
+    await dispatchPointer(card, 'pointerenter', { clientX: 300, clientY: 150 })
+    await dispatchPointer(card, 'pointermove', { clientX: 300, clientY: 150 })
+    await flushTiltFrames()
+
+    expect(card.classList.contains('is-tilting')).toBe(false)
+    expect(card.style.getPropertyValue('--card-tilt-x')).toBe('')
+  })
+
+  it('筛选替换列表后复位倾斜，避免残留状态', async () => {
+    stubMatchMedia(DESKTOP_TILT_MEDIA)
+    const wrapper = await mountPage()
+    const card = wrapper.get('.goods-card').element as HTMLElement
+    stubCardRect(card)
+    await dispatchPointer(card, 'pointerenter', { clientX: 300, clientY: 150 })
+    await flushTiltFrames()
+    expect(card.classList.contains('is-tilting')).toBe(true)
+
+    const vm = wrapper.vm as unknown as { goodsItems: ClubCatalogItem[] }
+    vm.goodsItems = [{ ...goods, id: 'goods-9', name: '筛选后的谷子' }]
+    await nextTick()
+    await flushTiltFrames()
+
+    expect(wrapper.findAll('.goods-card.is-tilting')).toHaveLength(0)
+    expect(readTiltNumber(card, '--card-tilt-x', 0)).toBe(0)
+    expect(wrapper.get('.goods-card').text()).toContain('筛选后的谷子')
+  })
+
+  it('复用 useCardTilt 并把 3D 姿态交给样式表，同时保留降级分支', () => {
+    expect(source).toContain("import { useCardTilt } from '@/composables/useCardTilt'")
+    expect(source).toContain('useCardTilt(tiltTarget')
+    expect(source).toContain('enabled: () => !isMobile.value')
+    expect(source).toContain('watch(goodsItems')
+    expect(source).toContain('class="goods-card is-interactive-3d"')
+    expect(source).toContain('class="goods-card__glare" aria-hidden="true"')
+    expect(source).toContain('@media (hover: hover) and (pointer: fine) and (min-width: 769px)')
+    expect(source).toContain('rotateX(var(--card-tilt-x, 0deg))')
+    expect(source).toContain('rotateY(var(--card-tilt-y, 0deg))')
+    expect(source).toContain('var(--card-glare-x')
+    expect(source).toContain('var(--card-image-shift-x')
+    expect(source).toMatch(/prefers-reduced-motion: reduce[\s\S]*?\.goods-card\.is-interactive-3d[\s\S]*?transform: none !important;/)
   })
 })
