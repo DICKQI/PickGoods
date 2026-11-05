@@ -10,6 +10,9 @@ import type { GoodsListItem, Showcase, ShowcaseGoods } from '@/api/types'
 const showcaseManagerSource = readFileSync(resolve(process.cwd(), 'src/components/ShowcaseManager.vue'), 'utf8')
 const showcaseDetailSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/ShowcaseDetailView.vue'), 'utf8')
 const mobileFullscreenSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/ShowcaseMobileFullscreenDisplay.vue'), 'utf8')
+const paperAlbumSource = readFileSync(resolve(process.cwd(), 'src/components/showcase/PaperAlbumDisplay.vue'), 'utf8')
+const roundBadgeStyleSource = readFileSync(resolve(process.cwd(), 'src/styles/roundBadge.css'), 'utf8')
+const mainSource = readFileSync(resolve(process.cwd(), 'src/main.ts'), 'utf8')
 
 const makeGoods = (overrides: Partial<GoodsListItem> = {}): GoodsListItem => ({
   id: overrides.id || 'goods-1',
@@ -60,6 +63,63 @@ const setMobileViewport = () => {
     addEventListener: vi.fn(),
     removeEventListener: vi.fn(),
   }))
+}
+
+const stubDesktopTiltMedia = () => {
+  const matches: Record<string, boolean> = {
+    '(hover: hover) and (pointer: fine)': true,
+    '(min-width: 769px)': true,
+    '(prefers-reduced-motion: reduce)': false,
+  }
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: matches[query] ?? false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
+}
+
+const stubRect = (el: HTMLElement) => {
+  el.getBoundingClientRect = () =>
+    ({
+      left: 100,
+      top: 50,
+      width: 200,
+      height: 100,
+      right: 300,
+      bottom: 150,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    }) as DOMRect
+}
+
+const dispatchPointer = async (
+  target: HTMLElement,
+  type: string,
+  init: { pointerType?: string; clientX?: number; clientY?: number } = {},
+) => {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperties(event, {
+    pointerType: { value: init.pointerType ?? 'mouse' },
+    clientX: { value: init.clientX ?? 0 },
+    clientY: { value: init.clientY ?? 0 },
+  })
+  target.dispatchEvent(event)
+  await nextTick()
+}
+
+const flushFrames = async () => {
+  if (typeof window.requestAnimationFrame === 'function') {
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+  }
+}
+
+const readNumber = (el: HTMLElement, variable: string, fallback = Number.NaN) => {
+  const raw = el.style.getPropertyValue(variable)
+  if (!raw) return fallback
+  return Number.parseFloat(raw)
 }
 
 const mountDetail = (props: Partial<InstanceType<typeof ShowcaseDetailView>['$props']> = {}) => {
@@ -238,6 +298,118 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     expect(wrapper.get('[data-test="other-section-title"]').text()).toContain('1 件')
   })
 
+  it('展柜不再显示官谷/同人角点，数量角标保留', () => {
+    const wrapper = mountDetail({
+      goods: [
+        makeShowcaseGoods('1', { quantity: 2 }),
+        makeShowcaseGoods('2', {
+          category: {
+            id: 2,
+            name: '方卡',
+            parent: null,
+            path_name: '纸制品/方卡',
+            shape_type: 'rectangle',
+            color_tag: '#8E7DFF',
+            order: 2,
+          },
+          quantity: 2,
+        }),
+      ],
+    })
+
+    expect(wrapper.find('.badge-item').exists()).toBe(true)
+    expect(wrapper.find('.badge-official-dot').exists()).toBe(false)
+    expect(wrapper.find('.paper-official-dot').exists()).toBe(false)
+    expect(wrapper.get('.badge-qty').text()).toBe('x2')
+    expect(wrapper.get('.paper-qty').text()).toBe('x2')
+  })
+
+  it('展柜组件源码不再包含官谷/同人角点样式', () => {
+    for (const source of [showcaseDetailSource, paperAlbumSource, mobileFullscreenSource]) {
+      expect(source).not.toContain('official-dot')
+    }
+  })
+
+  it('吧唧使用分层 3D 金属结构，每枚都有镜面高光层', () => {
+    const wrapper = mountDetail({
+      goods: [makeShowcaseGoods('1'), makeShowcaseGoods('2')],
+    })
+
+    const items = wrapper.findAll('.badge-item')
+    expect(items).toHaveLength(2)
+    for (const item of items) {
+      expect(item.classes()).toContain('pg-round-badge-host')
+      const badge = item.get('.badge-photo')
+      expect(badge.classes()).toContain('pg-round-badge')
+      expect(badge.attributes('title')).toBeUndefined()
+      expect(badge.find('.pg-badge-glare').attributes('aria-hidden')).toBe('true')
+    }
+    expect(showcaseDetailSource).toContain('class="badge-ghost pg-round-badge"')
+  })
+
+  it('吧唧 3D 样式集中定义并覆盖金属圈、弧面与降级分支', () => {
+    expect(mainSource).toContain("./styles/roundBadge.css")
+    for (const token of [
+      'conic-gradient',
+      'mix-blend-mode: screen',
+      '--pg-badge-rim',
+      'radial-gradient',
+      '--card-tilt-x',
+      '--card-glare-x',
+      'prefers-reduced-motion',
+    ]) {
+      expect(roundBadgeStyleSource).toContain(token)
+    }
+  })
+
+  it('桌面悬停时吧唧随鼠标轻微倾斜，高光跟随并在离开后复位', async () => {
+    stubDesktopTiltMedia()
+    const wrapper = mountDetail({ goods: [makeShowcaseGoods('1')] })
+    const item = wrapper.get('.badge-item').element as HTMLElement
+    stubRect(item)
+
+    await dispatchPointer(item, 'pointerenter', { clientX: 300, clientY: 150 })
+    await dispatchPointer(item, 'pointermove', { clientX: 300, clientY: 150 })
+    await flushFrames()
+
+    expect(item.classList.contains('is-tilting')).toBe(true)
+    expect(readNumber(item, '--card-tilt-x')).toBeCloseTo(6, 2)
+    expect(readNumber(item, '--card-tilt-y')).toBeCloseTo(-6, 2)
+    expect(item.style.getPropertyValue('--card-glare-x')).toBe('100.00%')
+    expect(item.style.getPropertyValue('--card-glare-y')).toBe('100.00%')
+
+    await dispatchPointer(item, 'pointerleave')
+    await flushFrames()
+
+    expect(item.classList.contains('is-tilting')).toBe(false)
+    expect(readNumber(item, '--card-tilt-x', 0)).toBe(0)
+    expect(readNumber(item, '--card-tilt-y', 0)).toBe(0)
+    expect(item.style.getPropertyValue('--card-glare-x')).toBe('')
+  })
+
+  it('触屏或非精细指针环境下不启用吧唧倾斜', async () => {
+    const wrapper = mountDetail({ goods: [makeShowcaseGoods('1')] })
+    const item = wrapper.get('.badge-item').element as HTMLElement
+    stubRect(item)
+
+    await dispatchPointer(item, 'pointerenter', { clientX: 300, clientY: 150 })
+    await dispatchPointer(item, 'pointermove', { clientX: 300, clientY: 150 })
+    await flushFrames()
+
+    expect(item.classList.contains('is-tilting')).toBe(false)
+    expect(item.style.getPropertyValue('--card-tilt-x')).toBe('')
+    expect(item.style.getPropertyValue('--card-tilt-y')).toBe('')
+  })
+
+  it('吧唧倾斜复用 useCardTilt 且在拖拽期间关闭', () => {
+    expect(showcaseDetailSource).toContain("import { useCardTilt } from '@/composables/useCardTilt'")
+    expect(showcaseDetailSource).toContain('useCardTilt(tiltTarget')
+    expect(showcaseDetailSource).toContain('enabled: () => !dragging.value')
+    expect(showcaseDetailSource).toContain('watch(dragging')
+    expect(roundBadgeStyleSource).toContain('var(--card-tilt-x')
+    expect(roundBadgeStyleSource).toContain('var(--card-glare-x')
+  })
+
   it('移动端可以将吧唧展架切到全屏大图陈列', async () => {
     setMobileViewport()
     const wrapper = mountDetail({
@@ -254,7 +426,12 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     const fullscreen = wrapper.get('[data-test="showcase-mobile-fullscreen-round"]')
     expect(fullscreen.text()).toContain('吧唧展架')
     expect(fullscreen.findAll('[data-test="fullscreen-round-item"]')).toHaveLength(3)
+    expect(fullscreen.findAll('.fullscreen-round-item.pg-round-badge-host')).toHaveLength(3)
+    expect(fullscreen.findAll('.round-photo.pg-round-badge')).toHaveLength(3)
+    expect(fullscreen.find('.round-photo').attributes('title')).toBeUndefined()
+    expect(fullscreen.findAll('.pg-badge-glare')).toHaveLength(3)
     expect(fullscreen.find('[data-test="fullscreen-density-dense"]').exists()).toBe(true)
+    expect(fullscreen.find('.fullscreen-official-dot').exists()).toBe(false)
 
     await wrapper.get('[data-test="fullscreen-close-button"]').trigger('click')
     await nextTick()
@@ -335,6 +512,8 @@ describe('ShowcaseDetailView 沉浸式详情', () => {
     const fullscreen = wrapper.get('[data-test="showcase-mobile-fullscreen-paper"]')
     expect(fullscreen.text()).toContain('纸制品收纳册')
     expect(fullscreen.findAll('[data-test="fullscreen-paper-item"]')).toHaveLength(5)
+    expect(fullscreen.find('.pg-round-badge').exists()).toBe(false)
+    expect(fullscreen.find('.fullscreen-official-dot').exists()).toBe(false)
     expect(fullscreen.find('[data-test="fullscreen-page-indicator"]').exists()).toBe(false)
     expect(fullscreen.find('[data-test="fullscreen-prev-page"]').exists()).toBe(false)
     expect(fullscreen.find('[data-test="fullscreen-next-page"]').exists()).toBe(false)

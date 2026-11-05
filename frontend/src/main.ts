@@ -16,6 +16,7 @@ import { useAuthStore } from '@/stores/auth'
 import './styles/index.css'
 import './styles/element-plus-theme.css'
 import './styles/admin.css'
+import './styles/roundBadge.css'
 
 // 初始化 StatusBar（仅在 Capacitor 环境中）
 if (Capacitor.isNativePlatform()) {

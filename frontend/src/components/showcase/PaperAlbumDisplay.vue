@@ -98,7 +98,6 @@
                   <div v-else class="paper-placeholder"><el-icon><Picture /></el-icon></div>
                 </div>
                 <div v-if="slot.item.goods.quantity > 1" class="paper-qty">x{{ slot.item.goods.quantity }}</div>
-                <span class="paper-official-dot" :class="slot.item.goods.is_official ? 'is-official' : 'is-doujin'" />
               </div>
             </div>
           </div>
@@ -828,22 +827,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
   text-align: center;
   z-index: 4;
 }
-.paper-official-dot {
-  position: absolute;
-  bottom: -6px;
-  right: -6px;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 2px solid #fff;
-  z-index: 4;
-}
-.paper-official-dot.is-official {
-  background: #d4af37;
-}
-.paper-official-dot.is-doujin {
-  background: #9c6dd6;
-}
+
 .paper-ghost {
   position: fixed;
   z-index: 9999;
@@ -1084,12 +1068,6 @@ const onPaperClick = (item: ShowcaseGoods) => {
     border-radius: 10px;
     font-size: 11px;
     line-height: 20px;
-  }
-  .paper-official-dot {
-    right: -4px;
-    bottom: -4px;
-    width: 10px;
-    height: 10px;
   }
 }
 

@@ -45,7 +45,7 @@
         <div
           v-for="item in items"
           :key="item.id"
-          class="fullscreen-round-item"
+          class="fullscreen-round-item pg-round-badge-host"
           data-test="fullscreen-round-item"
           :data-id="item.id"
           :style="[
@@ -56,7 +56,7 @@
           @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', item.goods.id, $event)"
           @dragstart.prevent
         >
-          <div class="round-photo" :title="item.goods.name">
+          <div class="round-photo pg-round-badge">
             <WatermarkImage
               v-if="readonly && item.goods.main_photo"
               :src="item.goods.main_photo"
@@ -78,9 +78,9 @@
               </template>
             </el-image>
             <div v-else class="fullscreen-placeholder">无图</div>
+            <span class="pg-badge-glare" aria-hidden="true" />
           </div>
           <span v-if="item.goods.quantity > 1" class="fullscreen-qty">x{{ item.goods.quantity }}</span>
-          <span class="fullscreen-official-dot" :class="item.goods.is_official ? 'is-official' : 'is-doujin'" />
         </div>
       </div>
 
@@ -124,7 +124,6 @@
               <div v-else class="fullscreen-placeholder">无图</div>
             </div>
             <span v-if="item.goods.quantity > 1" class="fullscreen-qty">x{{ item.goods.quantity }}</span>
-            <span class="fullscreen-official-dot" :class="item.goods.is_official ? 'is-official' : 'is-doujin'" />
           </div>
         </div>
       </div>
@@ -334,7 +333,6 @@ onBeforeUnmount(() => {
 .fullscreen-paper-item:active {
   transform: scale(0.97);
 }
-.round-photo,
 .paper-photo {
   overflow: hidden;
   background: #fff;
@@ -345,7 +343,13 @@ onBeforeUnmount(() => {
 }
 .round-photo {
   aspect-ratio: 1 / 1;
-  border-radius: 50%;
+  --pg-badge-rim: 1.2px;
+}
+.density-dense .round-photo {
+  --pg-badge-rim: 1px;
+}
+.density-large .round-photo {
+  --pg-badge-rim: 1.5px;
 }
 .paper-fullscreen-shell {
   min-height: 100%;
@@ -378,6 +382,7 @@ onBeforeUnmount(() => {
   width: 100%;
   height: 100%;
   display: flex;
+  border-radius: inherit;
   align-items: center;
   justify-content: center;
   color: rgba(38, 50, 56, 0.38);
@@ -398,21 +403,6 @@ onBeforeUnmount(() => {
   font-weight: 800;
   line-height: 18px;
   text-align: center;
-}
-.fullscreen-official-dot {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  width: 10px;
-  height: 10px;
-  border: 2px solid #fff;
-  border-radius: 50%;
-}
-.fullscreen-official-dot.is-official {
-  background: #d4af37;
-}
-.fullscreen-official-dot.is-doujin {
-  background: #9c6dd6;
 }
 
 @media (min-width: 769px) {

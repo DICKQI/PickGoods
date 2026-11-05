@@ -1,0 +1,163 @@
+/* 圆形吧唧：印刷面延伸到边缘，只保留一圈极细金属压边 + 柔和弧面反光。
+   展柜层板、移动端全屏陈列、拖拽镜像共用；包边宽度由使用方覆盖 --pg-badge-rim。 */
+.pg-round-badge {
+  --pg-badge-rim: 1.5px;
+  --pg-badge-glow: 0 0 0 0 rgba(0, 0, 0, 0);
+  position: relative;
+  isolation: isolate;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow:
+    var(--pg-badge-glow),
+    0 2px 0 rgba(96, 74, 30, 0.32),
+    0 4px 7px -3px rgba(52, 38, 10, 0.38),
+    0 9px 16px -10px rgba(52, 38, 10, 0.3),
+    0 16px 24px -16px rgba(52, 38, 10, 0.3);
+  transform-origin: 50% 50%;
+  transform:
+    perspective(var(--card-perspective, 760px))
+    rotateX(var(--card-tilt-x, 0deg))
+    rotateY(var(--card-tilt-y, 0deg));
+  transition:
+    transform 0.45s cubic-bezier(0.2, 0.8, 0.2, 1),
+    box-shadow 0.3s ease;
+}
+
+/* 真实吧唧只有印刷面外侧约 1px 的金属压边，图案几乎顶到边 */
+.pg-round-badge::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: 50%;
+  background: conic-gradient(
+    from 200deg at 50% 50%,
+    rgba(255, 255, 255, 0.95) 0deg,
+    rgba(255, 255, 255, 0.35) 24deg,
+    rgba(255, 255, 255, 0) 62deg,
+    rgba(0, 0, 0, 0.22) 118deg,
+    rgba(0, 0, 0, 0.34) 158deg,
+    rgba(255, 255, 255, 0.18) 196deg,
+    rgba(255, 255, 255, 0) 236deg,
+    rgba(0, 0, 0, 0.28) 292deg,
+    rgba(255, 255, 255, 0.75) 340deg,
+    rgba(255, 255, 255, 0.95) 360deg
+  );
+  -webkit-mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--pg-badge-rim) - 0.2px),
+    #000 calc(100% - var(--pg-badge-rim) + 0.4px)
+  );
+  mask: radial-gradient(
+    farthest-side,
+    transparent calc(100% - var(--pg-badge-rim) - 0.2px),
+    #000 calc(100% - var(--pg-badge-rim) + 0.4px)
+  );
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16);
+  opacity: 0.9;
+  pointer-events: none;
+}
+
+/* 弧面：左上柔光 + 四周极轻暗角，不做厚描边 */
+.pg-round-badge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: 50%;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.22) 0%,
+      rgba(255, 255, 255, 0) 44%,
+      rgba(24, 16, 4, 0.12) 74%,
+      rgba(24, 16, 4, 0.26) 100%
+    ),
+    radial-gradient(
+      closest-side at 50% 50%,
+      transparent 66%,
+      rgba(24, 16, 4, 0.16) 88%,
+      rgba(24, 16, 4, 0.38) 100%
+    ),
+    radial-gradient(
+      110% 90% at 32% 14%,
+      rgba(255, 255, 255, 0.24) 0%,
+      rgba(255, 255, 255, 0.08) 36%,
+      transparent 62%
+    );
+  pointer-events: none;
+}
+
+/* 亮面反光：只有柔和的弧形光晕，没有硬边光束 */
+.pg-badge-glare {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  border-radius: 50%;
+  background:
+    radial-gradient(
+      80% 55% at 50% 112%,
+      transparent 58%,
+      rgba(255, 255, 255, 0.42) 66%,
+      transparent 75%
+    ),
+    radial-gradient(
+      75% 50% at 32% 10%,
+      rgba(255, 255, 255, 0.72) 0%,
+      rgba(255, 255, 255, 0.18) 55%,
+      transparent 78%
+    ),
+    radial-gradient(
+      105% 60% at 50% -8%,
+      rgba(255, 255, 255, 0.45) 0%,
+      rgba(255, 255, 255, 0.14) 42%,
+      transparent 72%
+    );
+  mix-blend-mode: screen;
+  opacity: 0.6;
+  transform: translate3d(-2%, -1%, 0);
+  transition:
+    transform 0.6s ease,
+    opacity 0.35s ease;
+  pointer-events: none;
+}
+
+.pg-round-badge img,
+.pg-round-badge .el-image__inner {
+  border-radius: 50%;
+}
+
+/* 指针跟随的柔和点光：只在倾斜期间淡入，避免离开时整片反光跳位 */
+.pg-badge-glare::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: radial-gradient(
+    60% 45% at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
+    rgba(255, 255, 255, 0.55) 0%,
+    rgba(255, 255, 255, 0.12) 45%,
+    transparent 72%
+  );
+  mix-blend-mode: screen;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+.pg-round-badge-host.is-tilting .pg-badge-glare::after {
+  opacity: 0.55;
+}
+
+/* 指针跟随期间缩短过渡，离开时恢复平滑回正 */
+.pg-round-badge-host.is-tilting > .pg-round-badge {
+  transition-duration: 0.12s;
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pg-round-badge,
+  .pg-badge-glare {
+    transition: none;
+  }
+}

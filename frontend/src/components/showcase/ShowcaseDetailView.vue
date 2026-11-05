@@ -151,19 +151,26 @@
                     <div
                       v-for="item in row"
                       :key="item.id"
-                      class="badge-item"
+                      class="badge-item pg-round-badge-host"
                       :data-id="item.id"
-                      :class="{ 'is-dragging': dragItemId === item.id }"
+                      :class="{
+                        'is-dragging': dragItemId === item.id,
+                        'is-tilting': isTilting && tiltTargetId === item.id,
+                      }"
                       :style="[
                         { cursor: readonly ? 'default' : 'grab' },
                         item.goods.category?.color_tag ? { '--badge-ring': item.goods.category.color_tag } : {},
                       ]"
                       @pointerdown="onBadgePointerDown($event, item)"
+                      @pointerenter="beginBadgeTilt($event, item)"
+                      @pointermove="moveBadgeTilt($event, item)"
+                      @pointerleave="endBadgeTilt"
+                      @pointercancel="endBadgeTilt"
                       @click="onBadgeClick(item)"
                       @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', item.goods.id, $event)"
                       @dragstart.prevent
                     >
-                      <div class="badge-photo" :title="item.goods.name">
+                      <div class="badge-photo pg-round-badge">
                         <WatermarkImage
                           v-if="readonly && item.goods.main_photo"
                           :src="item.goods.main_photo"
@@ -185,12 +192,11 @@
                           </template>
                         </el-image>
                         <div v-else class="badge-placeholder"><el-icon><Picture /></el-icon></div>
+                        <span class="pg-badge-glare" aria-hidden="true" />
                       </div>
 
                       <!-- 数量角标 -->
                       <div v-if="item.goods.quantity > 1" class="badge-qty">x{{ item.goods.quantity }}</div>
-                      <!-- 官谷/同人 小点 -->
-                      <span class="badge-official-dot" :class="item.goods.is_official ? 'is-official' : 'is-doujin'" />
                     </div>
                   </div>
                   <div class="shelf-board" />
@@ -250,7 +256,7 @@
     <Teleport to="body">
       <div
         v-if="dragGhost"
-        class="badge-ghost"
+        class="badge-ghost pg-round-badge"
         :style="{
           left: dragGhost.x + 'px',
           top: dragGhost.y + 'px',
@@ -261,6 +267,7 @@
       >
         <img v-if="dragGhost.src" :src="dragGhost.src" :alt="dragGhost.alt" class="badge-ghost-img" />
         <div v-else class="badge-placeholder"><el-icon><Picture /></el-icon></div>
+        <span class="pg-badge-glare" aria-hidden="true" />
       </div>
     </Teleport>
 
@@ -288,6 +295,7 @@ import GoodsCard from '@/components/GoodsCard.vue'
 import PaperAlbumDisplay from '@/components/showcase/PaperAlbumDisplay.vue'
 import ShowcaseMobileFullscreenDisplay from '@/components/showcase/ShowcaseMobileFullscreenDisplay.vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
+import { useCardTilt } from '@/composables/useCardTilt'
 import { groupShowcaseDisplayGoods } from './showcaseDisplayGrouping'
 import { useShowcaseDisplayDragSort } from './useShowcaseDisplayDragSort'
 import type { GoodsListItem, Showcase, ShowcaseGoods } from '@/api/types'
@@ -422,6 +430,67 @@ const {
     const size = isMobile ? 84 : 116
     return { width: size, height: size, radius: '50%' }
   },
+})
+
+// ===== 吧唧悬停随鼠标轻微倾斜（复用谷仓卡片的 useCardTilt） =====
+const tiltTarget = ref<HTMLElement | null>(null)
+const tiltTargetId = ref<string | null>(null)
+const {
+  isTilting,
+  handlePointerEnter: handleBadgeTiltEnter,
+  handlePointerMove: handleBadgeTiltMove,
+  handlePointerLeave: handleBadgeTiltLeave,
+} = useCardTilt(tiltTarget, {
+  // 与谷仓卡片保持同一幅度；吧唧尺寸小，透视略近
+  maxTilt: 6,
+  perspective: 760,
+  // 不做画面内视差：圆形画面位移会露出白边
+  imageParallax: 0,
+  enabled: () => !dragging.value,
+})
+
+/** 拖拽开始或能力变化时，把旧徽章的高光变量清掉，回到 CSS 默认位置 */
+const clearTiltGlareVars = (el: HTMLElement | null) => {
+  el?.style.removeProperty('--card-glare-x')
+  el?.style.removeProperty('--card-glare-y')
+}
+
+const endBadgeTilt = () => {
+  handleBadgeTiltLeave()
+  clearTiltGlareVars(tiltTarget.value)
+  tiltTargetId.value = null
+}
+
+const beginBadgeTilt = (event: PointerEvent, item: ShowcaseGoods) => {
+  if (dragging.value) return
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  if (tiltTarget.value && tiltTarget.value !== el) endBadgeTilt()
+  tiltTarget.value = el
+  tiltTargetId.value = item.id
+  handleBadgeTiltEnter(event)
+}
+
+const moveBadgeTilt = (event: PointerEvent, item: ShowcaseGoods) => {
+  if (dragging.value) return
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  if (tiltTarget.value !== el) {
+    beginBadgeTilt(event, item)
+    return
+  }
+  handleBadgeTiltMove(event)
+}
+
+watch(dragging, (value) => {
+  if (value) endBadgeTilt()
+})
+
+// 窗口失焦、滚动重测失败、能力变化时 useCardTilt 会自己复位，这里同步清掉归属
+watch(isTilting, (value) => {
+  if (value) return
+  clearTiltGlareVars(tiltTarget.value)
+  tiltTargetId.value = null
 })
 
 /** 按列数把吧唧切成若干层板（基于 localOrder，支持拖曳实时重排） */
@@ -804,7 +873,6 @@ const onBadgeClick = (item: ShowcaseGoods) => {
 /* 香槟金属展示柜局部调色板：仅服务吧唧展架，不影响其他谷子陈列 */
 .goods-section {
   --c-display-shell: #fff8e6;
-  --c-display-edge: #d4af37;
   --c-display-rail-light: #fff2bf;
   --c-display-rail-mid: #d8bd72;
   --c-display-rail-dark: #9f7a31;
@@ -1062,58 +1130,35 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   transform: none;
 }
 .cabinet.is-drag-active .badge-item:hover .badge-photo {
-  box-shadow:
-    0 0 0 2px #fffdf4,
-    0 0 0 4px var(--badge-ring, #d4af37),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45);
+  --pg-badge-glow:
+    0 0 0 3px rgba(212, 175, 55, 0.5),
+    0 0 16px 2px rgba(212, 175, 55, 0.4);
+  transform: none;
 }
 .cabinet.is-drag-active .badge-item {
   will-change: transform;
 }
 
+/* 尺寸与分类包边色；金属圈、弧面受光、高光和厚度阴影见 styles/roundBadge.css */
 .badge-photo {
   width: 116px;
   height: 116px;
-  border-radius: 50%;
-  overflow: hidden;
-  position: relative;
-  isolation: isolate;
-  background: #fffdf4;
-  box-shadow:
-    0 0 0 2px #fffdf4,
-    0 0 0 4px var(--badge-ring, #d4af37),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.48);
-  filter:
-    drop-shadow(0 2px 2px rgba(var(--c-display-shadow), 0.2))
-    drop-shadow(0 7px 7px rgba(52, 47, 33, 0.18));
-  transition: box-shadow 0.22s ease;
-}
-
-.badge-photo::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 50%;
-  background: radial-gradient(120% 80% at 50% 16%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0.08) 40%, transparent 60%);
-  mix-blend-mode: screen;
-  pointer-events: none;
-  z-index: 1;
+  --pg-badge-rim: 1.5px;
 }
 .badge-item:hover .badge-photo {
-  box-shadow:
-    0 0 0 2px #fffdf4,
-    0 0 0 4px var(--badge-ring, #d4af37),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.55),
-    0 0 11px 1px rgba(212, 175, 55, 0.34);
+  --pg-badge-glow: 0 0 14px 1px rgba(212, 175, 55, 0.3);
 }
 .badge-img {
   width: 100%;
   height: 100%;
   display: block;
+  border-radius: 50%;
+  overflow: hidden;
 }
 :deep(.badge-img .el-image__inner) {
   width: 100%;
   height: 100%;
+  border-radius: 50%;
 }
 .badge-placeholder {
   width: 100%;
@@ -1121,6 +1166,7 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   display: flex;
   align-items: center;
   justify-content: center;
+  border-radius: 50%;
   color: rgba(var(--c-display-shadow), 0.34);
   font-size: 26px;
 }
@@ -1131,19 +1177,16 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   pointer-events: none;
   border-radius: 50%;
   overflow: hidden;
-  background: #fffdf4;
-  box-shadow:
-    0 0 0 2px #fffdf4,
-    0 0 0 4px var(--badge-ring, #d4af37),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.45),
-    0 12px 24px -6px rgba(31, 28, 20, 0.34);
   transform: scale(1.06);
+  --pg-badge-rim: 1.5px;
+  --pg-badge-glow: 0 18px 32px -12px rgba(31, 28, 20, 0.45);
 }
 .badge-ghost-img {
   width: 100%;
   height: 100%;
   display: block;
   object-fit: cover;
+  border-radius: 50%;
 }
 
 .badge-qty {
@@ -1162,23 +1205,6 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   text-align: center;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.25);
   z-index: 4;
-}
-
-.badge-official-dot {
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-  border: 1.5px solid #fffdf4;
-  z-index: 4;
-}
-.badge-official-dot.is-official {
-  background: var(--c-display-edge);
-}
-.badge-official-dot.is-doujin {
-  background: #9c6dd6;
 }
 
 /* ==================== 其他谷子网格 ==================== */
@@ -1298,6 +1324,7 @@ const onBadgeClick = (item: ShowcaseGoods) => {
   .badge-photo {
     width: 84px;
     height: 84px;
+    --pg-badge-rim: 1.2px;
   }
   .goods-grid {
     grid-template-columns: repeat(2, 1fr);
