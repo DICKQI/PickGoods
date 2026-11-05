@@ -77,6 +77,58 @@ const mockMobileViewport = () => {
   }))
 }
 
+const stubDesktopTiltMedia = () => {
+  const matches: Record<string, boolean> = {
+    '(hover: hover) and (pointer: fine)': true,
+    '(min-width: 769px)': true,
+    '(prefers-reduced-motion: reduce)': false,
+    '(max-width: 768px)': false,
+  }
+  window.matchMedia = vi.fn().mockImplementation((query: string) => ({
+    matches: matches[query] ?? false,
+    media: query,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+  }))
+}
+
+const stubRect = (el: HTMLElement) => {
+  el.getBoundingClientRect = () =>
+    ({
+      left: 100,
+      top: 50,
+      width: 200,
+      height: 160,
+      right: 300,
+      bottom: 210,
+      x: 100,
+      y: 50,
+      toJSON: () => ({}),
+    }) as DOMRect
+}
+
+const dispatchPointer = async (
+  target: HTMLElement,
+  type: string,
+  init: { pointerType?: string; clientX?: number; clientY?: number } = {},
+) => {
+  const event = new Event(type, { bubbles: true, cancelable: true })
+  Object.defineProperties(event, {
+    pointerType: { value: init.pointerType ?? 'mouse' },
+    clientX: { value: init.clientX ?? 0 },
+    clientY: { value: init.clientY ?? 0 },
+  })
+  target.dispatchEvent(event)
+  await nextTick()
+}
+
+const flushFrames = async () => {
+  if (typeof window.requestAnimationFrame === 'function') {
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+    await new Promise<void>(resolve => window.requestAnimationFrame(() => resolve()))
+  }
+}
+
 describe('PaperAlbumDisplay', () => {
   beforeEach(() => {
     vi.useRealTimers()
@@ -103,6 +155,8 @@ describe('PaperAlbumDisplay', () => {
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('1 / 2')
     expect(wrapper.get('.paper-book > .paper-page:first-child').findAll('.paper-pocket')).toHaveLength(6)
     expect(wrapper.get('.paper-book > .paper-page:nth-child(2)').findAll('.paper-pocket')).toHaveLength(6)
+    expect(wrapper.get('.paper-book > .paper-page:first-child').classes()).toContain('paper-page--left')
+    expect(wrapper.get('.paper-book > .paper-page:nth-child(2)').classes()).not.toContain('paper-page--left')
     expect(wrapper.find('[data-id="showcase-1"]').exists()).toBe(true)
     expect(wrapper.find('[data-id="showcase-12"]').exists()).toBe(true)
     expect(wrapper.find('[data-id="showcase-13"]').exists()).toBe(false)
@@ -113,14 +167,35 @@ describe('PaperAlbumDisplay', () => {
     expect(wrapper.get('.paper-album').classes()).toContain('is-page-turning')
     expect(wrapper.get('.paper-album').classes()).toContain('is-turning-next')
     expect(wrapper.find('.paper-turn-layer').exists()).toBe(true)
+    expect(wrapper.find('.paper-turn-face--back .paper-turn-page').classes()).toContain('paper-turn-page--left')
+    expect(wrapper.find('.paper-turn-face--front .paper-turn-page').classes()).not.toContain('paper-turn-page--left')
     expect(wrapper.find('[data-id="showcase-13"]').exists()).toBe(true)
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('1 / 2')
 
-    await vi.advanceTimersByTimeAsync(620)
+    await vi.advanceTimersByTimeAsync(800)
     await nextTick()
 
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('2 / 2')
     expect(wrapper.find('[data-id="showcase-13"]').exists()).toBe(true)
+    expect(wrapper.get('[data-test="paper-next-page"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('finishes the turn on animationend so the next click is never blocked by the fallback timer', async () => {
+    vi.useFakeTimers()
+    const wrapper = mountAlbum(Array.from({ length: 13 }, (_, i) => makeItem(i + 1)))
+
+    await wrapper.get('[data-test="paper-next-page"]').trigger('click')
+    await nextTick()
+
+    const sheet = wrapper.get('.paper-turn-sheet').element
+    const event = new Event('animationend', { bubbles: true })
+    // Vue scoped CSS 会把 keyframes 重命名为 paper-turn-next-<hash>。
+    Object.defineProperty(event, 'animationName', { value: 'paper-turn-next-1a572371' })
+    sheet.dispatchEvent(event)
+    await nextTick()
+
+    expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('2 / 2')
+    expect(wrapper.get('.paper-album').classes()).not.toContain('is-page-turning')
     expect(wrapper.get('[data-test="paper-next-page"]').attributes('disabled')).toBeDefined()
   })
 
@@ -136,7 +211,7 @@ describe('PaperAlbumDisplay', () => {
     expect(wrapper.get('.paper-album').classes()).toContain('is-page-turning')
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('1 / 3')
 
-    await vi.advanceTimersByTimeAsync(620)
+    await vi.advanceTimersByTimeAsync(800)
     await nextTick()
 
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('2 / 3')
@@ -147,8 +222,10 @@ describe('PaperAlbumDisplay', () => {
 
     expect(wrapper.get('.paper-album').classes()).toContain('is-turning-prev')
     expect(wrapper.find('.paper-turn-layer').exists()).toBe(true)
+    expect(wrapper.find('.paper-turn-face--front .paper-turn-page').classes()).toContain('paper-turn-page--left')
+    expect(wrapper.find('.paper-turn-face--back .paper-turn-page').classes()).not.toContain('paper-turn-page--left')
 
-    await vi.advanceTimersByTimeAsync(620)
+    await vi.advanceTimersByTimeAsync(800)
     await nextTick()
 
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('1 / 3')
@@ -171,7 +248,7 @@ describe('PaperAlbumDisplay', () => {
     expect(wrapper.find('.paper-turn-layer [data-id="showcase-7"]').exists()).toBe(true)
     expect(wrapper.find('.paper-turn-layer [data-id="showcase-13"]').exists()).toBe(true)
 
-    await vi.advanceTimersByTimeAsync(620)
+    await vi.advanceTimersByTimeAsync(800)
     await nextTick()
 
     await wrapper.get('[data-test="paper-prev-page"]').trigger('click')
@@ -212,9 +289,11 @@ describe('PaperAlbumDisplay', () => {
 
     expect(wrapper.get('.paper-album').classes()).toContain('is-page-turning')
     expect(wrapper.find('.paper-turn-layer').exists()).toBe(true)
+    expect(wrapper.get('.paper-book > .paper-page:first-child').find('[data-id="showcase-7"]').exists()).toBe(true)
+    expect(wrapper.get('.paper-book > .paper-page:first-child').find('[data-id="showcase-1"]').exists()).toBe(false)
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('1 / 2')
 
-    await vi.advanceTimersByTimeAsync(420)
+    await vi.advanceTimersByTimeAsync(600)
     await nextTick()
 
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('2 / 2')
@@ -238,7 +317,7 @@ describe('PaperAlbumDisplay', () => {
 
     expect(wrapper.get('.paper-album').classes()).toContain('is-turning-next')
 
-    await vi.advanceTimersByTimeAsync(420)
+    await vi.advanceTimersByTimeAsync(600)
     await nextTick()
 
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('2 / 3')
@@ -264,10 +343,50 @@ describe('PaperAlbumDisplay', () => {
 
     expect(wrapper.get('.paper-album').classes()).toContain('is-turning-prev')
 
-    await vi.advanceTimersByTimeAsync(420)
+    await vi.advanceTimersByTimeAsync(600)
     await nextTick()
 
     expect(wrapper.get('[data-test="paper-album-page-indicator"]').text()).toContain('1 / 3')
+  })
+
+  it('tilts paper cards toward the pointer on desktop and resets on leave', async () => {
+    stubDesktopTiltMedia()
+    const wrapper = mountAlbum(Array.from({ length: 4 }, (_, i) => makeItem(i + 1)))
+    const item = wrapper.get('.paper-item').element as HTMLElement
+    stubRect(item)
+
+    await dispatchPointer(item, 'pointerenter', { clientX: 260, clientY: 90 })
+    await dispatchPointer(item, 'pointermove', { clientX: 260, clientY: 90 })
+    await flushFrames()
+
+    expect(item.classList.contains('is-tilting')).toBe(true)
+    expect(Number.parseFloat(item.style.getPropertyValue('--card-tilt-x'))).not.toBe(0)
+    expect(Number.parseFloat(item.style.getPropertyValue('--card-tilt-y'))).not.toBe(0)
+    expect(item.style.getPropertyValue('--card-glare-x')).not.toBe('')
+    expect(item.style.getPropertyValue('--card-glare-y')).not.toBe('')
+
+    await dispatchPointer(item, 'pointerleave')
+    await flushFrames()
+
+    expect(item.classList.contains('is-tilting')).toBe(false)
+    expect(item.style.getPropertyValue('--card-tilt-x')).toBe('0deg')
+    expect(item.style.getPropertyValue('--card-tilt-y')).toBe('0deg')
+    expect(item.style.getPropertyValue('--card-glare-x')).toBe('')
+    expect(item.style.getPropertyValue('--card-glare-y')).toBe('')
+  })
+
+  it('does not tilt paper cards for coarse pointers', async () => {
+    const wrapper = mountAlbum(Array.from({ length: 4 }, (_, i) => makeItem(i + 1)))
+    const item = wrapper.get('.paper-item').element as HTMLElement
+    stubRect(item)
+
+    await dispatchPointer(item, 'pointerenter', { clientX: 260, clientY: 90, pointerType: 'touch' })
+    await dispatchPointer(item, 'pointermove', { clientX: 260, clientY: 90, pointerType: 'touch' })
+    await flushFrames()
+
+    expect(item.classList.contains('is-tilting')).toBe(false)
+    expect(item.style.getPropertyValue('--card-tilt-x')).toBe('')
+    expect(item.style.getPropertyValue('--card-tilt-y')).toBe('')
   })
 
   it('uses a roomy square paper image frame and keeps the book spine inside the page area', () => {
@@ -297,8 +416,13 @@ describe('PaperAlbumDisplay', () => {
     expect(source).toMatch(/\.section-heading-copy\s*\{[\s\S]*gap:\s*4px/)
     expect(source).toMatch(/\.paper-book::before\s*\{[\s\S]*top:\s*var\(--paper-book-padding\)/)
     expect(source).toMatch(/\.paper-book::before\s*\{[\s\S]*bottom:\s*var\(--paper-book-padding\)/)
-    expect(source).toMatch(/@keyframes paper-turn-next\s*\{[\s\S]*transform: rotateY\(-180deg\) scaleX\(1\);[\s\S]*\}/)
-    expect(source).toMatch(/@keyframes paper-turn-prev\s*\{[\s\S]*transform: rotateY\(180deg\) scaleX\(1\);[\s\S]*\}/)
+    expect(source).toMatch(/@keyframes paper-turn-next\s*\{[\s\S]*transform: rotateY\(-180deg\) translateZ\(0\);[\s\S]*\}/)
+    expect(source).toMatch(/@keyframes paper-turn-prev\s*\{[\s\S]*transform: rotateY\(180deg\) translateZ\(0\);[\s\S]*\}/)
+    expect(source).toMatch(/\.paper-page--left\s*\{[\s\S]*padding-right:\s*clamp\(44px, 3vw, 52px\);/)
+    expect(source).toMatch(/\.paper-turn-page--left\s*\{[\s\S]*padding-right:\s*clamp\(44px, 3vw, 52px\);/)
+    expect(source).toMatch(/\.paper-page--left \.paper-page-ring,[\s\S]*display:\s*none;/)
+    expect(source).toContain('turnSheetFrontIsLeft')
+    expect(source).toContain('turnSheetBackIsLeft')
     expect(paperTurnNextBlock).not.toContain('box-shadow:')
     expect(paperTurnPrevBlock).not.toContain('box-shadow:')
     expect(source).not.toContain('max-width: 850px;')
@@ -311,23 +435,35 @@ describe('PaperAlbumDisplay', () => {
     const paperBookBlock = source.match(/\.paper-book\s*\{([\s\S]*?)\n\}/)?.[1] || ''
     const paperItemBlock = source.match(/\.paper-item\s*\{([\s\S]*?)\n\}/)?.[1] || ''
 
-    expect(paperBookBlock).toContain('--paper-card-size: clamp(158px, 9.6vw, 190px);')
-    expect(paperBookBlock).toContain('--paper-pocket-min-height: clamp(172px, 10.8vw, 206px);')
-    expect(paperBookBlock).toContain('--paper-page-min-height: clamp(620px, 41vw, 700px);')
+    expect(paperBookBlock).toContain('--paper-card-size: clamp(168px, 10.8vw, 204px);')
+    expect(paperBookBlock).toContain('--paper-pocket-min-height: clamp(180px, 11vw, 204px);')
+    expect(paperBookBlock).toContain('--paper-page-min-height: clamp(636px, 42.5vw, 724px);')
     expect(paperBookBlock).toContain('width: 100%;')
     expect(paperBookBlock).toContain('max-width: min(1520px, 100%);')
     expect(source).toContain('min-height: var(--paper-page-min-height);')
     expect(source).toContain('grid-template-rows: repeat(3, minmax(0, 1fr));')
     expect(source).toContain('width: min(var(--paper-card-size), 100%);')
     expect(source).not.toContain('width: var(--paper-card-size);')
-    expect(paperItemBlock).toContain('will-change: transform, filter;')
-    expect(source).toContain('transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.26s ease;')
-    expect(source).toContain('transform: translateY(-10px) scale(1.035) rotateX(1deg);')
-    expect(source).toContain('filter: drop-shadow(0 18px 18px rgba(31, 38, 62, 0.18));')
-    expect(source).toContain('animation-timing-function: cubic-bezier(0.16, 0.72, 0.18, 1);')
-    expect(source).toMatch(/@keyframes paper-turn-next\s*\{[\s\S]*50%\s*\{[\s\S]*rotateY\(-96deg\)[\s\S]*scaleX\(0\.985\)[\s\S]*\}/)
-    expect(source).toMatch(/@keyframes paper-turn-prev\s*\{[\s\S]*50%\s*\{[\s\S]*rotateY\(96deg\)[\s\S]*scaleX\(0\.985\)[\s\S]*\}/)
+    expect(paperItemBlock).toContain('transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.26s ease;')
+    expect(paperItemBlock).not.toContain('will-change: transform, filter;')
+    expect(source).toContain('transform: var(--paper-transform);')
+    expect(source).toContain('filter: drop-shadow(0 18px 20px rgba(31, 38, 62, 0.18));')
+    expect(source).toContain('animation-timing-function: cubic-bezier(0.3, 0.12, 0.22, 1);')
+    expect(source).toMatch(/@keyframes paper-turn-next\s*\{[\s\S]*50%\s*\{[\s\S]*rotateY\(-96deg\) translateZ\(8px\)[\s\S]*\}/)
+    expect(source).toMatch(/@keyframes paper-turn-prev\s*\{[\s\S]*50%\s*\{[\s\S]*rotateY\(96deg\) translateZ\(8px\)[\s\S]*\}/)
     expect(source).toMatch(/@media \(prefers-reduced-motion: reduce\)\s*\{[\s\S]*\.paper-item\s*\{[\s\S]*transition-duration:\s*1ms;[\s\S]*filter:\s*none;[\s\S]*\}/)
+  })
+
+  it('reuses useCardTilt for paper cards and disables it during drag or page turns', () => {
+    const source = componentSource()
+
+    expect(source).toContain("import { useCardTilt } from '@/composables/useCardTilt'")
+    expect(source).toContain('useCardTilt(tiltTarget')
+    expect(source).toContain('enabled: () => !dragging.value && !isPageTurning.value && !isMobile.value')
+    expect(source).toContain('paper-glare')
+    expect(source).toContain('var(--card-tilt-x')
+    expect(source).toContain('var(--card-glare-x')
+    expect(source).toMatch(/@media \(hover: hover\) and \(pointer: fine\) and \(min-width: 769px\)/)
   })
 
   it('defines a touch-first compact mobile album layout and lighter page turn motion', () => {

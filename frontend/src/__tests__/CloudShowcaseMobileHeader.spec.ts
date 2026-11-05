@@ -492,10 +492,25 @@ describe('CloudShowcase mobile compact header', () => {
     }
   })
 
-  it('retains visited panels without transform animations on their containing block', () => {
+  it('wraps visited tab panels in crossfade transitions without transforming their containing block', () => {
+    const panelTransitions = cloudShowcaseSource.match(/<Transition name="tab-fade" :css="!isMobile">/g) ?? []
+
     expect(cloudShowcaseSource).toContain('class="workspace-panels"')
     expect(cloudShowcaseSource).toContain('v-show="activeTab === \'barn\'"')
     expect(cloudShowcaseSource).toContain('visitedTabs.value.add(tab)')
+    expect(panelTransitions).toHaveLength(4)
+    expect(cloudShowcaseSource).toMatch(/\.workspace-panels\s*\{[\s\S]*?position:\s*relative;[\s\S]*?display:\s*flow-root;/)
+    expect(cloudShowcaseSource).not.toMatch(/\.workspace-panels\s*\{[^}]*transform:/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-active\s*\{[\s\S]*?position:\s*absolute;/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-active\s*\{[\s\S]*?left:\s*0;[\s\S]*?right:\s*0;/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-active\s*\{[\s\S]*?top:\s*0;[\s\S]*?bottom:\s*0;/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-active\s*\{[\s\S]*?overflow:\s*hidden;/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-active\s*\{[\s\S]*?pointer-events:\s*none;/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-enter-from\s*\{[\s\S]*?translateY\(8px\)/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-to\s*\{[\s\S]*?translateY\(-8px\)/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-enter-active\s*\{[\s\S]*?opacity 0\.18s ease 0\.07s/)
+    expect(cloudShowcaseSource).toMatch(/\.tab-fade-leave-active\s*\{[\s\S]*?opacity 0\.09s ease/)
+    expect(cloudShowcaseSource).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*?\.tab-fade-enter-active,[\s\S]*?\.tab-fade-leave-active\s*\{[\s\S]*?transition:\s*none;/)
   })
 
   it('exposes image matching from both desktop and mobile barn controls', () => {

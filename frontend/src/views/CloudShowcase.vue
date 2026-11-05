@@ -20,11 +20,14 @@
 
     <!-- Tab 内容区域 - 添加过渡动画 -->
     <div class="workspace-panels">
-      <div v-if="visitedTabs.has('showcase')" v-show="activeTab === 'showcase'" key="showcase" class="showcase-section" v-loading="showcaseRefreshing">
-        <ShowcaseManager />
-      </div>
+      <Transition name="tab-fade" :css="!isMobile">
+        <div v-if="visitedTabs.has('showcase')" v-show="activeTab === 'showcase'" key="showcase" class="showcase-section" v-loading="showcaseRefreshing">
+          <ShowcaseManager />
+        </div>
+      </Transition>
 
-      <div v-if="visitedTabs.has('barn')" v-show="activeTab === 'barn'" key="barn" class="barn-section">
+      <Transition name="tab-fade" :css="!isMobile">
+        <div v-if="visitedTabs.has('barn')" v-show="activeTab === 'barn'" key="barn" class="barn-section">
         <div class="barn-discovery" :class="{ 'is-search-expanded': mobileSearchExpanded }">
           <Transition name="mobile-search-expand">
             <div
@@ -306,30 +309,35 @@
           v-model="imageMatcherVisible"
           @open-goods="handleImageMatchGoodsOpen"
         />
-    </div>
+        </div>
+      </Transition>
 
-      <div v-if="visitedTabs.has('stats')" v-show="activeTab === 'stats'" key="stats" class="stats-section" v-loading="statsRefreshing">
-        <StatsDashboard />
-      </div>
+      <Transition name="tab-fade" :css="!isMobile">
+        <div v-if="visitedTabs.has('stats')" v-show="activeTab === 'stats'" key="stats" class="stats-section" v-loading="statsRefreshing">
+          <StatsDashboard />
+        </div>
+      </Transition>
 
-      <div
-        v-if="visitedTabs.has('journal')"
-        v-show="activeTab === 'journal'"
-        key="journal"
-        class="journal-section"
-        :class="{ 'is-journal-editor': isJournalEditor }"
-      >
-        <JournalLibrary
-          v-if="!journalBookId"
-          :variant="isMobile ? 'mobile' : 'desktop'"
-          @open-book="openJournalBook"
-          @create-book="createJournalBook"
-          @rename-book="renameJournalBook"
-          @change-cover="changeJournalCover"
-          @delete-book="deleteJournalBook"
-        />
-        <JournalWorkspace v-else :book-id="journalBookId" />
-      </div>
+      <Transition name="tab-fade" :css="!isMobile">
+        <div
+          v-if="visitedTabs.has('journal')"
+          v-show="activeTab === 'journal'"
+          key="journal"
+          class="journal-section"
+          :class="{ 'is-journal-editor': isJournalEditor }"
+        >
+          <JournalLibrary
+            v-if="!journalBookId"
+            :variant="isMobile ? 'mobile' : 'desktop'"
+            @open-book="openJournalBook"
+            @create-book="createJournalBook"
+            @rename-book="renameJournalBook"
+            @change-cover="changeJournalCover"
+            @delete-book="deleteJournalBook"
+          />
+          <JournalWorkspace v-else :book-id="journalBookId" />
+        </div>
+      </Transition>
     </div>
   </div>
 </template>
@@ -1355,20 +1363,49 @@ watch(mobileFilterVisible, (visible) => {
   margin-top: 16px;
 }
 
-/* Tab 切换过渡动画 - 参考 Layout.vue 的 page-fade 效果 */
-.tab-fade-enter-active,
+.workspace-panels {
+  position: relative;
+  display: flow-root;
+}
+
+/* 离场面板始终脱离文档流；移动端没有过渡时也不会和新面板上下叠高。 */
 .tab-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
 }
 
-.tab-fade-enter-from {
-  opacity: 0;
-  transform: translateY(8px);
-}
+/* Tab 切换：仅 PC 精细指针启用动画。 */
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .tab-fade-enter-active {
+    position: relative;
+    z-index: 1;
+    /* 旧页先快速淡出，新页延迟 70ms 再淡入，避免两套文字长时间叠影。 */
+    transition:
+      opacity 0.18s ease 0.07s,
+      transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1) 0.07s;
+  }
 
-.tab-fade-leave-to {
-  opacity: 0;
-  transform: translateY(-8px);
+  .tab-fade-leave-active {
+    transition:
+      opacity 0.09s ease,
+      transform 0.09s ease;
+  }
+
+  .tab-fade-enter-from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  .tab-fade-leave-to {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
 }
 
 /* 列表切换过渡动画 */
@@ -1972,18 +2009,6 @@ watch(mobileFilterVisible, (visible) => {
     transform: none;
   }
 
-  .tab-fade-enter-active,
-  .tab-fade-leave-active {
-    transition: opacity 0.18s ease;
-    transform: none;
-  }
-
-  .tab-fade-enter-from,
-  .tab-fade-leave-to {
-    opacity: 0;
-    transform: none;
-  }
-
   .barn-discovery {
     margin-bottom: 8px;
     padding: 6px;
@@ -2198,6 +2223,15 @@ watch(mobileFilterVisible, (visible) => {
   .context-menu-pop-enter-active,
   .context-menu-pop-leave-active {
     transition: none;
+  }
+
+  .tab-fade-enter-active,
+  .tab-fade-leave-active {
+    transition: none;
+  }
+
+  .tab-fade-leave-active {
+    opacity: 0;
   }
 }
 </style>

@@ -50,7 +50,10 @@
           v-for="(page, pageIndex) in visiblePages"
           :key="page.key"
           class="paper-page"
-          :class="{ 'paper-page--right': pageIndex === 1 }"
+          :class="{
+            'paper-page--left': pagesPerSpread === 2 && pageIndex === 0,
+            'paper-page--right': pageIndex === 1,
+          }"
         >
           <div class="paper-page-ring" />
           <div class="paper-pocket-grid">
@@ -64,11 +67,18 @@
                 v-if="slot.item"
                 class="paper-item"
                 :data-id="slot.item.id"
-                :class="{ 'is-dragging': dragItemId === slot.item.id }"
+                :class="{
+                  'is-dragging': dragItemId === slot.item.id,
+                  'is-tilting': isTilting && tiltTargetId === slot.item.id,
+                }"
                 :style="[
                   { cursor: readonly ? 'default' : 'grab' },
                   slot.item.goods.category?.color_tag ? { '--paper-accent': slot.item.goods.category.color_tag } : {},
                 ]"
+                @pointerenter="beginPaperTilt($event, slot.item)"
+                @pointermove="movePaperTilt($event, slot.item)"
+                @pointerleave="endPaperTilt"
+                @pointercancel="endPaperTilt"
                 @pointerdown="onPointerDown($event, slot.item)"
                 @click="onPaperClick(slot.item)"
                 @contextmenu.prevent.stop="!readonly && emit('goodsContextMenuFromDom', slot.item.goods.id, $event)"
@@ -96,6 +106,7 @@
                     </template>
                   </el-image>
                   <div v-else class="paper-placeholder"><el-icon><Picture /></el-icon></div>
+                  <span class="paper-glare" aria-hidden="true" />
                 </div>
                 <div v-if="slot.item.goods.quantity > 1" class="paper-qty">x{{ slot.item.goods.quantity }}</div>
               </div>
@@ -108,10 +119,10 @@
           class="paper-turn-layer"
           aria-hidden="true"
         >
-          <div class="paper-turn-sheet">
+          <div class="paper-turn-sheet" @animationend="onTurnAnimationEnd">
             <div class="paper-turn-shadow" />
             <div class="paper-turn-face paper-turn-face--front">
-              <div class="paper-turn-page">
+              <div class="paper-turn-page" :class="{ 'paper-turn-page--left': turnSheetFrontIsLeft }">
                 <div class="paper-page-ring" />
                 <div class="paper-pocket-grid">
                   <div
@@ -154,7 +165,7 @@
             </div>
 
             <div class="paper-turn-face paper-turn-face--back">
-              <div class="paper-turn-page">
+              <div class="paper-turn-page" :class="{ 'paper-turn-page--left': turnSheetBackIsLeft }">
                 <div class="paper-page-ring" />
                 <div class="paper-pocket-grid">
                   <div
@@ -232,9 +243,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, FullScreen, Picture } from '@element-plus/icons-vue'
 import WatermarkImage from '@/components/WatermarkImage.vue'
+import { useCardTilt } from '@/composables/useCardTilt'
 import { useShowcaseDisplayDragSort } from './useShowcaseDisplayDragSort'
 import type { GoodsListItem, ShowcaseGoods } from '@/api/types'
 
@@ -284,6 +296,18 @@ onBeforeUnmount(() => {
   if (pageTurnTimer !== null) window.clearTimeout(pageTurnTimer)
 })
 
+const PAGE_TURN_FALLBACK_EXTRA_MS = 180
+const PAGE_TURN_ANIMATION_NAMES = [
+  'paper-turn-next',
+  'paper-turn-prev',
+  'paper-mobile-turn-next',
+  'paper-mobile-turn-prev',
+]
+// Vue 的 scoped CSS 会给 keyframes 追加 data-v 后缀，浏览器上报的是
+// paper-turn-next-xxxx，因此同时接受基础名和带后缀的完整动画名。
+const isPageTurnAnimation = (name: string) => (
+  PAGE_TURN_ANIMATION_NAMES.some(base => name === base || name.startsWith(`${base}-`))
+)
 const pageTurnDurationMs = computed(() => (isMobile.value ? 420 : 620))
 const slotsPerPage = computed(() => 6)
 const pagesPerSpread = computed(() => (isMobile.value ? 1 : 2))
@@ -291,6 +315,10 @@ const itemsPerSpread = computed(() => slotsPerPage.value * pagesPerSpread.value)
 const totalSpreads = computed(() => Math.max(1, Math.ceil(props.items.length / itemsPerSpread.value)))
 
 const finishPageTurn = () => {
+  if (pageTurnTimer !== null) {
+    window.clearTimeout(pageTurnTimer)
+    pageTurnTimer = null
+  }
   if (turnToSpread.value !== null) {
     currentSpread.value = turnToSpread.value
     displayedSpread.value = turnToSpread.value
@@ -299,7 +327,13 @@ const finishPageTurn = () => {
   turnFromSpread.value = null
   turnToSpread.value = null
   turnDirection.value = null
-  pageTurnTimer = null
+}
+
+const onTurnAnimationEnd = (event: AnimationEvent) => {
+  if (!isPageTurning.value) return
+  if (event.target !== event.currentTarget) return
+  if (!isPageTurnAnimation(event.animationName)) return
+  finishPageTurn()
 }
 
 const startPageTurn = (targetSpread: number, direction: TurnDirection) => {
@@ -313,7 +347,11 @@ const startPageTurn = (targetSpread: number, direction: TurnDirection) => {
   isPageTurning.value = true
 
   if (pageTurnTimer !== null) window.clearTimeout(pageTurnTimer)
-  pageTurnTimer = window.setTimeout(finishPageTurn, pageTurnDurationMs.value)
+  preloadSpread(targetSpread)
+  pageTurnTimer = window.setTimeout(
+    finishPageTurn,
+    pageTurnDurationMs.value + PAGE_TURN_FALLBACK_EXTRA_MS,
+  )
 }
 
 const goPrev = () => {
@@ -395,6 +433,92 @@ const {
   onHoverEdge: maybeFlipAtEdge,
 })
 
+// ===== 纸品卡片悬停随鼠标轻微倾斜（复用吧唧展架 / 谷仓卡片的 useCardTilt） =====
+const tiltTarget = ref<HTMLElement | null>(null)
+const tiltTargetId = ref<string | null>(null)
+const {
+  isTilting,
+  handlePointerEnter: handlePaperTiltEnter,
+  handlePointerMove: handlePaperTiltMove,
+  handlePointerLeave: handlePaperTiltLeave,
+} = useCardTilt(tiltTarget, {
+  // 卡面比吧唧大，倾斜幅度保持一致，透视略远、图片视差与谷仓卡片一致
+  maxTilt: 6,
+  perspective: 1000,
+  imageParallax: 3,
+  enabled: () => !dragging.value && !isPageTurning.value && !isMobile.value,
+})
+
+/** 高光位置由 composable 写入，离开时清掉，回到 CSS 默认的 50% 50% */
+const clearTiltGlareVars = (el: HTMLElement | null) => {
+  el?.style.removeProperty('--card-glare-x')
+  el?.style.removeProperty('--card-glare-y')
+}
+
+const endPaperTilt = () => {
+  handlePaperTiltLeave()
+  clearTiltGlareVars(tiltTarget.value)
+  tiltTargetId.value = null
+}
+
+const beginPaperTilt = (event: PointerEvent, item: ShowcaseGoods) => {
+  if (dragging.value || isPageTurning.value) return
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  if (tiltTarget.value && tiltTarget.value !== el) endPaperTilt()
+  tiltTarget.value = el
+  tiltTargetId.value = item.id
+  handlePaperTiltEnter(event)
+}
+
+const movePaperTilt = (event: PointerEvent, item: ShowcaseGoods) => {
+  if (dragging.value || isPageTurning.value) return
+  const el = event.currentTarget as HTMLElement | null
+  if (!el) return
+  if (tiltTarget.value !== el) {
+    beginPaperTilt(event, item)
+    return
+  }
+  handlePaperTiltMove(event)
+}
+
+watch(dragging, (value) => {
+  if (value) endPaperTilt()
+})
+watch(isPageTurning, (value) => {
+  if (value) endPaperTilt()
+})
+watch(displayedSpread, () => endPaperTilt())
+watch(isTilting, (value) => {
+  if (value) return
+  clearTiltGlareVars(tiltTarget.value)
+  tiltTargetId.value = null
+})
+onBeforeUnmount(() => endPaperTilt())
+
+// ===== 相邻 spread 图片预加载：翻到新页时减少首次解码卡顿 =====
+const preloadedPhotoUrls = new Set<string>()
+const preloadSpread = (spreadIndex: number) => {
+  if (typeof window === 'undefined') return
+  if (spreadIndex < 0 || spreadIndex > totalSpreads.value - 1) return
+  const start = spreadIndex * itemsPerSpread.value
+  const end = start + itemsPerSpread.value
+  localOrder.value.slice(start, end).forEach((item) => {
+    const src = item.goods.main_photo
+    if (!src || preloadedPhotoUrls.has(src)) return
+    preloadedPhotoUrls.add(src)
+    const img = new Image()
+    img.decoding = 'async'
+    img.src = src
+  })
+}
+const preloadAdjacentSpreads = () => {
+  preloadSpread(currentSpread.value - 1)
+  preloadSpread(currentSpread.value + 1)
+}
+onMounted(preloadAdjacentSpreads)
+watch([currentSpread, totalSpreads], preloadAdjacentSpreads)
+
 watch(totalSpreads, (next) => {
   if (currentSpread.value >= next) currentSpread.value = Math.max(0, next - 1)
   if (displayedSpread.value >= next) displayedSpread.value = Math.max(0, next - 1)
@@ -435,8 +559,13 @@ const turnToPages = computed<VisiblePage[]>(() => (
   turnToSpread.value === null ? [] : buildPagesForSpread(turnToSpread.value)
 ))
 const visiblePages = computed<VisiblePage[]>(() => {
-  if (!isPageTurning.value || !turnDirection.value || pagesPerSpread.value === 1) {
+  if (!isPageTurning.value || !turnDirection.value) {
     return buildPagesForSpread(displayedSpread.value)
+  }
+
+  // 移动端单页：翻页层盖在目标页上，旧页滑出/淡出时新页自然显露，收尾无需再切换。
+  if (pagesPerSpread.value === 1) {
+    return buildPagesForSpread(turnToSpread.value ?? displayedSpread.value)
   }
 
   const fromPages = turnFromPages.value
@@ -461,6 +590,13 @@ const turnSheetBackPage = computed<VisiblePage | null>(() => {
   const pages = turnToPages.value
   return pages[turnDirection.value === 'prev' && pagesPerSpread.value > 1 ? 1 : 0] || null
 })
+// 左页的装订边在中缝右侧；单页移动端始终按右页样式，不参与镜像。
+const turnSheetFrontIsLeft = computed(() => (
+  pagesPerSpread.value === 2 && turnDirection.value === 'prev'
+))
+const turnSheetBackIsLeft = computed(() => (
+  pagesPerSpread.value === 2 && turnDirection.value === 'next'
+))
 
 const onPaperClick = (item: ShowcaseGoods) => {
   if (shouldSuppressClick()) return
@@ -572,10 +708,10 @@ const onPaperClick = (item: ShowcaseGoods) => {
 }
 
 .paper-book {
-  --paper-book-padding: clamp(24px, 2.1vw, 34px);
-  --paper-card-size: clamp(158px, 9.6vw, 190px);
-  --paper-pocket-min-height: clamp(172px, 10.8vw, 206px);
-  --paper-page-min-height: clamp(620px, 41vw, 700px);
+  --paper-book-padding: clamp(22px, 1.9vw, 32px);
+  --paper-card-size: clamp(168px, 10.8vw, 204px);
+  --paper-pocket-min-height: clamp(180px, 11vw, 204px);
+  --paper-page-min-height: clamp(636px, 42.5vw, 724px);
   --paper-turn-duration: 620ms;
   min-width: 0;
   position: relative;
@@ -635,7 +771,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
   will-change: transform;
   animation-duration: var(--paper-turn-duration);
   animation-fill-mode: both;
-  animation-timing-function: cubic-bezier(0.16, 0.72, 0.18, 1);
+  animation-timing-function: cubic-bezier(0.3, 0.12, 0.22, 1);
 }
 .is-turning-next .paper-turn-sheet {
   right: 0;
@@ -700,7 +836,9 @@ const onPaperClick = (item: ShowcaseGoods) => {
     inset 0 0 0 1px rgba(255, 255, 255, 0.64),
     0 24px 44px -26px rgba(31, 38, 62, 0.52);
 }
-.is-turning-prev .paper-turn-page {
+.paper-turn-page--left {
+  padding-right: clamp(44px, 3vw, 52px);
+  padding-left: clamp(22px, 1.6vw, 28px);
   border-radius: 22px 6px 6px 22px;
 }
 .paper-turn-card {
@@ -714,7 +852,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
   z-index: 1;
   min-height: var(--paper-page-min-height);
   padding: clamp(22px, 1.6vw, 28px) clamp(22px, 1.6vw, 28px) clamp(22px, 1.6vw, 28px) clamp(44px, 3vw, 52px);
-  border-radius: 22px 6px 6px 22px;
+  border-radius: 6px 22px 22px 6px;
   background:
     radial-gradient(circle at 24% 14%, rgba(255, 255, 255, 0.62), transparent 24%),
     repeating-linear-gradient(0deg, rgba(142, 125, 255, 0.035) 0 1px, transparent 1px 22px),
@@ -723,8 +861,10 @@ const onPaperClick = (item: ShowcaseGoods) => {
     inset 0 0 0 1px rgba(255, 255, 255, 0.58),
     inset 0 -28px 42px -44px rgba(31, 38, 62, 0.42);
 }
-.paper-page--right {
-  border-radius: 6px 22px 22px 6px;
+.paper-page--left {
+  padding-right: clamp(44px, 3vw, 52px);
+  padding-left: clamp(22px, 1.6vw, 28px);
+  border-radius: 22px 6px 6px 22px;
 }
 .paper-page-ring {
   position: absolute;
@@ -736,6 +876,11 @@ const onPaperClick = (item: ShowcaseGoods) => {
   background:
     radial-gradient(circle, rgba(255, 255, 255, 0.92) 0 32%, transparent 34%) 0 0 / 11px 68px,
     linear-gradient(180deg, rgba(142, 125, 255, 0.28), rgba(212, 175, 55, 0.2));
+}
+.paper-page--left .paper-page-ring,
+.paper-turn-page--left .paper-page-ring {
+  /* 中缝只保留右页的一组装订孔，避免展开后出现双排虚线。 */
+  display: none;
 }
 .paper-pocket-grid {
   display: grid;
@@ -767,24 +912,20 @@ const onPaperClick = (item: ShowcaseGoods) => {
   position: relative;
   width: min(var(--paper-card-size), 100%);
   transition: transform 0.26s cubic-bezier(0.2, 0.8, 0.2, 1), filter 0.26s ease;
-  will-change: transform, filter;
   touch-action: none;
   user-select: none;
   -webkit-user-drag: none;
-}
-.paper-item:hover {
-  transform: translateY(-10px) scale(1.035) rotateX(1deg);
-  filter: drop-shadow(0 18px 18px rgba(31, 38, 62, 0.18));
-  z-index: 3;
 }
 .paper-item.is-dragging {
   opacity: 0;
   pointer-events: none;
 }
-.paper-album.is-drag-active .paper-item:hover {
+.paper-album.is-drag-active .paper-item:hover,
+.paper-album.is-drag-active .paper-item.is-tilting {
   transform: none;
 }
 .paper-card {
+  position: relative;
   aspect-ratio: 1 / 1;
   border-radius: 20px;
   overflow: hidden;
@@ -794,6 +935,7 @@ const onPaperClick = (item: ShowcaseGoods) => {
     0 0 0 3px rgba(255, 255, 255, 0.62),
     0 0 0 6px var(--paper-accent, rgba(142, 125, 255, 0.5)),
     0 16px 26px -16px rgba(44, 51, 73, 0.46);
+  transition: box-shadow 0.3s ease;
 }
 .paper-img,
 :deep(.paper-img .el-image__inner) {
@@ -801,6 +943,81 @@ const onPaperClick = (item: ShowcaseGoods) => {
   height: 100%;
   display: block;
   object-fit: contain;
+}
+.paper-img {
+  transition: transform 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.paper-glare {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: none;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    90% 70% at var(--card-glare-x, 50%) var(--card-glare-y, 50%),
+    rgba(255, 255, 255, 0.56) 0%,
+    rgba(255, 255, 255, 0.14) 42%,
+    rgba(255, 255, 255, 0) 72%
+  );
+  mix-blend-mode: screen;
+  transition: opacity 0.24s ease;
+}
+
+/* 精细指针桌面端才启用 3D，触屏和减少动效环境保持原有按压反馈。 */
+@media (hover: hover) and (pointer: fine) and (min-width: 769px) {
+  .paper-item {
+    --paper-transform:
+      perspective(var(--card-perspective, 1000px))
+      rotateX(var(--card-tilt-x, 0deg))
+      rotateY(var(--card-tilt-y, 0deg))
+      translate3d(0, var(--paper-lift, 0px), 0)
+      scale(var(--paper-scale, 1));
+
+    transform-origin: 50% 50%;
+    transition:
+      transform 0.42s cubic-bezier(0.2, 0.8, 0.2, 1),
+      filter 0.3s ease;
+  }
+  .paper-item:hover,
+  .paper-item.is-tilting {
+    --paper-lift: -8px;
+    --paper-scale: 1.03;
+
+    transform: var(--paper-transform);
+    filter: drop-shadow(0 18px 20px rgba(31, 38, 62, 0.18));
+    z-index: 3;
+    will-change: transform;
+  }
+  .paper-item.is-tilting {
+    transition:
+      transform 0.12s ease-out,
+      filter 0.3s ease;
+  }
+  .paper-item:hover .paper-card,
+  .paper-item.is-tilting .paper-card {
+    box-shadow:
+      0 0 0 3px rgba(255, 255, 255, 0.68),
+      0 0 0 6px var(--paper-accent, rgba(142, 125, 255, 0.5)),
+      calc(var(--card-tilt-y-ratio, 0) * -7px)
+        calc(18px + var(--card-tilt-x-ratio, 0) * 5px)
+        30px -16px rgba(44, 51, 73, 0.42);
+  }
+  .paper-glare {
+    display: block;
+  }
+  .paper-item:hover .paper-glare,
+  .paper-item.is-tilting .paper-glare {
+    opacity: 0.55;
+  }
+  .paper-item:hover .paper-img,
+  .paper-item.is-tilting .paper-img {
+    transform:
+      translate3d(var(--card-image-shift-x, 0px), var(--card-image-shift-y, 0px), 0)
+      scale(1.03);
+    transition-duration: 0.12s;
+  }
 }
 .paper-placeholder {
   width: 100%;
@@ -849,25 +1066,25 @@ const onPaperClick = (item: ShowcaseGoods) => {
 
 @keyframes paper-turn-next {
   0% {
-    transform: rotateY(0deg) scaleX(1);
+    transform: rotateY(0deg) translateZ(0);
   }
   50% {
-    transform: rotateY(-96deg) scaleX(0.985);
+    transform: rotateY(-96deg) translateZ(8px);
   }
   100% {
-    transform: rotateY(-180deg) scaleX(1);
+    transform: rotateY(-180deg) translateZ(0);
   }
 }
 
 @keyframes paper-turn-prev {
   0% {
-    transform: rotateY(0deg) scaleX(1);
+    transform: rotateY(0deg) translateZ(0);
   }
   50% {
-    transform: rotateY(96deg) scaleX(0.985);
+    transform: rotateY(96deg) translateZ(8px);
   }
   100% {
-    transform: rotateY(180deg) scaleX(1);
+    transform: rotateY(180deg) translateZ(0);
   }
 }
 
@@ -1110,6 +1327,22 @@ const onPaperClick = (item: ShowcaseGoods) => {
   .paper-item {
     transition-duration: 1ms;
     filter: none;
+  }
+  .paper-item:hover,
+  .paper-item.is-tilting {
+    transform: none;
+    filter: none;
+  }
+  .paper-glare,
+  .paper-item:hover .paper-glare,
+  .paper-item.is-tilting .paper-glare {
+    display: none;
+    opacity: 0;
+  }
+  .paper-img,
+  .paper-item:hover .paper-img,
+  .paper-item.is-tilting .paper-img {
+    transform: none;
   }
 
 }
