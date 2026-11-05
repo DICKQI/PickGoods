@@ -63,20 +63,21 @@
     <!-- 桌面端筛选卡片 -->
     <el-card
       v-if="!isMobile"
-      class="stats-filter-card"
-      :class="{ 'stats-filter-card--collapsed': collapsed }"
+      class="stats-filter-card app-filter-surface"
+      :class="{ 'is-collapsed': collapsed }"
       shadow="never"
       :body-style="statsFilterCardBodyStyle"
     >
       <template #header>
-        <div class="stats-filter-header">
+        <div class="stats-filter-header app-filter-header">
           <span>统计筛选</span>
-          <div class="stats-filter-actions">
+          <div class="stats-filter-actions app-filter-actions">
             <el-tooltip content="重置筛选" placement="top">
               <el-button
                 text
                 circle
                 size="small"
+                aria-label="重置筛选"
                 @click="handleResetFilters"
               >
                 <el-icon>
@@ -89,10 +90,11 @@
                 text
                 circle
                 size="small"
-                class="stats-filter-toggle-btn"
+                class="app-filter-toggle-btn"
+                :aria-label="collapsed ? '展开筛选' : '收起筛选'"
                 @click="toggleStatsFilterCollapsed"
               >
-                <el-icon :class="['stats-filter-toggle-icon', { expanded: !collapsed }]">
+                <el-icon :class="['app-filter-toggle-icon', { expanded: !collapsed }]">
                   <ArrowDown />
                 </el-icon>
               </el-button>
@@ -101,9 +103,12 @@
         </div>
       </template>
 
-      <transition name="stats-filter-collapse">
-        <div v-show="!collapsed" class="stats-filter-collapse-wrapper">
-          <div class="stats-filter-grid">
+      <transition name="app-filter-collapse">
+        <div
+          v-show="!collapsed"
+          class="app-filter-collapse-wrapper"
+        >
+          <div class="stats-filter-grid app-filter-fields">
             <stats-filter-controls
               :top="filters.top"
               :is-official="filters.is_official"
@@ -152,7 +157,7 @@
           </button>
         </div>
         <div class="mobile-stats-filter-sheet-body">
-          <div class="mobile-stats-filter-grid">
+          <div class="mobile-stats-filter-grid app-filter-fields">
             <stats-filter-controls
               :top="mobileDraftFilters.top"
               :is-official="mobileDraftFilters.is_official"
@@ -1236,123 +1241,7 @@ watch(chartTab, () => {
   gap: 18px;
 }
 
-.stats-filter-card {
-  border-radius: var(--card-radius);
-  background:
-    linear-gradient(135deg, var(--stats-card-bg), rgba(255, 252, 244, 0.9)),
-    radial-gradient(circle at 8% 0%, rgba(246, 211, 101, 0.18), transparent 38%);
-  border: 1px solid var(--stats-card-border);
-  box-shadow: var(--stats-card-shadow);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  position: relative;
-  overflow: hidden;
-  transition:
-    transform var(--transition-fast, 0.2s ease),
-    box-shadow var(--transition-fast, 0.2s ease),
-    border-color var(--transition-fast, 0.2s ease);
-}
-
-.stats-filter-card:hover {
-  transform: translateY(-2px);
-  border-color: rgba(212, 175, 55, 0.3);
-  box-shadow: var(--stats-card-shadow-hover);
-}
-
-.stats-filter-card::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto;
-  height: 3px;
-  background: linear-gradient(90deg, var(--primary-gold), var(--primary-gold-light), var(--accent-purple));
-  opacity: 0.78;
-  pointer-events: none;
-}
-
-.stats-filter-card :deep(.el-card__header),
-.stats-filter-card :deep(.el-card__body) {
-  position: relative;
-  z-index: 1;
-}
-
-.stats-filter-card--collapsed :deep(.el-card__header) {
-  border-bottom: none;
-}
-
-.stats-filter-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  min-height: 26px;
-  font-size: 15px;
-  font-weight: 800;
-  color: var(--primary-gold-dark);
-  letter-spacing: 0.01em;
-}
-
-.stats-filter-actions {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.stats-filter-actions :deep(.el-button) {
-  color: var(--primary-gold-dark);
-  transition:
-    background-color var(--transition-fast, 0.2s ease),
-    color var(--transition-fast, 0.2s ease),
-    transform var(--transition-fast, 0.2s ease);
-}
-
-.stats-filter-actions :deep(.el-button:hover) {
-  background: rgba(212, 175, 55, 0.12);
-  color: var(--primary-gold);
-  transform: translateY(-1px);
-}
-
-.stats-filter-toggle-btn {
-  padding: 4px;
-  min-height: auto;
-}
-
-.stats-filter-toggle-icon {
-  transition: transform var(--transition-fast, 0.2s ease);
-}
-
-.stats-filter-toggle-icon.expanded {
-  transform: rotate(180deg);
-}
-
-/* 展开/收起外层：使用 grid-template-rows 实现高性能动画（与谷仓页一致） */
-.stats-filter-collapse-wrapper {
-  display: grid;
-  grid-template-rows: 1fr;
-  transition: grid-template-rows 0.3s ease, opacity 0.2s ease;
-  overflow: hidden;
-}
-
-.stats-filter-collapse-wrapper > :deep(.stats-filter-grid) {
-  min-height: 0;
-  overflow: hidden;
-}
-
-/* 展开/收起动画 */
-.stats-filter-collapse-enter-active,
-.stats-filter-collapse-leave-active {
-  transition: grid-template-rows 0.3s ease, opacity 0.2s ease;
-}
-
-.stats-filter-collapse-enter-from,
-.stats-filter-collapse-leave-to {
-  grid-template-rows: 0fr;
-  opacity: 0;
-}
-
-.stats-filter-collapse-enter-to,
-.stats-filter-collapse-leave-from {
-  grid-template-rows: 1fr;
-  opacity: 1;
-}
+/* 筛选卡片的表面、标题与折叠动效统一由 styles/filterPanel.css 提供 */
 
 .stats-content {
   display: flex;
@@ -1692,11 +1581,6 @@ watch(chartTab, () => {
 :deep(.el-card__body) {
   padding: 20px;
   transition: padding 0.3s;
-}
-
-.stats-filter-card--collapsed :deep(.el-card__body) {
-  padding-top: 0;
-  padding-bottom: 0;
 }
 
 :deep(.el-card) {

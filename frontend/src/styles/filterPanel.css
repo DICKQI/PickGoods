@@ -1,0 +1,292 @@
+/* 统一筛选面板视觉系统
+   谷仓「筛选谷子」与统计看板「统计筛选」共用同一套卡片表面、字体、控件与动效。
+   Element Plus 内部节点不携带组件 scoped 属性，因此统一放在全局样式层。 */
+
+.app-filter-surface {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(212, 175, 55, 0.3);
+  border-radius: var(--card-radius, 20px);
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(255, 252, 244, 0.9)),
+    radial-gradient(circle at 8% 0%, rgba(246, 211, 101, 0.18), transparent 38%);
+  box-shadow: 0 14px 34px rgba(15, 23, 42, 0.07);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  transition:
+    transform var(--transition-fast, 0.2s ease),
+    box-shadow var(--transition-fast, 0.2s ease),
+    border-color var(--transition-fast, 0.2s ease);
+}
+
+.app-filter-surface:hover {
+  transform: translateY(-2px);
+  border-color: rgba(212, 175, 55, 0.3);
+  box-shadow: 0 20px 44px rgba(15, 23, 42, 0.11);
+}
+
+.app-filter-surface::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 3px;
+  background: linear-gradient(90deg, var(--primary-gold), var(--primary-gold-light), var(--accent-purple));
+  opacity: 0.78;
+  pointer-events: none;
+}
+
+.app-filter-surface .el-card__header,
+.app-filter-surface .el-card__body {
+  position: relative;
+  z-index: 1;
+}
+
+.app-filter-surface .el-card__body {
+  padding: 20px;
+  transition: padding var(--transition-normal, 0.3s ease);
+}
+
+.app-filter-surface.is-collapsed .el-card__body {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.app-filter-surface.is-collapsed .el-card__header {
+  border-bottom: none;
+}
+
+/* 标题 */
+.app-filter-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  min-height: 26px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--primary-gold-dark, #b8941f);
+  letter-spacing: 0.01em;
+}
+
+/* 标题右侧操作区 */
+.app-filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-filter-actions .el-button {
+  color: var(--primary-gold-dark, #b8941f);
+  transition:
+    background-color var(--transition-fast, 0.2s ease),
+    color var(--transition-fast, 0.2s ease),
+    transform var(--transition-fast, 0.2s ease);
+}
+
+.app-filter-actions .el-button:hover {
+  background: rgba(212, 175, 55, 0.12);
+  color: var(--primary-gold, #d4af37);
+  transform: translateY(-1px);
+}
+
+.app-filter-toggle-btn {
+  padding: 4px;
+  min-height: auto;
+}
+
+.app-filter-toggle-icon {
+  transition: transform var(--transition-fast, 0.2s ease);
+}
+
+.app-filter-toggle-icon.expanded {
+  transform: rotate(180deg);
+}
+
+/* 字段标签 */
+.app-filter-fields label {
+  font-size: 11px;
+  color: rgba(100, 116, 139, 0.92);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+/* 表单控件：下拉 / 树选择 / 输入框 / 日期区间 */
+.app-filter-fields .el-select__wrapper,
+.app-filter-fields .el-tree-select__wrapper,
+.app-filter-fields .el-input__wrapper,
+.app-filter-fields .el-date-editor {
+  min-height: 32px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
+  transition:
+    box-shadow var(--transition-fast, 0.2s ease),
+    background-color var(--transition-fast, 0.2s ease);
+}
+
+.app-filter-fields .el-select__wrapper:hover,
+.app-filter-fields .el-tree-select__wrapper:hover,
+.app-filter-fields .el-input__wrapper:hover,
+.app-filter-fields .el-date-editor:hover {
+  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.38) inset;
+}
+
+.app-filter-fields .el-select__wrapper.is-focused,
+.app-filter-fields .el-tree-select__wrapper.is-focused,
+.app-filter-fields .el-input__wrapper.is-focus,
+.app-filter-fields .el-date-editor.is-active {
+  box-shadow: 0 0 0 1px var(--primary-gold, #d4af37) inset;
+}
+
+/* 状态多选胶囊 */
+.app-filter-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.app-filter-status .el-checkbox-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.app-filter-status .el-checkbox-button__inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  background-color: #fff;
+  box-shadow: none;
+  font-size: 12px;
+  line-height: 1;
+  transition:
+    background-color var(--transition-fast, 0.2s ease),
+    border-color var(--transition-fast, 0.2s ease),
+    color var(--transition-fast, 0.2s ease);
+}
+
+.app-filter-status .el-checkbox-button:first-child .el-checkbox-button__inner,
+.app-filter-status .el-checkbox-button:last-child .el-checkbox-button__inner {
+  border-radius: 999px;
+}
+
+.app-filter-status .el-checkbox-button.is-checked .el-checkbox-button__inner {
+  border-color: rgba(212, 175, 55, 0.85);
+  background: rgba(212, 175, 55, 0.13);
+  color: #7a5b08;
+}
+
+.app-filter-status .status-chip__icon,
+.app-filter-status .stats-status-chip__icon {
+  display: none;
+}
+
+.app-filter-status .status-chip__label,
+.app-filter-status .stats-status-chip__label {
+  white-space: nowrap;
+}
+
+/* 紧凑桌面：四个等宽图标，避免文字互相挤压 */
+@media (min-width: 769px) and (max-width: 1279px) {
+  .app-filter-status {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 4px;
+    width: 100%;
+  }
+
+  .app-filter-status .el-checkbox-button {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .app-filter-status .el-checkbox-button__inner {
+    width: 100%;
+    padding: 0;
+  }
+
+  .app-filter-status .status-chip__label,
+  .app-filter-status .stats-status-chip__label {
+    display: none;
+  }
+
+  .app-filter-status .status-chip__icon,
+  .app-filter-status .stats-status-chip__icon {
+    display: inline-flex;
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-filter-status {
+    flex-wrap: wrap;
+  }
+}
+
+/* 展开 / 收起：grid-template-rows 只影响高度，不触发内部重排 */
+.app-filter-collapse-wrapper {
+  display: grid;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+  transition: grid-template-rows 0.3s ease, opacity 0.2s ease;
+}
+
+.app-filter-collapse-wrapper > * {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-filter-collapse-enter-active,
+.app-filter-collapse-leave-active {
+  transition: grid-template-rows 0.3s ease, opacity 0.2s ease;
+}
+
+.app-filter-collapse-enter-from,
+.app-filter-collapse-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+
+.app-filter-collapse-enter-to,
+.app-filter-collapse-leave-from {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-filter-surface {
+    transition: none;
+  }
+
+  .app-filter-surface:hover {
+    transform: none;
+  }
+
+  .app-filter-actions .el-button {
+    transition: none;
+  }
+
+  .app-filter-actions .el-button:hover {
+    transform: none;
+  }
+
+  .app-filter-status .el-checkbox-button__inner {
+    transition: none;
+  }
+
+  .app-filter-toggle-icon {
+    transition: none;
+  }
+
+  .app-filter-collapse-wrapper,
+  .app-filter-collapse-enter-active,
+  .app-filter-collapse-leave-active {
+    transition: none;
+  }
+}

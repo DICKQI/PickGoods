@@ -172,6 +172,7 @@ const mountFilterPanel = async () => {
         'el-option': ElOptionStub,
         'el-tree-select': ElTreeSelectStub,
         'el-button': passthroughStub('el-button'),
+        'el-tooltip': passthroughStub('el-tooltip'),
         'el-icon': passthroughStub('el-icon'),
         'el-checkbox-group': passthroughStub('el-checkbox-group'),
         'el-checkbox-button': passthroughStub('el-checkbox-button'),

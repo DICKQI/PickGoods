@@ -4,16 +4,18 @@ import { describe, expect, it } from 'vitest'
 
 const statsDashboardSource = readFileSync(resolve(process.cwd(), 'src/components/StatsDashboard.vue'), 'utf8')
 const statsFilterControlsSource = readFileSync(resolve(process.cwd(), 'src/components/StatsFilterControls.vue'), 'utf8')
+const sharedFilterStyles = readFileSync(resolve(process.cwd(), 'src/styles/filterPanel.css'), 'utf8')
 
 describe('StatsDashboard visual polish', () => {
-  it('defines a refined local visual system for the dashboard cards', () => {
-    expect(statsDashboardSource).toContain('--stats-card-bg')
-    expect(statsDashboardSource).toContain('--stats-card-border')
-    expect(statsDashboardSource).toContain('--stats-card-shadow')
-    expect(statsDashboardSource).toContain('--stats-card-shadow-hover')
-    expect(statsDashboardSource).toContain('stats-filter-card::before')
-    expect(statsDashboardSource).toContain('overview-card::after')
-    expect(statsDashboardSource).toContain('transform: translateY(-2px)')
+  it('shares the refined filter surface with the barn filter panel', () => {
+    expect(sharedFilterStyles).toContain('.app-filter-surface')
+    expect(sharedFilterStyles).toContain('.app-filter-surface::before')
+    expect(sharedFilterStyles).toContain('transform: translateY(-2px)')
+    expect(sharedFilterStyles).toContain('backdrop-filter: blur(14px)')
+    expect(statsDashboardSource).toContain('app-filter-surface')
+    expect(statsDashboardSource).toContain('app-filter-header')
+    expect(statsDashboardSource).toContain('<transition name="app-filter-collapse">')
+    expect(statsDashboardSource).not.toContain('stats-filter-card::before')
   })
 
   it('upgrades chart presentation without changing the existing chart set', () => {
@@ -47,7 +49,7 @@ describe('StatsDashboard visual polish', () => {
     expect(statsFilterControlsSource).toMatch(
       /grid-template-columns:\s*minmax\(168px, 1\.1fr\)\s*minmax\(150px, 1fr\)\s*auto\s*minmax\(150px, 1fr\)\s*minmax\(180px, 1\.2fr\)/,
     )
-    expect(statsFilterControlsSource).toContain('text-transform: uppercase')
+    expect(sharedFilterStyles).toContain('text-transform: uppercase')
     expect(statsFilterControlsSource).toContain('.topn-value')
     expect(statsFilterControlsSource).toContain('border-radius: 999px')
     expect(statsFilterControlsSource).toContain('.character-stats-button')
@@ -59,10 +61,11 @@ describe('StatsDashboard visual polish', () => {
     expect(statsFilterControlsSource).toContain('aria-label="出街中"')
     expect(statsFilterControlsSource).toContain('aria-label="已售出"')
     expect(statsFilterControlsSource.match(/class="stats-status-chip__icon"/g)).toHaveLength(4)
-    expect(statsFilterControlsSource).toMatch(/\.status-group\s*{[^}]*flex-wrap: nowrap;/s)
-    expect(statsFilterControlsSource).toContain('@media (min-width: 769px) and (max-width: 1279px)')
-    expect(statsFilterControlsSource).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));')
-    expect(statsFilterControlsSource).toMatch(/\.stats-status-chip__label\s*{\s*display: none;/)
-    expect(statsFilterControlsSource).toMatch(/\.stats-status-chip__icon\s*{\s*display: inline-flex;/)
+    expect(statsFilterControlsSource).toContain('app-filter-status')
+    expect(sharedFilterStyles).toMatch(/\.app-filter-status\s*{[^}]*flex-wrap: nowrap;/s)
+    expect(sharedFilterStyles).toContain('@media (min-width: 769px) and (max-width: 1279px)')
+    expect(sharedFilterStyles).toContain('grid-template-columns: repeat(4, minmax(0, 1fr));')
+    expect(sharedFilterStyles).toMatch(/\.app-filter-status \.stats-status-chip__label[\s\S]*?display: none;/)
+    expect(sharedFilterStyles).toMatch(/\.app-filter-status \.stats-status-chip__icon[\s\S]*?display: inline-flex;/)
   })
 })

@@ -33,7 +33,7 @@
       <label>状态</label>
       <el-checkbox-group
         :model-value="selectedStatuses"
-        class="status-group"
+        class="status-group app-filter-status"
         size="small"
         @update:model-value="$emit('update:selectedStatuses', $event)"
       >
@@ -269,16 +269,6 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
   grid-column: span 2;
 }
 
-.stats-filter-item label {
-  font-size: 11px;
-  color: rgba(100, 116, 139, 0.92);
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  line-height: 1.4;
-  text-transform: uppercase;
-  flex-shrink: 0;
-}
-
 .topn-control {
   display: flex;
   align-items: center;
@@ -306,14 +296,6 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
   flex-shrink: 0;
 }
 
-.status-group {
-  display: flex;
-  align-items: center;
-  flex-wrap: nowrap;
-  gap: 8px;
-  white-space: nowrap;
-}
-
 .character-stats-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -333,95 +315,9 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
   width: 100%;
 }
 
-.stats-filter-item :deep(.el-select__wrapper),
-.stats-filter-item :deep(.el-tree-select__wrapper),
-.stats-filter-item :deep(.el-date-editor) {
-  min-height: 32px;
-  border-radius: 10px;
-  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.22) inset;
-  transition:
-    box-shadow var(--transition-fast, 0.2s ease),
-    background-color var(--transition-fast, 0.2s ease);
-}
-
-.stats-filter-item :deep(.el-select__wrapper:hover),
-.stats-filter-item :deep(.el-tree-select__wrapper:hover),
-.stats-filter-item :deep(.el-date-editor:hover) {
-  box-shadow: 0 0 0 1px rgba(212, 175, 55, 0.38) inset;
-}
-
-.status-group :deep(.el-checkbox-button__inner) {
-  border: 1px solid #d8dee8;
-  border-radius: 999px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 32px;
-  padding: 0 11px;
-  box-shadow: none;
-  font-size: 12px;
-  line-height: 1;
-}
-
-.status-group :deep(.el-checkbox-button) {
-  display: inline-flex;
-  flex: 0 0 auto;
-}
-
-.stats-status-chip__icon {
-  display: none;
-}
-
-.stats-status-chip__label {
-  white-space: nowrap;
-}
-
-.status-group :deep(.el-checkbox-button:first-child .el-checkbox-button__inner),
-.status-group :deep(.el-checkbox-button:last-child .el-checkbox-button__inner) {
-  border-radius: 999px;
-}
-
-.status-group :deep(.el-checkbox-button.is-checked .el-checkbox-button__inner) {
-  border-color: rgba(212, 175, 55, 0.85);
-  background: rgba(212, 175, 55, 0.13);
-  color: #7a5b08;
-}
-
 @media (min-width: 769px) and (max-width: 1279px) {
   .stats-filter-grid {
     grid-template-columns: repeat(5, minmax(120px, 1fr));
-  }
-
-  .status-group {
-    display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 4px;
-    width: 100%;
-  }
-
-  .status-group :deep(.el-checkbox-button) {
-    width: 100%;
-    min-width: 0;
-  }
-
-  .status-group :deep(.el-checkbox-button__inner) {
-    width: 100%;
-    padding: 0;
-  }
-
-  .stats-status-chip__label {
-    display: none;
-  }
-
-  .stats-status-chip__icon {
-    display: inline-flex;
-    font-size: 15px;
-  }
-}
-
-@media (max-width: 768px) {
-  .status-group {
-    flex-wrap: wrap;
   }
 }
 
@@ -449,18 +345,8 @@ const filterCategoryNode = (keyword: string, data?: CategoryTreeNode) => {
     grid-column: span 1;
   }
 
-  .stats-filter-item label {
-    font-size: 11px;
-  }
-
   .topn-control {
     gap: 8px;
-  }
-
-  .stats-filter-item :deep(.el-select__wrapper),
-  .stats-filter-item :deep(.el-tree-select__wrapper),
-  .stats-filter-item :deep(.el-date-editor) {
-    min-height: 30px;
   }
 
   .character-stats-control {

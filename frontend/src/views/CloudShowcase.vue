@@ -1960,6 +1960,23 @@ watch(mobileFilterVisible, (visible) => {
     margin-bottom: 0;
   }
 
+  /* 弹层内不再叠加卡片表面，避免"卡片套卡片" */
+  .mobile-filter-sheet-body :deep(.app-filter-surface) {
+    border: none;
+    background: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .mobile-filter-sheet-body :deep(.app-filter-surface)::before {
+    display: none;
+  }
+
+  .mobile-filter-sheet-body :deep(.app-filter-surface:hover) {
+    transform: none;
+  }
+
   .goods-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 8px 10px;

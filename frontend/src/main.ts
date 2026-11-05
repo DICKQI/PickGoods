@@ -15,6 +15,7 @@ import { setUnauthorizedCleanup } from '@/utils/request'
 import { useAuthStore } from '@/stores/auth'
 import './styles/index.css'
 import './styles/element-plus-theme.css'
+import './styles/filterPanel.css'
 import './styles/admin.css'
 import './styles/roundBadge.css'
 
