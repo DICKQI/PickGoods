@@ -41,4 +41,13 @@ describe('Login club registration layout', () => {
     expect(loginSource).not.toMatch(/<RouterLink[^>]*to="\/settings"/)
     expect(loginSource).toContain('服务器设置')
   })
+
+  it('opens the server settings page through an explicit router push', () => {
+    // 不再依赖 <a href> 的默认跳转：部分 WebView 会把链接交给宿主处理，导致点击无响应
+    expect(loginSource).not.toContain('<router-link to="/settings"')
+    expect(loginSource).toContain('data-test="login-server-settings"')
+    expect(loginSource).toContain('@click="openServerSettings"')
+    expect(loginSource).toContain("void router.push('/settings')")
+    expect(loginSource).toContain('cursor: pointer;')
+  })
 })

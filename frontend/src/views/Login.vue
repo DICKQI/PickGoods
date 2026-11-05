@@ -201,10 +201,16 @@
             </transition>
 
             <div class="footer-links">
-              <router-link to="/settings" class="link">
+              <button
+                type="button"
+                class="link"
+                data-test="login-server-settings"
+                aria-label="服务器设置"
+                @click="openServerSettings"
+              >
                 <el-icon class="link-icon"><Tools /></el-icon>
                 <span>服务器设置</span>
-              </router-link>
+              </button>
             </div>
           </div>
         </div>
@@ -226,6 +232,11 @@ import { getCurrentBaseURL } from '@/utils/request'
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
+
+/** 显式走 router.push：避免部分 WebView 把 <a href> 的默认跳转交给宿主处理，导致点击无响应。 */
+function openServerSettings() {
+  void router.push('/settings')
+}
 
 // State
 const mode = ref<'login' | 'register'>('login')
@@ -1323,6 +1334,11 @@ onBeforeUnmount(() => {
   transition: all 0.3s ease;
   background: transparent;
   border: 1px solid transparent;
+  font-family: inherit;
+  line-height: 1.2;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
 }
 
 .link:hover {
