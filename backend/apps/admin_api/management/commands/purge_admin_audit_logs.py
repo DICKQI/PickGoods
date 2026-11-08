@@ -10,15 +10,16 @@ class Command(BaseCommand):
         parser.add_argument(
             "--days",
             type=int,
-            default=365,
-            help="保留天数，默认 365",
+            default=None,
+            help="保留天数；省略时使用 settings.ADMIN_AUDIT_RETENTION_DAYS（默认 365）",
         )
 
     def handle(self, *args, **options):
-        days = max(1, options["days"])
+        days = options["days"]
         deleted = purge_admin_audit_logs(days)
+        effective = days if days is not None else "settings.ADMIN_AUDIT_RETENTION_DAYS"
         self.stdout.write(
             self.style.SUCCESS(
-                f"已清理 {deleted} 条超过 {days} 天的管理员操作日志"
+                f"已清理 {deleted} 条超过 {effective} 天的管理员操作日志"
             )
         )

@@ -200,6 +200,8 @@ REST_FRAMEWORK = {
     },
     # 默认不信任客户端传入的 X-Forwarded-For；反向代理部署时显式配置。
     "NUM_PROXIES": int(os.environ.get("DRF_NUM_PROXIES", "0")),
+    # 统一异常处理：401/403/429 额外写入安全事件审计
+    "EXCEPTION_HANDLER": "core.exception_handlers.audit_exception_handler",
     # 指定使用的 Schema 类
     'DEFAULT_SCHEMA_CLASS': 'drf_spectacular.openapi.AutoSchema',
 }
@@ -244,6 +246,11 @@ GOODS_SIMILAR_IMAGE_WEIGHT = float(
 # JWT 配置
 JWT_SECRET = os.environ.get("JWT_SECRET", SECRET_KEY)
 JWT_ACCESS_TTL_SECONDS = 7 * 24 * 3600
+
+# 管理员操作日志保留天数（定时任务与 purge_admin_audit_logs 共用）
+ADMIN_AUDIT_RETENTION_DAYS = int(
+    os.environ.get("ADMIN_AUDIT_RETENTION_DAYS", "365")
+)
 
 # 游戏化默认关闭；部署迁移并完成基线初始化后再显式开启。
 GAMIFICATION_ENABLED = os.environ.get("GAMIFICATION_ENABLED", "false").lower() in {

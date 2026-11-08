@@ -32,6 +32,41 @@
           @clear="handleSearch"
           @keyup.enter="handleSearch"
         />
+        <el-input
+          v-model="filters.related_resource"
+          clearable
+          placeholder="资源 ID（含批量）"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        />
+        <el-select
+          v-model="filters.log_type"
+          clearable
+          placeholder="类型"
+          class="audit-type-select"
+          @change="handleSearch"
+        >
+          <el-option label="业务操作" value="business" />
+          <el-option label="安全事件" value="security" />
+        </el-select>
+        <el-select
+          v-model="filters.outcome"
+          clearable
+          placeholder="结果"
+          class="audit-outcome-select"
+          @change="handleSearch"
+        >
+          <el-option label="成功" value="success" />
+          <el-option label="失败" value="failure" />
+        </el-select>
+        <el-input
+          v-model="filters.actor"
+          clearable
+          placeholder="管理员 ID"
+          class="audit-actor-input"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        />
         <el-date-picker
           v-model="dateRange"
           type="daterange"
@@ -50,23 +85,58 @@
       <el-empty v-if="!loading && logs.length === 0" description="没有匹配的操作日志" />
       <template v-else>
         <div class="admin-table-wrapper">
-          <el-table :data="logs" row-key="id">
+          <el-table
+            :data="logs"
+            row-key="id"
+            :row-class-name="auditRowClassName"
+          >
             <el-table-column prop="created_at" label="时间" width="180">
               <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
             </el-table-column>
+            <el-table-column label="类型" width="100">
+              <template #default="{ row }">
+                <el-tag
+                  size="small"
+                  :type="row.log_type === 'security' ? 'warning' : 'info'"
+                  effect="plain"
+                >
+                  {{ logTypeLabel(row.log_type) }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="结果" width="80">
+              <template #default="{ row }">
+                <el-tag
+                  size="small"
+                  :type="row.outcome === 'failure' ? 'danger' : 'success'"
+                  effect="plain"
+                >
+                  {{ outcomeLabel(row.outcome) }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="管理员" width="140">
-              <template #default="{ row }">{{ row.actor_name || '已删除账号' }}</template>
+              <template #default="{ row }">{{ row.display_actor || '已删除账号' }}</template>
+            </el-table-column>
+            <el-table-column label="归属用户" width="130">
+              <template #default="{ row }">{{ row.subject_username || '—' }}</template>
             </el-table-column>
             <el-table-column prop="action" label="动作" min-width="180" />
             <el-table-column label="资源" min-width="180">
               <template #default="{ row }">
                 <span>{{ resourceLabel(row.resource_type) }}</span>
                 <code v-if="row.resource_id" class="resource-id">#{{ row.resource_id }}</code>
+                <code v-else-if="row.resource_ids" class="resource-id">
+                  {{ row.resource_ids.split(',').filter(Boolean).length }} 项
+                </code>
               </template>
             </el-table-column>
             <el-table-column prop="summary" label="摘要" min-width="260" show-overflow-tooltip />
             <el-table-column prop="ip_address" label="来源 IP" width="140">
               <template #default="{ row }">{{ row.ip_address || '—' }}</template>
+            </el-table-column>
+            <el-table-column label="状态码" width="90">
+              <template #default="{ row }">{{ row.status_code ?? '—' }}</template>
             </el-table-column>
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
@@ -99,9 +169,16 @@
       <div v-if="selectedLog" class="audit-detail">
         <dl>
           <div><dt>操作时间</dt><dd>{{ formatDateTime(selectedLog.created_at) }}</dd></div>
-          <div><dt>管理员</dt><dd>{{ selectedLog.actor_name || '已删除账号' }}</dd></div>
+          <div><dt>类型 / 结果</dt><dd>{{ logTypeLabel(selectedLog.log_type) }} · {{ outcomeLabel(selectedLog.outcome) }}</dd></div>
+          <div><dt>管理员</dt><dd>{{ selectedLog.display_actor || '已删除账号' }}</dd></div>
+          <div><dt>归属用户</dt><dd>{{ selectedLog.subject_username || '—' }}</dd></div>
           <div><dt>动作</dt><dd>{{ selectedLog.action }}</dd></div>
           <div><dt>资源</dt><dd>{{ resourceLabel(selectedLog.resource_type) }} #{{ selectedLog.resource_id || '—' }}</dd></div>
+          <div v-if="selectedLog.resource_ids"><dt>资源集合</dt><dd>{{ selectedLog.resource_ids }}</dd></div>
+          <div><dt>请求</dt><dd>{{ requestLine(selectedLog) }}</dd></div>
+          <div><dt>状态码</dt><dd>{{ selectedLog.status_code ?? '—' }}</dd></div>
+          <div><dt>请求 ID</dt><dd>{{ selectedLog.request_id || '—' }}</dd></div>
+          <div><dt>User-Agent</dt><dd>{{ selectedLog.user_agent || '—' }}</dd></div>
           <div><dt>来源 IP</dt><dd>{{ selectedLog.ip_address || '—' }}</dd></div>
           <div><dt>摘要</dt><dd>{{ selectedLog.summary }}</dd></div>
         </dl>
@@ -139,21 +216,32 @@ const filters = reactive({
   search: '',
   action: '',
   resource_type: '',
+  related_resource: '',
+  log_type: '' as '' | 'business' | 'security',
+  outcome: '' as '' | 'success' | 'failure',
+  actor: '',
 })
 
-const requestParams = computed(() => ({
-  page: page.value,
-  page_size: pageSize.value,
-  search: filters.search || undefined,
-  action: filters.action || undefined,
-  resource_type: filters.resource_type || undefined,
-  created_at__gte: dateRange.value?.[0]
-    ? `${dateRange.value[0]}T00:00:00+08:00`
-    : undefined,
-  created_at__lte: dateRange.value?.[1]
-    ? `${dateRange.value[1]}T23:59:59+08:00`
-    : undefined,
-}))
+const requestParams = computed(() => {
+  const actorId = Number(filters.actor)
+  return {
+    page: page.value,
+    page_size: pageSize.value,
+    search: filters.search || undefined,
+    action: filters.action || undefined,
+    resource_type: filters.resource_type || undefined,
+    related_resource: filters.related_resource.trim() || undefined,
+    log_type: filters.log_type || undefined,
+    outcome: filters.outcome || undefined,
+    actor: Number.isFinite(actorId) && filters.actor.trim() ? actorId : undefined,
+    created_at__gte: dateRange.value?.[0]
+      ? `${dateRange.value[0]}T00:00:00+08:00`
+      : undefined,
+    created_at__lte: dateRange.value?.[1]
+      ? `${dateRange.value[1]}T23:59:59+08:00`
+      : undefined,
+  }
+})
 
 const formattedChanges = computed(() =>
   JSON.stringify(selectedLog.value?.changes || {}, null, 2),
@@ -163,17 +251,56 @@ const resourceLabels: Record<string, string> = {
   user: '用户',
   goods: '谷子',
   goods_craft: '谷子工艺',
+  ip: 'IP 作品',
+  category: '品类',
+  character: '角色',
+  theme: '主题',
+  location: '位置',
+  journal: '手帐',
+  showcase: '展柜',
+  preorder: '预购',
+  club_goods: '社团谷子',
+  auth: '账号安全',
   bgm_settings: 'BGM 配置',
   bgm_sync_job: 'BGM 任务',
   export: '数据导出',
+  gamification: '游戏化配置',
   gamification_set: '成就系列',
   gamification_achievement: '成就',
   gamification_reward: '奖励',
+  django_admin: 'Django 后台',
   audit: '审计',
+}
+
+const logTypeLabels: Record<string, string> = {
+  business: '业务操作',
+  security: '安全事件',
+}
+
+const outcomeLabels: Record<string, string> = {
+  success: '成功',
+  failure: '失败',
 }
 
 function resourceLabel(value: string) {
   return resourceLabels[value] || value
+}
+
+function logTypeLabel(value: string) {
+  return logTypeLabels[value] || value
+}
+
+function outcomeLabel(value: string) {
+  return outcomeLabels[value] || value
+}
+
+function auditRowClassName({ row }: { row: AdminAuditLog }) {
+  return row.outcome === 'failure' ? 'audit-row--failure' : ''
+}
+
+function requestLine(log: AdminAuditLog) {
+  const line = [log.http_method, log.path].filter(Boolean).join(' ')
+  return line || '—'
 }
 
 async function loadLogs() {
@@ -203,6 +330,10 @@ function resetFilters() {
   filters.search = ''
   filters.action = ''
   filters.resource_type = ''
+  filters.related_resource = ''
+  filters.log_type = ''
+  filters.outcome = ''
+  filters.actor = ''
   dateRange.value = null
   handleSearch()
 }
@@ -236,6 +367,23 @@ onMounted(loadLogs)
   margin-left: 6px;
   color: #9099a6;
   font-size: 11px;
+}
+
+.audit-type-select,
+.audit-outcome-select {
+  width: 120px;
+}
+
+.audit-actor-input {
+  width: 130px;
+}
+
+:deep(.audit-row--failure > td.el-table__cell) {
+  background: #fff6f6 !important;
+}
+
+:deep(.audit-row--failure:hover > td.el-table__cell) {
+  background: #ffeaea !important;
 }
 
 .audit-detail {

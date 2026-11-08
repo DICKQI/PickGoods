@@ -128,9 +128,49 @@
 | 项目 | 说明 |
 |------|------|
 | **URL** | `GET /api/admin/audit-logs/` |
-| **查询参数** | `page`、`page_size`、`search`、`actor`、`action`、`resource_type`、`resource_id`、`created_at__gte`、`created_at__lte` |
+| **查询参数** | `page`、`page_size`、`search`、`actor`、`subject_user`、`action`、`resource_type`、`resource_id`、`related_resource`、`log_type`、`outcome`、`created_at__gte`、`created_at__lte` |
 
-日志记录管理员、动作、资源类型/ID、脱敏变更、来源 IP 和时间。密码、Token、原始文件等敏感字段统一写为 `[REDACTED]`。默认保留 365 天，可通过定时任务或 `python manage.py purge_admin_audit_logs --days=365` 清理。
+日志记录管理员、动作、资源类型/ID、脱敏变更、来源 IP 和时间。
+
+**记录字段**
+
+| 字段 | 说明 |
+|------|------|
+| `actor` / `actor_username` | 操作管理员；`actor_username` 是写入时的用户名快照，账号被删除后仍可读 |
+| `subject_user` | 被操作数据的归属用户（社团/吃谷人），用于"某用户的数据被谁改过" |
+| `log_type` | `business`（业务操作）或 `security`（安全事件） |
+| `outcome` | `success` 或 `failure` |
+| `resource_type` / `resource_id` | 单资源操作的主资源 |
+| `resource_ids` | 批量操作的规范化 ID 串，形如 `,1,2,3,` |
+| `http_method` / `path` / `status_code` | 请求上下文，便于还原"调了哪个接口" |
+| `request_id` / `user_agent` / `ip_address` | 来自 `X-Request-ID`、`User-Agent`、客户端 IP |
+
+**按单个资源反查**：`?related_resource=<id>` 会同时匹配 `resource_id` 与 `resource_ids`，因此批量操作也能按单条资源查到。
+
+**只追加语义**：`AdminAuditLog` 的默认管理器禁止 `update()` / `delete()`，Django Admin 也移除了新增、修改与删除权限。保留期清理走 `AdminAuditLog.all_objects`。
+
+**安全事件**（`log_type=security`）覆盖：
+
+- `auth.login`（成功、密码错误、账号不存在、待审批、已停用）
+- `auth.logout`、`auth.register`、`auth.password_change`、`auth.username_change`
+- `security.unauthenticated`（401）、`security.permission_denied`（403）、`security.throttled`（429），由 `core.exception_handlers.audit_exception_handler` 统一记录
+
+**敏感字段**：密码、Token、Secret、Cookie、Session、CSRF、API Key 等键统一写为 `[REDACTED]`；`filename`、`avatar` 等文件名类字段正常保留。
+
+**Django Admin 站点**：`/admin/` 的增删改通过 `core.admin_audit` 桥接写入同一张表，`resource_type="django_admin"`，动作前缀 `django_admin.*`。由于站点登录的是 `auth.User`，这类记录不写 `actor` 外键，只在 `actor_username` 与 `changes.django_admin_user_id` 中保留账号信息。
+
+**保留期**：默认 365 天，可用环境变量 `ADMIN_AUDIT_RETENTION_DAYS` 覆盖。定时任务每日 4:00 清理，也可手动执行：
+
+```bash
+python manage.py purge_admin_audit_logs            # 使用 settings 配置
+python manage.py purge_admin_audit_logs --days=180 # 显式指定
+```
+
+**补偿队列**：写入失败时落 `AdminAuditRetry`，调度器每分钟重试。若运行环境未安装 APScheduler（日志会出现 `APScheduler not installed`），可用：
+
+```bash
+python manage.py retry_admin_audit_queue --limit=500
+```
 
 ### 2.8 安全批量操作
 
@@ -179,6 +219,8 @@
 谷子、主题请求中的 **`user_id`** 仅管理员可用；普通用户传入会校验失败。
 
 `user_id` 仅在创建时生效。已创建谷子或主题的归属用户不可通过 `PATCH/PUT` 修改；更新请求携带 `user_id` 会返回 `400`。
+
+**管理员通过业务接口写数据时同样留痕**：位置（`/api/location/*`）、谷子图片与排序（`/api/goods/*`）、手帐（`/api/journals/*`、`/api/journal-pages/*`）、展柜（`/api/showcases/*`）、预购（`/api/preorders/*`）、社团谷子导入、`/api/bgm/create-characters/` 都会写入操作日志。判定标准是**发起人是否为管理员**：普通用户操作自己的数据不产生日志；管理员跨用户操作时，`changes.cross_user=true` 且 `subject_user` 指向数据归属人。
 
 ---
 

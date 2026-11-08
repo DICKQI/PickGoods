@@ -16,7 +16,7 @@
     </div>
 
     <div class="stats-filter-item">
-      <label>是否官谷</label>
+      <label>官谷/同人</label>
       <el-select
         :model-value="isOfficial"
         placeholder="全部"
@@ -25,7 +25,7 @@
         @update:model-value="$emit('update:isOfficial', $event)"
       >
         <el-option :value="true" label="官谷" />
-        <el-option :value="false" label="同人/非官谷" />
+        <el-option :value="false" label="同人" />
       </el-select>
     </div>
 

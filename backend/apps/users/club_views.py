@@ -991,6 +991,28 @@ class ClubGoodsImportView(viewsets.ViewSet):
                 )
                 response_status = status.HTTP_201_CREATED
                 merged = False
+        from apps.admin_api.services import audit_admin_action
+
+        audit_admin_action(
+            request,
+            action="club.goods_import",
+            resource_type="club_goods",
+            resource_id=source.pk,
+            summary=(
+                f"导入社团谷子到个人谷仓：{getattr(result, 'name', '')}"
+                f"（{'合并数量' if merged else '新建'}）"
+            ),
+            changes={
+                "source_item_id": str(source.pk),
+                "club_id": source.club_id,
+                "personal_goods_id": str(result.pk),
+                "target_user_id": getattr(target_user, "id", None),
+                "merged": merged,
+                "cross_user": getattr(request.user, "id", None)
+                != getattr(target_user, "id", None),
+            },
+            subject_user=target_user,
+        )
         response_payload = GoodsDetailSerializer(result, context={"request": request}).data
         response_payload["merged"] = merged
         return Response(response_payload, status=response_status)

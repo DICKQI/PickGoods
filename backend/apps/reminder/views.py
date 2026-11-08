@@ -12,6 +12,7 @@ from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from apps.admin_api.services import audit_admin_action
 from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 
 from .models import Notification, Preorder
@@ -149,9 +150,63 @@ class PreorderViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        preorder = serializer.save(user=self.request.user)
         # 登记时若已处于提醒窗口 / 补款期，立即生成通知
-        sync_preorder(serializer.instance)
+        sync_preorder(preorder)
+        audit_admin_action(
+            self.request,
+            action="preorder.create",
+            resource_type="preorder",
+            resource_id=preorder.pk,
+            summary=f"创建预购 {getattr(preorder, 'name', '')}",
+            changes={
+                "status": getattr(preorder, "status", ""),
+                "estimated_month": getattr(preorder, "estimated_month", ""),
+            },
+            subject_user=preorder.user,
+        )
+
+    def perform_update(self, serializer):
+        before = {
+            "name": getattr(serializer.instance, "name", ""),
+            "status": getattr(serializer.instance, "status", ""),
+            "estimated_month": getattr(serializer.instance, "estimated_month", ""),
+        }
+        preorder = serializer.save()
+        audit_admin_action(
+            self.request,
+            action="preorder.update",
+            resource_type="preorder",
+            resource_id=preorder.pk,
+            summary=f"更新预购 {getattr(preorder, 'name', '')}",
+            changes={
+                "before": before,
+                "after": {
+                    "name": getattr(preorder, "name", ""),
+                    "status": getattr(preorder, "status", ""),
+                    "estimated_month": getattr(preorder, "estimated_month", ""),
+                },
+            },
+            subject_user=preorder.user,
+        )
+
+    def perform_destroy(self, instance):
+        payload = {
+            "name": getattr(instance, "name", ""),
+            "status": getattr(instance, "status", ""),
+        }
+        preorder_pk = instance.pk
+        owner = instance.user
+        instance.delete()
+        audit_admin_action(
+            self.request,
+            action="preorder.delete",
+            resource_type="preorder",
+            resource_id=preorder_pk,
+            summary=f"删除预购 {payload['name']}",
+            changes=payload,
+            subject_user=owner,
+        )
 
     @action(detail=True, methods=["post"], url_path="mark-paid")
     def mark_paid(self, request, pk=None):
@@ -165,6 +220,15 @@ class PreorderViewSet(viewsets.ModelViewSet):
         preorder.paid_at = timezone.now()
         preorder.save(update_fields=["status", "paid_at", "updated_at"])
         mark_preorder_notifications_read(preorder)
+        audit_admin_action(
+            request,
+            action="preorder.mark_paid",
+            resource_type="preorder",
+            resource_id=preorder.pk,
+            summary=f"标记预购已补款 {getattr(preorder, 'name', '')}",
+            changes={"status": preorder.status},
+            subject_user=preorder.user,
+        )
         return Response(PreorderSerializer(preorder).data)
 
     @action(detail=True, methods=["post"], url_path="delay")
@@ -194,6 +258,18 @@ class PreorderViewSet(viewsets.ModelViewSet):
                 for field, messages in exc.message_dict.items()
             }
             return Response(detail, status=status.HTTP_400_BAD_REQUEST)
+        audit_admin_action(
+            request,
+            action="preorder.delay",
+            resource_type="preorder",
+            resource_id=updated.pk,
+            summary=f"预购延期 {getattr(updated, 'name', '')}",
+            changes={
+                "to_month": serializer.validated_data["to_month"],
+                "reason": serializer.validated_data["reason"],
+            },
+            subject_user=updated.user,
+        )
         return Response(PreorderSerializer(updated).data)
 
     @action(detail=True, methods=["get"], url_path="delays")
@@ -216,6 +292,15 @@ class PreorderViewSet(viewsets.ModelViewSet):
         # 旧提醒过期，并生成「已取消补款」通知
         mark_preorder_notifications_stale(preorder)
         notify_status_change(preorder, Notification.TYPE_CANCELLED)
+        audit_admin_action(
+            request,
+            action="preorder.cancel",
+            resource_type="preorder",
+            resource_id=preorder.pk,
+            summary=f"取消预购 {getattr(preorder, 'name', '')}",
+            changes={"status": preorder.status},
+            subject_user=preorder.user,
+        )
         return Response(PreorderSerializer(preorder).data)
 
     @action(detail=True, methods=["post"], url_path="convert-to-goods")
@@ -244,6 +329,15 @@ class PreorderViewSet(viewsets.ModelViewSet):
             preorder.save(update_fields=["goods", "status", "updated_at"])
         mark_preorder_notifications_read(preorder)
         notify_status_change(preorder, Notification.TYPE_CONVERTED)
+        audit_admin_action(
+            request,
+            action="preorder.convert",
+            resource_type="preorder",
+            resource_id=preorder.pk,
+            summary=f"预购转正为谷子 {getattr(preorder, 'name', '')}",
+            changes={"goods_id": str(goods.pk), "status": preorder.status},
+            subject_user=preorder.user,
+        )
         return Response(PreorderSerializer(preorder).data, status=status.HTTP_201_CREATED)
 
 

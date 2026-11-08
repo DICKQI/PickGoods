@@ -352,6 +352,28 @@ class GoodsFilter(FilterSet):
         return queryset.filter(location_id__in=ids)
 
 
+def _goods_audit_snapshot(goods) -> dict:
+    """谷子审计快照：覆盖管理员可改的关键字段。"""
+    return {
+        "name": goods.name,
+        "status": goods.status,
+        "quantity": goods.quantity,
+        "price": None if goods.price is None else str(goods.price),
+        "purchase_date": (
+            goods.purchase_date.isoformat() if goods.purchase_date else None
+        ),
+        "is_official": goods.is_official,
+        "ip_id": goods.ip_id,
+        "category_id": goods.category_id,
+        "theme_id": goods.theme_id,
+        "location_id": goods.location_id,
+        "character_ids": sorted(goods.characters.values_list("id", flat=True)),
+        "has_main_photo": bool(getattr(goods, "main_photo", None)),
+        "notes_length": len(goods.notes or ""),
+        "user_id": goods.user_id,
+    }
+
+
 class GoodsViewSet(viewsets.ModelViewSet):
     """
     谷子检索核心接口。
@@ -615,6 +637,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
                     resource_id=target.pk,
                     summary=f"合并谷子到 {target.name}",
                     changes={"quantity_added": add_qty, "target_id": str(target.pk)},
+                    subject_user=target.user,
                 )
             detail_serializer = GoodsDetailSerializer(
                 target, context=self.get_serializer_context()
@@ -649,40 +672,30 @@ class GoodsViewSet(viewsets.ModelViewSet):
         with transaction.atomic():
             serializer.save(user=owner, order=next_order)
         if is_admin(self.request.user):
-            from apps.admin_api.services import record_admin_action
+            from apps.admin_api.services import audit_admin_action
 
             instance = serializer.instance
-            record_admin_action(
+            audit_admin_action(
                 self.request,
                 action="goods.create",
                 resource_type="goods",
                 resource_id=instance.pk,
                 summary=f"创建谷子 {instance.name}",
-                changes={
-                    "name": instance.name,
-                    "user_id": owner.pk,
-                    "status": instance.status,
-                },
+                changes={"after": _goods_audit_snapshot(instance)},
+                subject_user=owner,
             )
 
     def perform_update(self, serializer):
         # 与创建一致：状态、数量、角色等在同一事务提交后统一计算增量。
-        before = None
-        if is_admin(self.request.user):
-            instance = serializer.instance
-            before = {
-                "name": instance.name,
-                "status": instance.status,
-                "quantity": instance.quantity,
-                "user_id": instance.user_id,
-            }
+        is_admin_user = is_admin(self.request.user)
+        before = _goods_audit_snapshot(serializer.instance) if is_admin_user else None
         with transaction.atomic():
             serializer.save()
-        if is_admin(self.request.user):
-            from apps.admin_api.services import record_admin_action
+        if is_admin_user:
+            from apps.admin_api.services import audit_admin_action
 
             instance = serializer.instance
-            record_admin_action(
+            audit_admin_action(
                 self.request,
                 action="goods.update",
                 resource_type="goods",
@@ -690,33 +703,27 @@ class GoodsViewSet(viewsets.ModelViewSet):
                 summary=f"更新谷子 {instance.name}",
                 changes={
                     "before": before,
-                    "after": {
-                        "name": instance.name,
-                        "status": instance.status,
-                        "quantity": instance.quantity,
-                        "user_id": instance.user_id,
-                    },
+                    "after": _goods_audit_snapshot(instance),
                 },
+                subject_user=instance.user,
             )
 
     def perform_destroy(self, instance):
-        payload = {
-            "name": instance.name,
-            "user_id": instance.user_id,
-            "status": instance.status,
-        }
+        payload = _goods_audit_snapshot(instance)
         resource_id = str(instance.pk)
+        owner = instance.user
         instance.delete()
         if is_admin(self.request.user):
-            from apps.admin_api.services import record_admin_action
+            from apps.admin_api.services import audit_admin_action
 
-            record_admin_action(
+            audit_admin_action(
                 self.request,
                 action="goods.delete",
                 resource_type="goods",
                 resource_id=resource_id,
                 summary=f"删除谷子 {payload['name']}",
                 changes=payload,
+                subject_user=owner,
             )
 
     @action(detail=True, methods=["post"], url_path="move")
@@ -885,6 +892,22 @@ class GoodsViewSet(viewsets.ModelViewSet):
             current_locked.order = new_order
             current_locked.save(update_fields=["order"])
 
+        from apps.admin_api.services import audit_admin_action
+
+        audit_admin_action(
+            request,
+            action="goods.reorder",
+            resource_type="goods",
+            resource_id=current_goods.pk,
+            summary=f"调整谷子排序 {current_goods.name}",
+            changes={
+                "anchor_id": str(anchor_id),
+                "position": position,
+                "new_order": current_locked.order,
+            },
+            subject_user=owner_user,
+        )
+
         return Response(
             {
                 "detail": "排序更新成功",
@@ -916,6 +939,18 @@ class GoodsViewSet(viewsets.ModelViewSet):
         compressed = compress_image(main_photo, max_size_kb=300)
         instance.main_photo = compressed or main_photo
         instance.save(update_fields=["main_photo", "updated_at"])
+
+        from apps.admin_api.services import audit_admin_action
+
+        audit_admin_action(
+            request,
+            action="goods.image_upload",
+            resource_type="goods",
+            resource_id=instance.pk,
+            summary=f"上传谷子主图 {instance.name}",
+            changes={"kind": "main_photo", "filename": main_photo.name},
+            subject_user=instance.user,
+        )
 
         serializer = GoodsDetailSerializer(
             instance, context=self.get_serializer_context()
@@ -1071,6 +1106,24 @@ class GoodsViewSet(viewsets.ModelViewSet):
             "additional_photos", None
         )
 
+        from apps.admin_api.services import audit_admin_action, normalize_resource_ids
+
+        audit_admin_action(
+            request,
+            action="goods.image_upload",
+            resource_type="goods",
+            resource_id=instance.pk,
+            summary=f"上传谷子附加图片 {instance.name}",
+            changes={
+                "kind": "additional_photos",
+                "uploaded_count": len(additional_photos),
+                "created_photo_ids": created_photo_ids,
+                "label": label,
+            },
+            resource_ids=normalize_resource_ids(created_photo_ids),
+            subject_user=instance.user,
+        )
+
         serializer = GoodsDetailSerializer(
             instance, context=self.get_serializer_context()
         )
@@ -1126,6 +1179,19 @@ class GoodsViewSet(viewsets.ModelViewSet):
                 "additional_photos", None
             )
 
+        from apps.admin_api.services import audit_admin_action, normalize_resource_ids
+
+        audit_admin_action(
+            request,
+            action="goods.image_reorder",
+            resource_type="goods",
+            resource_id=instance.pk,
+            summary=f"重排谷子附加图片 {instance.name}",
+            changes={"photo_ids": photo_ids},
+            resource_ids=normalize_resource_ids(photo_ids),
+            subject_user=instance.user,
+        )
+
         serializer = GoodsDetailSerializer(
             instance, context=self.get_serializer_context()
         )
@@ -1145,6 +1211,7 @@ class GoodsViewSet(viewsets.ModelViewSet):
         try:
             photo_id = int(photo_id)
             guzi_image = GuziImage.objects.get(id=photo_id, guzi=instance)
+            deleted_label = guzi_image.label or ""
             guzi_image.delete()
         except (GuziImage.DoesNotExist, ValueError):
             return Response(
@@ -1156,6 +1223,19 @@ class GoodsViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["updated_at"])
         getattr(instance, "_prefetched_objects_cache", {}).pop(
             "additional_photos", None
+        )
+
+        from apps.admin_api.services import audit_admin_action, normalize_resource_ids
+
+        audit_admin_action(
+            request,
+            action="goods.image_delete",
+            resource_type="goods",
+            resource_id=instance.pk,
+            summary=f"删除谷子附加图片 {instance.name}",
+            changes={"photo_ids": [photo_id], "label": deleted_label},
+            resource_ids=normalize_resource_ids([photo_id]),
+            subject_user=instance.user,
         )
 
         serializer = GoodsDetailSerializer(
@@ -1211,6 +1291,22 @@ class GoodsViewSet(viewsets.ModelViewSet):
             instance.save(update_fields=["updated_at"])
             getattr(instance, "_prefetched_objects_cache", {}).pop(
                 "additional_photos", None
+            )
+
+            from apps.admin_api.services import (
+                audit_admin_action,
+                normalize_resource_ids,
+            )
+
+            audit_admin_action(
+                request,
+                action="goods.image_delete",
+                resource_type="goods",
+                resource_id=instance.pk,
+                summary=f"批量删除谷子附加图片 {instance.name}",
+                changes={"photo_ids": photo_ids, "deleted_count": deleted_count},
+                resource_ids=normalize_resource_ids(photo_ids),
+                subject_user=instance.user,
             )
 
             serializer = GoodsDetailSerializer(

@@ -81,9 +81,13 @@ export function getAdminOverview(range: '7d' | '30d' = '30d') {
 
 export interface AdminAuditLogListParams extends AdminListQuery {
   actor?: number
+  subject_user?: number
   action?: string
   resource_type?: string
   resource_id?: string
+  related_resource?: string
+  log_type?: 'business' | 'security'
+  outcome?: 'success' | 'failure'
   created_at__gte?: string
   created_at__lte?: string
 }

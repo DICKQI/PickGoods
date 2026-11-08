@@ -107,7 +107,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             self.request,
@@ -119,8 +119,15 @@ class CategoryViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        before = {
+            "name": serializer.instance.name,
+            "path_name": serializer.instance.path_name,
+            "parent_id": serializer.instance.parent_id,
+            "order": serializer.instance.order,
+            "shape_type": serializer.instance.shape_type,
+        }
         instance = serializer.save()
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             self.request,
@@ -128,7 +135,16 @@ class CategoryViewSet(viewsets.ModelViewSet):
             resource_type="category",
             resource_id=instance.pk,
             summary=f"更新品类 {instance.path_name or instance.name}",
-            changes={"parent_id": instance.parent_id, "order": instance.order},
+            changes={
+                "before": before,
+                "after": {
+                    "name": instance.name,
+                    "path_name": instance.path_name,
+                    "parent_id": instance.parent_id,
+                    "order": instance.order,
+                    "shape_type": instance.shape_type,
+                },
+            },
         )
     
     def get_all_descendants(self, category):
@@ -199,7 +215,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
                 updated_ids = [cat.id for cat in updated_categories]
                 result_categories = Category.objects.filter(id__in=updated_ids).order_by('order', 'id')
                 result_serializer = CategorySimpleSerializer(result_categories, many=True)
-                from apps.admin_api.services import record_admin_action
+                from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
                 record_admin_action(
                     request,
@@ -208,6 +224,9 @@ class CategoryViewSet(viewsets.ModelViewSet):
                     resource_id=None,
                     summary=f"调整 {len(updated_categories)} 个品类的排序",
                     changes={"items": items},
+                    resource_ids=normalize_resource_ids(
+                        [item.get("id") for item in items]
+                    ),
                 )
                 
                 return Response({
@@ -250,7 +269,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         resource_label = instance.path_name or instance.name
         with transaction.atomic():
             instance.delete()
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             request,

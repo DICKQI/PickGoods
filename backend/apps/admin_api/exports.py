@@ -377,24 +377,40 @@ def _export_bgm_jobs(request):
 def _export_audit_logs(request):
     from .filters import AdminAuditLogFilter
 
-    qs = AdminAuditLog.objects.select_related("actor")
+    qs = AdminAuditLog.objects.select_related("actor", "subject_user")
     qs = AdminAuditLogFilter(request.GET, queryset=qs).qs
     return qs, (
         "ID",
+        "类型",
+        "结果",
         "操作管理员",
+        "归属用户",
         "动作",
         "资源类型",
         "资源 ID",
+        "资源 ID 集合",
         "摘要",
+        "请求方法",
+        "请求路径",
+        "状态码",
+        "请求 ID",
         "来源 IP",
         "操作时间",
     ), lambda obj: (
         obj.id,
-        obj.actor.username if obj.actor_id else "",
+        obj.get_log_type_display(),
+        obj.get_outcome_display(),
+        obj.actor_username or (obj.actor.username if obj.actor_id else ""),
+        obj.subject_user.username if obj.subject_user_id else "",
         obj.action,
         obj.resource_type,
         obj.resource_id,
+        obj.resource_ids,
         obj.summary,
+        obj.http_method,
+        obj.path,
+        obj.status_code,
+        obj.request_id,
         obj.ip_address,
         obj.created_at,
     )

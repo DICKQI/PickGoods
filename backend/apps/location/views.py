@@ -14,6 +14,40 @@ from .services import get_descendant_ids, make_path_name, refresh_descendant_pat
 from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 
 
+def _node_snapshot(node: StorageNode) -> dict:
+    """位置节点审计快照。"""
+    return {
+        "name": node.name,
+        "parent_id": node.parent_id,
+        "path_name": node.path_name,
+        "order": node.order,
+        "capacity": node.capacity,
+        "node_type": node.node_type,
+    }
+
+
+def _audit_location(request, *, action, node_pk, summary, changes, subject_user=None):
+    """记录管理员对位置节点的写操作；普通用户操作自动跳过。"""
+    from apps.admin_api.services import audit_admin_action
+
+    actor = getattr(request, "user", None)
+    payload = dict(changes or {})
+    if subject_user is not None:
+        payload["owner_id"] = getattr(subject_user, "id", None)
+        payload["cross_user"] = getattr(subject_user, "id", None) != getattr(
+            actor, "id", None
+        )
+    return audit_admin_action(
+        request,
+        action=action,
+        resource_type="location",
+        resource_id=node_pk,
+        summary=summary,
+        changes=payload,
+        subject_user=subject_user,
+    )
+
+
 class LocationGoodsPagination(PageNumberPagination):
     page_size = 18
     page_size_query_param = "page_size"
@@ -52,7 +86,15 @@ class StorageNodeListCreateView(generics.ListCreateAPIView):
         return qs.filter(user=user)
 
     def perform_create(self, serializer):
-        serializer.save(user=self.request.user)
+        node = serializer.save(user=self.request.user)
+        _audit_location(
+            self.request,
+            action="location.node_create",
+            node_pk=node.pk,
+            summary=f"创建位置节点 {node.path_name or node.name}",
+            changes={"after": _node_snapshot(node)},
+            subject_user=node.user,
+        )
 
 
 class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
@@ -78,6 +120,18 @@ class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
             return qs
         return qs.filter(user=user)
 
+    def perform_update(self, serializer):
+        before = _node_snapshot(serializer.instance)
+        node = serializer.save()
+        _audit_location(
+            self.request,
+            action="location.node_update",
+            node_pk=node.pk,
+            summary=f"更新位置节点 {node.path_name or node.name}",
+            changes={"before": before, "after": _node_snapshot(node)},
+            subject_user=node.user,
+        )
+
     @transaction.atomic
     def destroy(self, request, *args, **kwargs):
         """
@@ -89,6 +143,9 @@ class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
         instance = self.get_object()
         
         node_ids = get_descendant_ids(instance)
+        snapshot = _node_snapshot(instance)
+        node_pk = instance.pk
+        owner = instance.user
         
         # 取消所有关联的商品（将 location 设置为 null）
         # 虽然 Goods 的 location 使用了 on_delete=models.SET_NULL，
@@ -99,7 +156,16 @@ class StorageNodeDetailView(generics.RetrieveUpdateDestroyAPIView):
         # 删除根节点（由于 parent 字段使用了 on_delete=models.CASCADE，
         # 删除父节点时，Django 会自动删除所有子节点）
         instance.delete()
-        
+
+        _audit_location(
+            request,
+            action="location.node_delete",
+            node_pk=node_pk,
+            summary=f"删除位置节点 {snapshot.get('path_name') or snapshot.get('name')}",
+            changes={"node": snapshot, "node_count": len(node_ids)},
+            subject_user=owner,
+        )
+
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -291,6 +357,14 @@ class StorageNodeMoveView(APIView):
         node.path_name = make_path_name(node.name, parent)
         node.save(update_fields=["parent", "order", "path_name", "updated_at"])
         refresh_descendant_paths(node)
+        _audit_location(
+            request,
+            action="location.node_move",
+            node_pk=node.pk,
+            summary=f"移动位置节点 {node.path_name or node.name}",
+            changes={"after": _node_snapshot(node)},
+            subject_user=node.user,
+        )
         return Response(StorageNodeSerializer(node, context={"request": request}).data)
 
 
@@ -321,6 +395,25 @@ class LocationMoveGoodsView(APIView):
             return Response({"detail": "谷子不存在或无权移动"}, status=status.HTTP_404_NOT_FOUND)
 
         moved_count = goods_qs.update(location=target_location)
+
+        from apps.admin_api.services import audit_admin_action, normalize_resource_ids
+
+        audit_admin_action(
+            request,
+            action="location.goods_move",
+            resource_type="location",
+            resource_id=target_location_id,
+            summary=(
+                f"移动 {moved_count} 个谷子到位置 "
+                f"{target_location.path_name if target_location else '未分配'}"
+            ),
+            changes={
+                "goods_ids": list(goods_ids),
+                "target_location": target_location_id,
+                "moved_count": moved_count,
+            },
+            resource_ids=normalize_resource_ids(goods_ids),
+        )
         return Response({"moved_count": moved_count, "target_location": target_location_id})
 
 

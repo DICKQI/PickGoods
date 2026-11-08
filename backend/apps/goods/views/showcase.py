@@ -21,6 +21,7 @@ from ..serializers.showcase import (
     ShowcaseListSerializer,
 )
 from ..utils import compress_image
+from apps.admin_api.services import audit_admin_action
 from core.permissions import IsCollectorAccount, IsOwnerOrPublicReadOnly, is_admin
 
 
@@ -154,7 +155,57 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
             .get("min_order")
         )
         next_order = (min_order or 0) - self.ORDER_STEP
-        serializer.save(user=user, order=next_order)
+        showcase = serializer.save(user=user, order=next_order)
+        audit_admin_action(
+            self.request,
+            action="showcase.create",
+            resource_type="showcase",
+            resource_id=showcase.pk,
+            summary=f"创建展柜 {getattr(showcase, 'name', '')}",
+            changes={"is_public": getattr(showcase, "is_public", None)},
+            subject_user=user,
+        )
+
+    def perform_update(self, serializer):
+        before = {
+            "name": getattr(serializer.instance, "name", ""),
+            "is_public": getattr(serializer.instance, "is_public", None),
+        }
+        showcase = serializer.save()
+        audit_admin_action(
+            self.request,
+            action="showcase.update",
+            resource_type="showcase",
+            resource_id=showcase.pk,
+            summary=f"更新展柜 {getattr(showcase, 'name', '')}",
+            changes={
+                "before": before,
+                "after": {
+                    "name": getattr(showcase, "name", ""),
+                    "is_public": getattr(showcase, "is_public", None),
+                },
+            },
+            subject_user=showcase.user,
+        )
+
+    def perform_destroy(self, instance):
+        payload = {
+            "name": getattr(instance, "name", ""),
+            "is_public": getattr(instance, "is_public", None),
+            "goods_count": instance.showcase_goods.count(),
+        }
+        showcase_pk = instance.pk
+        owner = instance.user
+        instance.delete()
+        audit_admin_action(
+            self.request,
+            action="showcase.delete",
+            resource_type="showcase",
+            resource_id=showcase_pk,
+            summary=f"删除展柜 {payload['name']}",
+            changes=payload,
+            subject_user=owner,
+        )
 
     @action(
         detail=True,
@@ -178,6 +229,16 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
         compressed = compress_image(cover_image, max_size_kb=300)
         instance.cover_image = compressed or cover_image
         instance.save(update_fields=["cover_image", "updated_at"])
+
+        audit_admin_action(
+            request,
+            action="showcase.cover_upload",
+            resource_type="showcase",
+            resource_id=instance.pk,
+            summary=f"上传展柜封面 {getattr(instance, 'name', '')}",
+            changes={"filename": cover_image.name},
+            subject_user=instance.user,
+        )
 
         serializer = ShowcaseDetailSerializer(
             instance, context=self.get_serializer_context()
@@ -241,6 +302,15 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
             notes=notes,
         )
 
+        audit_admin_action(
+            request,
+            action="showcase.goods_add",
+            resource_type="showcase",
+            resource_id=showcase.pk,
+            summary=f"向展柜 {getattr(showcase, 'name', '')} 添加谷子",
+            changes={"goods_id": str(goods.pk)},
+            subject_user=showcase.user,
+        )
         serializer = ShowcaseGoodsSerializer(showcase_goods)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -258,6 +328,15 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
                 showcase=showcase, goods_id=goods_id
             )
             showcase_goods.delete()
+            audit_admin_action(
+                request,
+                action="showcase.goods_remove",
+                resource_type="showcase",
+                resource_id=showcase.pk,
+                summary=f"从展柜 {getattr(showcase, 'name', '')} 移除谷子",
+                changes={"goods_id": str(goods_id)},
+                subject_user=showcase.user,
+            )
             return Response({"detail": "已从展柜移除"}, status=status.HTTP_200_OK)
         except ShowcaseGoods.DoesNotExist:
             return Response(
@@ -368,6 +447,21 @@ class ShowcaseViewSet(viewsets.ModelViewSet):
 
             current_locked.order = new_order
             current_locked.save(update_fields=["order"])
+
+        audit_admin_action(
+            request,
+            action="showcase.goods_move",
+            resource_type="showcase",
+            resource_id=showcase.pk,
+            summary=f"调整展柜 {getattr(showcase, 'name', '')} 内谷子顺序",
+            changes={
+                "goods_id": str(goods_id),
+                "anchor_goods_id": str(anchor_goods_id),
+                "position": position,
+                "new_order": current_locked.order,
+            },
+            subject_user=showcase.user,
+        )
 
         return Response(
             {

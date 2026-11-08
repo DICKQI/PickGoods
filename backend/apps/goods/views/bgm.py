@@ -208,6 +208,21 @@ def bgm_create_characters(request):
                 "error": str(e)
             })
     
+    from apps.admin_api.services import audit_admin_action
+
+    audit_admin_action(
+        request,
+        action="bgm.create_characters",
+        resource_type="bgm_sync_job",
+        resource_id=None,
+        summary=f"BGM 批量创建 IP/角色：新建 {created_count} 个，已存在 {skipped_count} 个",
+        changes={
+            "requested": len(characters_data),
+            "created": created_count,
+            "skipped": skipped_count,
+        },
+    )
+
     return Response({
         "created": created_count,
         "skipped": skipped_count,

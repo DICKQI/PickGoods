@@ -1246,3 +1246,55 @@ class NotificationAPITestCase(TestCase):
         # 其他用户也看不到该通知
         response = self.other_client.get("/api/notifications/")
         self.assertEqual(response.json()["count"], 0)
+
+
+class PreorderAuditTestCase(TestCase):
+    """管理员代操作预购时写入操作日志，普通用户自操作不留痕。"""
+
+    def setUp(self):
+        from apps.users.models import Role, User
+
+        self.admin_role, _ = Role.objects.get_or_create(name="Admin")
+        self.user_role, _ = Role.objects.get_or_create(name="User")
+        self.admin = User.objects.create(
+            username="pre_admin", role=self.admin_role, is_active=True
+        )
+        self.owner = User.objects.create(
+            username="pre_owner", role=self.user_role, is_active=True
+        )
+        self.client = APIClient()
+
+    def _logs(self, action):
+        from apps.admin_api.models import AdminAuditLog
+
+        return AdminAuditLog.objects.filter(action=action)
+
+    def test_plain_user_operations_are_not_audited(self):
+        self.client.force_authenticate(user=self.owner)
+        self.client.post(
+            "/api/preorders/",
+            {
+                "name": "自己的预购",
+                "estimated_month": "2026-12-01",
+                "deposit_amount": "10.00",
+            },
+            format="json",
+        )
+        self.assertEqual(self._logs("preorder.create").count(), 0)
+
+    def test_admin_cancel_is_audited(self):
+        from .models import Preorder
+
+        preorder = Preorder.objects.create(
+            user=self.owner,
+            name="待取消预购",
+            status=Preorder.STATUS_PENDING,
+            estimated_month="2026-12-01",
+            deposit_amount=Decimal("10.00"),
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(f"/api/preorders/{preorder.pk}/cancel/")
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("preorder.cancel").latest("id")
+        self.assertEqual(log.subject_user_id, self.owner.pk)
+        self.assertEqual(log.actor_id, self.admin.pk)

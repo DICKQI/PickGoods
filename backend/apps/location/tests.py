@@ -385,3 +385,90 @@ class StorageNodeGoodsTestCase(TestCase):
         ids = [item["id"] for item in items]
         self.assertIn(str(unassigned.id), ids)
         self.assertNotIn(str(self.goods1.id), ids)
+
+
+class LocationAuditTestCase(TestCase):
+    """管理员跨用户操作位置时写入操作日志，普通用户自操作不留痕。"""
+
+    def setUp(self):
+        self.admin_role, _ = Role.objects.get_or_create(name="Admin")
+        self.user_role, _ = Role.objects.get_or_create(name="User")
+        self.admin = User.objects.create(
+            username="loc_admin", role=self.admin_role, is_active=True
+        )
+        self.owner = User.objects.create(
+            username="loc_owner", role=self.user_role, is_active=True
+        )
+        self.client = APIClient()
+
+    def _logs(self, action):
+        from apps.admin_api.models import AdminAuditLog
+
+        return AdminAuditLog.objects.filter(action=action)
+
+    def test_plain_user_operations_are_not_audited(self):
+        self.client.force_authenticate(user=self.owner)
+        self.client.post("/api/location/nodes/", {"name": "自己的柜子"}, format="json")
+        self.assertEqual(self._logs("location.node_create").count(), 0)
+
+    def test_admin_create_update_delete_node_is_audited(self):
+        self.client.force_authenticate(user=self.admin)
+        created = self.client.post(
+            "/api/location/nodes/", {"name": "管理员建的柜子"}, format="json"
+        )
+        self.assertEqual(created.status_code, status.HTTP_201_CREATED)
+        node_id = created.json()["id"]
+        log = self._logs("location.node_create").latest("id")
+        self.assertEqual(log.resource_type, "location")
+        self.assertEqual(str(log.resource_id), str(node_id))
+        self.assertEqual(log.actor_id, self.admin.pk)
+
+        updated = self.client.patch(
+            f"/api/location/nodes/{node_id}/", {"name": "改名了"}, format="json"
+        )
+        self.assertEqual(updated.status_code, status.HTTP_200_OK)
+        update_log = self._logs("location.node_update").latest("id")
+        self.assertEqual(update_log.changes["before"]["name"], "管理员建的柜子")
+        self.assertEqual(update_log.changes["after"]["name"], "改名了")
+
+        deleted = self.client.delete(f"/api/location/nodes/{node_id}/")
+        self.assertEqual(deleted.status_code, status.HTTP_204_NO_CONTENT)
+        delete_log = self._logs("location.node_delete").latest("id")
+        self.assertEqual(delete_log.changes["node"]["name"], "改名了")
+
+    def test_admin_cross_user_move_marks_cross_user(self):
+        node = StorageNode.objects.create(
+            name="别人的柜子", user=self.owner, path_name="别人的柜子"
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            f"/api/location/nodes/{node.id}/move/", {"order": 5}, format="json"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("location.node_move").latest("id")
+        self.assertTrue(log.changes["cross_user"])
+        self.assertEqual(log.subject_user_id, self.owner.pk)
+
+    def test_admin_move_goods_records_batch_resource_ids(self):
+        ip = IP.objects.create(name="位置审计IP")
+        category = Category.objects.create(name="位置审计品类", path_name="位置审计品类")
+        target = StorageNode.objects.create(
+            name="目标柜", user=self.owner, path_name="目标柜"
+        )
+        goods = Goods.objects.create(
+            name="位置审计谷子",
+            user=self.owner,
+            ip=ip,
+            category=category,
+            status="in_cabinet",
+        )
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            "/api/location/move-goods/",
+            {"goods_ids": [str(goods.pk)], "target_location": target.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("location.goods_move").latest("id")
+        self.assertIn(str(goods.pk), log.resource_ids)
+        self.assertEqual(log.changes["moved_count"], 1)

@@ -79,6 +79,23 @@ def register(request):
     serializer.is_valid(raise_exception=True)
     user = serializer.save()
 
+    from apps.admin_api.services import record_security_event
+
+    record_security_event(
+        request,
+        action="auth.register",
+        summary=f"注册账号 {user.username}",
+        outcome="success",
+        actor=user,
+        subject_user=user,
+        resource_id=user.pk,
+        changes={
+            "account_type": user.account_type,
+            "approval_status": user.approval_status,
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
     secret = getattr(settings, "JWT_SECRET", settings.SECRET_KEY)
     ttl = int(getattr(settings, "JWT_ACCESS_TTL_SECONDS", 7 * 24 * 3600))
     if user.account_type == User.ACCOUNT_TYPE_CLUB:
@@ -113,25 +130,79 @@ def login(request):
     username = (serializer.validated_data.get("username") or "").strip()
     password = serializer.validated_data.get("password") or ""
 
+    from apps.admin_api.services import record_security_event
+
     try:
         user = User.objects.select_related("role").get(username=username)
     except User.DoesNotExist:
+        record_security_event(
+            request,
+            action="auth.login",
+            summary=f"登录失败（账号不存在）：{username}",
+            actor_username=username,
+            changes={"reason": "bad_credentials", "attempted_username": username},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
         return Response({"detail": "用户名或密码错误"}, status=status.HTTP_400_BAD_REQUEST)
 
     # 审批状态与启用状态是两个独立的门槛。即使管理员误将待审批账号
     # 设为 active，待审批社团仍不能获取令牌。
     if user.approval_status == User.APPROVAL_PENDING:
+        record_security_event(
+            request,
+            action="auth.login",
+            summary=f"登录失败（社团账号待审批）：{username}",
+            actor=user,
+            subject_user=user,
+            resource_id=user.pk,
+            changes={"reason": "pending_approval"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
         return Response({"code": "account_pending", "detail": "社团账号正在审批中"}, status=status.HTTP_403_FORBIDDEN)
 
     if not user.is_active:
+        record_security_event(
+            request,
+            action="auth.login",
+            summary=f"登录失败（账号已停用）：{username}",
+            actor=user,
+            subject_user=user,
+            resource_id=user.pk,
+            changes={"reason": "inactive"},
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
         return Response({"detail": "账号已停用"}, status=status.HTTP_403_FORBIDDEN)
 
     if not user.check_password(password):
+        record_security_event(
+            request,
+            action="auth.login",
+            summary=f"登录失败（密码错误）：{username}",
+            actor=user,
+            subject_user=user,
+            resource_id=user.pk,
+            changes={"reason": "bad_credentials", "attempted_username": username},
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
         return Response({"detail": "用户名或密码错误"}, status=status.HTTP_400_BAD_REQUEST)
 
     secret = getattr(settings, "JWT_SECRET", settings.SECRET_KEY)
     ttl = int(getattr(settings, "JWT_ACCESS_TTL_SECONDS", 7 * 24 * 3600))
     data = build_token_response(user=user, secret=secret, ttl_seconds=ttl)
+    record_security_event(
+        request,
+        action="auth.login",
+        summary=f"登录成功：{username}",
+        outcome="success",
+        actor=user,
+        subject_user=user,
+        resource_id=user.pk,
+        changes={
+            "account_type": user.account_type,
+            "role": getattr(getattr(user, "role", None), "name", ""),
+        },
+        status_code=status.HTTP_200_OK,
+    )
     return Response(data, status=status.HTTP_200_OK)
 
 
@@ -215,9 +286,38 @@ def captcha_image(request, key):
 def me(request):
     user = request.user
     if request.method == "PATCH":
+        before = {"username": user.username}
         serializer = AccountUpdateSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
+        password_changing = bool(request.data.get("new_password"))
         user = serializer.save()
+
+        from apps.admin_api.services import record_security_event
+
+        if password_changing:
+            record_security_event(
+                request,
+                action="auth.password_change",
+                summary=f"账号 {user.username} 修改密码",
+                outcome="success",
+                actor=user,
+                subject_user=user,
+                resource_id=user.pk,
+                changes={"revoked_tokens": True},
+                status_code=status.HTTP_200_OK,
+            )
+        if before["username"] != user.username:
+            record_security_event(
+                request,
+                action="auth.username_change",
+                summary=f"账号 {before['username']} 改名为 {user.username}",
+                outcome="success",
+                actor=user,
+                subject_user=user,
+                resource_id=user.pk,
+                changes={"before": before, "after": {"username": user.username}},
+                status_code=status.HTTP_200_OK,
+            )
     return Response(serialize_current_user(user, request), status=status.HTTP_200_OK)
 
 
@@ -279,7 +379,21 @@ def avatar(request):
 @api_view(["DELETE"])
 @permission_classes([IsAuthenticated])
 def logout(request):
-    request.user.revoke_tokens()
+    user = request.user
+    user.revoke_tokens()
+
+    from apps.admin_api.services import record_security_event
+
+    record_security_event(
+        request,
+        action="auth.logout",
+        summary=f"账号 {user.username} 登出",
+        outcome="success",
+        actor=user,
+        subject_user=user,
+        resource_id=user.pk,
+        status_code=status.HTTP_204_NO_CONTENT,
+    )
     return Response(status=status.HTTP_204_NO_CONTENT)
 
 

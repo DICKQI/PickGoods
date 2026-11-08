@@ -235,6 +235,13 @@ class AdminCategoryListSerializer(CategorySimpleSerializer):
 class AdminAuditLogSerializer(serializers.ModelSerializer):
     actor_name = serializers.CharField(source="actor.username", read_only=True, default=None)
     actor_id = serializers.IntegerField(read_only=True, allow_null=True)
+    subject_user_id = serializers.IntegerField(read_only=True, allow_null=True)
+    subject_username = serializers.CharField(
+        source="subject_user.username",
+        read_only=True,
+        default=None,
+    )
+    display_actor = serializers.SerializerMethodField()
 
     class Meta:
         model = AdminAuditLog
@@ -242,15 +249,35 @@ class AdminAuditLogSerializer(serializers.ModelSerializer):
             "id",
             "actor_id",
             "actor_name",
+            "actor_username",
+            "display_actor",
+            "log_type",
+            "outcome",
+            "subject_user_id",
+            "subject_username",
             "action",
             "resource_type",
             "resource_id",
+            "resource_ids",
             "summary",
             "changes",
+            "http_method",
+            "path",
+            "status_code",
+            "request_id",
+            "user_agent",
             "ip_address",
             "created_at",
         )
         read_only_fields = fields
+
+    def get_display_actor(self, obj) -> str:
+        """优先展示快照用户名，账号被删除或来自 Django Admin 时仍可读。"""
+        return (
+            obj.actor_username
+            or getattr(obj.actor, "username", "")
+            or "已删除账号"
+        )
 
 
 class AdminBulkActionSerializer(serializers.Serializer):

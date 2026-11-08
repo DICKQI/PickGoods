@@ -68,7 +68,7 @@ from .serializers import (
     BGMSyncJobListSerializer,
     BGMSyncSettingsSerializer,
 )
-from .services import record_admin_action, snapshot_instance
+from .services import normalize_resource_ids, record_admin_action, snapshot_instance
 
 
 class AdminPagination(PageNumberPagination):
@@ -329,6 +329,7 @@ class AdminUserViewSet(
                 resource_id=None,
                 summary=f"批量{action_name}用户 {len(ids)} 个",
                 changes={"ids": ids, "action": action_name},
+                resource_ids=normalize_resource_ids(ids),
             )
         return Response({"updated": len(ids), "action": action_name, "ids": ids})
 
@@ -480,6 +481,7 @@ class AdminGoodsCraftViewSet(viewsets.ModelViewSet):
                 resource_id=None,
                 summary=f"批量{action_name}谷子工艺 {len(ids)} 个",
                 changes={"ids": ids, "action": action_name},
+                resource_ids=normalize_resource_ids(ids),
             )
         return Response({"updated": len(ids), "action": action_name, "ids": ids})
 
@@ -584,6 +586,7 @@ class AdminGoodsViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
                 resource_id=None,
                 summary=f"批量修改谷子 {len(ids)} 条",
                 changes={"ids": ids, "action": action_name, "updates": updates},
+                resource_ids=normalize_resource_ids(ids),
             )
         return Response({"updated": len(ids), "action": action_name, "ids": ids})
 
@@ -800,6 +803,11 @@ class AdminOverviewView(APIView):
             audit_retries = AdminAuditRetry.objects.filter(
                 resolved_at__isnull=True
             ).count()
+            security_events = AdminAuditLog.objects.filter(
+                log_type=AdminAuditLog.LOG_TYPE_SECURITY,
+                outcome=AdminAuditLog.OUTCOME_FAILURE,
+                created_at__gte=now - timedelta(days=7),
+            ).count()
             gamification_stats = {
                 "active_sets": AchievementSet.objects.filter(
                     club__isnull=True,
@@ -819,7 +827,9 @@ class AdminOverviewView(APIView):
             recent_jobs = BGMSyncJob.objects.select_related("triggered_by").order_by(
                 "-started_at"
             )[:5]
-            recent_audits = AdminAuditLog.objects.select_related("actor").order_by(
+            recent_audits = AdminAuditLog.objects.select_related(
+                "actor", "subject_user"
+            ).order_by(
                 "-created_at",
                 "-id",
             )[:8]
@@ -885,6 +895,16 @@ class AdminOverviewView(APIView):
                         "href": "/admin/audit-logs",
                     }
                 )
+            if security_events >= 50:
+                alerts.append(
+                    {
+                        "code": "security_events_burst",
+                        "severity": "warning",
+                        "title": "近 7 天安全事件偏多",
+                        "count": security_events,
+                        "href": "/admin/audit-logs?log_type=security&outcome=failure",
+                    }
+                )
 
             payload = {
                 "generated_at": now,
@@ -918,6 +938,10 @@ class AdminOverviewView(APIView):
                         "running": running_jobs,
                         "recent_failures": failed_jobs,
                     },
+                    "security": {
+                        "recent_failures_7d": security_events,
+                        "audit_retries": audit_retries,
+                    },
                 },
                 "alerts": alerts,
                 "trends": {
@@ -945,14 +969,14 @@ class AdminAuditLogViewSet(
     permission_classes = [IsAuthenticated, IsAdmin]
     pagination_class = AdminPagination
     serializer_class = AdminAuditLogSerializer
-    queryset = AdminAuditLog.objects.select_related("actor").order_by(
+    queryset = AdminAuditLog.objects.select_related("actor", "subject_user").order_by(
         "-created_at",
         "-id",
     )
     filter_backends = [DjangoFilterBackend, SearchFilter, OrderingFilter]
     filterset_class = AdminAuditLogFilter
-    search_fields = ("summary", "resource_id", "actor__username")
-    ordering_fields = ["id", "created_at", "action", "resource_type"]
+    search_fields = ("summary", "resource_id", "actor__username", "actor_username", "path")
+    ordering_fields = ["id", "created_at", "action", "resource_type", "log_type", "outcome"]
     ordering = ["-created_at", "-id"]
 
 

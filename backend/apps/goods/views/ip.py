@@ -63,7 +63,7 @@ class IPViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         instance = serializer.save()
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             self.request,
@@ -75,8 +75,14 @@ class IPViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        before = {
+            "name": serializer.instance.name,
+            "subject_type": serializer.instance.subject_type,
+            "order": serializer.instance.order,
+            "bgm_subject_id": serializer.instance.bgm_subject_id,
+        }
         instance = serializer.save()
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             self.request,
@@ -84,14 +90,22 @@ class IPViewSet(viewsets.ModelViewSet):
             resource_type="ip",
             resource_id=instance.pk,
             summary=f"更新 IP {instance.name}",
-            changes={"name": instance.name, "subject_type": instance.subject_type},
+            changes={
+                "before": before,
+                "after": {
+                    "name": instance.name,
+                    "subject_type": instance.subject_type,
+                    "order": instance.order,
+                    "bgm_subject_id": instance.bgm_subject_id,
+                },
+            },
         )
 
     def perform_destroy(self, instance):
         resource_id = instance.pk
         name = instance.name
         instance.delete()
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             self.request,
@@ -155,7 +169,7 @@ class IPViewSet(viewsets.ModelViewSet):
                 result_serializer = IPSimpleSerializer(
                     result_ips, many=True, context={"request": request}
                 )
-                from apps.admin_api.services import record_admin_action
+                from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
                 record_admin_action(
                     request,
@@ -164,6 +178,9 @@ class IPViewSet(viewsets.ModelViewSet):
                     resource_id=None,
                     summary=f"调整 {len(updated_ips)} 个 IP 的排序",
                     changes={"items": items},
+                    resource_ids=normalize_resource_ids(
+                        [item.get("id") for item in items]
+                    ),
                 )
 
                 return Response(
@@ -329,7 +346,7 @@ class IPViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
-        from apps.admin_api.services import record_admin_action
+        from apps.admin_api.services import normalize_resource_ids, record_admin_action
 
         record_admin_action(
             request,

@@ -14,7 +14,16 @@ from PIL import Image, ImageDraw
 from django.utils import timezone
 
 from apps.users.models import User, Role
-from ..models import Goods, GoodsImageFingerprint, IP, Character, Category, Theme, ThemeImage
+from ..models import (
+    Category,
+    Character,
+    Goods,
+    GoodsImageFingerprint,
+    GuziImage,
+    IP,
+    Theme,
+    ThemeImage,
+)
 from apps.location.models import StorageNode
 from ..similarity import (
     GoodsSimilarityCalculator,
@@ -1976,3 +1985,108 @@ class GoodsClassifyAPITests(TestCase):
         )
         self.assertIn(resp.status_code, (401, 403), msg=resp.data)
 
+
+
+class GoodsAuditCoverageTestCase(TestCase):
+    """管理员通过业务接口改谷子时，操作日志要能还原改了什么。"""
+
+    def setUp(self):
+        self.admin_role, _ = Role.objects.get_or_create(name="Admin")
+        self.user_role, _ = Role.objects.get_or_create(name="User")
+        self.admin = User.objects.create(
+            username="goods_audit_admin", role=self.admin_role, is_active=True
+        )
+        self.owner = User.objects.create(
+            username="goods_audit_owner", role=self.user_role, is_active=True
+        )
+        self.ip = IP.objects.create(name="审计IP")
+        self.category = Category.objects.create(
+            name="审计品类", path_name="审计品类"
+        )
+        self.character = Character.objects.create(name="审计角色", ip=self.ip)
+        self.goods = Goods.objects.create(
+            name="审计谷子",
+            user=self.owner,
+            ip=self.ip,
+            category=self.category,
+            status="in_cabinet",
+            quantity=1,
+        )
+        self.goods.characters.set([self.character])
+        self.client = APIClient()
+        self.client.force_authenticate(self.admin)
+
+    def _logs(self, action):
+        from apps.admin_api.models import AdminAuditLog
+
+        return AdminAuditLog.objects.filter(action=action)
+
+    def test_update_records_full_before_after_snapshot(self):
+        response = self.client.patch(
+            f"/api/goods/{self.goods.pk}/",
+            {
+                "quantity": 3,
+                "status": "outdoor",
+                "is_official": False,
+                "character_ids": [self.character.pk],
+            },
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("goods.update").latest("id")
+        self.assertEqual(log.changes["before"]["quantity"], 1)
+        self.assertEqual(log.changes["after"]["quantity"], 3)
+        self.assertEqual(log.changes["after"]["status"], "outdoor")
+        self.assertEqual(log.changes["after"]["is_official"], False)
+        # 角色/品类/主题等维度也要在快照里
+        for key in ("character_ids", "category_id", "theme_id", "ip_id"):
+            self.assertIn(key, log.changes["after"])
+        self.assertEqual(log.subject_user_id, self.owner.pk)
+
+    def test_plain_user_update_is_not_audited(self):
+        self.client.force_authenticate(self.owner)
+        self.client.patch(
+            f"/api/goods/{self.goods.pk}/", {"quantity": 2}, format="json"
+        )
+        self.assertEqual(self._logs("goods.update").count(), 0)
+
+    def test_image_reorder_is_audited(self):
+        first = GuziImage.objects.create(guzi=self.goods, image="goods/extra/a.jpg", order=1)
+        second = GuziImage.objects.create(guzi=self.goods, image="goods/extra/b.jpg", order=2)
+        response = self.client.post(
+            f"/api/goods/{self.goods.pk}/additional-photos/reorder/",
+            {"photo_ids": [second.id, first.id]},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("goods.image_reorder").latest("id")
+        self.assertIn(str(second.id), log.resource_ids)
+
+    def test_image_delete_is_audited(self):
+        photo = GuziImage.objects.create(
+            guzi=self.goods, image="goods/extra/c.jpg", order=1
+        )
+        response = self.client.delete(
+            f"/api/goods/{self.goods.pk}/additional-photos/{photo.id}/"
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("goods.image_delete").latest("id")
+        self.assertIn(str(photo.id), log.resource_ids)
+
+    def test_reorder_goods_is_audited(self):
+        anchor = Goods.objects.create(
+            name="锚点谷子",
+            user=self.owner,
+            ip=self.ip,
+            category=self.category,
+            status="in_cabinet",
+        )
+        response = self.client.post(
+            f"/api/goods/{self.goods.pk}/move/",
+            {"anchor_id": str(anchor.pk), "position": "before"},
+            format="json",
+        )
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        log = self._logs("goods.reorder").latest("id")
+        self.assertEqual(log.changes["position"], "before")
+        self.assertEqual(str(log.resource_id), str(self.goods.pk))

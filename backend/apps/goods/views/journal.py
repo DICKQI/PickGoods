@@ -13,6 +13,7 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.throttling import ScopedRateThrottle
 
+from apps.admin_api.services import audit_admin_action
 from core.permissions import IsCollectorAccount, IsOwnerOnly, is_admin
 from ..models import JournalBook, JournalPage, JournalPageVersion
 from ..serializers.journal import (
@@ -26,6 +27,14 @@ from ..serializers.journal import (
 from ..utils import compress_image
 
 DEFAULT_PAGE_TITLE_RE = re.compile(r"^第 \d+ 页$")
+
+
+def _journal_snapshot(book) -> dict:
+    return {
+        "title": getattr(book, "title", ""),
+        "page_count": book.pages.count() if hasattr(book, "pages") else 0,
+        "user_id": getattr(book, "user_id", None),
+    }
 
 
 class JournalBookPagination(PageNumberPagination):
@@ -126,6 +135,43 @@ class JournalBookViewSet(viewsets.ModelViewSet):
             book = serializer.save(user=user, order=next_order)
             page = JournalPage.objects.create(book=book)
             create_page_version(page)
+        audit_admin_action(
+            self.request,
+            action="journal.book_create",
+            resource_type="journal",
+            resource_id=book.pk,
+            summary=f"创建手帐 {book.title}",
+            changes={"after": _journal_snapshot(book)},
+            subject_user=user,
+        )
+
+    def perform_update(self, serializer):
+        before = _journal_snapshot(serializer.instance)
+        book = serializer.save()
+        audit_admin_action(
+            self.request,
+            action="journal.book_update",
+            resource_type="journal",
+            resource_id=book.pk,
+            summary=f"更新手帐 {book.title}",
+            changes={"before": before, "after": _journal_snapshot(book)},
+            subject_user=book.user,
+        )
+
+    def perform_destroy(self, instance):
+        snapshot = _journal_snapshot(instance)
+        book_pk = instance.pk
+        owner = instance.user
+        instance.delete()
+        audit_admin_action(
+            self.request,
+            action="journal.book_delete",
+            resource_type="journal",
+            resource_id=book_pk,
+            summary=f"删除手帐 {snapshot.get('title', '')}",
+            changes={"book": snapshot},
+            subject_user=owner,
+        )
 
     @action(detail=True, methods=["get", "post"], url_path="pages")
     def pages(self, request, pk=None):
@@ -146,6 +192,15 @@ class JournalBookViewSet(viewsets.ModelViewSet):
         page_no = (last_page.page_no if last_page else 0) + 1
         page = serializer.save(book=book, page_no=page_no, title=f"第 {page_no} 页")
         create_page_version(page)
+        audit_admin_action(
+            request,
+            action="journal.page_create",
+            resource_type="journal",
+            resource_id=page.pk,
+            summary=f"新建手帐页 {book.title} 第 {page_no} 页",
+            changes={"book_id": str(book.pk), "page_no": page_no},
+            subject_user=book.user,
+        )
         return Response(
             JournalPageSerializer(page, context=self.get_serializer_context()).data,
             status=status.HTTP_201_CREATED,
@@ -176,6 +231,15 @@ class JournalBookViewSet(viewsets.ModelViewSet):
                 else:
                     page.save(update_fields=["page_no", "updated_at"])
 
+        audit_admin_action(
+            request,
+            action="journal.page_reorder",
+            resource_type="journal",
+            resource_id=book.pk,
+            summary=f"调整手帐页顺序 {book.title}",
+            changes={"page_ids": page_ids},
+            subject_user=book.user,
+        )
         serializer = JournalPageSerializer(ordered_pages, many=True, context=self.get_serializer_context())
         return Response(serializer.data)
 
@@ -197,6 +261,15 @@ class JournalBookViewSet(viewsets.ModelViewSet):
         compressed = compress_image(cover_image, max_size_kb=300)
         book.cover_image = compressed or cover_image
         book.save(update_fields=["cover_image", "updated_at"])
+        audit_admin_action(
+            request,
+            action="journal.cover_upload",
+            resource_type="journal",
+            resource_id=book.pk,
+            summary=f"上传手帐封面 {book.title}",
+            changes={"filename": cover_image.name},
+            subject_user=book.user,
+        )
         serializer = self.get_serializer(book)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -256,10 +329,45 @@ class JournalPageViewSet(viewsets.ModelViewSet):
 
     def perform_update(self, serializer):
         create_version_requested = serializer.validated_data.get("create_version", True)
+        previous_revision = serializer.instance.revision
         with transaction.atomic():
             page = serializer.save()
             if create_version_requested:
                 create_page_version(page)
+        audit_admin_action(
+            self.request,
+            action="journal.page_update",
+            resource_type="journal",
+            resource_id=page.pk,
+            summary=f"编辑手帐页 {page.book.title} 第 {page.page_no} 页",
+            changes={
+                "book_id": str(page.book_id),
+                "page_no": page.page_no,
+                "revision_before": previous_revision,
+                "revision_after": page.revision,
+                "version_created": create_version_requested,
+            },
+            subject_user=page.book.user,
+        )
+
+    def perform_destroy(self, instance):
+        book = instance.book
+        payload = {
+            "book_id": str(instance.book_id),
+            "page_no": instance.page_no,
+            "title": instance.title,
+        }
+        page_pk = instance.pk
+        instance.delete()
+        audit_admin_action(
+            self.request,
+            action="journal.page_delete",
+            resource_type="journal",
+            resource_id=page_pk,
+            summary=f"删除手帐页 {book.title} 第 {payload['page_no']} 页",
+            changes=payload,
+            subject_user=book.user,
+        )
 
     @action(detail=True, methods=["get"], url_path="versions")
     def versions(self, request, pk=None):
@@ -287,6 +395,15 @@ class JournalPageViewSet(viewsets.ModelViewSet):
         compressed = compress_image(preview_image, max_size_kb=500)
         page.preview_image = compressed or preview_image
         page.save(update_fields=["preview_image", "updated_at"])
+        audit_admin_action(
+            request,
+            action="journal.page_preview_upload",
+            resource_type="journal",
+            resource_id=page.pk,
+            summary=f"上传手帐页预览图 {page.book.title} 第 {page.page_no} 页",
+            changes={"filename": preview_image.name},
+            subject_user=page.book.user,
+        )
         serializer = self.get_serializer(page)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
@@ -308,6 +425,15 @@ class JournalPageViewSet(viewsets.ModelViewSet):
                 content=deepcopy(page.content),
             )
             create_page_version(duplicated)
+        audit_admin_action(
+            request,
+            action="journal.page_duplicate",
+            resource_type="journal",
+            resource_id=duplicated.pk,
+            summary=f"复制手帐页到 {book.title} 第 {page_no} 页",
+            changes={"source_page_id": str(page.pk), "book_id": str(book.pk)},
+            subject_user=book.user,
+        )
         serializer = self.get_serializer(duplicated)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
@@ -320,6 +446,15 @@ class JournalPageViewSet(viewsets.ModelViewSet):
                 token = secrets.token_urlsafe(32)
             page.share_token = token
             page.save(update_fields=["share_token", "updated_at"])
+        audit_admin_action(
+            request,
+            action="journal.page_share",
+            resource_type="journal",
+            resource_id=page.pk,
+            summary=f"生成手帐页分享链接 {page.book.title} 第 {page.page_no} 页",
+            changes={"book_id": str(page.book_id)},
+            subject_user=page.book.user,
+        )
         public_path = reverse("journal-public-page", kwargs={"token": page.share_token})
         return Response(
             {
@@ -378,6 +513,20 @@ class JournalPageVersionViewSet(viewsets.ModelViewSet):
             else:
                 page.save(update_fields=["content", "revision", "updated_at"])
             create_page_version(page)
+        audit_admin_action(
+            request,
+            action="journal.page_restore",
+            resource_type="journal",
+            resource_id=page.pk,
+            summary=f"回滚手帐页到版本 {version.version_no}",
+            changes={
+                "book_id": str(page.book_id),
+                "version_id": str(version.pk),
+                "version_no": version.version_no,
+                "revision_after": page.revision,
+            },
+            subject_user=page.book.user,
+        )
         return Response(
             JournalPageSerializer(page, context=self.get_serializer_context()).data,
             status=status.HTTP_200_OK,

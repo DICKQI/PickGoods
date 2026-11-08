@@ -1825,15 +1825,31 @@ export interface AdminGamificationUser {
 
 export type AdminAuditAction = string
 
+export type AdminAuditLogType = 'business' | 'security'
+
+export type AdminAuditOutcome = 'success' | 'failure'
+
 export interface AdminAuditLog {
   id: number
   actor_id: number | null
   actor_name: string | null
+  actor_username: string
+  display_actor: string
+  log_type: AdminAuditLogType
+  outcome: AdminAuditOutcome
+  subject_user_id: number | null
+  subject_username: string | null
   action: AdminAuditAction
   resource_type: string
   resource_id: string
+  resource_ids: string
   summary: string
   changes: Record<string, unknown>
+  http_method: string
+  path: string
+  status_code: number | null
+  request_id: string
+  user_agent: string
   ip_address: string | null
   created_at: string
 }

@@ -195,6 +195,9 @@ class AdminCategoryFilter(django_filters.FilterSet):
 
 class AdminAuditLogFilter(django_filters.FilterSet):
     actor = django_filters.NumberFilter(field_name="actor_id")
+    subject_user = django_filters.NumberFilter(field_name="subject_user_id")
+    # 按单个资源反查：命中主资源 ID 或批量 resource_ids 集合中的任意一个
+    related_resource = django_filters.CharFilter(method="filter_related_resource")
     created_at__gte = django_filters.IsoDateTimeFilter(
         field_name="created_at",
         lookup_expr="gte",
@@ -208,9 +211,22 @@ class AdminAuditLogFilter(django_filters.FilterSet):
         model = AdminAuditLog
         fields = (
             "actor",
+            "subject_user",
+            "log_type",
+            "outcome",
             "action",
             "resource_type",
             "resource_id",
+            "related_resource",
             "created_at__gte",
             "created_at__lte",
+        )
+
+    def filter_related_resource(self, queryset, name, value):
+        value = str(value or "").strip()
+        if not value:
+            return queryset
+        return queryset.filter(
+            Q(resource_id=value)
+            | Q(resource_ids__contains=f",{value},")
         )

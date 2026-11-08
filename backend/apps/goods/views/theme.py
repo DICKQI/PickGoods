@@ -88,6 +88,11 @@ class ThemeViewSet(viewsets.ModelViewSet):
             )
 
     def perform_update(self, serializer):
+        before = {
+            "name": serializer.instance.name,
+            "user_id": serializer.instance.user_id,
+            "has_template": hasattr(serializer.instance, "template"),
+        }
         instance = serializer.save()
         if is_admin(self.request.user):
             from apps.admin_api.services import record_admin_action
@@ -98,7 +103,15 @@ class ThemeViewSet(viewsets.ModelViewSet):
                 resource_type="theme",
                 resource_id=instance.pk,
                 summary=f"更新主题 {instance.name}",
-                changes={"user_id": instance.user_id, "name": instance.name},
+                changes={
+                    "before": before,
+                    "after": {
+                        "name": instance.name,
+                        "user_id": instance.user_id,
+                        "has_template": hasattr(instance, "template"),
+                    },
+                },
+                subject_user=instance.user,
             )
 
     def perform_destroy(self, instance):

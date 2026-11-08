@@ -205,9 +205,9 @@
           </el-checkbox-group>
         </div>
 
-            <!-- 是否官谷筛选（三态：全部/官谷/同人） -->
+            <!-- 官谷/同人筛选（三态：全部/官谷/同人） -->
             <div class="filter-item filter-item--official">
-              <label>是否官谷</label>
+              <label>官谷/同人</label>
               <el-select
                 v-model="localFilters.is_official"
                 placeholder="全部"
@@ -669,14 +669,14 @@ onUnmounted(() => {})
 /* PC 大屏：强制单行显示，使用更稳定的分配方式 */
 @media (min-width: 1280px) {
   .filter-content {
-    /* 使用更稳定的分配方式：前4个等宽，状态自适应，是否官谷压缩，位置略宽，分组显示略宽 */
+    /* 使用更稳定的分配方式：前4个等宽，状态自适应，官谷/同人压缩，位置略宽，分组显示略宽 */
     grid-template-columns: repeat(4, 1fr) auto minmax(80px, 0.8fr) 1.1fr 1.1fr;
     gap: 12px;
     align-items: start;     /* 顶部对齐，确保所有元素垂直位置一致 */
     white-space: nowrap;    /* 防止内部元素由于挤压而换行 */
   }
 
-  /* 针对"是否官谷"下拉框的特定优化 */
+  /* 针对"官谷/同人"下拉框的特定优化 */
   .filter-item--official {
     min-width: 90px;
   }

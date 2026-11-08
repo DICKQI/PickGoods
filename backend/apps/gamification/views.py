@@ -14,7 +14,11 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from apps.admin_api.serializers import AdminBulkActionSerializer
-from apps.admin_api.services import record_admin_action, sanitize_audit_value
+from apps.admin_api.services import (
+    normalize_resource_ids,
+    record_admin_action,
+    sanitize_audit_value,
+)
 from apps.goods.models import ClubGoodsOrigin
 from core.permissions import IsAdmin, IsCollectorAccount
 from apps.users.models import User
@@ -356,6 +360,10 @@ class AdminAuditedBulkMixin:
         )
 
     def perform_update(self, serializer):
+        before = {
+            key: sanitize_audit_value(getattr(serializer.instance, key, None))
+            for key in serializer.validated_data.keys()
+        }
         instance = serializer.save()
         record_admin_action(
             self.request,
@@ -364,8 +372,11 @@ class AdminAuditedBulkMixin:
             resource_id=instance.pk,
             summary=f"更新{self.audit_label} {instance}",
             changes={
-                key: sanitize_audit_value(value)
-                for key, value in serializer.validated_data.items()
+                "before": before,
+                "after": {
+                    key: sanitize_audit_value(value)
+                    for key, value in serializer.validated_data.items()
+                },
             },
         )
 
@@ -417,6 +428,7 @@ class AdminAuditedBulkMixin:
                 action=f"{self.audit_resource_type}.bulk_{action_name}",
                 resource_type=self.audit_resource_type,
                 resource_id=None,
+                resource_ids=normalize_resource_ids(ids),
                 summary=f"批量{action_name} {self.audit_label} {len(ids)} 个",
                 changes={"ids": ids, "action": action_name},
             )

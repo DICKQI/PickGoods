@@ -408,7 +408,7 @@ class AdminOverviewAndAuditTestCase(TestCase):
             resource_type="test",
             summary="old",
         )
-        AdminAuditLog.objects.filter(pk=old.pk).update(
+        AdminAuditLog.all_objects.filter(pk=old.pk).update(
             created_at=timezone.now() - timedelta(days=366)
         )
         self.assertEqual(purge_admin_audit_logs(365), 1)
