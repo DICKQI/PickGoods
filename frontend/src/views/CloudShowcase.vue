@@ -95,21 +95,26 @@
             @transitionend="clearAnimating"
           >
 
-      <Transition name="selection-bar" appear>
-        <div v-if="guziStore.selectionMode" class="selection-status-bar">
-          <span>多选模式</span>
-          <strong>已选 {{ guziStore.selectedGoodsCount }} 个谷子</strong>
-          <span class="selection-hint">还想多选一些吗~ 搜索、筛选或翻页都可以继续添加哦</span>
-          <el-button
-            v-if="guziStore.selectedGoodsCount > 0"
-            text
-            class="selection-clear-btn"
-            @click="guziStore.clearGoodsSelection()"
-          >
-            清空
-          </el-button>
+      <!-- 多选状态条槽位：始终挂载，只让 grid 行高参与过渡，避免进入/退出时整页跳动 -->
+      <div class="selection-slot" :class="{ 'is-open': guziStore.selectionMode }">
+        <div class="selection-slot-track">
+          <Transition name="selection-bar" appear>
+            <div v-if="guziStore.selectionMode" class="selection-status-bar">
+              <span>多选模式</span>
+              <strong>已选 {{ guziStore.selectedGoodsCount }} 个谷子</strong>
+              <span class="selection-hint">还想多选一些吗~ 搜索、筛选或翻页都可以继续添加哦</span>
+              <el-button
+                v-if="guziStore.selectedGoodsCount > 0"
+                text
+                class="selection-clear-btn"
+                @click="guziStore.clearGoodsSelection()"
+              >
+                清空
+              </el-button>
+            </div>
+          </Transition>
         </div>
-      </Transition>
+      </div>
 
       <!-- 列表区域 -->
       <div class="list-section">
@@ -1279,6 +1284,12 @@ watch(mobileFilterVisible, (visible) => {
   position: relative;
 }
 
+/* 建立独立格式化上下文：子元素（.list-section）的 margin 不再外溢，
+   多选状态条展开/收起时容器高度与内容高度严格一致，避免列表抖动。 */
+.barn-pull-refresh-content {
+  display: flow-root;
+}
+
 .mobile-filter-strip,
 .mobile-filter-host {
   display: none;
@@ -1288,9 +1299,29 @@ watch(mobileFilterVisible, (visible) => {
   margin-top: 4px;
 }
 
+/* 上边距从 24px 改为 4px：.filter-panel 的 20px margin-bottom 不再与它折叠，
+   两者相加仍是 24px，保证 content 建立 BFC 前后列表位置不变。 */
 .list-section {
-  margin-top: 24px;
+  margin-top: 4px;
   min-height: 400px; /* 给列表区域一个最小高度，防止切换时的闪烁塌陷 */
+}
+
+/* 多选状态条槽位：始终挂载，高度由 grid 行高 0fr↔1fr 过渡，
+   状态条自身只做淡入淡出，不参与布局计算，避免整页跳动。 */
+.selection-slot {
+  display: grid;
+  grid-template-rows: 0fr;
+  overflow-anchor: none;
+  transition: grid-template-rows 0.28s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.selection-slot.is-open {
+  grid-template-rows: 1fr;
+}
+
+.selection-slot-track {
+  overflow: hidden;
+  min-height: 0;
 }
 
 .selection-status-bar {
@@ -1304,33 +1335,24 @@ watch(mobileFilterVisible, (visible) => {
   background: rgba(212, 175, 55, 0.08);
   color: var(--text-dark);
   font-size: 14px;
-  max-height: 72px;
-  overflow: hidden;
-  transform-origin: top center;
 }
 
-.selection-bar-enter-active,
+.selection-bar-enter-active {
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 .selection-bar-leave-active {
   transition:
     opacity 0.2s ease,
-    transform 0.24s cubic-bezier(0.2, 0.8, 0.2, 1),
-    max-height 0.24s ease,
-    margin 0.24s ease,
-    padding-top 0.24s ease,
-    padding-bottom 0.24s ease,
-    border-color 0.24s ease;
+    transform 0.2s ease;
 }
 
 .selection-bar-enter-from,
 .selection-bar-leave-to {
   opacity: 0;
-  transform: translateY(-8px) scaleY(0.96);
-  max-height: 0;
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-  border-color: transparent;
+  transform: translateY(-6px);
 }
 
 .selection-status-bar strong {
@@ -1344,9 +1366,17 @@ watch(mobileFilterVisible, (visible) => {
   min-width: 0;
 }
 
+/* 固定按钮盒高（19px < 20px 内边距的一半空间），避免「清空」按钮出现时
+   状态条行高从 41px 撑到 54px，导致列表二次跳动。 */
 .selection-clear-btn {
   color: var(--primary-gold-dark);
   flex: none;
+  height: 19px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
+  line-height: 19px;
+  font-size: 13px;
 }
 
 .stats-section,
@@ -2135,8 +2165,10 @@ watch(mobileFilterVisible, (visible) => {
     line-height: 24px;
   }
 
+  /* content 已建立 BFC，上间距改为与 .barn-discovery 的 12px margin-bottom 相加，
+     2px 保证总间距仍是 14px。 */
   .list-section {
-    margin-top: 14px;
+    margin-top: 2px;
   }
 }
 
@@ -2249,6 +2281,15 @@ watch(mobileFilterVisible, (visible) => {
 
   .tab-fade-leave-active {
     opacity: 0;
+  }
+
+  .selection-slot {
+    transition: none;
+  }
+
+  .selection-bar-enter-active,
+  .selection-bar-leave-active {
+    transition: none;
   }
 }
 </style>
