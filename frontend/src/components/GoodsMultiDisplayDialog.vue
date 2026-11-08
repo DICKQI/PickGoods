@@ -369,7 +369,7 @@ onUnmounted(() => {
   color: #f8fafc;
   background: rgba(17, 19, 24, 0.72);
   cursor: pointer;
-  transition: background-color 0.16s ease, transform 0.16s ease;
+  transition: background-color 0.16s ease, transform 0.16s ease, opacity 0.16s ease;
 }
 
 .remove-btn:hover {
@@ -380,11 +380,34 @@ onUnmounted(() => {
 .display-grid--grid .remove-btn {
   top: 8px;
   right: 8px;
-  opacity: 0.82;
 }
 
-.display-grid--grid .display-item:hover .remove-btn {
-  opacity: 1;
+/* 精细指针桌面端：鼠标不在卡片上时隐藏删除按钮，悬停或键盘聚焦时才出现 */
+@media (hover: hover) and (pointer: fine) {
+  .display-item .remove-btn {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .display-item:hover .remove-btn,
+  .display-item:focus-within .remove-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+/* 触屏等无悬停设备保持常显，否则无法删除 */
+@media (hover: none) {
+  .display-item .remove-btn {
+    opacity: 1;
+    pointer-events: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .remove-btn {
+    transition: none;
+  }
 }
 
 .item-caption {
