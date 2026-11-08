@@ -69,6 +69,14 @@
   gap: var(--space-sm);
 }
 
+/* Element Plus 给相邻按钮默认加了 margin-left: 12px，会与上面的 gap 叠加成 20px。
+   操作列固定宽度下总宽溢出后，flex-end 会让溢出发生在左侧，最左边的「详情」被
+   .el-table .cell { overflow: hidden } 裁掉一半，点击落点落在单元格上而不是按钮上。
+   统一交给 gap 控制间距。 */
+.admin-action-inline .el-button + .el-button {
+  margin-left: 0;
+}
+
 .admin-table-wrapper .el-table {
   --el-table-header-bg-color: #fafbfc;
   --el-table-row-hover-bg-color: #faf9ff;

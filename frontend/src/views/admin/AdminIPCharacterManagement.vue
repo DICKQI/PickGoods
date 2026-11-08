@@ -80,7 +80,7 @@
               <el-table-column label="最近同步" width="180">
                 <template #default="{ row }">{{ formatDateTime(row.last_synced_at) }}</template>
               </el-table-column>
-              <el-table-column label="操作" width="220" fixed="right" align="right">
+              <el-table-column label="操作" width="240" fixed="right" align="right">
                 <template #default="{ row }">
                   <div class="admin-action-inline">
                     <el-button link type="primary" @click="openIPDetail(row)">详情</el-button>
@@ -287,24 +287,34 @@
       size="min(92vw, 560px)"
       destroy-on-close
     >
-      <div v-if="selectedIP" class="ip-detail">
-        <h3>{{ selectedIP.name }}</h3>
-        <el-descriptions :column="1" border>
-          <el-descriptions-item label="作品类型">{{ subjectTypeLabel(selectedIP.subject_type) }}</el-descriptions-item>
-          <el-descriptions-item label="关键词">
-            {{ selectedIP.keywords?.map((item) => item.value).join('、') || '—' }}
-          </el-descriptions-item>
-          <el-descriptions-item label="BGM ID">{{ selectedIP.bgm_subject_id || '未绑定' }}</el-descriptions-item>
-          <el-descriptions-item label="最近同步">{{ formatDateTime(selectedIP.last_synced_at) }}</el-descriptions-item>
-        </el-descriptions>
-        <section class="ip-detail__characters">
-          <h4>角色列表（{{ ipCharacters.length }}）</h4>
-          <div class="character-chip-grid">
-            <span v-for="character in ipCharacters" :key="character.id">
-              {{ character.name }}
-            </span>
-          </div>
-        </section>
+      <div v-loading="ipDetailLoading" class="ip-detail">
+        <el-alert
+          v-if="ipDetailError"
+          :title="ipDetailError"
+          type="error"
+          :closable="false"
+          show-icon
+          class="ip-detail__error"
+        />
+        <template v-else-if="selectedIP">
+          <h3>{{ selectedIP.name }}</h3>
+          <el-descriptions :column="1" border>
+            <el-descriptions-item label="作品类型">{{ subjectTypeLabel(selectedIP.subject_type) }}</el-descriptions-item>
+            <el-descriptions-item label="关键词">
+              {{ selectedIP.keywords?.map((item) => item.value).join('、') || '—' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="BGM ID">{{ selectedIP.bgm_subject_id || '未绑定' }}</el-descriptions-item>
+            <el-descriptions-item label="最近同步">{{ formatDateTime(selectedIP.last_synced_at) }}</el-descriptions-item>
+          </el-descriptions>
+          <section class="ip-detail__characters">
+            <h4>角色列表（{{ ipCharacters.length }}）</h4>
+            <div class="character-chip-grid">
+              <span v-for="character in ipCharacters" :key="character.id">
+                {{ character.name }}
+              </span>
+            </div>
+          </section>
+        </template>
       </div>
     </el-drawer>
 
@@ -412,6 +422,7 @@ import type {
   BGMSyncApplyItem,
   BGMSyncPreviewResponse,
   BGMSubject,
+  Character,
   CharacterGender,
   IP,
 } from '@/api/types'
@@ -444,8 +455,10 @@ const characterOrdering = ref<string>()
 const ipDialogVisible = ref(false)
 const characterDialogVisible = ref(false)
 const ipDetailVisible = ref(false)
+const ipDetailLoading = ref(false)
+const ipDetailError = ref('')
 const selectedIP = ref<IP | null>(null)
-const ipCharacters = ref<AdminCharacterListItem[]>([])
+const ipCharacters = ref<Character[]>([])
 const ipFormRef = ref<FormInstance>()
 const characterFormRef = ref<FormInstance>()
 const avatarFile = ref<File | null>(null)
@@ -689,9 +702,26 @@ function handleAvatarChange(file: UploadFile) {
 }
 
 async function openIPDetail(row: AdminIPListItem) {
-  selectedIP.value = await getIPDetail(row.id)
-  ipCharacters.value = (await getIPCharacters(row.id)) as AdminCharacterListItem[]
+  // 先开抽屉再拉数据：两个请求并行，避免串行等待期间按钮零反馈；
+  // 请求失败时抽屉内展示错误态，而不是静默不弹出。
+  selectedIP.value = null
+  ipCharacters.value = []
+  ipDetailError.value = ''
   ipDetailVisible.value = true
+  ipDetailLoading.value = true
+  try {
+    const [detail, characters] = await Promise.all([
+      getIPDetail(row.id),
+      getIPCharacters(row.id),
+    ])
+    selectedIP.value = detail
+    ipCharacters.value = characters
+  } catch {
+    // 全局拦截器已提示具体错误，这里只负责让抽屉进入可重试的错误态
+    ipDetailError.value = 'IP 详情加载失败，请稍后重试。'
+  } finally {
+    ipDetailLoading.value = false
+  }
 }
 
 async function removeIP(row: AdminIPListItem) {
@@ -886,7 +916,12 @@ watch(
 }
 
 .ip-detail {
+  min-height: 200px;
   padding: 20px;
+}
+
+.ip-detail__error {
+  margin-bottom: 12px;
 }
 
 .ip-detail h3 {
