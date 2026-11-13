@@ -3,7 +3,7 @@
 """
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, ExpressionWrapper, F, Sum, Value
+from django.db.models import Count, DecimalField, ExpressionWrapper, F, Prefetch, Sum, Value
 from django.db.models.functions import Coalesce
 from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
@@ -14,6 +14,7 @@ from rest_framework.response import Response
 
 from ..models import Character, Goods
 from ..serializers import CharacterSimpleSerializer
+from ..serializers.ip import ip_list_queryset
 from core.permissions import IsAdminOrReadOnly, is_admin
 
 
@@ -29,7 +30,6 @@ class CharacterViewSet(viewsets.ModelViewSet):
     - destroy: 删除角色
     """
 
-    queryset = Character.objects.all().select_related("ip").order_by("created_at")
     serializer_class = CharacterSimpleSerializer
     filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
     search_fields = ("name", "ip__name", "ip__keywords__value")
@@ -38,6 +38,20 @@ class CharacterViewSet(viewsets.ModelViewSet):
         "name": ["exact", "icontains"],
     }
     permission_classes = [IsAdminOrReadOnly]
+
+    def get_queryset(self):
+        """预取 IP 并把角色数/关键词一次性取回，避免逐行查询。
+
+        ``CharacterSimpleSerializer`` 嵌套了 ``IPSimpleSerializer``；不预取时每个
+        角色都会额外触发一条 ``SELECT COUNT(*)`` 和一条关键词查询。
+        这里不能再叠加 ``select_related("ip")``——JOIN 出的实例会覆盖 prefetch
+        结果并丢掉注解。
+        """
+        return (
+            Character.objects.all()
+            .prefetch_related(Prefetch("ip", queryset=ip_list_queryset()))
+            .order_by("created_at")
+        )
 
     def perform_create(self, serializer):
         instance = serializer.save()

@@ -2,7 +2,7 @@
 谷子（Goods）相关的视图和过滤器
 """
 from django.db import IntegrityError, transaction
-from django.db.models import Count, DateField, DecimalField, ExpressionWrapper, F, Max, Min, Q, Sum, Value
+from django.db.models import Count, DateField, DecimalField, ExpressionWrapper, F, Max, Min, Prefetch, Q, Sum, Value
 from django.db.models.functions import Cast, Coalesce, TruncDate, TruncMonth, TruncWeek
 from django.db import connection
 from drf_spectacular.utils import OpenApiResponse, extend_schema
@@ -47,6 +47,7 @@ from ..serializers import (
     GoodsImageMatchRequestSerializer,
     GoodsListSerializer,
     GoodsMoveSerializer,
+    ip_list_queryset,
 )
 from ..image_match import (
     InvalidImageError,
@@ -382,11 +383,8 @@ class GoodsViewSet(viewsets.ModelViewSet):
     - retrieve: 详情接口，返回完整信息及补充图片。
     """
 
-    queryset = (
-        Goods.objects.all()
-        .select_related("ip", "category", "location", "theme", "user")
-        .prefetch_related("characters__ip", "additional_photos")
-    )
+    # 注意：这里不设 queryset 类属性。所有动作都走 get_queryset()，而它需要按请求
+    # 用户构造权限过滤与 Prefetch；保留一份静态 queryset 只会成为过时的复制模板。
     # IsOwnerOnly only checks object ownership; keep the endpoint explicitly
     # authenticated so anonymous creates/lists cannot reach model operations.
     permission_classes = [IsAuthenticated, IsOwnerOnly]
@@ -427,23 +425,47 @@ class GoodsViewSet(viewsets.ModelViewSet):
     # 稀疏排序步长（避免频繁重排）
     ORDER_STEP = 1000
 
+    #: group_by 参数 -> 用于分组排序的外键字段。键集合同时是合法取值集合。
+    GROUP_BY_FIELDS = {
+        "ip": "ip_id",
+        "category": "category_id",
+        "theme": "theme_id",
+    }
+
     def get_queryset(self):
+        """列表/详情共用的 queryset。
+
+        ``GoodsListSerializer`` 与 ``GoodsDetailSerializer`` 都嵌套了
+        ``IPSimpleSerializer``，而后者会序列化 ``character_count`` 和 ``keywords``。
+        不预取时每个谷子都会额外触发一条 ``SELECT COUNT(*)`` 和一条关键词查询
+        （100 行页面实测 325 条 SQL）。这里用 Prefetch + annotate 一次性取回。
+
+        关键：**不要**再写 ``select_related("ip")``。JOIN 出来的 IP 实例会覆盖
+        prefetch 结果，注解随之丢失，N+1 静默回到原状。``test_query_counts``
+        里的页大小无关性用例专门守这条。
         """
-        使用 select_related / prefetch_related 彻底解决 N+1 查询问题。
-        """
-        qs = (
-            Goods.objects.all()
-            .select_related("ip", "category", "location", "theme", "user")
-            .prefetch_related("characters__ip", "additional_photos")
-        )
         user = getattr(self.request, "user", None)
         if not user or not getattr(user, "id", None):
-            return qs.none()
+            return Goods.objects.none()
         if getattr(user, "account_type", None) == "club" and not is_admin(user):
-            return qs.none()
-        if is_admin(user):
-            return qs
-        return qs.filter(user=user)
+            return Goods.objects.none()
+
+        ip_qs = ip_list_queryset()
+        qs = (
+            Goods.objects.all()
+            .select_related("category", "location", "theme", "user")
+            .prefetch_related(
+                Prefetch("ip", queryset=ip_qs),
+                Prefetch(
+                    "characters",
+                    queryset=Character.objects.prefetch_related(
+                        Prefetch("ip", queryset=ip_qs)
+                    ),
+                ),
+                "additional_photos",
+            )
+        )
+        return qs if is_admin(user) else qs.filter(user=user)
 
     def list(self, request, *args, **kwargs):
         """
@@ -465,41 +487,81 @@ class GoodsViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # 获取过滤后的queryset，并按分组字段排序
+        # 获取过滤后的queryset
         queryset = self.filter_queryset(self.get_queryset())
 
-        # 根据group_by参数对queryset进行排序
-        if group_by == 'ip':
-            # 按IP下最新谷子的时间倒序，使最近有新谷子的IP排在前面
-            queryset = queryset.annotate(
-                ip_latest=Max('ip__goods__created_at')
-            ).order_by('-ip_latest', '-created_at')
-        elif group_by == 'character':
-            # 按角色分组比较特殊，因为是多对多关系
-            # 按角色下最新谷子的时间倒序
-            queryset = queryset.annotate(
-                character_latest=Max('characters__goods__created_at')
-            ).order_by('-character_latest', '-created_at').distinct()
-        elif group_by == 'category':
-            # 按品类下最新谷子的时间倒序
-            queryset = queryset.annotate(
-                category_latest=Max('category__goods__created_at')
-            ).order_by('-category_latest', '-created_at')
-        elif group_by == 'theme':
-            # 按主题下最新谷子的时间倒序，使最近有新谷子的主题排在前面
-            queryset = queryset.annotate(
-                theme_latest=Max('theme__goods__created_at')
-            ).order_by('-theme_latest', '-created_at')
+        # 分组排序：先把「分组键 -> 组内最新时间」聚合成一张小表，再在内存里排序。
+        #
+        # 不要退回 annotate(Max('<fk>__goods__created_at'))：那是跨反向 FK 的聚合，
+        # SQLite 会生成 JOIN + GROUP BY + 临时排序，导致 LIMIT 对聚合无效——即使
+        # 只要 18 行也要算完全表。生产库 1064 条实测 1.6s，改为此法后 ~17ms。
+        ordered_ids = self._group_order_by_ids(queryset, group_by)
 
-        # 使用标准分页器对排序后的queryset进行分页
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+        paginator = self.pagination_class()
+        page_ids = paginator.paginate_queryset(
+            [str(i) for i in ordered_ids], request, view=self
+        )
+        # 只装载当前页对象；queryset 上 P0 加的 Prefetch 依然生效
+        page_objects = self._order_by_ids(queryset.filter(id__in=page_ids), page_ids)
+        return paginator.get_paginated_response(
+            self.get_serializer(page_objects, many=True).data
+        )
 
-        # 如果没有分页，直接返回所有数据
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+    def _group_latest_map(self, field):
+        """分组键 -> 该组内最新的 created_at。
+
+        注意两点：
+
+        1. **不加 user 过滤**。旧实现 ``Max('ip__goods__created_at')`` 里外层
+           ``filter(user=...)`` 只作用于主表，不会传播进聚合的 JOIN，因此历史语义
+           是「该 IP 下所有用户谷子的最新时间」。保持全局范围才能维持输出一致。
+        2. **剔除 None 键**。等价 SQL 走 LEFT JOIN，分组键为 NULL 时聚合结果是
+           NULL，不能当成一个真实分组——否则无主题（``theme_id`` 为 NULL）的谷子
+           会被排到最前而不是最后。
+        """
+        rows = Goods.objects.values_list(field).annotate(m=Max("created_at"))
+        return {key: value for key, value in rows if key is not None}
+
+    def _group_order_by_ids(self, queryset, group_by):
+        """按分组规则返回排好序的完整 id 列表。
+
+        排序规则（与历史实现一致）：先按「所属分组内最新的谷子创建时间」倒序，
+        再按谷子自身 ``created_at`` 倒序；分组键为 NULL 的条目排在最后。
+        """
+        if group_by == "character":
+            # 多对多：一个谷子可能属于多个角色组，取其所有角色组里最新的那个时间
+            char_latest = self._group_latest_map("characters__id")
+            best = {}
+            for goods_id, character_id, created_at in queryset.values_list(
+                "id", "characters__id", "created_at"
+            ):
+                key = (
+                    char_latest.get(character_id)
+                    if character_id is not None
+                    else None
+                )
+                current = best.get(goods_id)
+                if current is None or (
+                    key is not None and (current[0] is None or key > current[0])
+                ):
+                    best[goods_id] = (key, created_at)
+            # dict 天然去重，等价于旧实现 character 分支上的 .distinct()
+            items = list(best.items())
+            items.sort(
+                key=lambda item: (item[1][0] is not None, item[1][0], item[1][1]),
+                reverse=True,
+            )
+            return [goods_id for goods_id, _ in items]
+
+        field = self.GROUP_BY_FIELDS[group_by]
+        latest_map = self._group_latest_map(field)
+        rows = list(queryset.values_list("id", field, "created_at"))
+        # 首位的 is-not-None 标志把 NULL 分组键压到末尾，对齐 SQLite 中 DESC 的行为
+        rows.sort(
+            key=lambda row: (latest_map.get(row[1]) is not None, latest_map.get(row[1]), row[2]),
+            reverse=True,
+        )
+        return [row[0] for row in rows]
 
     def _find_duplicate_candidates(self, user, validated_data):
         """

@@ -9,6 +9,7 @@ from .ip import (
     IPKeywordSerializer,
     IPOrderItemSerializer,
     IPSimpleSerializer,
+    ip_list_queryset,
 )
 from .character import CharacterSimpleSerializer
 from .category import (
@@ -81,6 +82,7 @@ __all__ = [
     "IPDetailSerializer",
     "IPOrderItemSerializer",
     "IPBatchUpdateOrderSerializer",
+    "ip_list_queryset",
     # Character
     "CharacterSimpleSerializer",
     # Category

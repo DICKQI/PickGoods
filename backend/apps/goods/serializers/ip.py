@@ -1,10 +1,27 @@
 """
 IP作品相关的序列化器
 """
+from django.db.models import Count
 from rest_framework import serializers
 
 from ..models import IP, IPKeyword
 from .fields import KeywordsField
+
+
+def ip_list_queryset():
+    """列表与嵌套展示用的 IP queryset：注解角色数并预取关键词。
+
+    ``IPSimpleSerializer`` 同时序列化 ``character_count``（未注解时逐行
+    ``obj.characters.count()``）和 ``keywords``（未预取时逐行查询），二者都会
+    产生 N+1。凡是用 ``IPSimpleSerializer`` 做 ``many=True`` 的视图，都应通过
+    ``Prefetch("ip", queryset=ip_list_queryset())`` 使用这里的结果。
+
+    注意：调用方**不能**同时 ``select_related("ip")``。Django 会用 JOIN 出来的
+    实例覆盖 prefetch 结果，注解随之丢失，N+1 静默回到原状。
+    """
+    return IP.objects.annotate(
+        character_count=Count("characters", distinct=True)
+    ).prefetch_related("keywords")
 
 
 class IPKeywordSerializer(serializers.ModelSerializer):
