@@ -26,7 +26,7 @@
       <span v-if="isAdmin && !showCover" class="ip-card-cover-hint">暂无封面</span>
 
       <button
-        v-if="isAdmin"
+        v-if="isAdmin && reorderable"
         type="button"
         class="ip-card-drag"
         title="拖拽调整顺序"
@@ -122,8 +122,13 @@ const props = withDefaults(
   defineProps<{
     ip: IP
     isAdmin?: boolean
+    /**
+     * 是否允许拖拽排序：页面在非「默认」排序下传 false，
+     * 卡片右上角的拖拽把手直接不渲染（此时拖拽本来就是暂停的）。
+     */
+    reorderable?: boolean
   }>(),
-  { isAdmin: false },
+  { isAdmin: false, reorderable: true },
 )
 
 const emit = defineEmits<{

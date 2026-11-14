@@ -109,6 +109,14 @@ describe('IPWorkCard', () => {
     expect(wrapper.findAll('.ip-card-action')).toHaveLength(3)
   })
 
+  it('hides the drag handle while a non-default sort is active', () => {
+    const wrapper = mountCard({ isAdmin: true, reorderable: false })
+
+    expect(wrapper.find('.ip-card-drag').exists()).toBe(false)
+    // 其它管理员操作不受影响
+    expect(wrapper.findAll('.ip-card-action')).toHaveLength(3)
+  })
+
   it('emits edit / remove / bgm-sync from the action buttons without opening the card', async () => {
     const wrapper = mountCard({ isAdmin: true })
     const actions = wrapper.findAll('.ip-card-action')

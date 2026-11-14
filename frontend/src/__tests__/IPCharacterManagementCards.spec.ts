@@ -56,6 +56,12 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain('if (gridEl && !sortState.value.prop)')
     expect(source).toContain("handle: '.mobile-drag-handle'")
     expect(source).toContain('请切换回「默认」排序后再进行拖拽排序')
+    // 非默认排序时卡片右上角的拖拽把手直接不渲染
+    expect(source).toContain(':reorderable="!sortState.prop"')
+
+    const cardSource = readFileSync(join(process.cwd(), 'src/components/IPWorkCard.vue'), 'utf-8')
+    expect(cardSource).toContain('v-if="isAdmin && reorderable"')
+    expect(cardSource).toContain('reorderable?: boolean')
   })
 
   it('opens the character drawer from a card click', () => {

@@ -169,6 +169,7 @@
             :key="item.id"
             :ip="item"
             :is-admin="authStore.isAdmin"
+            :reorderable="!sortState.prop"
             @open="openCharactersDrawer"
             @edit="handleEditIP"
             @remove="handleDeleteIP"
