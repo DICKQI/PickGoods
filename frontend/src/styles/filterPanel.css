@@ -55,10 +55,10 @@
   border-bottom: none;
 }
 
-/* 标题 */
+/* 标题：标题与统计信息靠左成组，操作区固定贴右 */
 .app-filter-header {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-start;
   align-items: center;
   min-height: 26px;
   font-size: 15px;
@@ -67,11 +67,57 @@
   letter-spacing: 0.01em;
 }
 
+/* 标题右侧信息（统计数量等），紧跟标题、不参与两端对齐 */
+.app-filter-meta {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: rgba(212, 175, 55, 0.1);
+  color: rgba(122, 91, 8, 0.92);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.app-filter-meta strong {
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* 结果数与全部数不同时高亮成紫色，与统计看板的一致 */
+.app-filter-meta.is-active {
+  background: rgba(142, 125, 255, 0.14);
+  color: #5b4bb8;
+}
+
+.app-filter-meta.is-active strong {
+  color: #5b4bb8;
+}
+
+/* 视觉隐藏但仍可被屏幕阅读器读到（桌面端收起页面大标题后保留语义） */
+.app-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 /* 标题右侧操作区 */
 .app-filter-actions {
   display: flex;
   align-items: center;
   gap: 4px;
+  /* 标题与统计靠左成组，操作区始终贴右 */
+  margin-left: auto;
 }
 
 .app-filter-actions .el-button {
@@ -182,6 +228,59 @@
   color: #7a5b08;
 }
 
+/* 纯文字胶囊（作品类型、排序等）：没有图标可退，窄屏也保留文字并允许换行 */
+.app-filter-status--text-chips {
+  flex-wrap: wrap;
+  white-space: normal;
+}
+
+/* 单选胶囊：与多选胶囊同规格（Element Plus 的 radio-button 默认是方角连体按钮） */
+.app-filter-status .el-radio-button {
+  display: inline-flex;
+  flex: 0 0 auto;
+}
+
+.app-filter-status .el-radio-button__inner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid #d8dee8;
+  border-radius: 999px;
+  background-color: #fff;
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1;
+  transition:
+    background-color var(--transition-fast, 0.2s ease),
+    border-color var(--transition-fast, 0.2s ease),
+    color var(--transition-fast, 0.2s ease);
+}
+
+.app-filter-status .el-radio-button:first-child .el-radio-button__inner,
+.app-filter-status .el-radio-button:last-child .el-radio-button__inner {
+  border-radius: 999px;
+}
+
+/* Element Plus 2.14 的选中态选择器是
+   .el-radio-button.is-active .el-radio-button__original-radio:not(:disabled) + .el-radio-button__inner，
+   这里要写到同等以上的特异度才能覆盖成金色淡底胶囊。 */
+.app-filter-status .el-radio-button.is-active .el-radio-button__original-radio:not(:disabled) + .el-radio-button__inner,
+.app-filter-status .el-radio-button.is-active .el-radio-button__original-radio:checked + .el-radio-button__inner,
+.app-filter-status .el-radio-button__original-radio:checked + .el-radio-button__inner,
+.app-filter-status .el-radio-button.is-active .el-radio-button__inner {
+  border-color: rgba(212, 175, 55, 0.85);
+  background: rgba(212, 175, 55, 0.13);
+  box-shadow: none;
+  color: #7a5b08;
+}
+
+.app-filter-status .el-radio-button__inner:hover {
+  color: #7a5b08;
+}
+
 .app-filter-status .status-chip__icon,
 .app-filter-status .stats-status-chip__icon {
   display: none;
@@ -220,6 +319,29 @@
   .app-filter-status .stats-status-chip__icon {
     display: inline-flex;
     font-size: 15px;
+  }
+
+  /* 纯文字胶囊没有图标可退：保持文字、自动宽度与正常间距 */
+  .app-filter-status--text-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .app-filter-status--text-chips .el-checkbox-button,
+  .app-filter-status--text-chips .el-radio-button {
+    width: auto;
+    min-width: 0;
+  }
+
+  .app-filter-status--text-chips .el-checkbox-button__inner,
+  .app-filter-status--text-chips .el-radio-button__inner {
+    width: auto;
+    padding: 0 11px;
+  }
+
+  .app-filter-status--text-chips .status-chip__label {
+    display: inline;
   }
 }
 
@@ -277,6 +399,10 @@
   }
 
   .app-filter-status .el-checkbox-button__inner {
+    transition: none;
+  }
+
+  .app-filter-status .el-radio-button__inner {
     transition: none;
   }
 

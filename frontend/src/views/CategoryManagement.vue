@@ -1,19 +1,40 @@
 <template>
   <div class="category-management-container">
-    <!-- ================= 顶部区域 ================= -->
-    <div class="header-section">
-      <div class="title-wrapper">
-        <h2 class="page-title">品类管理</h2>
-        <span class="sub-title">给谷子们分个小家吧~ 立牌、徽章都能安排上喵 (๑•̀ㅂ•́)و✧</span>
-      </div>
-      <div class="header-actions">
-        <el-button class="add-btn" type="primary" @click="handleAdd" v-if="authStore.isAdmin" title="新增顶级品类">
-          <el-icon><Plus /></el-icon>
-        </el-button>
-      </div>
-    </div>
+    <!-- 桌面端不再渲染标题区，仅保留给屏幕阅读器的页面标题；移动端标题由便签栏承担 -->
+    <h1 class="app-visually-hidden">品类管理</h1>
 
-    <el-card class="search-card" shadow="never">
+
+    <!-- 桌面端：与谷仓「筛选谷子」同款的筛选面板 -->
+    <AppFilterPanel
+      v-if="!isMobile"
+      title="筛选品类"
+      v-model:collapsed="filterCollapsed"
+      :reset-disabled="!hasActiveFilters"
+      @reset="handleResetFilters"
+    >
+      <template #actions>
+        <el-button text size="small" class="category-tree-action" @click="expandAll">全部展开</el-button>
+        <el-button text size="small" class="category-tree-action" @click="collapseAll">全部收起</el-button>
+      </template>
+
+      <div class="category-filter-field">
+        <label>关键词</label>
+        <el-input
+          v-model="searchText"
+          class="custom-search"
+          placeholder="搜索品类..."
+          clearable
+          @input="handleKeywordInput"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix><el-icon><Search /></el-icon></template>
+        </el-input>
+      </div>
+    </AppFilterPanel>
+
+    <!-- 移动端：保持原有搜索卡 -->
+    <el-card v-if="isMobile" class="search-card" shadow="never">
       <div class="search-flex">
         <el-input
           v-model="searchText"
@@ -32,12 +53,6 @@
         <el-button v-if="authStore.isAdmin && isMobile" class="mobile-inline-create" type="primary" circle aria-label="新增顶级品类" @click="handleAdd">
           <el-icon><Plus /></el-icon>
         </el-button>
-        <div class="hidden-xs-only">
-          <el-button plain @click="expandAll">全部展开</el-button>
-        </div>
-        <div class="hidden-xs-only">
-          <el-button plain @click="collapseAll">全部收起</el-button>
-        </div>
       </div>
     </el-card>
     <!-- ================= 顶部区域结束 ================= -->
@@ -191,11 +206,12 @@
       </div>
     </div>
 
-    <!-- 刷新按钮 - 右下角悬浮（仅PC端） -->
-    <div class="refresh-fab hidden-xs-only" @click="handleRefresh" :class="{ loading: loading }">
-      <el-icon v-if="!loading"><Refresh /></el-icon>
-      <el-icon v-else class="is-loading"><Loading /></el-icon>
-    </div>
+    <!-- 桌面端右下角悬浮：新增品类 + 刷新；在 /organize 里改由 Layout 外壳渲染 -->
+    <AddFab
+      v-if="!isMobile && !fabHosted"
+      v-bind="categoryFabProps"
+      v-on="categoryFabHandlers"
+    />
 
     <!-- 弹窗 -->
     <el-dialog
@@ -366,7 +382,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { Plus, Search, CollectionTag, Refresh, Loading, Edit, Delete } from '@element-plus/icons-vue'
+import { Plus, Search, CollectionTag, Edit, Delete } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
@@ -379,12 +395,32 @@ import {  createCategory, updateCategory, deleteCategory, batchUpdateCategoryOrd
 import type { Category } from '@/api/types'
 import Sortable from 'sortablejs'
 import CategoryMobileNode from '@/components/CategoryMobileNode.vue'
+import AppFilterPanel from '@/components/AppFilterPanel.vue'
+import AddFab, { type AddFabProps } from '@/components/AddFab.vue'
+import { useOrganizeFab, type OrganizeFabHandlers } from '@/composables/useOrganizeFab'
+import { debounce } from '@/utils/debounce'
 
 type CategoryNode = Category & { children?: CategoryNode[]; depth?: number }
 
 const loading = ref(false)
 const submitting = ref(false)
 const searchText = ref('')
+// 桌面筛选面板：折叠状态 + 是否存在生效条件
+const filterCollapsed = ref(false)
+
+const hasActiveFilters = computed(() => Boolean(searchText.value.trim()))
+
+/** 关键词输入即筛（250ms 防抖）；回车与清空仍立即生效 */
+const handleKeywordInput = debounce((value: string) => {
+  searchText.value = value
+  void handleSearch()
+}, 250)
+
+const handleResetFilters = () => {
+  handleKeywordInput.cancel()
+  searchText.value = ''
+  void handleSearch()
+}
 const allCategories = ref<Category[]>([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -818,6 +854,26 @@ const handleAddSub = (row: Category) => {
   dialogVisible.value = true
 }
 
+// 桌面端右下角悬浮按钮：配置注册给 Layout 外壳渲染，分栏切换时按钮不会跟着页面过渡漂移；
+// 只有不被外壳接管时（单独挂载本页面）才走模板里的回退版本。
+const categoryFabProps = computed<AddFabProps>(() => ({
+  label: '新增品类',
+  showPrimary: authStore.isAdmin,
+  showRefresh: true,
+  refreshing: loading.value,
+  refreshLabel: '刷新品类列表',
+}))
+
+const categoryFabHandlers: OrganizeFabHandlers = {
+  click: handleAdd,
+  refresh: handleRefresh,
+}
+
+const { hosted: fabHosted } = useOrganizeFab('category', () => ({
+  props: categoryFabProps.value,
+  handlers: categoryFabHandlers,
+}))
+
 const handleEdit = (row: Category) => {
   isEdit.value = true
   isParentLocked.value = false
@@ -933,6 +989,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  handleKeywordInput.cancel()
   destroySortables()
 })
 </script>
@@ -1068,28 +1125,6 @@ onUnmounted(() => {
   outline: none !important;
   background-color: transparent !important;
 }
-
-/* PC 刷新按钮 */
-.refresh-fab {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: white;
-  font-size: 30px;
-  box-shadow: 0 4px 16px rgba(163, 150, 255, 0.4);
-  cursor: pointer;
-  transition: all 0.3s;
-  z-index: 999;
-}
-.refresh-fab:hover { transform: scale(1.1) rotate(180deg); }
-.refresh-fab .is-loading { animation: rotate 1s linear infinite; }
 
 /* =========== 移动端适配样式 =========== */
 

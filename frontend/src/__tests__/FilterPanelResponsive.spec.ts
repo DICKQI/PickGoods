@@ -30,6 +30,13 @@ describe('FilterPanel responsive status controls', () => {
     expect(sharedStyles).toMatch(/\.app-filter-status \.status-chip__icon,[\s\S]*?display: inline-flex;/)
   })
 
+  it('keeps text-only chips readable at compact desktop widths', () => {
+    // 图标化收缩只适用于四状态胶囊；作品类型/排序这类纯文字胶囊保留文字与自动宽度
+    expect(sharedStyles).toMatch(/\.app-filter-status--text-chips \{\s*display: flex;/)
+    expect(sharedStyles).toMatch(/\.app-filter-status--text-chips \.el-checkbox-button__inner,[\s\S]*?\.app-filter-status--text-chips \.el-radio-button__inner \{\s*width: auto;/)
+    expect(sharedStyles).toMatch(/\.app-filter-status--text-chips \.status-chip__label \{\s*display: inline;/)
+  })
+
   it('keeps the status controls on one line inside 32px pills', () => {
     expect(sharedStyles).toMatch(/height: 32px;\s*padding: 0 11px;\s*border: 1px solid #d8dee8;/)
     expect(sharedStyles).toMatch(/font-size: 12px;/)

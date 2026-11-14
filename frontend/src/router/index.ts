@@ -66,14 +66,17 @@ const routes: RouteRecordRaw[] = [
       requiresCollector: true,
     },
   },
+  // 整理：IP与角色 / 品类 / 主题 三个资料库合并为一个页面，分栏由 ?tab= 驱动。
   {
-    path: '/ipcharacter',
-    name: 'IPCharacterManagement',
-    component: () => import('@/views/IPCharacterManagement.vue'),
+    path: '/organize',
+    name: 'OrganizeWorkspace',
+    component: () => import('@/views/OrganizeWorkspace.vue'),
     meta: {
-      title: 'IP与角色',
+      title: '整理',
       requiresAuth: true,
       requiresCollector: true,
+      // 分栏切换只改 query：必须保留同一个页面实例，动画与各分栏状态才不会丢。
+      preserveOnQueryChange: true,
     },
   },
   {
@@ -86,7 +89,19 @@ const routes: RouteRecordRaw[] = [
       requiresCollector: true,
     },
   },
-  // 兼容旧路径，重定向到新路径
+  // 兼容旧路径：三个资料库已合并进 /organize，旧地址落到对应分栏并保留其它参数。
+  {
+    path: '/ipcharacter',
+    redirect: to => ({ path: '/organize', query: { ...to.query, tab: 'ip' } }),
+  },
+  {
+    path: '/category',
+    redirect: to => ({ path: '/organize', query: { ...to.query, tab: 'category' } }),
+  },
+  {
+    path: '/theme',
+    redirect: to => ({ path: '/organize', query: { ...to.query, tab: 'theme' } }),
+  },
   {
     path: '/ip',
     redirect: '/ipcharacter',
@@ -94,26 +109,6 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/character',
     redirect: '/ipcharacter',
-  },
-  {
-    path: '/category',
-    name: 'CategoryManagement',
-    component: () => import('@/views/CategoryManagement.vue'),
-    meta: {
-      title: '品类',
-      requiresAuth: true,
-      requiresCollector: true,
-    },
-  },
-  {
-    path: '/theme',
-    name: 'ThemeManagement',
-    component: () => import('@/views/ThemeManagement.vue'),
-    meta: {
-      title: '主题',
-      requiresAuth: true,
-      requiresCollector: true,
-    },
   },
   {
     path: '/goods/new',

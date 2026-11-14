@@ -23,24 +23,44 @@ function cssRuleBlock(source: string, selector: string) {
 describe('ThemeManagement infinite scroll – source structure', () => {
   it('defines the redesigned desktop theme library workbench', () => {
     expect(viewSource).toContain('class="desktop-theme-workbench hidden-xs-only"')
-    expect(viewSource).toContain('class="desktop-theme-header"')
+    expect(viewSource).toContain('class="app-visually-hidden"')
     expect(viewSource).toContain('class="desktop-theme-metrics"')
     expect(viewSource).toContain('class="desktop-theme-toolbar"')
     expect(viewSource).toContain('class="desktop-theme-table-panel"')
-    expect(viewSource).toContain('brand-add-btn brand-add-btn--compact desktop-theme-add')
+    // 新增主题改为右下角悬浮按钮，配置交给 Layout 外壳渲染（分栏切换时按钮不再漂移）
+    expect(viewSource).toContain('v-bind="themeFabProps"')
+    expect(viewSource).toContain("label: '新增主题'")
+    expect(viewSource).toContain("useOrganizeFab('theme'")
+    // 页头大标题与说明段落已下线
+    expect(viewSource).not.toContain('desktop-theme-eyebrow')
+    expect(viewSource).not.toContain('class="desktop-theme-heading"')
+    expect(viewSource).not.toContain('brand-add-btn brand-add-btn--compact desktop-theme-add')
   })
 
-  it('keeps desktop filtering and refresh controls inside the workbench toolbar', () => {
+  it('keeps desktop filtering and refresh controls inside the filter panel', () => {
+    expect(viewSource).toContain('title="筛选主题"')
     expect(viewSource).toContain('class="desktop-theme-search"')
-    expect(viewSource).toContain('class="desktop-theme-sort"')
+    expect(viewSource).toContain('class="app-filter-status app-filter-status--text-chips desktop-theme-sort-chips"')
     expect(viewSource).toContain('class="desktop-theme-date"')
     expect(viewSource).toContain('class="desktop-theme-refresh"')
     expect(viewSource).toContain('aria-label="刷新主题列表"')
+    expect(viewSource).not.toContain('class="desktop-theme-sort"')
     expect(viewSource).not.toContain('class="refresh-fab hidden-xs-only"')
   })
 
+  it('renders the theme counters as shared header pills instead of a boxed toolbar widget', () => {
+    // 统计跟随标题靠左成组，样式复用 filterPanel.css 的 .app-filter-meta
+    expect(viewSource).toContain('class="app-filter-meta"')
+    expect(viewSource).toContain('class="app-filter-meta" :class="{ \'is-active\': hasActiveFilters }"')
+    expect(viewSource).not.toContain('class="desktop-theme-metric"')
+    expect(viewSource).not.toContain('.desktop-theme-metric {')
+    // 排序胶囊换成共享圆角规格，不再自己写换行规则
+    expect(viewSource).not.toContain('.desktop-theme-sort-chips {\n  flex-wrap: wrap;')
+  })
+
   it('overrides the desktop date picker default width at the component root', () => {
-    expect(viewSource).toContain('class="desktop-theme-date"\n          style="width: 100%"')
+    expect(viewSource).toContain('class="desktop-theme-date"')
+    expect(viewSource).toContain('style="width: 100%"')
   })
 
   it('keeps desktop table rows compact', () => {

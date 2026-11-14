@@ -1,84 +1,45 @@
 <template>
   <div class="theme-management-container">
     <section class="desktop-theme-workbench hidden-xs-only">
-      <header class="desktop-theme-header">
-        <div class="desktop-theme-heading">
-          <span class="desktop-theme-eyebrow">{{ isClubContext ? '社团主题资料库' : '主题资料库' }}</span>
-          <div class="desktop-theme-title-row">
-            <h1>{{ isClubContext ? '社团主题' : '主题' }}</h1>
-            <div class="desktop-theme-metrics" aria-label="主题统计">
-              <span class="desktop-theme-metric">
-                <span>全部</span>
-                <strong>{{ allThemes.length }}</strong>
-              </span>
-              <span class="desktop-theme-metric" :class="{ 'is-active': hasActiveFilters }">
-                <span>当前结果</span>
-                <strong>{{ filteredThemeList.length }}</strong>
-              </span>
-            </div>
-          </div>
-          <p>{{ isClubContext ? '管理只属于本社团谷子的主题、备注和参考图。' : '把主题名称、备注和参考图收拾整齐，之后筛选起来更轻松啦~' }}</p>
-        </div>
-        <el-button
-          type="primary"
-          class="brand-add-btn brand-add-btn--compact desktop-theme-add"
-          @click="handleAdd"
-        >
-          <span class="brand-add-btn__content">
-            <el-icon><Plus /></el-icon>
-            <span>新增主题</span>
-          </span>
-        </el-button>
-      </header>
+      <h1 class="app-visually-hidden">{{ isClubContext ? '社团主题' : '主题' }}</h1>
+      <!-- 社团主题是独立页面（没有分栏标签条），保留一行紧凑标题 -->
+      <h2 v-if="isClubContext" class="theme-club-inline-title">社团主题</h2>
 
-      <section class="desktop-theme-toolbar" aria-label="主题筛选工具栏">
-        <el-input
-          v-model="searchText"
-          class="desktop-theme-search"
-          placeholder="搜索主题名称或描述"
-          clearable
-          @clear="handleSearch"
-          @keyup.enter="handleSearch"
-        >
-          <template #prefix><el-icon><Search /></el-icon></template>
-        </el-input>
-        <el-select
-          v-model="sortBy"
-          class="desktop-theme-sort"
-          placeholder="排序方式"
-          clearable
-          @change="handleSortChange"
-        >
-          <el-option label="创建时间正序" value="created_asc" />
-          <el-option label="创建时间倒序" value="created_desc" />
-          <el-option label="名称正序" value="name_asc" />
-          <el-option label="名称倒序" value="name_desc" />
-        </el-select>
-        <el-date-picker
-          v-model="dateRange"
-          class="desktop-theme-date"
-          style="width: 100%"
-          type="daterange"
-          range-separator="至"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          format="YYYY-MM-DD"
-          value-format="YYYY-MM-DD"
-          clearable
-          @change="handleDateRangeChange"
-        />
-        <div class="desktop-theme-toolbar-actions">
-          <el-button type="primary" class="desktop-theme-search-button" @click="handleSearch">
-            <el-icon><Search /></el-icon>
-            <span>搜索</span>
-          </el-button>
-          <el-button v-if="hasActiveFilters" class="desktop-theme-clear" @click="clearFilters">
+      <AppFilterPanel
+        class="desktop-theme-toolbar"
+        title="筛选主题"
+        v-model:collapsed="filterCollapsed"
+        :reset-disabled="!hasActiveFilters"
+        @reset="clearFilters"
+      >
+        <template #meta>
+          <span class="desktop-theme-metrics" aria-label="主题统计">
+            <span class="app-filter-meta">
+              <span>全部</span>
+              <strong>{{ allThemes.length }}</strong>
+            </span>
+            <span class="app-filter-meta" :class="{ 'is-active': hasActiveFilters }">
+              <span>当前结果</span>
+              <strong>{{ filteredThemeList.length }}</strong>
+            </span>
+          </span>
+        </template>
+
+        <template #actions>
+          <el-button
+            v-if="hasActiveFilters"
+            text
+            size="small"
+            class="desktop-theme-clear"
+            @click="clearFilters"
+          >
             <el-icon><Close /></el-icon>
             <span>清除</span>
           </el-button>
           <el-tooltip content="刷新主题列表" placement="top">
             <el-button
               class="desktop-theme-refresh"
+              text
               circle
               :loading="loading"
               aria-label="刷新主题列表"
@@ -87,8 +48,63 @@
               <el-icon v-if="!loading"><Refresh /></el-icon>
             </el-button>
           </el-tooltip>
+        </template>
+
+        <div class="theme-filter-field">
+          <label>关键词</label>
+          <el-input
+            v-model="searchText"
+            class="desktop-theme-search"
+            placeholder="搜索主题名称或描述"
+            clearable
+            @input="handleKeywordInput"
+            @clear="handleSearch"
+            @keyup.enter="handleSearch"
+          >
+            <template #prefix><el-icon><Search /></el-icon></template>
+          </el-input>
         </div>
-      </section>
+
+        <div class="theme-filter-field">
+          <label>排序</label>
+          <el-radio-group
+            v-model="sortBy"
+            class="app-filter-status app-filter-status--text-chips desktop-theme-sort-chips"
+            aria-label="主题排序方式"
+            @change="handleSortChange"
+          >
+            <el-radio-button value=""><span class="status-chip__label">默认</span></el-radio-button>
+            <el-radio-button value="created_asc"><span class="status-chip__label">创建 ↑</span></el-radio-button>
+            <el-radio-button value="created_desc"><span class="status-chip__label">创建 ↓</span></el-radio-button>
+            <el-radio-button value="name_asc"><span class="status-chip__label">名称 ↑</span></el-radio-button>
+            <el-radio-button value="name_desc"><span class="status-chip__label">名称 ↓</span></el-radio-button>
+          </el-radio-group>
+        </div>
+
+        <div class="theme-filter-field">
+          <label>创建日期</label>
+          <el-date-picker
+            v-model="dateRange"
+            class="desktop-theme-date"
+            style="width: 100%"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            format="YYYY-MM-DD"
+            value-format="YYYY-MM-DD"
+            clearable
+            @change="handleDateRangeChange"
+          />
+        </div>
+      </AppFilterPanel>
+
+      <!-- 桌面端右下角悬浮：新增主题（/organize 里改由 Layout 外壳渲染） -->
+      <AddFab
+        v-if="!fabHosted"
+        v-bind="themeFabProps"
+        v-on="themeFabHandlers"
+      />
 
       <section v-loading="loading" class="desktop-theme-table-panel">
         <div ref="tableContainerRef" class="table-container">
@@ -575,6 +591,10 @@ import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
+import AppFilterPanel from '@/components/AppFilterPanel.vue'
+import AddFab, { type AddFabProps } from '@/components/AddFab.vue'
+import { useOrganizeFab, type OrganizeFabHandlers } from '@/composables/useOrganizeFab'
+import { debounce } from '@/utils/debounce'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import {
@@ -603,6 +623,14 @@ interface NewThemePhotoFile {
 const loading = ref(false)
 const submitting = ref(false)
 const searchText = ref('')
+// 桌面筛选面板：折叠状态
+const filterCollapsed = ref(false)
+
+/** 关键词输入即筛（250ms 防抖）；回车与清空仍立即生效 */
+const handleKeywordInput = debounce((value: string) => {
+  searchText.value = value
+  void handleSearch()
+}, 250)
 const allThemes = ref<Theme[]>([])
 const dialogVisible = ref(false)
 const isEdit = ref(false)
@@ -852,6 +880,21 @@ const handleAdd = () => {
   dialogVisible.value = true
 }
 
+// 桌面端右下角悬浮按钮：配置注册给 Layout 外壳渲染，分栏切换时按钮不会跟着页面过渡漂移；
+// 只有不被外壳接管时（/club/themes 这类独立页面）才走模板里的回退版本。
+const themeFabProps = computed<AddFabProps>(() => ({
+  label: '新增主题',
+}))
+
+const themeFabHandlers: OrganizeFabHandlers = {
+  click: handleAdd,
+}
+
+const { hosted: fabHosted } = useOrganizeFab('theme', () => ({
+  props: themeFabProps.value,
+  handlers: themeFabHandlers,
+}))
+
 const handleEdit = async (row: Theme) => {
   isEdit.value = true
   editingId.value = row.id
@@ -1061,6 +1104,7 @@ onMounted(() => {
 })
 
 onUnmounted(() => {
+  handleKeywordInput.cancel()
   window.removeEventListener('resize', updateTableHeight)
   if (sentinelObserver) {
     sentinelObserver.disconnect()
@@ -1084,109 +1128,38 @@ onUnmounted(() => {
   color: #243042;
 }
 
-.desktop-theme-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  margin-bottom: 16px;
-}
-
-.desktop-theme-heading {
-  min-width: 0;
-}
-
-.desktop-theme-eyebrow {
-  display: block;
-  margin-bottom: 3px;
-  color: #8a650b;
-  font-size: 12px;
-  font-weight: 800;
-}
-
-.desktop-theme-title-row {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  min-width: 0;
-}
-
-.desktop-theme-title-row h1 {
-  margin: 0;
+/* 社团主题独立页面：没有分栏标签条，保留一行紧凑标题 */
+.theme-club-inline-title {
+  margin: 0 0 12px;
   color: #243042;
-  font-size: 25px;
+  font-size: 18px;
   font-weight: 700;
-  line-height: 1.2;
 }
 
-.desktop-theme-heading > p {
-  margin: 5px 0 0;
-  color: #6b7280;
-  font-size: 13px;
-  line-height: 1.45;
-}
-
+/* 统计信息：两枚共享胶囊（.app-filter-meta），紧跟面板标题靠左成组 */
 .desktop-theme-metrics {
   display: inline-flex;
   align-items: center;
-  overflow: hidden;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.84);
+  gap: 6px;
+  margin-left: 8px;
 }
 
-.desktop-theme-metric {
-  min-width: 92px;
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 7px;
-  padding: 6px 11px;
-  color: #6b7280;
-  font-size: 11px;
-  border-left: 1px solid #e5e7eb;
+.desktop-theme-metrics .app-filter-meta {
+  margin-left: 0;
 }
 
-.desktop-theme-metric:first-child {
-  border-left: 0;
-}
-
-.desktop-theme-metric strong {
-  color: #243042;
-  font-size: 16px;
-  line-height: 1;
-}
-
-.desktop-theme-metric.is-active strong {
-  color: var(--accent-purple-dark);
-}
-
-.desktop-theme-add {
-  --brand-add-radius: 8px;
-  flex-shrink: 0;
-}
-
+/* 桌面筛选面板：外壳（金边/hover/折叠）由 styles/filterPanel.css 提供，这里只留主题页控件细节 */
 .desktop-theme-toolbar {
-  display: grid;
-  grid-template-columns: minmax(280px, 1fr) 168px minmax(280px, 320px) auto;
-  align-items: center;
-  gap: 10px;
   margin-bottom: 12px;
-  padding: 12px;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-  background: #fff;
 }
 
 .desktop-theme-search,
-.desktop-theme-sort,
 .desktop-theme-date {
   width: 100%;
   min-width: 0;
 }
 
 .desktop-theme-search :deep(.el-input__wrapper),
-.desktop-theme-sort :deep(.el-select__wrapper),
 .desktop-theme-date:deep(.el-input__wrapper) {
   min-height: 38px;
   border: 1px solid #e2e8f0;
@@ -1197,13 +1170,11 @@ onUnmounted(() => {
 }
 
 .desktop-theme-search :deep(.el-input__wrapper:hover),
-.desktop-theme-sort :deep(.el-select__wrapper:hover),
 .desktop-theme-date:deep(.el-input__wrapper:hover) {
   border-color: rgba(212, 175, 55, 0.48);
 }
 
 .desktop-theme-search :deep(.el-input__wrapper.is-focus),
-.desktop-theme-sort :deep(.el-select__wrapper.is-focused),
 .desktop-theme-date:deep(.el-input__wrapper.is-active) {
   border-color: rgba(212, 175, 55, 0.72);
   box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.12);
@@ -1214,51 +1185,32 @@ onUnmounted(() => {
   background: transparent;
 }
 
-.desktop-theme-toolbar-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-  white-space: nowrap;
-}
+/* 排序胶囊的换行与间距由 filterPanel.css 的 .app-filter-status--text-chips 提供 */
 
-.desktop-theme-search-button,
 .desktop-theme-clear,
 .desktop-theme-refresh {
-  min-height: 38px;
+  min-height: 30px;
   margin-left: 0;
-  border-radius: 8px;
   font-weight: 700;
-}
-
-.desktop-theme-search-button {
-  padding-inline: 15px;
 }
 
 .desktop-theme-clear {
   color: #475569;
-  border-color: #e2e8f0;
-  background: #fff;
 }
 
 .desktop-theme-clear:hover,
 .desktop-theme-clear:focus {
   color: #7a5b08;
-  border-color: rgba(212, 175, 55, 0.48);
-  background: #fffaf0;
 }
 
 .desktop-theme-refresh {
-  width: 38px;
+  width: 30px;
   color: #64748b;
-  border-color: #e2e8f0;
 }
 
 .desktop-theme-refresh:hover,
 .desktop-theme-refresh:focus-visible {
   color: #7a5b08;
-  border-color: rgba(212, 175, 55, 0.48);
-  background: #fffaf0;
 }
 
 .desktop-theme-table-panel {
@@ -1394,7 +1346,8 @@ onUnmounted(() => {
 .pagination-wrapper {
   display: flex;
   justify-content: flex-end;
-  padding: 14px 16px;
+  /* 右下角悬浮按钮常驻视口右下角：给分页留出横向空间，避免被按钮压住 */
+  padding: 14px clamp(150px, 14vw, 210px) 14px 16px;
   border-top: 1px solid #edf0f4;
   background: #fff;
 }
@@ -1413,20 +1366,6 @@ onUnmounted(() => {
 
 .desktop-theme-empty-add {
   border-radius: 8px;
-}
-
-@media (min-width: 769px) and (max-width: 1180px) {
-  .desktop-theme-toolbar {
-    grid-template-columns: minmax(0, 1fr) 168px;
-  }
-
-  .desktop-theme-date {
-    grid-column: 1;
-  }
-
-  .desktop-theme-toolbar-actions {
-    grid-column: 2;
-  }
 }
 
 .header-section {

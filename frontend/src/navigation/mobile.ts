@@ -1,4 +1,5 @@
 import type { RouteLocationNormalizedLoaded } from 'vue-router'
+import { normalizeOrganizeTab } from '@/navigation/organize'
 
 export type MobileModule = 'clubs' | 'showcase' | 'organize' | 'workbench' | 'profile'
 export type MobileHeaderMode = 'tabs' | 'detail' | 'editor' | 'standalone'
@@ -37,7 +38,7 @@ export function mobileModule(route: RouteInput): MobileModule {
   if (path.startsWith('/characters/')) {
     return typeof route.query.returnTo === 'string' && /^\/showcase(?:\?|$)/.test(route.query.returnTo) ? 'showcase' : 'organize'
   }
-  if (['/location', '/ipcharacter', '/ip', '/character', '/category', '/theme'].includes(path)) return 'organize'
+  if (['/organize', '/location', '/ipcharacter', '/ip', '/character', '/category', '/theme'].includes(path)) return 'organize'
   return 'showcase'
 }
 
@@ -64,9 +65,10 @@ export function mobileTabs(module: MobileModule, identity: MobileIdentity): Mobi
     case 'showcase': return showcaseTabs
     case 'organize': return [
       { key: 'location', label: '位置', to: '/location' },
-      { key: 'ipcharacter', label: 'IP与角色', to: '/ipcharacter' },
-      { key: 'category', label: '品类', to: '/category' },
-      { key: 'theme', label: '主题', to: '/theme' },
+      // IP与角色 / 品类 / 主题 合并为同一个页面，分栏由 ?tab= 驱动。
+      { key: 'ip', label: 'IP与角色', to: '/organize?tab=ip' },
+      { key: 'category', label: '品类', to: '/organize?tab=category' },
+      { key: 'theme', label: '主题', to: '/organize?tab=theme' },
     ]
     case 'workbench': return [
       { key: 'goods', label: '谷子', to: '/club/goods' },
@@ -86,6 +88,7 @@ export function mobileTabs(module: MobileModule, identity: MobileIdentity): Mobi
 
 export function activeMobileTab(route: RouteInput): string {
   if (route.path === '/showcase') return normalizeShowcaseTab(route.query.tab)
+  if (route.path === '/organize') return normalizeOrganizeTab(route.query.tab)
   const segments = route.path.split('/').filter(Boolean)
   return segments[segments.length - 1] || ''
 }
@@ -114,8 +117,8 @@ export function mobileSwipeStepIndex(steps: MobileSwipeStep[], route: RouteInput
 export function mobileReturnTarget(route: RouteInput): string {
   if (route.path.startsWith('/characters/')) {
     const returnTo = route.query.returnTo
-    if (typeof returnTo === 'string' && /^\/(?:showcase|ipcharacter)(?:\?|$)/.test(returnTo)) return returnTo
-    return '/ipcharacter'
+    if (typeof returnTo === 'string' && /^\/(?:showcase|organize)(?:\?|$)/.test(returnTo)) return returnTo
+    return '/organize?tab=ip'
   }
   if (route.path.startsWith('/clubs/')) return '/clubs'
   if (route.path.startsWith('/club/')) return '/club/goods'
@@ -128,7 +131,9 @@ export function mobileNavAutoHides(route: RouteInput): boolean {
 }
 
 // Bounded list/workspace cache: credentials, details and editors never enter it.
+// 整理三个资料库合并在 OrganizeWorkspace 里，只需要缓存这一个页面组件；ThemeManagement
+// 仍是 /club/themes 的路由组件，继续保留。
 export const MOBILE_CACHE_COMPONENTS = [
-  'CloudShowcase', 'ClubDirectory', 'LocationManagement', 'IPCharacterManagement',
-  'CategoryManagement', 'ThemeManagement', 'PreorderManagement', 'ClubWorkspace',
+  'CloudShowcase', 'ClubDirectory', 'LocationManagement', 'OrganizeWorkspace',
+  'ThemeManagement', 'PreorderManagement', 'ClubWorkspace',
 ]

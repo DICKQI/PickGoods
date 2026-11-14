@@ -12,16 +12,30 @@ describe('mobile workspace route contract', () => {
   beforeEach(() => setActivePinia(createPinia()))
   it.each([
     ['/login', 'standalone'], ['/showcase', 'tabs'], ['/clubs', 'tabs'], ['/clubs/1', 'detail'],
-    ['/location', 'tabs'], ['/ipcharacter', 'tabs'], ['/characters/1/stats', 'detail'], ['/category', 'tabs'], ['/theme', 'tabs'],
+    ['/location', 'tabs'], ['/organize', 'tabs'], ['/characters/1/stats', 'detail'],
     ['/goods/new', 'editor'], ['/goods/drafts', 'detail'], ['/goods/1/edit', 'editor'], ['/preorders', 'tabs'], ['/settings', 'tabs'],
     ['/profile/account', 'tabs'], ['/profile/clubs', 'tabs'], ['/club/profile', 'tabs'], ['/club/goods', 'tabs'],
     ['/club/goods/new', 'editor'], ['/club/goods/1/edit', 'editor'], ['/club/gamification', 'tabs'], ['/club/themes', 'tabs'], ['/club/popularity', 'tabs'],
     ['/admin/users', 'standalone'], ['/admin/goods', 'standalone'], ['/admin/ip', 'standalone'], ['/admin/categories', 'standalone'],
     ['/admin/themes', 'standalone'], ['/admin/goods-crafts', 'standalone'], ['/admin/bgm-sync', 'standalone'],
   ])('%s has the expected mobile frame', (path, mode) => expect(mobileHeaderMode(path)).toBe(mode))
-  it('groups all old organize routes without changing URLs', () => {
-    for (const path of ['/location', '/ipcharacter', '/category', '/theme', '/ip', '/character']) expect(mobileModule({ path, query: {} })).toBe('organize')
+  it('groups the merged organize route and its legacy aliases', () => {
+    for (const path of ['/organize', '/location', '/ipcharacter', '/category', '/theme', '/ip', '/character']) expect(mobileModule({ path, query: {} })).toBe('organize')
     expect(mobileModule({ path: '/preorders', query: {} })).toBe('showcase')
+  })
+  it('derives the organize tab key from the merged route query', () => {
+    expect(activeMobileTab({ path: '/organize', query: {} })).toBe('ip')
+    expect(activeMobileTab({ path: '/organize', query: { tab: 'category' } })).toBe('category')
+    expect(activeMobileTab({ path: '/organize', query: { tab: 'nope' } })).toBe('ip')
+    expect(activeMobileTab({ path: '/location', query: {} })).toBe('location')
+  })
+  it('keeps the organize tab bar as four entries with merged URLs', () => {
+    expect(mobileTabs('organize', { isClub: false, isAuthenticated: true }).map(item => [item.key, item.to])).toEqual([
+      ['location', '/location'],
+      ['ip', '/organize?tab=ip'],
+      ['category', '/organize?tab=category'],
+      ['theme', '/organize?tab=theme'],
+    ])
   })
   it('normalizes malformed showcase links to the barn', () => {
     for (const tab of [undefined, 'nope', ['stats', 'barn']]) expect(activeMobileTab({ path: '/showcase', query: { tab: tab ?? null } })).toBe('barn')
@@ -49,8 +63,8 @@ describe('mobile workspace route contract', () => {
   it('clears remembered destinations and scroll without touching local settings', () => {
     const store = useMobileWorkspaceStore()
     localStorage.setItem('unrelated', 'keep')
-    store.remember('organize', '/theme')
-    store.saveScroll('/theme', 560)
+    store.remember('organize', '/organize?tab=theme')
+    store.saveScroll('/organize?tab=theme', 560)
     store.reset()
     expect(store.destinations).toEqual({})
     expect(store.scrollPositions).toEqual({})
@@ -60,11 +74,11 @@ describe('mobile workspace route contract', () => {
   it('remembers only workspaces and resets on identity changes', async () => {
     vi.spyOn(window, 'scrollTo').mockImplementation(() => {})
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:pathMatch(.*)*', component: { template: '<div />' } }] })
-    await router.push('/theme')
+    await router.push('/organize?tab=theme')
     const wrapper = mount(defineComponent({ setup() { useMobileWorkspace(ref(true)); return {} }, template: '<div />' }), { global: { plugins: [router] } })
     const store = useMobileWorkspaceStore()
     await flushPromises()
-    expect(store.destinations.organize).toBe('/theme')
+    expect(store.destinations.organize).toBe('/organize?tab=theme')
     await router.push('/goods/new')
     await flushPromises()
     expect(store.destinations.showcase).toBeUndefined()

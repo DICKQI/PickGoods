@@ -27,7 +27,7 @@ const routerRoutes = [
     component: { template: '<div />' },
   },
   {
-    path: '/theme',
+    path: '/organize',
     component: { template: '<div />' },
   },
   {
@@ -47,7 +47,7 @@ const routerRoutes = [
 const mountLayout = async ({
   width = 1197,
   height = 720,
-  path = '/theme',
+  path = '/organize',
   realRouting = false,
 }: {
   width?: number
@@ -102,7 +102,7 @@ const mountLayout = async ({
   })
 }
 
-const mountDesktopLayout = () => mountLayout({ width: 1197, path: '/theme' })
+const mountDesktopLayout = () => mountLayout({ width: 1197, path: '/organize' })
 const mountMobileLayout = (path: string) => mountLayout({ width: 390, path })
 
 describe('Layout top navigation', () => {
@@ -123,9 +123,12 @@ describe('Layout top navigation', () => {
     expect(wrapper.find('.navbar').exists()).toBe(false)
     // 社团目录只有单一工作区，不再占用顶部标签栏
     expect(wrapper.find('.mobile-page-header').exists()).toBe(false)
-    await wrapper.vm.$router.push('/theme')
+    await wrapper.vm.$router.push('/organize?tab=theme')
     await flushPromises()
-    expect(wrapper.get('.mobile-page-header').text()).toContain('主题')
+    // 合并页的顶部便签仍是四个分栏，主题被选中
+    const header = wrapper.get('.mobile-page-header')
+    for (const label of ['位置', 'IP与角色', '品类', '主题']) expect(header.text()).toContain(label)
+    expect(header.get('[aria-current="page"]').text()).toBe('主题')
     wrapper.unmount()
   })
 
@@ -167,15 +170,19 @@ describe('Layout top navigation', () => {
     vi.restoreAllMocks()
   })
 
-  it('keeps the theme entry in the top menu with the shorter label', async () => {
+  it('merges the library entries into one 整理 menu item', async () => {
     const wrapper = await mountDesktopLayout()
 
     const topMenu = wrapper.get('[data-test="desktop-top-menu"]')
-    const themeItem = wrapper.get('[data-index="/theme"]')
+    const organizeItem = wrapper.get('[data-index="/organize"]')
 
     expect(topMenu.attributes('data-ellipsis')).toBe('false')
-    expect(themeItem.text()).toBe('主题')
-    expect(topMenu.text()).not.toContain('主题管理')
+    expect(organizeItem.text()).toBe('整理')
+    // IP与角色 / 品类 / 主题 已收进「整理」页面内部的分栏，不再占用顶部菜单。
+    for (const index of ['/ipcharacter', '/category', '/theme']) {
+      expect(wrapper.findAll(`[data-index="${index}"]`)).toHaveLength(0)
+    }
+    expect(wrapper.findAll('[data-index="/organize"]')).toHaveLength(1)
   })
 
   it('preserves the club detail view when only filter query parameters change', () => {

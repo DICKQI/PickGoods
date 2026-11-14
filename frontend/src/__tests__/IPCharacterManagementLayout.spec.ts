@@ -81,24 +81,53 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(stickyRule).not.toContain('will-change: transform;')
   })
 
-  it('keeps IP expansion single-selection', () => {
+  it('keeps mobile expansion and the PC drawer single-selection', () => {
     expect(source).toContain('expandedIPs.value = [ipId]')
-    expect(source).toContain('expandedIPs.value = [row.id]')
     expect(source).toContain('expandedIPs.value = [newIpId]')
     expect(source).not.toContain('expandedIPs.value.push(ipId)')
     expect(source).not.toContain('expandedIPs.value.push(newIpId)')
+    // PC 端已改为卡片 + 抽屉：不再有表格展开，抽屉同一时间只展示一个作品
+    expect(source).not.toContain('handleTableExpandChange')
+    expect(source).toContain('drawerIPId.value = ip.id')
   })
 
   it('uses a compact mobile create button with a bottom action sheet', () => {
     expect(source).toContain("import MobileActionSheet from '@/components/MobileActionSheet.vue'")
     expect(source).toContain('const mobileAddSheetVisible = ref(false)')
     expect(source).toContain('const ipMobileCreateActions = [')
-    expect(source).toContain('class="header-actions desktop-create-actions"')
-    expect(source).toContain('class="mobile-create-actions"')
-    expect(source).toContain('class="mobile-add-btn"')
+    // 移动端标题由便签栏承担，新增入口是搜索行里的圆形按钮 + 底部 ActionSheet
+    expect(source).not.toContain('class="header-section"')
+    expect(source).toContain('class="mobile-inline-create"')
     expect(source).toContain('@click="openMobileAddSheet"')
     expect(source).toContain('v-model="mobileAddSheetVisible"')
     expect(source).toContain('@select="handleMobileCreateAction"')
+  })
+
+  it('moves the desktop create entry into a bottom-right floating button', () => {
+    expect(source).toContain("import AddFab, { type AddFabItem, type AddFabProps } from '@/components/AddFab.vue'")
+    expect(source).toContain('const ipFabItems: AddFabItem[] = [')
+    // 按钮配置注册给 Layout 外壳渲染，页面只在没有被外壳接管时回退渲染
+    expect(source).toContain('const ipFabProps = computed<AddFabProps>(')
+    expect(source).toContain("useOrganizeFab('ip'")
+    expect(source).toContain('<AddFab')
+    expect(source).toContain('v-if="!isMobile && !fabHosted"')
+    expect(source).toContain('v-bind="ipFabProps"')
+    expect(source).toContain('v-on="ipFabHandlers"')
+    expect(source).toContain("label: '新增 / 导入'")
+    expect(source).toContain('showPrimary: authStore.isAdmin')
+    expect(source).toContain('showRefresh: true')
+    expect(source).toContain('command: handleActionCommand')
+    expect(source).toContain('refresh: handleRefresh')
+    // 旧的页头新增按钮与独立刷新悬浮球已下线
+    expect(source).not.toContain('class="header-actions desktop-create-actions"')
+    expect(source).not.toContain('refresh-fab')
+  })
+
+  it('drops the drag-sort hint copy from the desktop toolbar', () => {
+    expect(source).not.toContain('拖拽卡片右上角把手可调整顺序')
+    // 排序中的提示与补封面提示仍保留
+    expect(source).toContain('当前按{{ sortLabel }}排序，拖拽排序已暂停')
+    expect(source).toContain('正在从 Bangumi 补齐封面…')
   })
 
   it('keeps the mobile search button inline and compacts the filter card', () => {
@@ -107,6 +136,24 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('grid-template-columns: minmax(0, 1fr) auto;')
     expect(source).toContain('grid-row: 2;')
     expect(source).not.toContain('.search-flex,\n  .filter-flex {\n    flex-direction: column;')
+  })
+
+  it('hides the desktop page heading and rebuilds the desktop filter panel', () => {
+    expect(source).toContain('class="app-visually-hidden"')
+    expect(source).not.toContain('class="header-section"')
+    expect(source).toContain("import AppFilterPanel from '@/components/AppFilterPanel.vue'")
+    expect(source).toContain('title="筛选作品"')
+    expect(source).toContain('v-model:collapsed="filterCollapsed"')
+    expect(source).toContain(':reset-disabled="!hasActiveFilters"')
+    expect(source).toContain('@reset="handleResetFilters"')
+    // 作品类型从下拉菜单改成胶囊多选
+    expect(source).toContain('class="app-filter-status app-filter-status--text-chips ip-filter-types"')
+    expect(source).toContain('v-for="option in SUBJECT_TYPE_OPTIONS"')
+    // 类型下拉只剩在移动端卡片里
+    expect(source).toContain('<el-card v-if="isMobile" class="search-card" shadow="never">')
+    expect(source.indexOf('title="筛选作品"')).toBeLessThan(
+      source.indexOf('<el-card v-if="isMobile" class="search-card" shadow="never">'),
+    )
   })
 
   it('uses a branded header shell for both Bangumi import and sync dialogs instead of plain title strings', () => {

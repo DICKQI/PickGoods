@@ -220,7 +220,7 @@ const goBack = () => {
     router.back()
     return
   }
-  router.push('/ipcharacter')
+  router.push('/organize?tab=ip')
 }
 
 const initChart = (el: HTMLDivElement | null): echarts.ECharts | null => {

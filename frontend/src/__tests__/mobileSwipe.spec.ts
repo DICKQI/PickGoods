@@ -18,7 +18,7 @@ describe('mobile swipe sequence', () => {
     expect(pairs(collector)).toEqual([
       'clubs:clubs',
       'showcase:showcase', 'showcase:barn', 'showcase:preorders', 'showcase:journal', 'showcase:stats',
-      'organize:location', 'organize:ipcharacter', 'organize:category', 'organize:theme',
+      'organize:location', 'organize:ip', 'organize:category', 'organize:theme',
       'profile:account', 'profile:clubs', 'profile:achievements', 'profile:rewards', 'profile:settings',
     ])
   })
@@ -35,7 +35,7 @@ describe('mobile swipe sequence', () => {
     expect(pairs(anonymous)).toEqual([
       'clubs:clubs',
       'showcase:showcase', 'showcase:barn', 'showcase:preorders', 'showcase:journal', 'showcase:stats',
-      'organize:location', 'organize:ipcharacter', 'organize:category', 'organize:theme',
+      'organize:location', 'organize:ip', 'organize:category', 'organize:theme',
       'profile:account', 'profile:settings',
     ])
   })
@@ -50,6 +50,16 @@ describe('mobile swipe sequence', () => {
     // 云展柜首个标签的右侧邻居是社团目录，统计标签的左侧邻居是整理的位置页。
     expect(steps[mobileSwipeStepIndex(steps, { path: '/showcase', query: { tab: 'showcase' } }) - 1]?.to).toBe('/clubs')
     expect(steps[mobileSwipeStepIndex(steps, { path: '/showcase', query: { tab: 'stats' } }) + 1]?.to).toBe('/location')
+  })
+
+  it('keeps the merged organize tabs in the sequence with query URLs', () => {
+    const steps = mobileSwipeSequence(collector)
+    const organize = steps.filter(step => step.module === 'organize')
+    expect(organize.map(step => step.to)).toEqual([
+      '/location', '/organize?tab=ip', '/organize?tab=category', '/organize?tab=theme',
+    ])
+    expect(mobileSwipeStepIndex(steps, { path: '/organize', query: { tab: 'category' } })).toBe(8)
+    expect(mobileSwipeStepIndex(steps, { path: '/organize', query: {} })).toBe(7)
   })
 
   it('returns -1 for routes that are not part of the sequence', () => {

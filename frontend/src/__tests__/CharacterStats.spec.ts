@@ -240,6 +240,6 @@ describe('CharacterStats', () => {
     await wrapper.get('.back-button').trigger('click')
 
     expect(routerBack).not.toHaveBeenCalled()
-    expect(routerPush).toHaveBeenCalledWith('/ipcharacter')
+    expect(routerPush).toHaveBeenCalledWith('/organize?tab=ip')
   })
 })

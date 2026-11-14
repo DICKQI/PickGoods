@@ -1,59 +1,8 @@
 <template>
   <div class="ip-character-management-container">
-    <!-- 顶部操作区 -->
-    <div class="header-section">
-      <div class="title-wrapper">
-        <h2 class="page-title">IP作品与角色管理</h2>
-        <span class="sub-title">把作品和角色档案整理得漂漂亮亮吧~ (｡･ω･｡)ﾉ♡</span>
-      </div>
+    <!-- 桌面端不再渲染标题区，仅保留给屏幕阅读器的页面标题；移动端标题由便签栏承担 -->
+    <h1 class="app-visually-hidden">IP作品与角色管理</h1>
 
-      <!-- 合并后的操作按钮 -->
-      <div class="header-actions desktop-create-actions" v-if="authStore.isAdmin">
-        <el-dropdown trigger="click" @command="handleActionCommand">
-          <el-button type="primary" class="action-dropdown-btn">
-            <el-icon class="icon-left"><Plus /></el-icon>
-            <span>新增 / 导入</span>
-            <el-icon class="icon-right"><ArrowDown /></el-icon>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu class="custom-dropdown-menu">
-              <el-dropdown-item command="bgm">
-                <div class="menu-item-content">
-                  <el-icon><Search /></el-icon>
-                  <span>从 Bangumi 导入</span>
-                  <el-tag size="small" type="info" effect="plain" class="menu-tag">推荐</el-tag>
-                </div>
-              </el-dropdown-item>
-              <el-dropdown-item divided command="ip">
-                <div class="menu-item-content">
-                  <el-icon><Collection /></el-icon>
-                  <span>新增作品 (IP)</span>
-                </div>
-              </el-dropdown-item>
-              <el-dropdown-item command="character">
-                <div class="menu-item-content">
-                  <el-icon><UserFilled /></el-icon>
-                  <span>新增角色</span>
-                </div>
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </div>
-
-      <div class="mobile-create-actions" v-if="authStore.isAdmin">
-        <el-button
-          type="primary"
-          class="mobile-add-btn"
-          circle
-          title="新增 / 导入"
-          aria-label="新增 / 导入"
-          @click="openMobileAddSheet"
-        >
-          <el-icon><Plus /></el-icon>
-        </el-button>
-      </div>
-    </div>
 
     <MobileActionSheet
       v-if="authStore.isAdmin"
@@ -63,8 +12,53 @@
       @select="handleMobileCreateAction"
     />
 
-    <!-- 搜索与筛选卡片 -->
-    <el-card class="search-card" shadow="never">
+    <!-- 桌面端：与谷仓「筛选谷子」同款的筛选面板（金边 + 悬停浮起 + 折叠） -->
+    <AppFilterPanel
+      v-if="!isMobile"
+      title="筛选作品"
+      v-model:collapsed="filterCollapsed"
+      :reset-disabled="!hasActiveFilters"
+      @reset="handleResetFilters"
+    >
+      <div class="ip-filter-field">
+        <label>关键词</label>
+        <el-input
+          v-model="searchText"
+          placeholder="搜索作品名称或关键词..."
+          clearable
+          class="custom-search ip-filter-keyword"
+          @input="handleKeywordInput"
+          @clear="handleSearch"
+          @keyup.enter="handleSearch"
+        >
+          <template #prefix>
+            <el-icon><Search /></el-icon>
+          </template>
+        </el-input>
+      </div>
+
+      <div class="ip-filter-field">
+        <label>作品类型</label>
+        <el-checkbox-group
+          v-model="selectedSubjectTypes"
+          class="app-filter-status app-filter-status--text-chips ip-filter-types"
+          aria-label="按作品类型筛选"
+          @change="handleSearch"
+        >
+          <el-checkbox-button
+            v-for="option in SUBJECT_TYPE_OPTIONS"
+            :key="option.value"
+            :value="option.value"
+            class="status-chip"
+          >
+            <span class="status-chip__label">{{ option.label }}</span>
+          </el-checkbox-button>
+        </el-checkbox-group>
+      </div>
+    </AppFilterPanel>
+
+    <!-- 移动端：保持原有搜索卡与类型下拉 -->
+    <el-card v-if="isMobile" class="search-card" shadow="never">
       <div class="search-filter-container">
         <div class="search-flex">
           <el-input
@@ -99,11 +93,12 @@
             class="filter-select"
             style="width: 100%"
           >
-            <el-option label="书籍" :value="1" />
-            <el-option label="动画" :value="2" />
-            <el-option label="音乐" :value="3" />
-            <el-option label="游戏" :value="4" />
-            <el-option label="三次元/特摄" :value="6" />
+            <el-option
+              v-for="option in SUBJECT_TYPE_OPTIONS"
+              :key="option.value"
+              :label="option.label"
+              :value="option.value"
+            />
           </el-select>
         </div>
       </div>
@@ -111,168 +106,75 @@
 
     <!-- 内容展示区 -->
     <div v-loading="loading" class="content-body">
-      <!-- PC端：精致的表格 -->
-      <!-- 修改点：data绑定sortedIpList，添加sort-change事件 -->
+      <!-- PC端：图片卡片网格（封面取自 Bangumi） -->
       <div class="desktop-view">
-        <el-table
-          ref="tableRef"
-          :data="sortedIpList"
-          border-radius="12"
-          style="width: 100%"
-          row-key="id"
-          @expand-change="handleTableExpandChange"
-          @sort-change="handleSortChange"
-        >
-          <el-table-column v-if="authStore.isAdmin" label="排序" width="80" align="center">
-            <template #default>
-              <div class="drag-handle" @click.stop>
-                <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                  <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                  <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                </svg>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column type="expand" width="50">
-            <template #default="{ row }">
-              <div class="character-expand-section">
-                <div class="expand-header">
-                  <span class="expand-title">角色列表</span>
-                  <el-button
-                    v-if="authStore.isAdmin"
-                    size="small"
-                    type="primary"
-                    text
-                    @click="handleAddCharacterForIP(row)"
-                  >
-                    <el-icon><Plus /></el-icon>
-                    为该IP添加角色
-                  </el-button>
-                </div>
-                <div v-loading="characterLoadingMap[row.id]" class="character-content">
-                  <template v-if="characterMap[row.id]?.length">
-                    <div class="character-grid character-grid--desktop">
-                      <div
-                        v-for="char in characterMap[row.id]"
-                        :key="char.id"
-                        class="character-tile"
-                        :class="{ clickable: authStore.isAdmin }"
-                        @click="authStore.isAdmin && handleEditCharacter(char)"
-                      >
-                        <el-avatar :size="40" :src="char.avatar || undefined" shape="square" class="char-avatar tile-avatar">
-                          <el-icon><UserFilled /></el-icon>
-                        </el-avatar>
-                        <div class="character-name-compact" :title="char.name">{{ char.name }}</div>
+        <div class="ip-toolbar">
+          <div class="ip-toolbar-info">
+            <span class="ip-toolbar-count">共 {{ sortedIpList.length }} 部作品</span>
+            <span v-if="coverBackfilling" class="ip-toolbar-hint">
+              <el-icon class="is-loading ip-toolbar-spin"><Loading /></el-icon>
+              正在从 Bangumi 补齐封面…
+            </span>
+            <span v-else-if="coverBackfillUnsupported" class="ip-toolbar-hint is-warn">
+              服务端版本较旧，补齐封面暂不可用
+            </span>
+            <span v-else-if="sortState.prop" class="ip-toolbar-hint">
+              当前按{{ sortLabel }}排序，拖拽排序已暂停
+            </span>
+          </div>
 
-                        <el-button
-                          v-if="authStore.isAdmin"
-                          class="tile-delete-btn"
-                          size="small"
-                          text
-                          type="danger"
-                          @click.stop="handleDeleteCharacter(char)"
-                          title="删除"
-                        >
-                          <el-icon><Delete /></el-icon>
-                        </el-button>
-                      </div>
-                    </div>
-                  </template>
-                  <el-empty
-                    v-else-if="!characterLoadingMap[row.id]"
-                    description="该作品下暂无角色"
-                    :image-size="80"
-                  />
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-
-          <!-- 修改点：添加 sortable="custom" 和 prop -->
-          <el-table-column prop="name" label="作品名称" min-width="180" sortable="custom">
-            <template #default="{ row }">
-              <span class="table-name">
-                {{ row.name }}
-                <el-tooltip
-                  v-if="row.bgm_subject_id"
-                  :content="`已绑定 Bangumi (ID: ${row.bgm_subject_id})`"
-                  placement="top"
-                >
-                  <el-icon class="bgm-bound-icon" :size="14"><Link /></el-icon>
-                </el-tooltip>
-              </span>
-            </template>
-          </el-table-column>
-
-          <!-- 修改点：添加 sortable="custom" 和 prop -->
-          <el-table-column prop="subject_type" label="作品类型" width="120" align="center" sortable="custom">
-            <template #default="{ row }">
-              <el-tag
-                v-if="row.subject_type"
-                size="small"
-                effect="plain"
-                class="subject-type-tag"
-                :type="getSubjectTypeTagType(row.subject_type)"
+          <div class="ip-toolbar-actions">
+            <div class="ip-sort-group" role="group" aria-label="作品排序方式">
+              <button
+                v-for="option in sortOptions"
+                :key="option.prop || 'default'"
+                type="button"
+                class="ip-sort-pill"
+                :class="{ 'is-active': sortState.prop === option.prop }"
+                @click="handleSortPillClick(option.prop)"
               >
-                {{ getSubjectTypeLabel(row.subject_type) }}
-              </el-tag>
-              <span v-else class="no-type">-</span>
-            </template>
-          </el-table-column>
-
-          <el-table-column label="检索关键词" min-width="250">
-            <template #default="{ row }">
-              <div class="tag-group">
-                <el-tag
-                  v-for="keyword in row.keywords || []"
-                  :key="keyword.id"
-                  effect="plain"
-                  round
-                  size="small"
-                  class="custom-tag"
+                <span>{{ option.label }}</span>
+                <el-icon
+                  v-if="sortState.prop === option.prop && option.prop"
+                  class="ip-sort-arrow"
+                  :class="{ 'is-desc': sortState.order === 'descending' }"
                 >
-                  {{ keyword.value }}
-                </el-tag>
-              </div>
-            </template>
-          </el-table-column>
+                  <ArrowDown />
+                </el-icon>
+              </button>
+            </div>
 
-          <!-- 修改点：添加 sortable="custom" 和 prop="character_count" -->
-          <el-table-column prop="character_count" label="角色数量" width="120" align="center" sortable="custom">
-            <template #default="{ row }">
-              <span class="character-count">{{ row.character_count ?? (characterMap[row.id]?.length || 0) }}</span>
-            </template>
-          </el-table-column>
+            <el-button
+              v-if="authStore.isAdmin"
+              class="ip-cover-btn"
+              size="small"
+              :loading="coverBackfilling"
+              :disabled="coverBackfilling || coverBackfillUnsupported"
+              :title="
+                coverBackfillUnsupported
+                  ? '当前服务端还不支持封面补齐，请更新后端'
+                  : '从 Bangumi 补齐缺失的作品封面'
+              "
+              @click="handleBackfillCovers"
+            >
+              <el-icon><Picture /></el-icon>
+              <span>补齐封面</span>
+            </el-button>
+          </div>
+        </div>
 
-          <el-table-column v-if="authStore.isAdmin" label="操作" width="175" align="right" fixed="right">
-            <template #default="{ row }">
-              <div class="action-inline">
-                <el-tooltip
-                  content="从 Bangumi 更新角色（增量同步）"
-                  placement="top"
-                  :show-after="500"
-                >
-                  <el-button
-                    link
-                    type="info"
-                    class="bgm-sync-btn"
-                    @click="handleOpenBGMSync(row)"
-                    title="从 BGM 更新"
-                  >
-                    <el-icon :size="16"><Refresh /></el-icon>
-                  </el-button>
-                </el-tooltip>
-                <el-button link type="primary" @click="handleEditIP(row)" title="编辑">
-                  <el-icon :size="16"><Edit /></el-icon>
-                </el-button>
-                <el-button link type="danger" @click="handleDeleteIP(row)" title="删除">
-                  <el-icon :size="16"><Delete /></el-icon>
-                </el-button>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
+        <div ref="gridRef" class="ip-card-grid" :class="{ 'is-sorting': isSorting }">
+          <IPWorkCard
+            v-for="item in sortedIpList"
+            :key="item.id"
+            :ip="item"
+            :is-admin="authStore.isAdmin"
+            @open="openCharactersDrawer"
+            @edit="handleEditIP"
+            @remove="handleDeleteIP"
+            @bgm-sync="handleOpenBGMSync"
+          />
+        </div>
       </div>
 
       <!-- 移动端：现代化卡片 -->
@@ -443,11 +345,25 @@
       <el-empty v-if="!loading && ipList.length === 0" description="没有找到相关的作品" />
     </div>
 
-    <!-- 刷新按钮 - 右下角悬浮（仅PC端） -->
-    <div class="refresh-fab hidden-xs-only" @click="handleRefresh" :class="{ loading: loading }">
-      <el-icon v-if="!loading"><Refresh /></el-icon>
-      <el-icon v-else class="is-loading"><Loading /></el-icon>
-    </div>
+    <!-- 桌面端右下角悬浮：新增 / 导入（下拉）+ 刷新；在 /organize 里改由 Layout 外壳渲染 -->
+    <AddFab
+      v-if="!isMobile && !fabHosted"
+      v-bind="ipFabProps"
+      v-on="ipFabHandlers"
+    />
+
+    <!-- PC端：角色抽屉（点击卡片打开） -->
+    <IPCharactersDrawer
+      v-model="drawerVisible"
+      :ip="drawerIP"
+      :characters="drawerCharacters"
+      :loading="drawerIP ? !!characterLoadingMap[drawerIP.id] : false"
+      :is-admin="authStore.isAdmin"
+      :is-mobile="isMobile"
+      @add-character="handleAddCharacterForIP"
+      @edit-character="handleEditCharacter"
+      @delete-character="handleDeleteCharacter"
+    />
 
     <!-- IP编辑弹窗 (保持不变) -->
     <el-dialog
@@ -523,6 +439,41 @@
                     <el-option label="三次元/特摄" :value="6" />
                   </el-select>
                 </el-form-item>
+              </div>
+            </section>
+
+            <section class="ip-editor-section ip-editor-section--cover">
+              <div class="ip-editor-section-header">
+                <h4>作品封面</h4>
+                <p>留空会用作品名首字占位；也可以一键从 Bangumi 取封面，或手填图片地址~</p>
+              </div>
+              <div class="ip-editor-cover-row">
+                <div class="ip-editor-cover-preview" :class="{ 'is-empty': !ipFormData.cover_image }">
+                  <img v-if="ipFormData.cover_image" :src="ipFormData.cover_image" alt="封面预览" />
+                  <span v-else>{{ (ipFormData.name || '?').trim().charAt(0) || '?' }}</span>
+                </div>
+                <div class="ip-editor-cover-fields">
+                  <el-input
+                    :model-value="ipFormData.cover_image ?? ''"
+                    placeholder="封面图 URL（可留空）"
+                    clearable
+                    @update:model-value="(value: string) => (ipFormData.cover_image = value || null)"
+                  />
+                  <div class="ip-editor-cover-actions">
+                    <el-button
+                      size="small"
+                      :loading="ipCoverFetching"
+                      :disabled="!isEditIP || ipCoverFetching"
+                      @click="handleFetchCoverForIP"
+                    >
+                      <el-icon><Picture /></el-icon>
+                      从 Bangumi 取封面
+                    </el-button>
+                    <el-button size="small" :disabled="!ipFormData.cover_image" @click="handleClearIPCover">
+                      清除
+                    </el-button>
+                  </div>
+                </div>
               </div>
             </section>
 
@@ -1315,14 +1266,24 @@ import { useAuthStore } from '@/stores/auth'
 import { useMetadataStore } from '@/stores/metadata'
 import { useMobilePullRefresh } from '@/composables/useMobilePullRefresh'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import { useOrganizeFab, type OrganizeFabHandlers } from '@/composables/useOrganizeFab'
+import { isEndpointUnsupportedError } from '@/utils/request'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
+import IPWorkCard from '@/components/IPWorkCard.vue'
+import IPCharactersDrawer from '@/components/IPCharactersDrawer.vue'
+import AppFilterPanel from '@/components/AppFilterPanel.vue'
+import AddFab, { type AddFabItem, type AddFabProps } from '@/components/AddFab.vue'
+import { SUBJECT_TYPE_OPTIONS, subjectTypeLabel } from '@/navigation/subjectTypes'
+import { debounce } from '@/utils/debounce'
 import {
   getIPList,
   getIPDetail,
   createIP,
   updateIP,
   deleteIP,
+  fetchIPCovers,
+  fetchIPCover,
   getIPCharacters,
   batchUpdateIPOrder,
   createCharacter,
@@ -1360,6 +1321,13 @@ const ipMobileCreateActions = [
   { key: 'character', label: '新增角色', icon: UserFilled },
 ]
 
+// 桌面端右下角悬浮按钮的下拉项（与移动端 ActionSheet 一一对应）
+const ipFabItems: AddFabItem[] = [
+  { command: 'bgm', label: '从 Bangumi 导入', icon: Search, tag: '推荐' },
+  { command: 'ip', label: '新增作品 (IP)', icon: Collection, divided: true },
+  { command: 'character', label: '新增角色', icon: UserFilled },
+]
+
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick, true)
   window.addEventListener('scroll', queueUpdateMobileStickyHeader, { passive: true })
@@ -1376,6 +1344,7 @@ onUnmounted(() => {
     window.cancelAnimationFrame(mobileStickyRaf)
     mobileStickyRaf = null
   }
+  handleKeywordInput.cancel()
   destroySortables()
 })
 
@@ -1412,9 +1381,9 @@ const {
 })
 
 // 拖拽排序相关
-const tableRef = ref()
+const gridRef = ref<HTMLElement | null>(null)
 const mobileListRef = ref<HTMLElement | null>(null)
-let sortableTable: ReturnType<typeof Sortable.create> | null = null
+let sortableGrid: ReturnType<typeof Sortable.create> | null = null
 let sortableMobile: ReturnType<typeof Sortable.create> | null = null
 
 // 移动端：侧滑操作（编辑/删除）
@@ -1558,17 +1527,62 @@ const loading = ref(false)
 const submitting = ref(false)
 const searchText = ref('')
 const selectedSubjectTypes = ref<number[]>([])
+// 桌面筛选面板：折叠状态 + 是否存在生效条件（决定「重置」是否可点）
+const filterCollapsed = ref(false)
+
+const hasActiveFilters = computed(
+  () => Boolean(searchText.value.trim()) || selectedSubjectTypes.value.length > 0,
+)
+
+/** 关键词输入即筛（250ms 防抖）；回车与清空仍然立即生效 */
+const handleKeywordInput = debounce((value: string) => {
+  searchText.value = value
+  void handleSearch()
+}, 250)
+
+const handleResetFilters = () => {
+  handleKeywordInput.cancel()
+  searchText.value = ''
+  selectedSubjectTypes.value = []
+  void handleSearch()
+}
 const ipList = ref<IP[]>([])
 const characterMap = ref<Record<number, Character[]>>({})
 const characterLoadingMap = ref<Record<number, boolean>>({})
 const expandedIPs = ref<number[]>([])
 
-// 排序状态管理
-const sortState = ref<{ prop: string, order: string }>({ prop: '', order: '' })
+// 排序状态管理：默认（手动拖拽）/ 名称 / 类型 / 角色数，同一列再次点击切换升降序
+const sortState = ref<{ prop: '' | 'name' | 'subject_type' | 'character_count', order: '' | 'ascending' | 'descending' }>({
+  prop: '',
+  order: '',
+})
 
-// 监听表格排序变化
-const handleSortChange = ({ prop, order }: { prop: string, order: string }) => {
-  sortState.value = { prop, order }
+type IPSortProp = '' | 'name' | 'subject_type' | 'character_count'
+
+const sortOptions: { prop: IPSortProp, label: string }[] = [
+  { prop: '', label: '默认' },
+  { prop: 'name', label: '名称' },
+  { prop: 'subject_type', label: '类型' },
+  { prop: 'character_count', label: '角色数' },
+]
+
+const sortLabel = computed(
+  () => sortOptions.find((option) => option.prop === sortState.value.prop)?.label ?? '',
+)
+
+/** 点击排序胶囊：换列从升序开始，同列再点切换升降序，点「默认」清空排序并恢复拖拽 */
+const handleSortPillClick = (prop: IPSortProp) => {
+  if (!prop) {
+    sortState.value = { prop: '', order: '' }
+  } else if (sortState.value.prop === prop) {
+    sortState.value = {
+      prop,
+      order: sortState.value.order === 'ascending' ? 'descending' : 'ascending',
+    }
+  } else {
+    sortState.value = { prop, order: 'ascending' }
+  }
+  nextTick(() => initDragSort())
 }
 
 // 纯前端排序计算属性
@@ -1740,9 +1754,9 @@ watch(
 )
 
 const destroySortables = () => {
-  if (sortableTable) {
-    sortableTable.destroy()
-    sortableTable = null
+  if (sortableGrid) {
+    sortableGrid.destroy()
+    sortableGrid = null
   }
   if (sortableMobile) {
     sortableMobile.destroy()
@@ -1753,7 +1767,7 @@ const destroySortables = () => {
 const handleRowReorder = async (oldIndex: number, newIndex: number) => {
   if (oldIndex === newIndex) return
   if (sortState.value.prop) {
-    ElMessage.warning('请清空表格排序后再进行拖拽排序')
+    ElMessage.warning('请切换回「默认」排序后再进行拖拽排序')
     await fetchIPList(true)
     return
   }
@@ -1793,13 +1807,12 @@ const initDragSort = () => {
   destroySortables()
   if (typeof window === 'undefined' || !authStore.isAdmin) return
 
-  const tableEl = tableRef.value?.$el as HTMLElement | undefined
-  const tbody = tableEl?.querySelector('.el-table__body-wrapper tbody') as HTMLElement | null
-  if (tbody) {
-    sortableTable = Sortable.create(tbody, {
-      handle: '.drag-handle',
-      draggable: '.el-table__row',
-      filter: '.el-table__expanded-row',
+  // 桌面端卡片网格：只有「默认」排序（非列排序）时才允许拖拽
+  const gridEl = gridRef.value
+  if (gridEl && !sortState.value.prop) {
+    sortableGrid = Sortable.create(gridEl, {
+      handle: '.ip-card-drag',
+      draggable: '.ip-card',
       animation: 150,
       onStart: () => {
         isSorting.value = true
@@ -1812,7 +1825,7 @@ const initDragSort = () => {
   }
 
   const mobileListEl = mobileListRef.value
-  if (mobileListEl) {
+  if (mobileListEl && !sortState.value.prop) {
     sortableMobile = Sortable.create(mobileListEl, {
       handle: '.mobile-drag-handle',
       draggable: '.ip-card-item',
@@ -1839,6 +1852,7 @@ const ipFormData = ref({
   name: '',
   keywords: [] as string[],
   subject_type: null as number | null,
+  cover_image: null as string | null,
 })
 const ipFormRules: FormRules = {
   name: [{ required: true, message: '请输入作品名称', trigger: 'blur' }],
@@ -1877,6 +1891,8 @@ const bgmSubjectType = ref<number | undefined>(undefined)
 const bgmSearching = ref(false)
 const bgmCharacterKeyword = ref('')
 const bgmSubjects = ref<BGMSubject[]>([])
+// 当前选中的 BGM 条目：用于把条目封面一并写进 IP
+const bgmSelectedSubject = ref<BGMSubject | null>(null)
 const bgmSearchResult = ref<BGMSearchResponse | null>(null)
 const bgmSelectedCharacters = ref<number[]>([])
 const bgmImporting = ref(false)
@@ -1885,32 +1901,10 @@ const bgmImportResult = ref<BGMCreateCharactersResponse | null>(null)
 const getGenderLabel = (g: CharacterGender) =>
   ({ male: '男', female: '女', other: '其他' }[g] || '未知')
 
-// 获取作品类型标签
-const getSubjectTypeLabel = (type: number | null | undefined) => {
-  if (!type) return ''
-  const map: Record<number, string> = {
-    1: '书籍',
-    2: '动画',
-    3: '音乐',
-    4: '游戏',
-    6: '三次元/特摄',
-  }
-  return map[type] || '未知'
-}
+// 获取作品类型标签（类型映射集中在 navigation/subjectTypes.ts）
+const getSubjectTypeLabel = (type: number | null | undefined) => subjectTypeLabel(type)
 
-// 获取作品类型标签颜色
-const getSubjectTypeTagType = (type: number | null | undefined): '' | 'success' | 'info' | 'warning' | 'danger' => {
-  if (!type) return ''
-  const map: Record<number, '' | 'success' | 'info' | 'warning' | 'danger'> = {
-    1: 'warning', // 书籍 - 黄色
-    2: 'success', // 动画 - 绿色
-    3: 'info',    // 音乐 - 蓝色
-    4: 'danger',  // 游戏 - 红色
-    6: '',        // 三次元/特摄 - 默认
-  }
-  return map[type] || ''
-}
-
+// 角色数量同步：PC 卡片与移动端卡片共用
 const setIPCharacterCount = (ipId: number, count: number) => {
   const ip = ipList.value.find((x) => x.id === ipId)
   if (!ip) return
@@ -1945,6 +1939,111 @@ const handleMobileCreateAction = (command: string) => {
   handleActionCommand(command)
 }
 
+// ==================== 封面补齐（Bangumi 条目图） ====================
+// 未命中的 IP 后端会记录 cover_checked_at，7 天内不再重复请求 BGM
+const COVER_RETRY_DAYS = 7
+const COVER_BATCH_LIMIT = 20
+const COVER_MAX_ROUNDS = 5
+
+const coverBackfilling = ref(false)
+// 老版本后端没有封面接口（POST 会落到详情路由返回 405）：识别到后就不再重试
+const coverBackfillUnsupported = ref(false)
+
+const needsCoverFetch = (ip: IP) => {
+  if (ip.cover_image) return false
+  if (!ip.cover_checked_at) return true
+  const checkedAt = Date.parse(ip.cover_checked_at)
+  if (Number.isNaN(checkedAt)) return true
+  return Date.now() - checkedAt > COVER_RETRY_DAYS * 24 * 60 * 60 * 1000
+}
+
+/** 把后端补齐的封面同步到列表与本地缓存，卡片立刻显示新图 */
+const applyCoverResults = (items: { id: number; cover_image: string | null }[]) => {
+  if (!items.length) return
+  const now = new Date().toISOString()
+  metadataStore.applyIPCovers(items, now)
+  const coverMap = new Map(items.map((item) => [item.id, item.cover_image]))
+  ipList.value = ipList.value.map((ip) =>
+    coverMap.has(ip.id)
+      ? { ...ip, cover_image: coverMap.get(ip.id) ?? null, cover_checked_at: now }
+      : ip,
+  )
+}
+
+/** 分批补齐：后端单次上限 20 条，remaining > 0 时继续续跑（已补/已记录的会自动退出候选集） */
+const backfillCovers = async (ids: number[], options: { silent?: boolean } = {}) => {
+  if (!ids.length || coverBackfilling.value) return null
+
+  coverBackfilling.value = true
+  const summary = { updated: 0, failed: 0, remaining: 0 }
+
+  try {
+    let round = 0
+    let result: Awaited<ReturnType<typeof fetchIPCovers>> | null = null
+    do {
+      result = await fetchIPCovers({ ids, limit: COVER_BATCH_LIMIT })
+      applyCoverResults(result.items)
+      summary.updated += result.updated
+      summary.failed += result.failed.length
+      summary.remaining = result.remaining
+      round += 1
+    } while (result.remaining > 0 && round < COVER_MAX_ROUNDS)
+
+    // 后端判定「还没到重查时间」的 IP 不会出现在 items 里：
+    // 本地也把它们标记为已检查，否则每次进页面都会白白多发一次请求
+    const handled = new Set(result.items.map((item) => item.id))
+    const untouched = ipList.value.filter((ip) => ids.includes(ip.id) && !handled.has(ip.id))
+    if (untouched.length) {
+      applyCoverResults(untouched.map((ip) => ({ id: ip.id, cover_image: ip.cover_image ?? null })))
+    }
+  } catch (err: any) {
+    // 后端版本较旧（接口不存在 → 405/404）：静默降级，只在手动操作时提示一次
+    if (isEndpointUnsupportedError(err)) {
+      coverBackfillUnsupported.value = true
+      if (!options.silent) {
+        ElMessage.warning('当前服务端还不支持封面补齐，请更新后端后再试')
+      }
+      return null
+    }
+    if (options.silent) console.warn('自动补齐作品封面失败', err)
+    else ElMessage.error(err?.message || '封面补齐失败')
+  } finally {
+    coverBackfilling.value = false
+  }
+
+  return summary
+}
+
+/** 进入页面后静默补齐（仅管理员、仅 PC 端，避免移动端多余请求） */
+const autoBackfillCovers = async () => {
+  if (!authStore.isAdmin || isMobile.value) return
+  if (coverBackfillUnsupported.value) return
+  const ids = ipList.value.filter(needsCoverFetch).map((ip) => ip.id)
+  if (!ids.length) return
+  await backfillCovers(ids, { silent: true })
+}
+
+/** 手动「补齐封面」：只补仍然缺图且过了重试窗口的作品 */
+const handleBackfillCovers = async () => {
+  if (coverBackfillUnsupported.value) {
+    ElMessage.warning('当前服务端还不支持封面补齐，请更新后端后再试')
+    return
+  }
+  const ids = ipList.value.filter(needsCoverFetch).map((ip) => ip.id)
+  if (!ids.length) {
+    ElMessage.success('所有作品都已有封面啦')
+    return
+  }
+
+  const summary = await backfillCovers(ids, { silent: true })
+  if (!summary) return
+
+  const parts = [`已补 ${summary.updated} 部`]
+  if (summary.failed) parts.push(`${summary.failed} 部未匹配或失败`)
+  if (summary.remaining) parts.push(`还有 ${summary.remaining} 部待补`)
+  ElMessage.success(parts.join('，'))
+}
+
 const fetchIPList = async (force = false) => {
   loading.value = true
   try {
@@ -1970,6 +2069,8 @@ const fetchIPList = async (force = false) => {
     expandedIPs.value = []
     await nextTick()
     initDragSort()
+    // 进页面后静默补齐缺失封面（仅管理员；后端按 cover_checked_at 节流）
+    void autoBackfillCovers()
   } catch (err: any) {
     ElMessage.error(err.message || '加载失败')
   } finally {
@@ -2015,19 +2116,25 @@ const toggleExpand = async (ipId: number) => {
   queueUpdateMobileStickyHeader()
 }
 
-const handleTableExpandChange = async (row: IP, expandedRows: IP[]) => {
-  const isExpanded = expandedRows.some((r) => r.id === row.id)
-  if (isExpanded) {
-    for (const expandedRow of expandedRows) {
-      if (expandedRow.id !== row.id) {
-        tableRef.value?.toggleRowExpansion?.(expandedRow, false)
-      }
-    }
-    expandedIPs.value = [row.id]
-    await fetchIPCharacters(row.id)
-  } else if (expandedIPs.value.includes(row.id)) {
-    expandedIPs.value = []
-  }
+// ==================== 桌面端角色抽屉 ====================
+const drawerVisible = ref(false)
+const drawerIPId = ref<number | null>(null)
+
+const drawerIP = computed<IP | null>(() => {
+  if (drawerIPId.value == null) return null
+  return ipList.value.find((item) => item.id === drawerIPId.value) ?? null
+})
+
+const drawerCharacters = computed<Character[]>(() => {
+  if (drawerIPId.value == null) return []
+  return characterMap.value[drawerIPId.value] ?? []
+})
+
+/** 点击卡片：打开右侧角色抽屉（同时按需拉取该作品的角色） */
+const openCharactersDrawer = async (ip: IP) => {
+  drawerIPId.value = ip.id
+  drawerVisible.value = true
+  await fetchIPCharacters(ip.id)
 }
 
 const handleSearch = () => fetchIPList()
@@ -2036,10 +2143,31 @@ const handleRefresh = () => {
   fetchIPList(true)
 }
 
+// 桌面端右下角悬浮按钮：配置注册给 Layout 外壳渲染，分栏切换时按钮不会跟着页面过渡漂移；
+// 只有不被外壳接管时（单独挂载本页面）才走模板里的回退版本。
+const ipFabProps = computed<AddFabProps>(() => ({
+  label: '新增 / 导入',
+  items: ipFabItems,
+  showPrimary: authStore.isAdmin,
+  showRefresh: true,
+  refreshing: loading.value,
+  refreshLabel: '刷新作品列表',
+}))
+
+const ipFabHandlers: OrganizeFabHandlers = {
+  command: handleActionCommand,
+  refresh: handleRefresh,
+}
+
+const { hosted: fabHosted } = useOrganizeFab('ip', () => ({
+  props: ipFabProps.value,
+  handlers: ipFabHandlers,
+}))
+
 const handleAddIP = () => {
   isEditIP.value = false
   editingIPId.value = null
-  ipFormData.value = { name: '', keywords: [], subject_type: null }
+  ipFormData.value = { name: '', keywords: [], subject_type: null, cover_image: null }
   newKeyword.value = ''
   ipDialogVisible.value = true
 }
@@ -2053,16 +2181,49 @@ const handleEditIP = async (row: IP) => {
       name: detail.name,
       keywords: detail.keywords?.map((k) => k.value) || [],
       subject_type: detail.subject_type ?? null,
+      cover_image: detail.cover_image ?? null,
     }
   } catch {
     ipFormData.value = {
       name: row.name,
       keywords: row.keywords?.map((k) => k.value) || [],
       subject_type: row.subject_type ?? null,
+      cover_image: row.cover_image ?? null,
     }
   }
   newKeyword.value = ''
   ipDialogVisible.value = true
+}
+
+/** 编辑弹窗里「从 Bangumi 取封面」：强制重算并立刻回填预览 */
+const ipCoverFetching = ref(false)
+
+const handleFetchCoverForIP = async () => {
+  if (!editingIPId.value || ipCoverFetching.value) return
+  ipCoverFetching.value = true
+  try {
+    const result = await fetchIPCover(editingIPId.value)
+    if (result.cover_image) {
+      ipFormData.value.cover_image = result.cover_image
+      ElMessage.success('已从 Bangumi 取到封面')
+    } else {
+      ElMessage.warning(result.detail || 'Bangumi 上没有匹配到封面')
+    }
+    applyCoverResults([{ id: result.id, cover_image: result.cover_image }])
+  } catch (err: any) {
+    if (isEndpointUnsupportedError(err)) {
+      coverBackfillUnsupported.value = true
+      ElMessage.warning('当前服务端还不支持取封面，请更新后端后再试')
+    } else {
+      ElMessage.error(err?.message || '获取封面失败')
+    }
+  } finally {
+    ipCoverFetching.value = false
+  }
+}
+
+const handleClearIPCover = () => {
+  ipFormData.value.cover_image = null
 }
 
 const handleDeleteIP = async (row: IP) => {
@@ -2107,6 +2268,7 @@ const handleSubmitIP = async () => {
         name: ipFormData.value.name,
         keywords: ipFormData.value.keywords,
         subject_type: ipFormData.value.subject_type ?? null,
+        cover_image: ipFormData.value.cover_image ?? null,
       }
       if (isEditIP.value && editingIPId.value) {
         await updateIP(editingIPId.value, data)
@@ -2318,6 +2480,7 @@ const handleBGMReset = () => {
   bgmSubjectType.value = undefined
   bgmCharacterKeyword.value = ''
   bgmSubjects.value = []
+  bgmSelectedSubject.value = null
   bgmSearchResult.value = null
   bgmSelectedCharacters.value = []
   bgmImportResult.value = null
@@ -2351,6 +2514,7 @@ const handleBGMSearch = async () => {
 }
 
 const handleBGMSelectSubject = async (subject: BGMSubject) => {
+  bgmSelectedSubject.value = subject
   bgmStep.value = 'loading-characters'
   try {
     const response = await getBGMCharactersBySubjectId(subject.id)
@@ -2406,7 +2570,12 @@ const handleBGMConfirmImport = async () => {
         avatar: char.avatar || null,
       }))
 
-    const createResult = await createBGMCharacters(charactersToImport, bgmSubjectType.value)
+    const createResult = await createBGMCharacters(
+      charactersToImport,
+      bgmSubjectType.value,
+      null,
+      bgmSelectedSubject.value?.image || null,
+    )
     bgmImportResult.value = createResult
     bgmStep.value = 'imported'
 
@@ -2658,40 +2827,8 @@ const handleBGMSyncClose = () => {
   color: #909399;
 }
 
-.desktop-create-actions {
-  display: flex;
-}
-
 .mobile-create-actions {
   display: none;
-}
-
-/* 聚合操作按钮 */
-.action-dropdown-btn {
-  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
-  border: none;
-  border-radius: 8px;
-  padding: 10px 20px;
-  height: auto;
-  font-size: 14px;
-  transition: all 0.3s;
-  box-shadow: 0 4px 12px rgba(142, 125, 255, 0.3);
-}
-
-.action-dropdown-btn:hover,
-.action-dropdown-btn:focus {
-  background: linear-gradient(135deg, #b0a4ff 0%, #9d8eff 100%);
-  transform: translateY(-1px);
-  box-shadow: 0 6px 16px rgba(142, 125, 255, 0.4);
-}
-
-.action-dropdown-btn .icon-left {
-  margin-right: 6px;
-}
-
-.action-dropdown-btn .icon-right {
-  margin-left: 8px;
-  font-size: 12px;
 }
 
 .mobile-add-btn {
@@ -2709,23 +2846,8 @@ const handleBGMSyncClose = () => {
   transform: scale(0.96);
 }
 
-/* 下拉菜单内容样式 */
-.menu-item-content {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 140px;
-}
-
-.menu-item-content .el-icon {
-  font-size: 16px;
-  color: #606266;
-}
-
-.menu-tag {
-  margin-left: auto;
-  transform: scale(0.9);
-}
+/* 桌面：新增入口改为右下角悬浮按钮（AddFab），类型改为胶囊多选（换行/间距由
+   filterPanel.css 的 .app-filter-status--text-chips 统一提供） */
 
 /* 搜索框美化 */
 .search-card {
@@ -2791,54 +2913,176 @@ const handleBGMSyncClose = () => {
 }
 
 
-/* PC端表格样式 */
+/* PC端：图片卡片网格（封面取自 Bangumi） */
 .desktop-view {
-  background: #fff;
-  border-radius: 12px;
-  overflow: hidden;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.04);
+  display: block;
 }
 
-/* 刷新按钮 - 右下角悬浮 */
-.refresh-fab {
-  position: fixed;
-  bottom: 30px;
-  right: 30px;
-  width: 60px;
-  height: 60px;
-  background: linear-gradient(135deg, #a396ff 0%, #8e7dff 100%);
-  border-radius: 50%;
+/* 网格工具条：数量 + 排序胶囊 + 补齐封面 */
+.ip-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 0 2px;
+}
+
+.ip-toolbar-info {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ip-toolbar-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: #4b4f57;
+}
+
+.ip-toolbar-hint {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #9aa0ad;
+}
+
+.ip-toolbar-hint.is-warn {
+  color: #c98a2b;
+}
+
+.ip-toolbar-spin {
+  animation: rotate 1s linear infinite;
+}
+
+.ip-toolbar-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ip-sort-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 999px;
+  background: #f5f3ff;
+  border: 1px solid #ede9fb;
+}
+
+.ip-sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 4px 12px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: #7a768f;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.16s ease, color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.ip-sort-pill:hover {
+  color: #5a4bff;
+}
+
+.ip-sort-pill.is-active {
+  background: #fff;
+  color: #4a3ddb;
+  box-shadow: 0 2px 8px rgba(142, 125, 255, 0.18);
+}
+
+.ip-sort-arrow {
+  font-size: 11px;
+  transition: transform 0.16s ease;
+}
+
+.ip-sort-arrow.is-desc {
+  transform: rotate(180deg);
+}
+
+.ip-cover-btn {
+  border-radius: 999px;
+  border: 1px solid #e6e1ff;
+  background: #fff;
+  color: #5a4bff;
+}
+
+.ip-cover-btn:hover {
+  border-color: #d5ccff;
+  background: #f8f6ff;
+  color: #4a3ddb;
+}
+
+/* 卡片网格：每行自适应，最小 240px */
+.ip-card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 16px;
+}
+
+.ip-card-grid.is-sorting .ip-card {
+  cursor: grabbing;
+}
+
+/* 编辑弹窗：封面区块 */
+.ip-editor-cover-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.ip-editor-cover-preview {
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
-  font-size: 30px;
-  box-shadow: 0 4px 16px rgba(163, 150, 255, 0.4);
-  cursor: pointer;
-  transition: all var(--transition-normal);
-  z-index: 999;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-  border: none;
+  width: 104px;
+  height: 104px;
+  padding: 6px;
+  border-radius: 14px;
+  border: 1px solid #f0eefb;
+  background: #fff;
+  overflow: hidden;
 }
 
-.refresh-fab:hover {
-  transform: scale(1.1) rotate(180deg);
-  box-shadow: 0 6px 20px rgba(163, 150, 255, 0.6);
+.ip-editor-cover-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
 }
 
-.refresh-fab:focus,
-.refresh-fab:active {
-  outline: none;
+.ip-editor-cover-preview.is-empty {
+  background: linear-gradient(135deg, #efe9ff 0%, #e2ecff 100%);
 }
 
-.refresh-fab.loading {
-  cursor: not-allowed;
-  opacity: 0.8;
+.ip-editor-cover-preview.is-empty span {
+  font-size: 34px;
+  font-weight: 700;
+  color: rgba(90, 75, 255, 0.45);
 }
 
-.refresh-fab .is-loading {
-  animation: rotate 1s linear infinite;
+.ip-editor-cover-fields {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ip-editor-cover-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 @keyframes rotate {
@@ -3649,10 +3893,6 @@ const handleBGMSyncClose = () => {
     align-items: start;
     gap: 10px;
     margin-bottom: 12px;
-  }
-
-  .desktop-create-actions {
-    display: none !important;
   }
 
   .mobile-create-actions {
@@ -4886,14 +5126,6 @@ const handleBGMSyncClose = () => {
   .character-list-container {
     max-height: 300px;
   }
-
-  .refresh-fab {
-    bottom: 20px;
-    right: 20px;
-    width: 50px;
-    height: 50px;
-    font-size: 24px;
-  }
 }
 
 @media (max-width: 768px), (pointer: coarse) and (orientation: portrait) and (max-width: 1200px) {
@@ -5329,10 +5561,6 @@ const handleBGMSyncClose = () => {
     margin-bottom: 12px;
   }
 
-  .desktop-create-actions {
-    display: none !important;
-  }
-
   .mobile-create-actions {
     display: flex;
     justify-content: flex-end;
@@ -5420,14 +5648,6 @@ const handleBGMSyncClose = () => {
 
   .character-name-compact {
     font-size: 13px;
-  }
-
-  .refresh-fab {
-    bottom: 20px;
-    right: 20px;
-    width: 50px;
-    height: 50px;
-    font-size: 24px;
   }
 }
 </style>

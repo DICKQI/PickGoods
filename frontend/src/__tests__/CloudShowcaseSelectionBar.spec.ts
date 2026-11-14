@@ -202,12 +202,13 @@ describe('CloudShowcase selection status bar transition', () => {
     await wrapper.vm.$nextTick()
     await flushPromises()
 
-    // 槽位先收起，状态条自身的离场动画随后结束（jsdom 不会触发 transitionend）。
+    // 槽位先收起，状态条自身的离场动画随后结束（jsdom 不会触发 transitionend，
+    // 组件靠内部定时兜底收尾）。这里轮询等待而不是死等固定毫秒，避免机器慢时抖动。
     expect(wrapper.get('.selection-slot').classes()).not.toContain('is-open')
 
-    await new Promise<void>((resolve) => setTimeout(resolve, 60))
-    await wrapper.vm.$nextTick()
-
-    expect(wrapper.find('.selection-status-bar').exists()).toBe(false)
+    await vi.waitFor(
+      () => expect(wrapper.find('.selection-status-bar').exists()).toBe(false),
+      { timeout: 3000, interval: 20 },
+    )
   })
 })

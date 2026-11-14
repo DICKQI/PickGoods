@@ -35,17 +35,9 @@
                 <el-icon><FolderOpened /></el-icon>
                 <span>位置</span>
               </el-menu-item>
-              <el-menu-item index="/ipcharacter">
+              <el-menu-item index="/organize">
                 <el-icon><Collection /></el-icon>
-                <span>IP与角色</span>
-              </el-menu-item>
-              <el-menu-item index="/category">
-                <el-icon><Box /></el-icon>
-                <span>品类</span>
-              </el-menu-item>
-              <el-menu-item index="/theme">
-                <el-icon><Star /></el-icon>
-                <span>主题</span>
+                <span>整理</span>
               </el-menu-item>
               <el-menu-item index="/preorders">
                 <el-icon><ShoppingCart /></el-icon>
@@ -196,6 +188,13 @@
       </div>
     </TransitionGroup>
 
+    <!-- 整理页悬浮按钮：由 /organize 的当前分栏注册进来，外壳渲染，位置不受分栏切换影响 -->
+    <AddFab
+      v-if="showOrganizeFab && activeOrganizeFab"
+      v-bind="activeOrganizeFab.props"
+      v-on="activeOrganizeFab.handlers"
+    />
+
     <div v-if="showFab && isMobile" class="mobile-action-layer">
       <Transition name="mobile-action-backdrop">
         <div
@@ -291,13 +290,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, onMounted, onUnmounted, watch } from 'vue'
+import { computed, ref, onMounted, onUnmounted, watch, provide } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { Grid, FolderOpened, Plus, Camera, Collection, Box, Refresh, Loading, Setting, Star, Check, Close, MoreFilled, ShoppingCart, Shop, User } from '@element-plus/icons-vue'
+import { Grid, FolderOpened, Plus, Camera, Collection, Refresh, Loading, Setting, Check, Close, MoreFilled, ShoppingCart, Shop, User } from '@element-plus/icons-vue'
 import { useGuziStore } from '@/stores/guzi'
 import { useAuthStore } from '@/stores/auth'
 import { useGamificationStore } from '@/stores/gamification'
 import { Capacitor } from '@capacitor/core'
+import AddFab from './AddFab.vue'
 import MobileBottomNav from './MobileBottomNav.vue'
 import MobilePageHeader from './MobilePageHeader.vue'
 import '@/styles/mobileWorkspace.css'
@@ -315,6 +315,11 @@ import { useMobileSwipeNav } from '@/composables/useMobileSwipeNav'
 import NotificationCenter from './NotificationCenter.vue'
 import { useNotificationStore } from '@/stores/notification'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
+import {
+  ORGANIZE_FAB_KEY,
+  createOrganizeFabRegistry,
+} from '@/composables/useOrganizeFab'
+import { normalizeOrganizeTab } from '@/navigation/organize'
 
 const router = useRouter()
 const route = useRoute()
@@ -366,19 +371,26 @@ const isCharacterStatsFromShowcase = computed(() => {
   const returnTo = route.query.returnTo
   return typeof returnTo === 'string' && returnTo.startsWith('/showcase')
 })
+const isCharacterStatsFromOrganize = computed(() => {
+  const returnTo = route.query.returnTo
+  return typeof returnTo === 'string' && returnTo.startsWith('/organize')
+})
 
 const activeMenu = computed(() => {
   const currentPath = route.path
   if (currentPath.startsWith('/showcase')) return '/showcase'
   if (currentPath.startsWith('/characters/') && isCharacterStatsFromShowcase.value) return '/showcase'
+  if (currentPath.startsWith('/characters/') && isCharacterStatsFromOrganize.value) return '/organize'
   if (currentPath.startsWith('/location')) return '/location'
+  // 旧路径 /ipcharacter、/category、/theme 已 redirect 到 /organize，这里一并归到「整理」。
   if (
+    currentPath.startsWith('/organize') ||
     currentPath.startsWith('/ipcharacter') ||
     currentPath.startsWith('/ip') ||
-    (currentPath.startsWith('/character') && !isCharacterStatsFromShowcase.value)
-  ) return '/ipcharacter'
-  if (currentPath.startsWith('/category')) return '/category'
-  if (currentPath.startsWith('/theme')) return '/theme'
+    (currentPath.startsWith('/character') && !isCharacterStatsFromShowcase.value) ||
+    currentPath.startsWith('/category') ||
+    currentPath.startsWith('/theme')
+  ) return '/organize'
   if (currentPath.startsWith('/preorders')) return '/preorders'
   if (currentPath.startsWith('/clubs')) return '/clubs'
   if (currentPath.startsWith('/club')) return '/club/goods'
@@ -424,6 +436,17 @@ const showMobileActionFab = computed(() => !showSelectionControls.value && (
   showAddFab.value || showMultiSelectFab.value
 ))
 const showMobileSelectionDock = computed(() => showSelectionControls.value)
+
+// 整理页（/organize）的右下角悬浮按钮：三个分栏只注册配置，由外壳负责渲染。
+// 必须渲染在 <main> 之外——分栏过渡（organize-tab-fade）和进入页面的 page-fade 都带
+// transform，会把 position: fixed 的包含块换成被过渡的页面，按钮于是短暂跳到页面底部。
+const { registry: organizeFabRegistry, slotFor: organizeFabSlotFor } = createOrganizeFabRegistry({
+  enabled: () => route.path.startsWith('/organize'),
+})
+provide(ORGANIZE_FAB_KEY, organizeFabRegistry)
+
+const showOrganizeFab = computed(() => !isMobile.value && route.path.startsWith('/organize'))
+const activeOrganizeFab = organizeFabSlotFor(() => normalizeOrganizeTab(route.query.tab))
 
 const goToAdd = () => {
   router.push('/goods/new')
