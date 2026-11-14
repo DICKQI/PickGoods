@@ -142,6 +142,33 @@ class UserMeSerializer(serializers.Serializer):
     approval_status = serializers.CharField()
     avatar = serializers.CharField(allow_null=True, required=False)
     club = serializers.DictField(allow_null=True, required=False)
+    # 个人 Bangumi 接入状态：只回显是否已配置与掩码，永不返回 token 原文
+    bgm_token_is_set = serializers.BooleanField(required=False)
+    bgm_token_hint = serializers.CharField(allow_null=True, required=False)
+    # 个人 IP 开关（T0 回滚时前端据此隐藏所有入口）
+    personal_ip_enabled = serializers.BooleanField(required=False)
+
+
+class BGMTokenUpdateSerializer(serializers.Serializer):
+    """保存个人 Bangumi Access Token。"""
+
+    access_token = serializers.CharField(
+        max_length=200,
+        trim_whitespace=True,
+        error_messages={
+            "required": "请填写 Bangumi Access Token",
+            "blank": "请填写 Bangumi Access Token",
+            "max_length": "Access Token 不能超过 200 个字符",
+        },
+    )
+
+    def validate_access_token(self, value: str) -> str:
+        token = (value or "").strip()
+        if not token:
+            raise serializers.ValidationError("请填写 Bangumi Access Token")
+        if any(ch.isspace() for ch in token):
+            raise serializers.ValidationError("Access Token 中不应包含空白字符")
+        return token
 
 
 class UserAvatarUploadSerializer(serializers.Serializer):

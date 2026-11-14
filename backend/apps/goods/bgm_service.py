@@ -24,21 +24,25 @@ SUBJECT_TYPE_MUSIC = 3  # 音乐
 SUBJECT_TYPE_GAME = 4   # 游戏
 SUBJECT_TYPE_REAL = 6   # 三次元/特摄
 
-def get_headers():
+def get_headers(access_token=None):
     """
     构造请求头，包含 User-Agent 和 Authorization
+
+    ``access_token`` 为 None 时使用服务端环境变量里的 token（管理员与后台任务）；
+    传入字符串时使用该用户自己的 token（个人 IP 的 Bangumi 导入/同步）。
     """
     headers = {
         "User-Agent": USER_AGENT,
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
-    if ACCESS_TOKEN:
-        headers["Authorization"] = f"Bearer {ACCESS_TOKEN}"
+    token = ACCESS_TOKEN if access_token is None else access_token
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
     return headers
 
 
-def search_subject(keyword, subject_type=None):
+def search_subject(keyword, subject_type=None, access_token=None):
     """
     搜索条目，返回第一个匹配结果的 ID 和 名称。
     使用 Legacy Search API 进行模糊匹配。
@@ -64,7 +68,7 @@ def search_subject(keyword, subject_type=None):
     
     try:
         # requests 会自动处理 params 的拼接
-        response = requests.get(url, headers=get_headers(), params=params, timeout=30)
+        response = requests.get(url, headers=get_headers(access_token), params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -89,7 +93,7 @@ def search_subject(keyword, subject_type=None):
         raise Exception(f"搜索请求失败: {str(e)}")
 
 
-def get_characters(subject_id):
+def get_characters(subject_id, access_token=None):
     """
     获取指定条目 ID 下的所有角色名。
     针对附件提供的 JSON 结构进行解析。
@@ -103,7 +107,7 @@ def get_characters(subject_id):
     url = f"{API_HOST}/v0/subjects/{subject_id}/characters"
     
     try:
-        response = requests.get(url, headers=get_headers(), timeout=30)
+        response = requests.get(url, headers=get_headers(access_token), timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -149,7 +153,7 @@ def get_characters(subject_id):
         raise Exception(f"获取角色请求失败: {str(e)}")
 
 
-def search_subjects_list(keyword, subject_type=None):
+def search_subjects_list(keyword, subject_type=None, access_token=None):
     """
     搜索条目，返回所有匹配结果的列表。
     使用 Legacy Search API 进行模糊匹配。
@@ -184,7 +188,7 @@ def search_subjects_list(keyword, subject_type=None):
     
     try:
         # requests 会自动处理 params 的拼接
-        response = requests.get(url, headers=get_headers(), params=params, timeout=30)
+        response = requests.get(url, headers=get_headers(access_token), params=params, timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -224,7 +228,7 @@ def search_subjects_list(keyword, subject_type=None):
         raise Exception(f"搜索请求失败: {str(e)}")
 
 
-def get_subject_info(subject_id):
+def get_subject_info(subject_id, access_token=None):
     """
     根据BGM作品ID获取作品基本信息
     
@@ -237,7 +241,7 @@ def get_subject_info(subject_id):
     url = f"{API_HOST}/v0/subjects/{subject_id}"
     
     try:
-        response = requests.get(url, headers=get_headers(), timeout=30)
+        response = requests.get(url, headers=get_headers(access_token), timeout=30)
         response.raise_for_status()
         data = response.json()
         
@@ -310,7 +314,7 @@ def pick_cover_url(images):
     return None
 
 
-def search_subject_candidates(keyword, subject_type=None, limit=10):
+def search_subject_candidates(keyword, subject_type=None, limit=10, access_token=None):
     """按关键词搜索 BGM 条目，返回带封面图的候选列表。
 
     使用 v0 搜索接口（https 图片地址、无需 Access Token）。
@@ -335,7 +339,7 @@ def search_subject_candidates(keyword, subject_type=None, limit=10):
     try:
         response = requests.post(
             url,
-            headers=get_headers(),
+            headers=get_headers(access_token),
             params={"limit": limit},
             json=payload,
             timeout=30,
@@ -360,7 +364,7 @@ def search_subject_candidates(keyword, subject_type=None, limit=10):
         raise Exception(f"搜索封面请求失败: {str(e)}")
 
 
-def search_ip_characters(ip_name, subject_type=None):
+def search_ip_characters(ip_name, subject_type=None, access_token=None):
     """
     搜索IP作品并获取其角色列表的便捷方法
     
@@ -371,10 +375,10 @@ def search_ip_characters(ip_name, subject_type=None):
     Returns:
         tuple: (ip_display_name, characters_list) 或 (None, []) 如果未找到
     """
-    subject_id, display_name = search_subject(ip_name, subject_type)
+    subject_id, display_name = search_subject(ip_name, subject_type, access_token=access_token)
     if subject_id and display_name:
         # print(f"找到作品: {display_name} (ID: {subject_id})") # 调试用
-        characters = get_characters(subject_id)
+        characters = get_characters(subject_id, access_token=access_token)
         return display_name, characters
     return None, []
 

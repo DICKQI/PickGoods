@@ -60,6 +60,14 @@ class User(models.Model):
         verbose_name="审批状态",
     )
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
+    # 个人 Bangumi Access Token：只用于该用户自己的 BGM 导入/同步请求，
+    # 任何接口都不回显原文（只回显 ``****abcd`` 提示）。管理员未填写时回落服务端 token。
+    bgm_access_token = models.CharField(
+        max_length=200,
+        blank=True,
+        default="",
+        verbose_name="个人 Bangumi Access Token",
+    )
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
 

@@ -4,11 +4,11 @@ BGM API 相关的视图函数
 from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core.permissions import IsAdmin
+from core.permissions import IsCollectorAccount, is_admin
 
 from ..bgm_service import (
     get_characters,
@@ -17,7 +17,9 @@ from ..bgm_service import (
     search_ip_characters,
     search_subjects_list,
 )
+from ..bgm_token import require_bgm_token
 from ..models import Character, IP
+from ..throttling import BGMPersonalThrottle
 from ..serializers import (
     BGMCreateCharactersRequestSerializer,
     BGMSearchRequestSerializer,
@@ -36,6 +38,8 @@ from ..serializers import (
     responses={200: BGMSearchResponseSerializer}
 )
 @api_view(['POST'])
+@permission_classes([IsAuthenticated, IsCollectorAccount])
+@throttle_classes([BGMPersonalThrottle])
 def bgm_search_characters(request):
     """
     搜索IP作品并获取角色列表
@@ -67,8 +71,11 @@ def bgm_search_characters(request):
     ip_name = serializer.validated_data['ip_name']
     subject_type = serializer.validated_data.get('subject_type')
     
+    token = require_bgm_token(request.user)
     try:
-        display_name, characters = search_ip_characters(ip_name, subject_type)
+        display_name, characters = search_ip_characters(
+            ip_name, subject_type, access_token=token
+        )
         
         if display_name is None:
             return Response(
@@ -100,12 +107,18 @@ def bgm_search_characters(request):
     responses={200: None}  # 响应结构较复杂，暂时省略或后续补充Serializer
 )
 @api_view(['POST'])
-@permission_classes([IsAuthenticated, IsAdmin])
+@permission_classes([IsAuthenticated, IsCollectorAccount])
+@throttle_classes([BGMPersonalThrottle])
 def bgm_create_characters(request):
     """
     根据角色列表创建IP和角色到数据库
     
     POST /api/bgm/create-characters/
+    
+    归属规则（服务端决定，请求体不需要传）：
+    - 管理员：写入/复用官方 IP；
+    - 普通账号：只写入自己的个人 IP；若官方已有同名 IP，该条返回
+      ``status=error`` 并提示直接使用官方作品。
     
     请求体:
     {
@@ -141,6 +154,7 @@ def bgm_create_characters(request):
     serializer.is_valid(raise_exception=True)
     
     characters_data = serializer.validated_data['characters']
+    is_admin_user = is_admin(request.user)
     
     created_count = 0
     skipped_count = 0
@@ -156,12 +170,37 @@ def bgm_create_characters(request):
         cover_image = normalize_image_url(char_data.get('cover_image'))  # 可选，作品封面URL
 
         try:
-            # 获取或创建IP
-            # 如果提供了 subject_type，在创建新 IP 时使用它
-            ip_obj, ip_created = IP.objects.get_or_create(
-                name=ip_name,
-                defaults={'subject_type': subject_type} if subject_type else {}
-            )
+            # 获取或创建 IP：归属完全由服务端决定
+            # - 管理员：只在官方域内查找/创建，绝不碰用户的个人 IP；
+            # - 普通账号：只看自己的个人域；官方已有同名 IP 时拒绝，
+            #   避免选择器里出现两个同名作品。
+            if is_admin_user:
+                ip_obj = IP.objects.filter(name=ip_name, user__isnull=True).first()
+                ip_created = False
+                if ip_obj is None:
+                    ip_obj = IP.objects.create(
+                        name=ip_name,
+                        **({'subject_type': subject_type} if subject_type else {}),
+                    )
+                    ip_created = True
+            else:
+                if IP.objects.filter(name=ip_name, user__isnull=True).exists():
+                    details.append({
+                        "ip_name": ip_name,
+                        "character_name": character_name,
+                        "status": "error",
+                        "error": "已存在同名官方 IP，请直接使用",
+                    })
+                    continue
+                ip_obj = IP.objects.filter(name=ip_name, user=request.user).first()
+                ip_created = False
+                if ip_obj is None:
+                    ip_obj = IP.objects.create(
+                        name=ip_name,
+                        user=request.user,
+                        **({'subject_type': subject_type} if subject_type else {}),
+                    )
+                    ip_created = True
             # 如果 IP 已存在但 subject_type 为空，且提供了 subject_type，则更新它
             if not ip_created and ip_obj.subject_type is None and subject_type:
                 ip_obj.subject_type = subject_type
@@ -222,9 +261,10 @@ def bgm_create_characters(request):
                 "error": str(e)
             })
     
-    from apps.admin_api.services import audit_admin_action
+    if is_admin_user:
+        from apps.admin_api.services import audit_admin_action
 
-    audit_admin_action(
+        audit_admin_action(
         request,
         action="bgm.create_characters",
         resource_type="bgm_sync_job",
@@ -253,6 +293,8 @@ def bgm_create_characters(request):
     responses={200: BGMSearchSubjectsResponseSerializer}
 )
 @api_view(['POST'])
+@permission_classes([IsAuthenticated, IsCollectorAccount])
+@throttle_classes([BGMPersonalThrottle])
 def bgm_search_subjects(request):
     """
     搜索IP作品列表（第一步）
@@ -286,8 +328,9 @@ def bgm_search_subjects(request):
     keyword = serializer.validated_data['keyword']
     subject_type = serializer.validated_data.get('subject_type')
     
+    token = require_bgm_token(request.user)
     try:
-        subjects = search_subjects_list(keyword, subject_type)
+        subjects = search_subjects_list(keyword, subject_type, access_token=token)
         
         response_data = {
             "subjects": subjects
@@ -312,6 +355,8 @@ def bgm_search_subjects(request):
     responses={200: BGMGetCharactersBySubjectIdResponseSerializer}
 )
 @api_view(['POST'])
+@permission_classes([IsAuthenticated, IsCollectorAccount])
+@throttle_classes([BGMPersonalThrottle])
 def bgm_get_characters_by_subject_id(request):
     """
     根据BGM作品ID获取角色列表（第二步）
@@ -342,9 +387,10 @@ def bgm_get_characters_by_subject_id(request):
     
     subject_id = serializer.validated_data['subject_id']
     
+    token = require_bgm_token(request.user)
     try:
         # 获取作品信息
-        subject_info = get_subject_info(subject_id)
+        subject_info = get_subject_info(subject_id, access_token=token)
         if not subject_info:
             return Response(
                 {"detail": f"未找到ID为 {subject_id} 的作品"},
@@ -352,7 +398,7 @@ def bgm_get_characters_by_subject_id(request):
             )
         
         # 获取角色列表
-        characters = get_characters(subject_id)
+        characters = get_characters(subject_id, access_token=token)
         
         response_data = {
             "subject_id": subject_id,
