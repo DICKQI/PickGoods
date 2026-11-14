@@ -1,8 +1,11 @@
 """
 IP作品相关的序列化器
 """
+from django.db import IntegrityError
 from django.db.models import Count
 from rest_framework import serializers
+
+from core.permissions import is_admin
 
 from ..models import IP, IPKeyword
 from .fields import KeywordsField
@@ -37,11 +40,18 @@ class IPSimpleSerializer(serializers.ModelSerializer):
 
     keywords = IPKeywordSerializer(many=True, read_only=True, help_text="IP关键词列表")
     character_count = serializers.SerializerMethodField(help_text="该IP下的角色数量")
+    user_id = serializers.IntegerField(
+        read_only=True,
+        allow_null=True,
+        help_text="归属用户ID；为空表示管理员维护的官方全局IP",
+    )
+    is_personal = serializers.SerializerMethodField(help_text="是否为用户自建的个人IP")
 
     class Meta:
         model = IP
         fields = ("id", "name", "subject_type", "order", "keywords", "character_count",
-                  "bgm_subject_id", "last_synced_at", "cover_image", "cover_checked_at")
+                  "bgm_subject_id", "last_synced_at", "cover_image", "cover_checked_at",
+                  "user_id", "is_personal")
 
     def get_character_count(self, obj):
         """统计IP下的角色数量"""
@@ -51,9 +61,17 @@ class IPSimpleSerializer(serializers.ModelSerializer):
         # 否则查询数据库
         return obj.characters.count()
 
+    def get_is_personal(self, obj) -> bool:
+        return obj.user_id is not None
+
 
 class IPDetailSerializer(serializers.ModelSerializer):
-    """IP详情序列化器（用于创建和更新，支持关键词操作）"""
+    """IP详情序列化器（用于创建和更新，支持关键词操作）
+
+    归属（``IP.user``）不通过请求体传递，由视图层固定：管理员创建的一律是官方
+    全局 IP，普通账号创建的一律归自己。``bgm_subject_id`` 只允许管理员写入——
+    个人 IP 的 BGM 绑定统一走「个人 Bangumi 导入」接口。
+    """
 
     keywords = KeywordsField(required=False, allow_null=True, help_text="关键词列表，例如：['星铁', '崩铁', 'HSR']")
     cover_image = serializers.CharField(
@@ -63,16 +81,81 @@ class IPDetailSerializer(serializers.ModelSerializer):
         max_length=500,
         help_text="作品封面：Bangumi 封面 URL，或手填外链 / 服务器相对路径；传空字符串或 null 表示清除",
     )
+    user_id = serializers.IntegerField(
+        read_only=True,
+        allow_null=True,
+        help_text="归属用户ID；为空表示官方全局IP",
+    )
+    is_personal = serializers.SerializerMethodField(help_text="是否为用户自建的个人IP")
 
     class Meta:
         model = IP
         fields = ("id", "name", "subject_type", "order", "keywords",
-                  "bgm_subject_id", "last_synced_at", "cover_image")
+                  "bgm_subject_id", "last_synced_at", "cover_image",
+                  "user_id", "is_personal")
+        extra_kwargs = {
+            # 名称唯一性按归属域判定，统一由 validate_name 给出友好文案；
+            # 关掉 DRF 依据条件唯一约束自动生成的通用校验（它无法区分域）。
+            "name": {"validators": []},
+        }
+
+    def get_is_personal(self, obj) -> bool:
+        return obj.user_id is not None
+
+    def validate_name(self, value):
+        """按归属域校验名称唯一性（与数据库条件唯一约束保持一致）。
+
+        - 官方域（user 为空）：全局唯一；
+        - 个人域：同一用户内唯一；
+        - 普通账号不得占用官方名称，避免列表/筛选里出现两个同名作品。
+        """
+        name = (value or "").strip()
+        if not name:
+            raise serializers.ValidationError("作品全称不能为空")
+
+        request = self.context.get("request")
+        user = getattr(request, "user", None)
+        if user is None or not getattr(user, "is_authenticated", False):
+            return name
+
+        instance = self.instance
+        exclude_pk = instance.pk if instance is not None else None
+
+        def exists(**filters):
+            qs = IP.objects.filter(**filters)
+            if exclude_pk is not None:
+                qs = qs.exclude(pk=exclude_pk)
+            return qs.exists()
+
+        if is_admin(user):
+            owner_id = getattr(instance, "user_id", None)
+            if owner_id is not None:
+                # 管理员维护某个用户的个人 IP：只在该用户域内校验
+                if exists(user_id=owner_id, name=name):
+                    raise serializers.ValidationError("该用户已有同名作品")
+                return name
+            if exists(user__isnull=True, name=name):
+                raise serializers.ValidationError("该名称的官方作品已存在")
+            return name
+
+        if IP.objects.filter(user__isnull=True, name=name).exists():
+            raise serializers.ValidationError("已存在同名官方 IP，请直接使用")
+        if exists(user=user, name=name):
+            raise serializers.ValidationError("你已创建过同名作品")
+        return name
 
     def create(self, validated_data):
         """创建IP时同时创建关键词"""
         keywords_data = validated_data.pop("keywords", [])
-        ip = IP.objects.create(**validated_data)
+        request = self.context.get("request")
+        if not (request and is_admin(getattr(request, "user", None))):
+            # 个人 IP 不允许直接写 BGM 绑定（统一走个人导入接口）
+            validated_data.pop("bgm_subject_id", None)
+            validated_data.pop("last_synced_at", None)
+        try:
+            ip = IP.objects.create(**validated_data)
+        except IntegrityError as exc:  # 并发下的兜底：唯一约束冲突
+            raise serializers.ValidationError({"name": f"同名作品已存在（{exc}）"}) from exc
 
         # 创建关键词
         if keywords_data:
@@ -96,7 +179,10 @@ class IPDetailSerializer(serializers.ModelSerializer):
         # 更新封面（空字符串/null 视为清除，回落到首字占位）
         if "cover_image" in validated_data:
             instance.cover_image = validated_data.get("cover_image") or None
-        instance.save()
+        try:
+            instance.save()
+        except IntegrityError as exc:  # 并发下的兜底：唯一约束冲突
+            raise serializers.ValidationError({"name": f"同名作品已存在（{exc}）"}) from exc
 
         # 如果提供了keywords字段，则更新关键词
         if keywords_data is not None:

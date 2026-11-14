@@ -1,16 +1,34 @@
 from django.db import models
+from django.db.models import Q
 
 
 class IP(models.Model):
     """
     作品来源表，例如：崩坏：星穹铁道
+
+    归属规则：
+    - ``user`` 为空 = 管理员维护的官方全局 IP，所有账号可见；
+    - ``user`` 非空 = 用户自建的个人 IP，只有本人（和管理员）可见、可用。
+
+    名称与 BGM 绑定的唯一性按归属域划分：官方域内全局唯一，个人域内按用户唯一。
+    官方域的唯一性没有放松，因此"只回滚代码、不回滚迁移"依然安全。
     """
 
     name = models.CharField(
         max_length=100,
-        unique=True,
         db_index=True,
         verbose_name="作品名",
+    )
+
+    user = models.ForeignKey(
+        "users.User",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        db_index=True,
+        related_name="private_ips",
+        verbose_name="归属用户",
+        help_text="为空表示管理员维护的官方全局 IP；非空表示用户自建的个人 IP",
     )
 
     # 作品类型：1=书籍, 2=动画, 3=音乐, 4=游戏, 6=三次元/特摄
@@ -36,10 +54,11 @@ class IP(models.Model):
     )
 
     # BGM 关联：用于增量同步精确匹配。Nullable，保持对历史数据零影响。
+    # 唯一性由 Meta.constraints 按归属域保证（官方全局唯一 / 个人按用户唯一），
+    # 因此字段本身不再声明 unique=True——多个用户可各自绑定同一部作品。
     bgm_subject_id = models.PositiveIntegerField(
         null=True,
         blank=True,
-        unique=True,
         verbose_name="BGM作品ID",
         help_text="bangumi.tv 对应作品的 subject_id，用于增量更新精确匹配",
     )
@@ -78,6 +97,32 @@ class IP(models.Model):
         ordering = ["order", "id"]
         indexes = [
             models.Index(fields=["subject_type", "order"]),
+        ]
+        constraints = [
+            # 官方 IP 名称全局唯一（IP.user 为空）
+            models.UniqueConstraint(
+                fields=["name"],
+                condition=Q(user__isnull=True),
+                name="uniq_ip_name_global",
+            ),
+            # 个人 IP 名称在本人范围内唯一
+            models.UniqueConstraint(
+                fields=["user", "name"],
+                condition=Q(user__isnull=False),
+                name="uniq_ip_name_per_user",
+            ),
+            # 官方 IP 的 BGM 绑定全局唯一
+            models.UniqueConstraint(
+                fields=["bgm_subject_id"],
+                condition=Q(user__isnull=True, bgm_subject_id__isnull=False),
+                name="uniq_ip_bgm_global",
+            ),
+            # 个人 IP 的 BGM 绑定按用户唯一（多个用户可各自绑定同一部作品）
+            models.UniqueConstraint(
+                fields=["user", "bgm_subject_id"],
+                condition=Q(user__isnull=False, bgm_subject_id__isnull=False),
+                name="uniq_ip_bgm_per_user",
+            ),
         ]
 
     def __str__(self):

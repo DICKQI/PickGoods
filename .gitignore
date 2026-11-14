@@ -160,3 +160,5 @@ dsh-usage/
 
 # Local mobile UI verification screenshots and video
 /frontend/artifacts/
+
+db.sqlite3.*
