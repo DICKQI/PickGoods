@@ -103,14 +103,14 @@ describe('IPWorkCard', () => {
   })
 
   it('renders the drag handle and action buttons for admins', () => {
-    const wrapper = mountCard({ isAdmin: true })
+    const wrapper = mountCard({ isAdmin: true, canEdit: true, canSync: true })
 
     expect(wrapper.find('.ip-card-drag').exists()).toBe(true)
     expect(wrapper.findAll('.ip-card-action')).toHaveLength(3)
   })
 
   it('hides the drag handle while a non-default sort is active', () => {
-    const wrapper = mountCard({ isAdmin: true, reorderable: false })
+    const wrapper = mountCard({ isAdmin: true, canEdit: true, canSync: true, reorderable: false })
 
     expect(wrapper.find('.ip-card-drag').exists()).toBe(false)
     // 其它管理员操作不受影响
@@ -118,7 +118,7 @@ describe('IPWorkCard', () => {
   })
 
   it('emits edit / remove / bgm-sync from the action buttons without opening the card', async () => {
-    const wrapper = mountCard({ isAdmin: true })
+    const wrapper = mountCard({ isAdmin: true, canEdit: true, canSync: true })
     const actions = wrapper.findAll('.ip-card-action')
 
     await actions[0]?.trigger('click')
@@ -129,6 +129,30 @@ describe('IPWorkCard', () => {
     expect(wrapper.emitted('edit')?.[0]).toEqual([baseIp])
     expect(wrapper.emitted('remove')?.[0]).toEqual([baseIp])
     expect(wrapper.emitted('open')).toBeUndefined()
+  })
+
+  it('shows the "个人" badge only for user-created works', () => {
+    expect(mountCard().find('.ip-card-personal-badge').exists()).toBe(false)
+
+    const personal = mountCard({ ip: { ...baseIp, user_id: 7, is_personal: true } })
+
+    expect(personal.get('.ip-card-personal-badge').text()).toBe('个人')
+  })
+
+  it('gives the owner edit rights on their personal work without the BGM entry', () => {
+    const wrapper = mountCard({ ip: { ...baseIp, user_id: 7 }, canEdit: true })
+
+    const actions = wrapper.findAll('.ip-card-action')
+    expect(actions).toHaveLength(2)
+    expect(wrapper.find('.ip-card-open-hint').exists()).toBe(false)
+    // 个人 token 未配置时，页面不传 canSync，BGM 按钮不渲染
+    expect(wrapper.find('[aria-label="从 Bangumi 更新角色"]').exists()).toBe(false)
+  })
+
+  it('hides the drag handle for owner-editable personal works', () => {
+    const wrapper = mountCard({ ip: { ...baseIp, user_id: 7 }, canEdit: true })
+
+    expect(wrapper.find('.ip-card-drag').exists()).toBe(false)
   })
 
   it('keeps the keyword tooltip and BGM badge for bound works', () => {
