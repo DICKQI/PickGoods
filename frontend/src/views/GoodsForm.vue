@@ -81,7 +81,7 @@
             <el-col :xs="24" :sm="12">
               <el-form-item label="IP作品" prop="ip" class="is-required">
                 <el-select v-model="formData.ip" placeholder="选择IP" filterable :filter-method="handleIpFilter" @change="handleIpChange" style="width: 100%">
-                  <el-option v-for="ip in filteredIpOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
+                  <el-option v-for="ip in filteredIpOptions" :key="ip.id" :label="ipLabel(ip)" :value="ip.id" />
                 </el-select>
               </el-form-item>
             </el-col>
@@ -666,6 +666,7 @@ import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useGoodsEditNavigation } from '@/composables/useGoodsEditNavigation'
 import { useGoodsDetailStore } from '@/stores/goodsDetail'
 import { getCurrentBaseURL } from '@/utils/request'
+import { ipLabel } from '@/utils/ip'
 import { getClubs, getClubGoods, getClubGoodsImportTemplate, importClubGoods } from '@/api/clubs'
 import type { Club, ClubGoodsListItem, ClubImportTemplate } from '@/api/types'
 import { useClubImportQueueStore, type ClubImportQueueItem } from '@/stores/clubImportQueue'

@@ -92,7 +92,7 @@
             <el-option
               v-for="ip in filteredIpOptions"
               :key="ip.id"
-              :label="ip.name"
+              :label="ipLabel(ip)"
               :value="ip.id"
             />
           </el-select>
@@ -267,6 +267,7 @@ import { useLocationStore } from '@/stores/location'
 import { useResponsiveDevice } from '@/composables/useResponsiveDevice'
 import { useMetadataStore } from '@/stores/metadata'
 import { matchesTextOrPinyin } from '@/utils/pinyinSearch'
+import { ipLabel } from '@/utils/ip'
 import type { Category, GoodsSearchParams, GoodsStatus } from '@/api/types'
 
 const metadataStore = useMetadataStore()

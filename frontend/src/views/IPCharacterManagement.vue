@@ -5,7 +5,7 @@
 
 
     <MobileActionSheet
-      v-if="authStore.isAdmin"
+      v-if="canCreateIP"
       v-model="mobileAddSheetVisible"
       title="新增 / 导入"
       :actions="ipMobileCreateActions"
@@ -77,7 +77,7 @@
             <el-icon><Search /></el-icon>
             <span>搜索</span>
           </el-button>
-          <el-button v-if="authStore.isAdmin && isMobile" class="mobile-inline-create" type="primary" circle aria-label="新增 / 导入" @click="openMobileAddSheet">
+          <el-button v-if="canCreateIP && isMobile" class="mobile-inline-create" type="primary" circle aria-label="新增 / 导入" @click="openMobileAddSheet">
             <el-icon><Plus /></el-icon>
           </el-button>
         </div>
@@ -170,6 +170,8 @@
             :ip="item"
             :is-admin="authStore.isAdmin"
             :reorderable="!sortState.prop"
+            :can-edit="canEditIP(item)"
+            :can-sync="canSyncBGM(item)"
             @open="openCharactersDrawer"
             @edit="handleEditIP"
             @remove="handleDeleteIP"
@@ -216,16 +218,34 @@
                 @touchend="onCardTouchEnd"
                 @touchcancel="onCardTouchEnd"
               >
-                <div class="swipe-actions" v-if="authStore.isAdmin">
-                  <button class="swipe-action-btn sync" type="button" @click.stop="handleOpenBGMSync(item)">
+                <div
+                  v-if="canEditIP(item) || canSyncBGM(item)"
+                  class="swipe-actions"
+                >
+                  <button
+                    v-if="canSyncBGM(item)"
+                    class="swipe-action-btn sync"
+                    type="button"
+                    @click.stop="handleOpenBGMSync(item)"
+                  >
                     <el-icon><Refresh /></el-icon>
                     <span>更新</span>
                   </button>
-                  <button class="swipe-action-btn edit" type="button" @click.stop="handleEditIP(item)">
+                  <button
+                    v-if="canEditIP(item)"
+                    class="swipe-action-btn edit"
+                    type="button"
+                    @click.stop="handleEditIP(item)"
+                  >
                     <el-icon><Edit /></el-icon>
                     <span>编辑</span>
                   </button>
-                  <button class="swipe-action-btn delete" type="button" @click.stop="handleDeleteIP(item)">
+                  <button
+                    v-if="canEditIP(item)"
+                    class="swipe-action-btn delete"
+                    type="button"
+                    @click.stop="handleDeleteIP(item)"
+                  >
                     <el-icon><Delete /></el-icon>
                     <span>删除</span>
                   </button>
@@ -298,7 +318,7 @@
                 <div class="character-list-header">
                   <span>角色列表</span>
                   <el-button
-                    v-if="authStore.isAdmin"
+                    v-if="canEditIP(item)"
                     size="small"
                     type="primary"
                     text
@@ -314,8 +334,8 @@
                       v-for="char in characterMap[item.id]"
                       :key="char.id"
                       class="character-tile"
-                      :class="{ clickable: authStore.isAdmin }"
-                      @click="authStore.isAdmin && handleEditCharacter(char)"
+                      :class="{ clickable: canEditIP(item) }"
+                      @click="canEditIP(item) && handleEditCharacter(char)"
                     >
                       <el-avatar :size="46" :src="char.avatar || undefined" shape="square" class="char-avatar tile-avatar">
                         <el-icon><UserFilled /></el-icon>
@@ -323,7 +343,7 @@
                       <div class="character-name-compact" :title="char.name">{{ char.name }}</div>
 
                       <el-button
-                        v-if="authStore.isAdmin"
+                        v-if="canEditIP(item)"
                         class="tile-delete-btn"
                         size="small"
                         text
@@ -360,6 +380,7 @@
       :characters="drawerCharacters"
       :loading="drawerIP ? !!characterLoadingMap[drawerIP.id] : false"
       :is-admin="authStore.isAdmin"
+      :can-manage="drawerIP ? canEditIP(drawerIP) : false"
       :is-mobile="isMobile"
       @add-character="handleAddCharacterForIP"
       @edit-character="handleEditCharacter"
@@ -462,6 +483,7 @@
                   />
                   <div class="ip-editor-cover-actions">
                     <el-button
+                      v-if="canFetchCover"
                       size="small"
                       :loading="ipCoverFetching"
                       :disabled="!isEditIP || ipCoverFetching"
@@ -1208,7 +1230,12 @@
                     filterable
                     style="width: 100%"
                   >
-                    <el-option v-for="ip in ipList" :key="ip.id" :label="ip.name" :value="ip.id" />
+                    <el-option
+                      v-for="ip in characterIpOptions"
+                      :key="ip.id"
+                      :label="ipLabel(ip)"
+                      :value="ip.id"
+                    />
                   </el-select>
                 </el-form-item>
                 <el-form-item v-if="false" label="性别" prop="gender">
@@ -1242,7 +1269,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted, nextTick, reactive, watch } from 'vue'
-import type { CSSProperties } from 'vue'
+import type { Component, CSSProperties } from 'vue'
 import {
   Plus,
   Edit,
@@ -1277,6 +1304,7 @@ import AppFilterPanel from '@/components/AppFilterPanel.vue'
 import AddFab, { type AddFabItem, type AddFabProps } from '@/components/AddFab.vue'
 import { SUBJECT_TYPE_OPTIONS, subjectTypeLabel } from '@/navigation/subjectTypes'
 import { debounce } from '@/utils/debounce'
+import { ipLabel } from '@/utils/ip'
 import {
   getIPList,
   getIPDetail,
@@ -1314,21 +1342,66 @@ import type {
 const { isMobile } = useResponsiveDevice()
 
 const authStore = useAuthStore()
+
+// ==================== 权限：官方资料只读 / 个人 IP 可写 ====================
+
+/** 能否新建 IP / 角色：管理员，或开放个人 IP 时的收藏者 */
+const canCreateIP = computed(
+  () => authStore.isAdmin || (authStore.isCollector && authStore.personalIpEnabled),
+)
+
+/** 能否编辑 / 删除该作品：管理员任意；普通账号只有自己的个人 IP */
+const canEditIP = (ip: IP) =>
+  authStore.isAdmin || (Boolean(ip.user_id) && ip.user_id === authStore.user?.id)
+
+/** 能否对该作品做 BGM 增量更新：管理员，或本人个人 IP 且已填写个人 Bangumi Token */
+const canSyncBGM = (ip: IP) => {
+  if (authStore.isAdmin) return true
+  return canEditIP(ip) && authStore.hasBGMToken
+}
+
+/** 「从 Bangumi 导入」需要 token：管理员用系统 token，普通账号必须自己配置 */
+const canImportFromBGM = computed(() => authStore.isAdmin || authStore.hasBGMToken)
+
+/** 「从 Bangumi 取封面」同样需要 token */
+const canFetchCover = computed(() => authStore.isAdmin || authStore.hasBGMToken)
+
+/** 角色弹窗里可选的「所属作品」：普通账号只能挂到自己的个人 IP */
+const characterIpOptions = computed<IP[]>(() => {
+  if (authStore.isAdmin) return ipList.value
+  const me = authStore.user?.id
+  return ipList.value.filter((ip) => Boolean(ip.user_id) && ip.user_id === me)
+})
 const metadataStore = useMetadataStore()
 const mobileAddSheetVisible = ref(false)
 
-const ipMobileCreateActions = [
-  { key: 'bgm', label: '从 Bangumi 导入', icon: Search },
-  { key: 'ip', label: '新增作品 (IP)', icon: Collection, tone: 'primary' as const },
-  { key: 'character', label: '新增角色', icon: UserFilled },
-]
+type IPMobileCreateAction = {
+  key: string
+  label: string
+  icon: Component
+  tone?: 'primary' | 'danger'
+}
+
+const ipMobileCreateActions = computed<IPMobileCreateAction[]>(() => {
+  const actions: IPMobileCreateAction[] = []
+  if (canImportFromBGM.value) {
+    actions.push({ key: 'bgm', label: '从 Bangumi 导入', icon: Search })
+  }
+  actions.push({ key: 'ip', label: '新增作品 (IP)', icon: Collection, tone: 'primary' })
+  actions.push({ key: 'character', label: '新增角色', icon: UserFilled })
+  return actions
+})
 
 // 桌面端右下角悬浮按钮的下拉项（与移动端 ActionSheet 一一对应）
-const ipFabItems: AddFabItem[] = [
-  { command: 'bgm', label: '从 Bangumi 导入', icon: Search, tag: '推荐' },
-  { command: 'ip', label: '新增作品 (IP)', icon: Collection, divided: true },
-  { command: 'character', label: '新增角色', icon: UserFilled },
-]
+const ipFabItems = computed<AddFabItem[]>(() => {
+  const items: AddFabItem[] = []
+  if (canImportFromBGM.value) {
+    items.push({ command: 'bgm', label: '从 Bangumi 导入', icon: Search, tag: '推荐' })
+  }
+  items.push({ command: 'ip', label: '新增作品 (IP)', icon: Collection, divided: true })
+  items.push({ command: 'character', label: '新增角色', icon: UserFilled })
+  return items
+})
 
 onMounted(() => {
   document.addEventListener('click', handleDocumentClick, true)
@@ -2186,8 +2259,8 @@ const handleRefresh = () => {
 // 只有不被外壳接管时（单独挂载本页面）才走模板里的回退版本。
 const ipFabProps = computed<AddFabProps>(() => ({
   label: '新增 / 导入',
-  items: ipFabItems,
-  showPrimary: authStore.isAdmin,
+  items: ipFabItems.value,
+  showPrimary: canCreateIP.value,
   showRefresh: true,
   refreshing: loading.value,
   refreshLabel: '刷新作品列表',
@@ -2511,6 +2584,10 @@ const handleSubmitCharacter = async () => {
 }
 
 const handleOpenBGMImport = () => {
+  if (!canImportFromBGM.value) {
+    ElMessage.warning('请先在个人中心填写 Bangumi Access Token 后再导入')
+    return
+  }
   bgmDialogVisible.value = true
   handleBGMReset()
 }

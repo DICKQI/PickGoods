@@ -19,6 +19,19 @@ export interface UserInfo {
   approval_status: 'pending' | 'approved' | string
   avatar?: string | null
   club?: { id: number; name: string; avatar?: string | null } | null
+  /** 是否已配置个人 Bangumi Access Token（后端只回显状态，不返回原文） */
+  bgm_token_is_set?: boolean
+  /** 个人 token 的掩码提示，例如 ****abcd；未配置时为 null */
+  bgm_token_hint?: string | null
+  /** 个人 IP（用户自建、仅本人可见）是否开放；后端开关关闭时为 false */
+  personal_ip_enabled?: boolean
+}
+
+export interface BGMTokenStatus {
+  /** 是否已配置个人 Bangumi Access Token */
+  is_set: boolean
+  /** 掩码提示，例如 ****abcd；未配置时为 null */
+  hint: string | null
 }
 
 export interface AccountUpdatePayload {
@@ -209,6 +222,13 @@ export interface IP {
    * 用于节流：未命中的 IP 短期内不再重复请求 BGM。
    */
   cover_checked_at?: string | null
+  /**
+   * 归属用户 ID：为空/undefined 表示管理员维护的官方全局 IP；
+   * 有值表示用户自建的个人 IP（只有本人与管理员可见可写）。
+   */
+  user_id?: number | null
+  /** 是否为用户自建的个人 IP（后端派生字段） */
+  is_personal?: boolean
 }
 
 // IP 封面补齐（从 Bangumi 条目图解析）响应

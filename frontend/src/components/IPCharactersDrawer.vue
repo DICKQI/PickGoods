@@ -46,7 +46,7 @@
           </template>
         </el-input>
         <el-button
-          v-if="isAdmin"
+          v-if="canManageCharacters"
           type="primary"
           size="small"
           class="ip-drawer-add"
@@ -63,8 +63,8 @@
             v-for="char in filteredCharacters"
             :key="char.id"
             class="ip-drawer-tile"
-            :class="{ clickable: isAdmin }"
-            :title="isAdmin ? `编辑 ${char.name}` : char.name"
+            :class="{ clickable: canManageCharacters }"
+            :title="canManageCharacters ? `编辑 ${char.name}` : char.name"
             @click="handleTileClick(char)"
           >
             <el-avatar :size="44" :src="char.avatar || undefined" shape="square" class="ip-drawer-avatar">
@@ -72,7 +72,7 @@
             </el-avatar>
             <span class="ip-drawer-tile-name">{{ char.name }}</span>
             <button
-              v-if="isAdmin"
+              v-if="canManageCharacters"
               type="button"
               class="ip-drawer-tile-delete"
               title="删除角色"
@@ -106,9 +106,18 @@ const props = withDefaults(
     loading?: boolean
     isAdmin?: boolean
     isMobile?: boolean
+    /**
+     * 是否可以维护该作品下的角色：管理员为 true，普通账号仅在打开的是
+     * 自己的个人 IP 时为 true。未传时回落到 isAdmin（保持既有调用方行为）。
+     */
+    canManage?: boolean
   }>(),
   { loading: false, isAdmin: false, isMobile: false },
 )
+
+/** 角色维护权限：canManage 为页面按 IP 归属算出的结果；isAdmin 作为兼容兜底
+ *  （Vue 会把缺省的 boolean prop 转成 false，所以这里用逻辑或而不是空值合并） */
+const canManageCharacters = computed(() => props.canManage || props.isAdmin)
 
 const emit = defineEmits<{
   (e: 'update:modelValue', value: boolean): void
@@ -157,7 +166,7 @@ const filteredCharacters = computed(() => {
 })
 
 const handleTileClick = (character: Character) => {
-  if (!props.isAdmin) return
+  if (!canManageCharacters.value) return
   emit('edit-character', character)
 }
 </script>
