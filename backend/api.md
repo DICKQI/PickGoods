@@ -36,12 +36,19 @@
 | 字段名         | 类型                  | 说明                                                  |
 | -------------- | --------------------- | ----------------------------------------------------- |
 | `id`           | Integer (PK)          | 自增主键                                              |
-| `name`         | Char(100), 唯一, 索引 | 作品名，如：`崩坏：星穹铁道`                          |
+| `name`         | Char(100), 索引       | 作品名，如：`崩坏：星穹铁道`；唯一性按归属域判定（见下） |
+| `user`         | FK -> `User` (可空, 索引) | **归属用户**：为空=管理员维护的官方全局 IP；非空=用户自建的个人 IP（仅本人与管理员可见可写） |
 | `subject_type` | Integer (可空)        | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄 |
 | `order`        | Integer               | 展示排序，越小越靠前，默认 `0`                        |
-| `bgm_subject_id`| Integer (可空, 唯一) | 绑定的 BGM 作品 ID，用于 BGM 增量同步                 |
+| `bgm_subject_id`| Integer (可空)       | 绑定的 BGM 作品 ID，用于 BGM 增量同步；唯一性按归属域判定 |
 | `cover_image`  | Char(500) (可空)      | 作品封面：BGM 条目封面 URL，或手填外链 / 服务器相对路径；为空时前端用首字占位 |
 | `cover_checked_at` | DateTime (可空)   | 最近一次**得出结论**的封面解析时间（命中或未命中），用于节流重试；网络失败不写入 |
+
+> **唯一性（按归属域）**：
+>
+> - 官方域（`user IS NULL`）：`name` 全局唯一、`bgm_subject_id` 全局唯一；
+> - 个人域（`user` 非空）：`(user, name)` 唯一、`(user, bgm_subject_id)` 唯一——多个用户可以各自导入同一部 BGM 作品；
+> - 官方域与个人域互不影响，但**个人 IP 不得与官方 IP 同名**（创建时返回 400，提示直接使用官方作品）。
 
 #### `IPKeyword` IP 多关键词表
 
@@ -346,11 +353,43 @@ Authorization: Bearer <access_token>
 | `id`       | int    | 用户 ID          |
 | `username` | string | 用户名           |
 | `role`     | string | 角色名称：`User` / `Admin` |
+| `account_type` | string | 业务身份：`collector`（吃谷人）/ `club`（社团） |
+| `bgm_token_is_set` | bool | 是否已配置个人 Bangumi Access Token |
+| `bgm_token_hint` | string \| null | 个人 Token 的掩码提示（如 `****abcd`），**永不返回原文** |
+| `personal_ip_enabled` | bool | 个人 IP 功能是否开放（服务端 `PERSONAL_IP_ENABLED=0` 时为 `false`，前端据此隐藏入口） |
 
 > 角色说明：
 >
 > - `User`：普通用户，只能访问/修改自己的私有数据（Goods / Theme / Showcase / StorageNode）
 > - `Admin`：管理员，可管理公共元数据（IP / 角色 / 品类），并可查看所有用户数据
+
+---
+
+### 2.5 个人 Bangumi Access Token（保存 / 清除）
+
+- **URL**：`POST /api/auth/me/bgm-token/`、`DELETE /api/auth/me/bgm-token/`
+- **说明**：
+  - 个人 Token 只用于**该账号自己**的 Bangumi 搜索、导入与同步请求；服务端不会用别人的 Token 代跑。
+  - 管理员未填写个人 Token 时，回落到服务端环境变量里的 Token（`BGM_ACCESS_TOKEN`）。
+  - 响应中**永不返回 Token 原文**，只返回 `is_set` 与 `****abcd` 掩码。
+
+##### 请求体（JSON，POST）
+
+```json
+{ "access_token": "xxxxxxxxxxxxxxxx" }
+```
+
+| 字段名 | 类型 | 必填 | 说明 |
+| --- | --- | --- | --- |
+| `access_token` | string | 是 | 个人 Bangumi Access Token，1–200 字符，不允许包含空白 |
+
+##### 响应示例
+
+```json
+{ "is_set": true, "hint": "****abcd" }
+```
+
+- `DELETE` 清除已保存的 Token，返回 `{"is_set": false, "hint": null}`。
 
 ---
 
@@ -1945,16 +1984,35 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 用于管理基础数据（IP作品、角色、品类）的完整 CRUD 接口。建议在应用启动时预加载列表数据并缓存到前端状态管理（Pinia/Vuex）。
 
-> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。  
-> 额外的写入权限由角色控制：普通用户只能只读访问这些公共元数据；只有 `Admin` 角色可以创建/更新/删除 IP / 角色 / 品类。***
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。
+
+#### 官方 IP 与个人 IP（同一张表两种归属）
+
+`IP.user` 为空的是**官方 IP**（管理员维护、全员可见只读）；非空的是**用户自建的个人 IP**（仅本人与管理员可见可写）。
+
+| 动作 | 管理员 | 收藏者（collector） | 社团（club）/ 匿名 |
+| --- | --- | --- | --- |
+| 列表 / 详情 / 角色列表 | 全部 IP | 官方 IP + **自己的**个人 IP | 403 |
+| 创建 IP | 创建官方 IP（`user` 恒为空） | 创建自己的个人 IP | 403 |
+| 修改 / 删除 IP | 任意 IP | 仅自己的个人 IP（官方→403，他人个人→404） | 403 |
+| 批量排序 `batch-update-order` | ✅ | 403 | 403 |
+| 批量补封面 `fetch-covers` | ✅ | 403 | 403 |
+| 单人取封面 `fetch-cover` / BGM 预览与同步 | 任意 IP | 仅自己的个人 IP，且需已配置个人 Bangumi Token | 403 |
+| 创建 / 修改 / 删除角色 | 任意 IP 下的角色 | 仅自己的个人 IP 下的角色 | 403 |
+| 品类 / 主题 | 读写 | 只读 | 403 |
+
+> 他人个人 IP 在列表与搜索里不出现，按 ID 直接请求返回 `404`。
+> 服务端开关 `PERSONAL_IP_ENABLED=0` 时（T0 回滚），个人 IP 对所有人不可见，普通账号的写操作一律 `403`，数据仍保留。
 
 ### 5.1 IP作品 CRUD 接口
 
 #### 5.1.1 获取IP作品列表
 
 - **URL**：`GET /api/ips/`
-- **说明**：获取所有IP作品列表，用于筛选器下拉选项。
+- **说明**：获取IP作品列表，用于筛选器下拉选项。
   - 默认排序：先按 `order` 升序，其次按 `id` 升序（保证全序、稳定）。
+  - **作用域**：普通账号只返回「官方 IP + 自己的个人 IP」；管理员返回全量（含各用户的个人 IP，便于排查）。
+  - 响应中 `user_id` 为空表示官方 IP，`is_personal=true` 表示个人 IP。
 
 ##### 查询参数（全部可选）
 
@@ -2097,6 +2155,20 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null` |
 | `order`        | integer        | 否   | 展示排序，越小越靠前，默认 `0`                                       |
 | `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符，会自动去重和去空 |
+| `cover_image`  | string         | 否   | 封面 URL；个人 IP 可直接手填外链 |
+| `bgm_subject_id` | integer      | 否   | **仅管理员可写**；普通账号请走「八、BGM 导入接口」 |
+
+##### 归属与同名规则
+
+- 请求体**不接受** `user` 字段：管理员创建的恒为官方 IP，普通账号创建的恒归自己。
+- 名称唯一性按归属域判定：
+
+| 操作者 | 情形 | 结果 |
+| --- | --- | --- |
+| 收藏者 | 已存在同名官方 IP | `400`「已存在同名官方 IP，请直接使用」 |
+| 收藏者 | 自己已有同名个人 IP | `400`「你已创建过同名作品」 |
+| 收藏者 | 其他用户有同名个人 IP | `201`（各自独立） |
+| 管理员 | 已存在同名官方 IP | `400`「该名称的官方作品已存在」 |
 
 ##### 响应
 
@@ -2170,8 +2242,11 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 ##### 响应
 
-- 成功：返回 `204 No Content`
-- 失败：如果该IP作品下有关联的角色或谷子，将返回错误（受外键保护）
+- 成功：返回 `204 No Content`（作品下的角色与关键词随之级联删除）
+- `409 Conflict`：该作品下仍有谷子（`Goods.ip` 是 PROTECT），返回
+  `{"detail": "该作品下还有 N 件谷子，请先移走或删除这些谷子后再删除作品"}`
+- `403`：普通账号试图删除官方 IP 或他人的个人 IP
+- `404`：普通账号访问他人的个人 IP
 
 ---
 
@@ -2603,7 +2678,10 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 #### 5.2.3 创建角色
 
 - **URL**：`POST /api/characters/`
-- **说明**：创建新角色。
+- **说明**：
+  - 创建新角色，`ip_id` 必须落在自己有权维护的 IP 上。
+  - **管理员**：可挂到任意 IP；**收藏者**：只能挂到自己的个人 IP（官方 IP → `400`，错误形如 `{"ip_id": ["Invalid pk ..."]}`）。
+  - 角色列表 / 详情同样按 IP 归属收敛：普通账号看不到他人的个人 IP 角色（`404`）。
 
 ##### 请求体（JSON）
 
@@ -3723,7 +3801,21 @@ gender: female
 > 说明：本章节接口用于**从 Bangumi(BGM) API 拉取角色**并**批量写入本系统的 IP / Character 表**。  
 > 这两个接口是**互相独立**的：搜索接口只调用外部 API，不改数据库；创建接口只操作本地数据库，不再调用外部 API。
 
-> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`；任意登录用户（User / Admin）均可调用。***
+> **鉴权说明**：本章节所有接口均需要登录，并在请求头携带 `Authorization: Bearer <access_token>`。
+
+#### BGM Access Token 的来源（个人 Token 优先）
+
+- **收藏者**：必须先在 `POST /api/auth/me/bgm-token/` 保存**自己的** Token，否则搜索/取角色接口返回
+  `400 {"detail": "请先在个人中心填写 Bangumi Access Token 后再使用 Bangumi 功能", "code": "bgm_token_missing"}`；
+- **管理员**：优先用个人 Token，未配置时回落到服务端 `BGM_ACCESS_TOKEN`（两者都没有时按匿名请求发送）；
+- 个人 Token 的调用按用户限流 `bgm_personal = 30/minute`（`429` 表示超限）。
+
+#### 导入归属（`/api/bgm/create-characters/`）
+
+- 管理员：只写入/复用**官方 IP**，不会挂到用户的个人 IP 上；
+- 收藏者：只写入**自己的个人 IP**；若官方已有同名 IP，该条返回
+  `{"status": "error", "error": "已存在同名官方 IP，请直接使用"}`；
+- 社团账号（club）与匿名请求：`403`。***
 
 ### 8.1 搜索 IP 作品并获取角色列表
 
