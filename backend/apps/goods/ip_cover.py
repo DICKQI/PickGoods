@@ -7,8 +7,10 @@
    并且不会回写 ``bgm_subject_id``（避免唯一约束冲突与误绑定，绑定仍由
    「从 BGM 更新」弹窗/K 增量同步负责）。
 
-节流：每次尝试（命中或未命中）都会写入 ``IP.cover_checked_at``，
-前端据此避免对同一个 IP 反复请求 BGM。
+节流：只有**得出结论**的尝试（命中，或 BGM 确实没有同名条目）才写入
+``IP.cover_checked_at``，前端据此避免对同一个 IP 反复请求 BGM。
+网络抖动 / 超时 / BGM 限流这类「没有结论」的失败**不写**时间戳，否则这些
+IP 会被节流 7 天，用户看到的就是「所有作品都已有封面啦」却一张都没补上。
 """
 from __future__ import annotations
 
@@ -32,6 +34,15 @@ DEFAULT_SLEEP_SECONDS = 0.25
 STATUS_UPDATED = "updated"
 STATUS_NO_MATCH = "no_match"
 STATUS_ERROR = "error"
+
+
+def should_record_check(status):
+    """是否把这次尝试写入 ``cover_checked_at``（决定要不要节流）。
+
+    只有得出结论的尝试才节流：``updated`` / ``no_match`` 写时间戳；
+    ``error``（网络错误、超时、BGM 限流、解析异常）不写，下次还能立刻重试。
+    """
+    return status != STATUS_ERROR
 
 # 归一化作品名时忽略的字符（中英文标点/空白/连接符）
 _IGNORED_NAME_CHARS = set(
@@ -115,12 +126,15 @@ def refresh_ip_cover(ip, *, force=True, service=None, now=None):
     now = now or timezone.now()
     cover, status, reason = resolve_ip_cover(ip, service=service)
 
-    update_fields = ["cover_checked_at"]
-    ip.cover_checked_at = now
+    update_fields = []
+    if should_record_check(status):
+        update_fields.append("cover_checked_at")
+        ip.cover_checked_at = now
     if cover and (force or not ip.cover_image):
         ip.cover_image = cover
         update_fields.append("cover_image")
-    ip.save(update_fields=update_fields)
+    if update_fields:
+        ip.save(update_fields=update_fields)
 
     if status == STATUS_UPDATED and not cover:
         # 命中但被已有封面挡住（force=False 的场景）
@@ -153,6 +167,9 @@ def backfill_ip_covers(
       - ``force=False`` 时只处理「没有封面」且「``cover_checked_at`` 为空或已过期」的 IP；
       - ``force=True`` 时不看封面与时间，直接重算（会覆盖已有封面）。
 
+    节流：``updated`` / ``no_match`` 会写 ``cover_checked_at``；``error``
+    （网络问题等没有结论的失败）不写，下一轮/用户手动重试仍会命中候选集。
+
     Args:
         ids (Iterable[int] | None): 指定 IP id
         force (bool): 是否强制重算并覆盖
@@ -163,7 +180,10 @@ def backfill_ip_covers(
         now: 可注入的当前时间（测试用）
 
     Returns:
-        dict: ``{updated, checked, skipped, items, failed, remaining}``
+        dict: ``{updated, checked, skipped, items, failed, remaining}``。
+        ``checked`` 只统计写入了节流时间戳的 IP（即得出结论的尝试）；
+        ``items[]`` 逐条带上 ``status``（``updated`` / ``no_match`` / ``error``），
+        前端据此区分「BGM 没有这个条目」与「网络失败可重试」。
     """
     now = now or timezone.now()
     service = service or default_service()
@@ -206,21 +226,32 @@ def backfill_ip_covers(
 
         cover, status, reason = resolve_ip_cover(ip, service=service)
 
-        update_fields = ["cover_checked_at"]
-        ip.cover_checked_at = now
+        update_fields = []
+        if should_record_check(status):
+            update_fields.append("cover_checked_at")
+            ip.cover_checked_at = now
         if cover and (force or not ip.cover_image):
             ip.cover_image = cover
             update_fields.append("cover_image")
             updated += 1
 
-        try:
-            ip.save(update_fields=update_fields)
-        except Exception as exc:  # noqa: BLE001 - 单条落库失败不影响整批
-            failed.append({"id": ip.id, "name": ip.name, "reason": str(exc)})
-            continue
+        if update_fields:
+            try:
+                ip.save(update_fields=update_fields)
+            except Exception as exc:  # noqa: BLE001 - 单条落库失败不影响整批
+                failed.append({"id": ip.id, "name": ip.name, "reason": str(exc)})
+                continue
+            if "cover_checked_at" in update_fields:
+                checked += 1
 
-        checked += 1
-        items.append({"id": ip.id, "name": ip.name, "cover_image": ip.cover_image})
+        items.append(
+            {
+                "id": ip.id,
+                "name": ip.name,
+                "cover_image": ip.cover_image,
+                "status": status,
+            }
+        )
         if status != STATUS_UPDATED:
             failed.append({"id": ip.id, "name": ip.name, "reason": reason or status})
 

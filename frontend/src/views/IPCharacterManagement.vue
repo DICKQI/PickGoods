@@ -1307,6 +1307,7 @@ import type {
   BGMSyncPreviewResponse,
   BGMSyncApplyResponse,
   BGMSyncDiffItem,
+  IPCoverBackfillItem,
 } from '@/api/types'
 
 const { isMobile } = useResponsiveDevice()
@@ -1940,7 +1941,8 @@ const handleMobileCreateAction = (command: string) => {
 }
 
 // ==================== 封面补齐（Bangumi 条目图） ====================
-// 未命中的 IP 后端会记录 cover_checked_at，7 天内不再重复请求 BGM
+// 后端只给「有结论」的尝试（命中 / BGM 确实没有同名条目）写 cover_checked_at，
+// 7 天内不再重复请求；网络失败不写时间戳，所以断网那次的失败不会被节流锁死。
 const COVER_RETRY_DAYS = 7
 const COVER_BATCH_LIMIT = 20
 const COVER_MAX_ROUNDS = 5
@@ -1958,43 +1960,73 @@ const needsCoverFetch = (ip: IP) => {
 }
 
 /** 把后端补齐的封面同步到列表与本地缓存，卡片立刻显示新图 */
-const applyCoverResults = (items: { id: number; cover_image: string | null }[]) => {
+const applyCoverResults = (items: IPCoverBackfillItem[]) => {
   if (!items.length) return
   const now = new Date().toISOString()
-  metadataStore.applyIPCovers(items, now)
+  // 网络失败的条目后端没有写 cover_checked_at，本地也不把它标成「已检查」，
+  // 否则本次会话内它们会被 needsCoverFetch 跳过，用户重试也补不上
+  const recorded = items.filter((item) => item.status !== 'error')
+  const recordedIds = new Set(recorded.map((item) => item.id))
+  if (recorded.length) metadataStore.applyIPCovers(recorded, now)
   const coverMap = new Map(items.map((item) => [item.id, item.cover_image]))
-  ipList.value = ipList.value.map((ip) =>
-    coverMap.has(ip.id)
-      ? { ...ip, cover_image: coverMap.get(ip.id) ?? null, cover_checked_at: now }
-      : ip,
-  )
+  ipList.value = ipList.value.map((ip) => {
+    if (!coverMap.has(ip.id)) return ip
+    const next = { ...ip, cover_image: coverMap.get(ip.id) ?? null }
+    return recordedIds.has(ip.id) ? { ...next, cover_checked_at: now } : next
+  })
 }
 
+type CoverBackfillSummary = { updated: number; noMatch: number; errors: number; remaining: number }
+
 /** 分批补齐：后端单次上限 20 条，remaining > 0 时继续续跑（已补/已记录的会自动退出候选集） */
-const backfillCovers = async (ids: number[], options: { silent?: boolean } = {}) => {
+const backfillCovers = async (
+  ids: number[],
+  options: { silent?: boolean; force?: boolean } = {},
+) => {
   if (!ids.length || coverBackfilling.value) return null
 
   coverBackfilling.value = true
-  const summary = { updated: 0, failed: 0, remaining: 0 }
+  const summary: CoverBackfillSummary = { updated: 0, noMatch: 0, errors: 0, remaining: 0 }
+  const statusById = new Map<number, IPCoverBackfillItem['status']>()
 
   try {
     let round = 0
     let result: Awaited<ReturnType<typeof fetchIPCovers>> | null = null
+    let pending = [...ids]
     do {
-      result = await fetchIPCovers({ ids, limit: COVER_BATCH_LIMIT })
+      result = await fetchIPCovers({ ids: pending, limit: COVER_BATCH_LIMIT, force: options.force })
       applyCoverResults(result.items)
       summary.updated += result.updated
-      summary.failed += result.failed.length
+      result.items.forEach((item) => statusById.set(item.id, item.status))
+      const answered = new Set(result.items.map((item) => item.id))
+      pending = pending.filter((id) => !answered.has(id))
       summary.remaining = result.remaining
       round += 1
-    } while (result.remaining > 0 && round < COVER_MAX_ROUNDS)
+      // checked 为 0 说明这一轮全是网络失败（后端没记录），再跑也是白跑；
+      // force 时后端恒返回 remaining=0，改用本地 pending 判断是否还有没处理的
+    } while (
+      round < COVER_MAX_ROUNDS &&
+      result.checked > 0 &&
+      (options.force ? pending.length > 0 : result.remaining > 0)
+    )
+
+    if (options.force) summary.remaining = pending.length
+    summary.noMatch = [...statusById.values()].filter((status) => status === 'no_match').length
+    summary.errors = [...statusById.values()].filter((status) => status === 'error').length
 
     // 后端判定「还没到重查时间」的 IP 不会出现在 items 里：
     // 本地也把它们标记为已检查，否则每次进页面都会白白多发一次请求
     const handled = new Set(result.items.map((item) => item.id))
     const untouched = ipList.value.filter((ip) => ids.includes(ip.id) && !handled.has(ip.id))
-    if (untouched.length) {
-      applyCoverResults(untouched.map((ip) => ({ id: ip.id, cover_image: ip.cover_image ?? null })))
+    if (untouched.length && !options.force && !result.remaining) {
+      applyCoverResults(
+        untouched.map((ip) => ({
+          id: ip.id,
+          name: ip.name,
+          cover_image: ip.cover_image ?? null,
+          status: 'no_match' as const,
+        })),
+      )
     }
   } catch (err: any) {
     // 后端版本较旧（接口不存在 → 405/404）：静默降级，只在手动操作时提示一次
@@ -2023,25 +2055,31 @@ const autoBackfillCovers = async () => {
   await backfillCovers(ids, { silent: true })
 }
 
-/** 手动「补齐封面」：只补仍然缺图且过了重试窗口的作品 */
+/** 手动「补齐封面」：缺图的作品全部重查一遍（忽略 7 天节流） */
 const handleBackfillCovers = async () => {
   if (coverBackfillUnsupported.value) {
     ElMessage.warning('当前服务端还不支持封面补齐，请更新后端后再试')
     return
   }
-  const ids = ipList.value.filter(needsCoverFetch).map((ip) => ip.id)
+  const ids = ipList.value.filter((ip) => !ip.cover_image).map((ip) => ip.id)
   if (!ids.length) {
     ElMessage.success('所有作品都已有封面啦')
     return
   }
 
-  const summary = await backfillCovers(ids, { silent: true })
+  // force：手动点击就是要重试，无视「7 天内不再查」的节流；
+  // 只对缺图的 IP 发，所以不会覆盖已有（含手工）封面
+  const summary = await backfillCovers(ids, { silent: true, force: true })
   if (!summary) return
 
-  const parts = [`已补 ${summary.updated} 部`]
-  if (summary.failed) parts.push(`${summary.failed} 部未匹配或失败`)
+  const parts: string[] = []
+  if (summary.updated) parts.push(`已补 ${summary.updated} 部`)
+  if (summary.noMatch) parts.push(`${summary.noMatch} 部 BGM 无匹配`)
+  if (summary.errors) parts.push(`${summary.errors} 部网络失败，可稍后重试`)
   if (summary.remaining) parts.push(`还有 ${summary.remaining} 部待补`)
-  ElMessage.success(parts.join('，'))
+  const text = parts.length ? parts.join('，') : '没有可以补齐的封面'
+  if (summary.updated) ElMessage.success(text)
+  else ElMessage.warning(text)
 }
 
 const fetchIPList = async (force = false) => {
@@ -2209,7 +2247,9 @@ const handleFetchCoverForIP = async () => {
     } else {
       ElMessage.warning(result.detail || 'Bangumi 上没有匹配到封面')
     }
-    applyCoverResults([{ id: result.id, cover_image: result.cover_image }])
+    applyCoverResults([
+      { id: result.id, name: result.name, cover_image: result.cover_image, status: result.status },
+    ])
   } catch (err: any) {
     if (isEndpointUnsupportedError(err)) {
       coverBackfillUnsupported.value = true

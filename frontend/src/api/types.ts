@@ -212,10 +212,17 @@ export interface IP {
 }
 
 // IP 封面补齐（从 Bangumi 条目图解析）响应
+export type IPCoverStatus = 'updated' | 'no_match' | 'error'
+
 export interface IPCoverBackfillItem {
   id: number
   name: string
   cover_image: string | null
+  /**
+   * 单条结果：`updated` 已写入封面、`no_match` BGM 没有同名条目（会节流 7 天）、
+   * `error` 网络/解析失败（**不节流**，可以立刻重试）。
+   */
+  status: IPCoverStatus
 }
 
 export interface IPCoverBackfillFailure {
@@ -227,7 +234,7 @@ export interface IPCoverBackfillFailure {
 export interface IPCoverBackfillResponse {
   /** 本次成功写入封面的数量 */
   updated: number
-  /** 本次实际发出 BGM 查询的 IP 数量 */
+  /** 本次得出结论（写入节流时间戳）的 IP 数量，不含网络失败 */
   checked: number
   /** 请求中的 id 不存在而被跳过的数量 */
   skipped: number
@@ -243,7 +250,7 @@ export interface IPCoverFetchResponse {
   name: string
   cover_image: string | null
   bgm_subject_id: number | null
-  status: 'updated' | 'no_match' | 'error'
+  status: IPCoverStatus
   detail: string
   resolved: boolean
 }

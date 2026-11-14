@@ -4,7 +4,8 @@
 
 1. ``pick_cover_url`` / ``normalize_image_url`` 的取值优先级与 https 归一；
 2. ``resolve_ip_cover`` 在「已绑定 subject_id」「按名称精确匹配」「未命中」「请求异常」下的行为；
-3. ``backfill_ip_covers`` 的节流、force、limit、失败隔离与 remaining 语义；
+3. ``backfill_ip_covers`` 的节流、force、limit、失败隔离与 remaining 语义
+   （网络类失败不写 ``cover_checked_at``，不会把 IP 锁死在 7 天窗口里）；
 4. ``/api/ips/fetch-covers/`` 与 ``/api/ips/{id}/fetch-cover/`` 的权限与返回结构；
 5. 序列化器暴露 ``cover_image`` / ``cover_checked_at``，且可通过 PATCH 写入与清除。
 
@@ -230,7 +231,17 @@ class BackfillIpCoversTests(TestCase):
         ip.refresh_from_db()
         self.assertEqual(ip.cover_image, cover_images()["large"])
         self.assertEqual(ip.cover_checked_at, self.now)
-        self.assertEqual(result["items"], [{"id": ip.id, "name": ip.name, "cover_image": cover_images()["large"]}])
+        self.assertEqual(
+            result["items"],
+            [
+                {
+                    "id": ip.id,
+                    "name": ip.name,
+                    "cover_image": cover_images()["large"],
+                    "status": STATUS_UPDATED,
+                }
+            ],
+        )
 
     def test_no_match_still_records_checked_at(self):
         ip = IP.objects.create(name="没有条目的作品")
@@ -319,12 +330,49 @@ class BackfillIpCoversTests(TestCase):
 
         result = backfill_ip_covers(service=service, now=self.now, sleep_seconds=0, limit=10)
 
-        self.assertEqual(result["checked"], 2)
+        # 失败的那条不写 cover_checked_at，因此不计入 checked
+        self.assertEqual(result["checked"], 1)
         self.assertEqual(result["updated"], 1)
         self.assertEqual(len(result["failed"]), 1)
         self.assertEqual(result["failed"][0]["name"], "坏作品")
         good.refresh_from_db()
         self.assertEqual(good.cover_image, cover_images()["large"])
+
+    def test_network_error_does_not_throttle_the_ip(self):
+        """断网时批量补齐过一轮，网络恢复后同一个 IP 必须还能被补上。"""
+        ip = IP.objects.create(name="蔚蓝档案", bgm_subject_id=300648)
+        failing = FakeBGMService(subject_error=RuntimeError("SSL EOF while reading"))
+
+        first = backfill_ip_covers(service=failing, now=self.now, sleep_seconds=0, limit=10)
+
+        self.assertEqual(first["updated"], 0)
+        self.assertEqual(first["checked"], 0)
+        self.assertEqual(first["items"][0]["status"], STATUS_ERROR)
+        self.assertIn("SSL EOF", first["failed"][0]["reason"])
+        ip.refresh_from_db()
+        self.assertIsNone(ip.cover_image)
+        self.assertIsNone(ip.cover_checked_at)
+
+        recovered = FakeBGMService(subject_images={300648: cover_images()})
+        second = backfill_ip_covers(service=recovered, now=self.now, sleep_seconds=0, limit=10)
+
+        self.assertEqual(second["updated"], 1)
+        self.assertEqual(second["checked"], 1)
+        ip.refresh_from_db()
+        self.assertEqual(ip.cover_image, cover_images()["large"])
+        self.assertEqual(ip.cover_checked_at, self.now)
+
+    def test_no_match_result_is_reported_in_items(self):
+        ip = IP.objects.create(name="画师作品集")
+
+        result = backfill_ip_covers(
+            service=self._service(), now=self.now, sleep_seconds=0, limit=10
+        )
+
+        self.assertEqual(result["items"][0]["status"], STATUS_NO_MATCH)
+        self.assertEqual(result["checked"], 1)
+        ip.refresh_from_db()
+        self.assertEqual(ip.cover_checked_at, self.now)
 
     def test_unknown_ids_are_counted_as_skipped(self):
         ip = IP.objects.create(name="作品0")
@@ -350,6 +398,19 @@ class RefreshIpCoverTests(TestCase):
         ip.refresh_from_db()
         self.assertEqual(ip.cover_image, cover_images()["large"])
         self.assertIsNotNone(ip.cover_checked_at)
+
+    def test_refresh_error_keeps_checked_at_empty(self):
+        """单条「从 Bangumi 取封面」失败时不能留下节流时间戳，否则重试也没用。"""
+        ip = IP.objects.create(name="蔚蓝档案", bgm_subject_id=300648)
+        service = FakeBGMService(subject_error=RuntimeError("SSL EOF while reading"))
+
+        cover, cover_status, reason = refresh_ip_cover(ip, service=service)
+
+        self.assertIsNone(cover)
+        self.assertEqual(cover_status, STATUS_ERROR)
+        self.assertIn("SSL EOF", reason)
+        ip.refresh_from_db()
+        self.assertIsNone(ip.cover_checked_at)
 
 
 class IPCoverApiTests(TestCase):

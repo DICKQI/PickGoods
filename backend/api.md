@@ -41,7 +41,7 @@
 | `order`        | Integer               | 展示排序，越小越靠前，默认 `0`                        |
 | `bgm_subject_id`| Integer (可空, 唯一) | 绑定的 BGM 作品 ID，用于 BGM 增量同步                 |
 | `cover_image`  | Char(500) (可空)      | 作品封面：BGM 条目封面 URL，或手填外链 / 服务器相对路径；为空时前端用首字占位 |
-| `cover_checked_at` | DateTime (可空)   | 最近一次尝试从 BGM 解析封面的时间，用于节流重试（未命中也会写入） |
+| `cover_checked_at` | DateTime (可空)   | 最近一次**得出结论**的封面解析时间（命中或未命中），用于节流重试；网络失败不写入 |
 
 #### `IPKeyword` IP 多关键词表
 
@@ -2017,7 +2017,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
 - `cover_image`：作品封面 URL（BGM 条目封面或手填），可为 `null`（前端用作品首字占位）。
-- `cover_checked_at`：最近一次尝试从 BGM 解析封面的时间，可为 `null`；前端据此避免重复请求。
+- `cover_checked_at`：最近一次得出结论（命中/未命中）的封面解析时间，可为 `null`；前端据此避免重复请求，网络失败不会被记录。
 
 **使用示例**：
 - 筛选游戏类型的IP：`GET /api/ips/?subject_type=4`
@@ -2447,7 +2447,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - **说明**：为缺失封面的 IP 从 Bangumi 解析封面并写库。
   - 已绑定 `bgm_subject_id` 的 IP 走 `GET /v0/subjects/{id}` 的 `images`；
   - 未绑定的 IP 走 `POST /v0/search/subjects` 按作品名搜索，**只接受名称精确匹配**的候选，且**不会回写** `bgm_subject_id`；
-  - 每次尝试都会写 `cover_checked_at`：未命中的 IP 默认 7 天内不再重试（`force=true` 可绕过）；
+  - **只有得出结论的尝试才写 `cover_checked_at`**：命中（`updated`）或 BGM 确实没有同名条目（`no_match`）默认 7 天内不再重试（`force=true` 可绕过）；**网络失败（`error`）不写时间戳**，下次调用/手动重试仍会处理它（避免断网一轮把作品锁死 7 天）；
   - 相邻两次 BGM 请求间隔 0.25s，单次最多 50 条，避免长时间占用请求。
 
 ##### 请求体（JSON，全部可选）
@@ -2466,8 +2466,8 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
   "checked": 2,
   "skipped": 0,
   "items": [
-    { "id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg" },
-    { "id": 2, "name": "黑执事", "cover_image": null }
+    { "id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg", "status": "updated" },
+    { "id": 2, "name": "黑执事", "cover_image": null, "status": "no_match" }
   ],
   "failed": [{ "id": 2, "name": "黑执事", "reason": "BGM 搜索未找到同名条目" }],
   "remaining": 12
@@ -2476,10 +2476,10 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 **字段说明**：
 - `updated`：本次成功写入封面的数量。
-- `checked`：本次实际发出 BGM 查询的 IP 数量。
-- `items`：本次处理过的 IP 及其最终封面值（未取到时为 `null`）。
+- `checked`：本次得出**结论**（写入节流时间戳）的 IP 数量，不含网络失败。
+- `items`：本次处理过的 IP、最终封面值与单条 `status`（`updated` / `no_match` / `error`）；未取到封面时为 `null`。
 - `failed`：未命中或请求失败的明细（`reason` 为原因）。
-- `remaining`：候选队列中尚未处理的 IP 数量；前端据此续跑（`force=true` 时恒为 `0`）。
+- `remaining`：候选队列中尚未处理的 IP 数量；前端据此续跑（`force=true` 时恒为 `0`）。网络失败的 IP 因为不写 `cover_checked_at`，会继续留在候选队列里。
 
 ---
 
@@ -2506,6 +2506,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 **字段说明**：
 - `status`：`updated`（取到封面）/ `no_match`（BGM 无同名条目或无图）/ `error`（BGM 请求失败）。
 - `resolved`：本次是否解析到新封面。
+- `status=error` 时不写 `cover_checked_at`，可以直接再点一次重试。
 - `detail`：未解析到时的人类可读原因。
 
 ---

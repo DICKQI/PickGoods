@@ -77,11 +77,31 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain('const autoBackfillCovers')
     expect(source).toContain('void autoBackfillCovers()')
     expect(source).toContain('if (!authStore.isAdmin || isMobile.value) return')
-    expect(source).toContain('fetchIPCovers({ ids, limit: COVER_BATCH_LIMIT })')
-    expect(source).toContain('while (result.remaining > 0 && round < COVER_MAX_ROUNDS)')
-    expect(source).toContain('const untouched = ipList.value.filter((ip) => ids.includes(ip.id) && !handled.has(ip.id))')
-    expect(source).toContain('metadataStore.applyIPCovers(items, now)')
+    expect(source).toContain(
+      'fetchIPCovers({ ids: pending, limit: COVER_BATCH_LIMIT, force: options.force })',
+    )
+    expect(source).toContain('round < COVER_MAX_ROUNDS &&')
+    expect(source).toContain('result.checked > 0 &&')
+    expect(source).toContain('(options.force ? pending.length > 0 : result.remaining > 0)')
+    expect(source).toContain(
+      'const untouched = ipList.value.filter((ip) => ids.includes(ip.id) && !handled.has(ip.id))',
+    )
+    expect(source).toContain('metadataStore.applyIPCovers(recorded, now)')
     expect(source).toContain('@click="handleBackfillCovers"')
+  })
+
+  it('never throttles works whose cover lookup failed because of the network', () => {
+    // 断网那次补齐会把 cover_checked_at 写满，导致「所有作品都已有封面啦」却一张没补；
+    // 后端只对 updated/no_match 记时间戳，前端也不能把 error 标成已检查，手动补齐要 force
+    expect(source).toContain("const recorded = items.filter((item) => item.status !== 'error')")
+    expect(source).toContain('const recordedIds = new Set(recorded.map((item) => item.id))')
+    expect(source).toContain('return recordedIds.has(ip.id) ? { ...next, cover_checked_at: now } : next')
+    expect(source).toContain('const ids = ipList.value.filter((ip) => !ip.cover_image).map((ip) => ip.id)')
+    expect(source).toContain(
+      'const summary = await backfillCovers(ids, { silent: true, force: true })',
+    )
+    expect(source).toContain('summary.errors) parts.push(`${summary.errors} 部网络失败，可稍后重试`)')
+    expect(source).toContain('summary.noMatch) parts.push(`${summary.noMatch} 部 BGM 无匹配`)')
   })
 
   it('lets admins manage the cover from the IP editor dialog', () => {

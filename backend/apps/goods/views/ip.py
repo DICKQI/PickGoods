@@ -232,10 +232,13 @@ class IPViewSet(viewsets.ModelViewSet):
 
             {
                 "updated": 5, "checked": 8, "skipped": 0,
-                "items": [{"id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://..."}],
+                "items": [{"id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://...", "status": "updated"}],
                 "failed": [{"id": 2, "name": "黑执事", "reason": "BGM 搜索未找到同名条目"}],
                 "remaining": 12
             }
+
+        节流：只有得出结论的尝试（``updated`` / ``no_match``）才写
+        ``cover_checked_at``；网络失败（``status=error``）不写，可以立刻重试。
         """
         payload = request.data or {}
         ids = payload.get("ids")
