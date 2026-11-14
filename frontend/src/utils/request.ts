@@ -124,6 +124,18 @@ function redirectToLogin() {
   window.location.href = `${window.location.origin}${loginPath}?redirect=${redirect}`
 }
 
+/**
+ * 判断错误是否表示「当前服务端没有这个接口」。
+ *
+ * DRF 的路由会把未实现的 action 路径落到 `/api/ips/{pk}/` 这类详情路由上：
+ * POST 变成 405（Method not allowed）、GET 变成 404。前端据此判断后端版本较旧，
+ * 不要当成普通业务失败反复提示。
+ */
+export function isEndpointUnsupportedError(error: any): boolean {
+  const status = error?.response?.status ?? error?.status
+  return status === 404 || status === 405
+}
+
 export function handleResponseError(error: any): Promise<any> {
   const status = error.response?.status
   const suppressGlobalError = Boolean(error.config?.suppressGlobalError)

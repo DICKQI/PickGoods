@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createPinia, setActivePinia } from 'pinia'
 import { useMetadataStore } from '@/stores/metadata'
 import { AUTH_TOKEN_KEY } from '@/utils/request'
-import { getCategoryList, getCharacterList, getIPCharacters, getThemeList } from '@/api/metadata'
+import { getCategoryList, getCharacterList, getIPCharacters, getIPList, getThemeList } from '@/api/metadata'
 
 vi.mock('@/api/metadata', () => ({
   getIPList: vi.fn(),
@@ -82,5 +82,30 @@ describe('useMetadataStore cache ownership', () => {
     expect(getIPCharacters).toHaveBeenCalledTimes(1)
     expect(store.characters).toHaveLength(1)
     expect(store.charactersByIP[20]).toHaveLength(1)
+  })
+
+  it('merges backfilled IP covers into the list and its localStorage cache', async () => {
+    vi.mocked(getIPList).mockResolvedValue([
+      { id: 1, name: '崩坏：星穹铁道', cover_image: null } as any,
+      { id: 2, name: '原神', cover_image: null } as any,
+    ])
+
+    const store = useMetadataStore()
+    await store.fetchIPs()
+
+    store.applyIPCovers(
+      [{ id: 1, cover_image: 'https://lain.bgm.tv/a.jpg' }],
+      '2026-11-14T13:00:00.000Z',
+    )
+
+    expect(store.ips[0]).toMatchObject({
+      cover_image: 'https://lain.bgm.tv/a.jpg',
+      cover_checked_at: '2026-11-14T13:00:00.000Z',
+    })
+    expect(store.ips[1]?.cover_image).toBeNull()
+
+    const cached = JSON.parse(localStorage.getItem('metadata_ips') || '[]')
+    expect(cached[0].cover_image).toBe('https://lain.bgm.tv/a.jpg')
+    expect(cached[0].cover_checked_at).toBe('2026-11-14T13:00:00.000Z')
   })
 })

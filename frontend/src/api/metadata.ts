@@ -38,6 +38,34 @@ export function getIPDetail(id: number) {
   return request.get<IP>(`/api/ips/${id}/`)
 }
 
+// ==================== IP 封面（Bangumi 条目图） ====================
+
+/**
+ * 批量补齐缺失的作品封面（仅管理员）。
+ * - 已绑定 bgm_subject_id 的 IP 走条目详情；
+ * - 未绑定的按作品名精确匹配搜索，不会回写绑定关系；
+ * - `remaining > 0` 表示还有候选没处理，可继续调用。
+ *
+ * suppressGlobalError：老版本后端没有这个接口（会被路由当成 `/api/ips/{pk}/`
+ * 返回 405），调用方要自己识别并静默降级，不弹全局错误。
+ */
+export function fetchIPCovers(params: {
+  ids?: number[]
+  force?: boolean
+  limit?: number
+} = {}) {
+  return request.post<IPCoverBackfillResponse>('/api/ips/fetch-covers/', params, {
+    suppressGlobalError: true,
+  })
+}
+
+/** 强制重算单个 IP 的封面（编辑弹窗「从 Bangumi 取封面」） */
+export function fetchIPCover(id: number) {
+  return request.post<IPCoverFetchResponse>(`/api/ips/${id}/fetch-cover/`, {}, {
+    suppressGlobalError: true,
+  })
+}
+
 // 创建IP
 export function createIP(data: {
   name: string
@@ -45,6 +73,7 @@ export function createIP(data: {
   subject_type?: number | null
   order?: number
   bgm_subject_id?: number | null
+  cover_image?: string | null
 }) {
   return request.post<IP>('/api/ips/', data)
 }
@@ -56,6 +85,7 @@ export function updateIP(id: number, data: {
   subject_type?: number | null
   order?: number
   bgm_subject_id?: number | null
+  cover_image?: string | null
 }) {
   return request.put<IP>(`/api/ips/${id}/`, data)
 }
@@ -67,6 +97,7 @@ export function patchIP(id: number, data: Partial<{
   subject_type?: number | null
   order?: number
   bgm_subject_id?: number | null
+  cover_image?: string | null
 }>) {
   return request.patch<IP>(`/api/ips/${id}/`, data)
 }
@@ -312,6 +343,8 @@ import type {
   BGMSyncApplyItem,
   BGMSyncApplyResponse,
   BGMSyncPreviewResponse,
+  IPCoverBackfillResponse,
+  IPCoverFetchResponse,
 } from './types'
 
 // 搜索BGM IP作品列表
@@ -342,9 +375,11 @@ export function createBGMCharacters(
   characters: BGMCreateCharacterItem[],
   subjectType?: number | null,
   bgmSubjectId?: number | null,
+  coverImage?: string | null,
 ) {
   // 根据API文档，subject_type应该在每个character项中传递
   // 同时把 bgm_subject_id 注入每一项以便后端持久化绑定（用于后续增量同步）
+  // 封面同理：把所选 BGM 条目的封面一并带上，导入后卡片立刻有图
   const charactersWithExtras = characters.map(char => ({
     ...char,
     ...(subjectType !== undefined && subjectType !== null
@@ -353,6 +388,7 @@ export function createBGMCharacters(
     ...(bgmSubjectId !== undefined && bgmSubjectId !== null && char.bgm_subject_id == null
       ? { bgm_subject_id: bgmSubjectId }
       : {}),
+    ...(coverImage && !char.cover_image ? { cover_image: coverImage } : {}),
   }))
   return request.post<BGMCreateCharactersResponse>('/api/bgm/create-characters/', {
     characters: charactersWithExtras,

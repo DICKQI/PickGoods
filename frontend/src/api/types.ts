@@ -199,6 +199,53 @@ export interface IP {
   bgm_subject_id?: number | null
   /** 最近一次 BGM 同步时间（ISO 字符串），未同步过则为 null */
   last_synced_at?: string | null
+  /**
+   * 作品封面：Bangumi 条目封面 URL，或手填外链 / 服务器相对路径。
+   * 为空时前端用作品首字占位显示。
+   */
+  cover_image?: string | null
+  /**
+   * 最近一次尝试从 Bangumi 解析封面的时间（ISO 字符串）。
+   * 用于节流：未命中的 IP 短期内不再重复请求 BGM。
+   */
+  cover_checked_at?: string | null
+}
+
+// IP 封面补齐（从 Bangumi 条目图解析）响应
+export interface IPCoverBackfillItem {
+  id: number
+  name: string
+  cover_image: string | null
+}
+
+export interface IPCoverBackfillFailure {
+  id: number
+  name: string
+  reason: string
+}
+
+export interface IPCoverBackfillResponse {
+  /** 本次成功写入封面的数量 */
+  updated: number
+  /** 本次实际发出 BGM 查询的 IP 数量 */
+  checked: number
+  /** 请求中的 id 不存在而被跳过的数量 */
+  skipped: number
+  items: IPCoverBackfillItem[]
+  failed: IPCoverBackfillFailure[]
+  /** 候选队列中尚未处理的 IP 数量（force 时恒为 0） */
+  remaining: number
+}
+
+// 单条封面重算响应
+export interface IPCoverFetchResponse {
+  id: number
+  name: string
+  cover_image: string | null
+  bgm_subject_id: number | null
+  status: 'updated' | 'no_match' | 'error'
+  detail: string
+  resolved: boolean
 }
 
 // 角色性别类型
@@ -1220,6 +1267,8 @@ export interface BGMCreateCharacterItem {
   bgm_subject_id?: number | null
   /** 可选：本次绑定的 BGM 角色 ID */
   bgm_character_id?: number | null
+  /** 可选：BGM 条目封面 URL，导入时一并写入 IP（本地已有封面时不覆盖） */
+  cover_image?: string | null
 }
 
 // BGM创建角色响应项

@@ -67,6 +67,13 @@ class BGMCreateCharacterRequestSerializer(serializers.Serializer):
         allow_null=True,
         help_text="BGM角色ID，可选。提供后将持久化以支持后续增量同步"
     )
+    cover_image = serializers.CharField(
+        max_length=500,
+        required=False,
+        allow_blank=True,
+        allow_null=True,
+        help_text="作品封面URL，可选。导入时把所选 BGM 条目的封面一并写入 IP（本地已有封面时不覆盖）"
+    )
 
 
 class BGMCreateCharactersRequestSerializer(serializers.Serializer):

@@ -260,10 +260,104 @@ def get_subject_info(subject_id):
             "name_cn": name_cn,
             "display_name": display_name,
             "type": subject_type_code,
+            "images": data.get("images") or {},
         }
 
     except requests.exceptions.RequestException as e:
         raise Exception(f"获取作品信息失败: {str(e)}")
+
+
+# --- 封面相关 ---
+# BGM 图片域：legacy 搜索接口返回 http://lain.bgm.tv/...，HTTPS 页面会触发混合内容拦截，
+# 因此凡是往库里/前端写的图片地址，统一归一为 https。
+IMAGE_HOST_PREFIX_HTTP = "http://lain.bgm.tv"
+IMAGE_HOST_PREFIX_HTTPS = "https://lain.bgm.tv"
+
+# 封面尺寸优先级：原图（large）> 400 宽（common）> 800 宽（medium）> 网格缩略（grid）> 小图（small）
+COVER_IMAGE_KEYS = ("large", "common", "medium", "grid", "small")
+
+
+def normalize_image_url(url):
+    """把 BGM 图片地址统一成 https 绝对地址。"""
+    if not isinstance(url, str):
+        return ""
+    url = url.strip()
+    if not url:
+        return ""
+    if url.startswith(IMAGE_HOST_PREFIX_HTTP):
+        return IMAGE_HOST_PREFIX_HTTPS + url[len(IMAGE_HOST_PREFIX_HTTP):]
+    if url.startswith("//"):
+        return "https:" + url
+    return url
+
+
+def pick_cover_url(images):
+    """从 BGM 的 images 字典里挑一张最适合做封面的图。
+
+    Args:
+        images: BGM 返回的 images 字典，例如 {"large": "...", "common": "..."}
+
+    Returns:
+        str | None: https 绝对地址；没有任何可用图时返回 None
+    """
+    if not isinstance(images, dict):
+        return None
+
+    for key in COVER_IMAGE_KEYS:
+        url = normalize_image_url(images.get(key))
+        if url:
+            return url
+    return None
+
+
+def search_subject_candidates(keyword, subject_type=None, limit=10):
+    """按关键词搜索 BGM 条目，返回带封面图的候选列表。
+
+    使用 v0 搜索接口（https 图片地址、无需 Access Token）。
+
+    Args:
+        keyword (str): 搜索关键词（一般是 IP 作品名）
+        subject_type (int, optional): 作品类型，传入时只搜该类型
+        limit (int, optional): 返回条数上限，默认 10
+
+    Returns:
+        list: 每个候选包含 id, name, name_cn, type, images
+
+    Raises:
+        Exception: 请求 BGM 失败时抛出
+    """
+    url = f"{API_HOST}/v0/search/subjects"
+
+    payload = {"keyword": keyword}
+    if subject_type:
+        payload["filter"] = {"type": [subject_type]}
+
+    try:
+        response = requests.post(
+            url,
+            headers=get_headers(),
+            params={"limit": limit},
+            json=payload,
+            timeout=30,
+        )
+        response.raise_for_status()
+        data = response.json()
+
+        candidates = []
+        for item in data.get("data") or []:
+            name = html.unescape(item.get("name") or "")
+            name_cn = html.unescape(item.get("name_cn") or "")
+            candidates.append({
+                "id": item.get("id"),
+                "name": name,
+                "name_cn": name_cn,
+                "type": item.get("type"),
+                "images": item.get("images") or {},
+            })
+        return candidates
+
+    except requests.exceptions.RequestException as e:
+        raise Exception(f"搜索封面请求失败: {str(e)}")
 
 
 def search_ip_characters(ip_name, subject_type=None):

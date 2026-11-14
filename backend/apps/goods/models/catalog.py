@@ -49,6 +49,22 @@ class IP(models.Model):
         verbose_name="最近一次BGM同步时间",
     )
 
+    # 封面：优先使用 bangumi 条目封面图（绝对 URL），也允许手填外链或 /media/ 相对路径。
+    cover_image = models.CharField(
+        max_length=500,
+        null=True,
+        blank=True,
+        verbose_name="作品封面",
+        help_text="Bangumi 条目封面 URL，或手填的外链 / 服务器相对路径（如 /media/ips/xxx.jpg）",
+    )
+    # 封面最近一次检查时间：无论是否命中都会写入，用于节流，避免反复请求 BGM。
+    cover_checked_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name="封面最近检查时间",
+        help_text="最近一次尝试从 Bangumi 解析封面的时间，用于节流重试",
+    )
+
     created_at = models.DateTimeField(
         auto_now_add=True,
         null=True,

@@ -254,6 +254,34 @@ export const useMetadataStore = defineStore('metadata', () => {
     }
   }
 
+  /**
+   * 把后端补齐回来的封面合并进 IP 列表与本地缓存。
+   *
+   * 列表接口结果带 5 分钟级别的 localStorage 缓存，后端补完封面后必须同步
+   * 写回缓存，否则要等缓存过期才能看到图片。
+   *
+   * `checkedAt`：本次补齐的时间；写回后前端不会因为旧的 `cover_checked_at`
+   * 在下次进页面时对同一批 IP 再发一次补齐请求。
+   */
+  const applyIPCovers = (
+    items: { id: number; cover_image: string | null }[],
+    checkedAt?: string,
+  ) => {
+    if (!items.length) return ips.value
+
+    const coverMap = new Map(items.map((item) => [item.id, item.cover_image]))
+    ips.value = ips.value.map((ip) => {
+      if (!coverMap.has(ip.id)) return ip
+      return {
+        ...ip,
+        cover_image: coverMap.get(ip.id) ?? null,
+        ...(checkedAt ? { cover_checked_at: checkedAt } : {}),
+      }
+    })
+    saveToCache(CACHE_KEYS.IPS, ips.value)
+    return ips.value
+  }
+
   const fetchAll = async (force = false) => {
     loading.value = true
     try {
@@ -288,6 +316,7 @@ export const useMetadataStore = defineStore('metadata', () => {
     fetchIPs,
     fetchCharacters,
     fetchIPCharacters,
+    applyIPCovers,
     fetchCategories,
     fetchThemes,
     fetchAll,

@@ -104,6 +104,23 @@ def _default_service() -> _BGMService:
     )
 
 
+def _fill_ip_cover_from_images(ip, images) -> bool:
+    """BGM 条目带图且本地 IP 没有封面时写入（从不覆盖手工封面）。
+
+    Returns:
+        bool: 是否写入了封面
+    """
+    if ip.cover_image:
+        return False
+    cover = default_bgm_service.pick_cover_url(images)
+    if not cover:
+        return False
+    ip.cover_image = cover
+    ip.cover_checked_at = timezone.now()
+    ip.save(update_fields=["cover_image", "cover_checked_at"])
+    return True
+
+
 def run_auto_sync(
     trigger: str = "scheduled",
     triggered_by=None,
@@ -176,6 +193,9 @@ def _execute_job(
                     )
                 bgm_characters = svc.get_characters(ip.bgm_subject_id)
                 diff = compute_bgm_diff(ip, bgm_characters)
+
+                # 顺手补封面：BGM 条目有图且本地没有封面时写入（从不覆盖手工封面）
+                _fill_ip_cover_from_images(ip, (subject_info or {}).get("images"))
 
                 # 自动模式：把所有 new / link_by_name 全部确认应用
                 items_to_apply = [

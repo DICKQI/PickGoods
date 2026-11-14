@@ -41,7 +41,7 @@ class IPSimpleSerializer(serializers.ModelSerializer):
     class Meta:
         model = IP
         fields = ("id", "name", "subject_type", "order", "keywords", "character_count",
-                  "bgm_subject_id", "last_synced_at")
+                  "bgm_subject_id", "last_synced_at", "cover_image", "cover_checked_at")
 
     def get_character_count(self, obj):
         """统计IP下的角色数量"""
@@ -56,11 +56,18 @@ class IPDetailSerializer(serializers.ModelSerializer):
     """IP详情序列化器（用于创建和更新，支持关键词操作）"""
 
     keywords = KeywordsField(required=False, allow_null=True, help_text="关键词列表，例如：['星铁', '崩铁', 'HSR']")
+    cover_image = serializers.CharField(
+        required=False,
+        allow_null=True,
+        allow_blank=True,
+        max_length=500,
+        help_text="作品封面：Bangumi 封面 URL，或手填外链 / 服务器相对路径；传空字符串或 null 表示清除",
+    )
 
     class Meta:
         model = IP
         fields = ("id", "name", "subject_type", "order", "keywords",
-                  "bgm_subject_id", "last_synced_at")
+                  "bgm_subject_id", "last_synced_at", "cover_image")
 
     def create(self, validated_data):
         """创建IP时同时创建关键词"""
@@ -86,6 +93,9 @@ class IPDetailSerializer(serializers.ModelSerializer):
             instance.subject_type = validated_data.get("subject_type")
         if "order" in validated_data:
             instance.order = validated_data.get("order", instance.order)
+        # 更新封面（空字符串/null 视为清除，回落到首字占位）
+        if "cover_image" in validated_data:
+            instance.cover_image = validated_data.get("cover_image") or None
         instance.save()
 
         # 如果提供了keywords字段，则更新关键词

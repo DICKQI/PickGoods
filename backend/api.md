@@ -40,6 +40,8 @@
 | `subject_type` | Integer (可空)        | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄 |
 | `order`        | Integer               | 展示排序，越小越靠前，默认 `0`                        |
 | `bgm_subject_id`| Integer (可空, 唯一) | 绑定的 BGM 作品 ID，用于 BGM 增量同步                 |
+| `cover_image`  | Char(500) (可空)      | 作品封面：BGM 条目封面 URL，或手填外链 / 服务器相对路径；为空时前端用首字占位 |
+| `cover_checked_at` | DateTime (可空)   | 最近一次尝试从 BGM 解析封面的时间，用于节流重试（未命中也会写入） |
 
 #### `IPKeyword` IP 多关键词表
 
@@ -1986,7 +1988,11 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
         "value": "HSR"
       }
     ],
-    "character_count": 5
+    "character_count": 5,
+    "bgm_subject_id": 360097,
+    "last_synced_at": "2026-11-01T10:00:00+08:00",
+    "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg",
+    "cover_checked_at": "2026-11-14T21:30:00+08:00"
   },
   {
     "id": 2,
@@ -1994,7 +2000,11 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
     "subject_type": null,
     "order": 0,
     "keywords": [],
-    "character_count": 3
+    "character_count": 3,
+    "bgm_subject_id": null,
+    "last_synced_at": null,
+    "cover_image": null,
+    "cover_checked_at": null
   }
 ]
 ```
@@ -2006,6 +2016,8 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `order`：展示排序，越小越靠前（默认 `0`）。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
+- `cover_image`：作品封面 URL（BGM 条目封面或手填），可为 `null`（前端用作品首字占位）。
+- `cover_checked_at`：最近一次尝试从 BGM 解析封面的时间，可为 `null`；前端据此避免重复请求。
 
 **使用示例**：
 - 筛选游戏类型的IP：`GET /api/ips/?subject_type=4`
@@ -2135,6 +2147,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`（PUT 可选，PATCH 可选） |
 | `order`        | integer        | 否   | 展示排序，越小越靠前（PUT 可选，PATCH 可选）                         |
 | `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符。更新时会**完全替换**现有关键词列表（删除不在列表中的关键词，添加新关键词） |
+| `cover_image`  | string         | 否   | 作品封面 URL（BGM 封面或手填外链 / 相对路径），最大长度500字符；传 `null` 或空字符串表示清除，回落到首字占位 |
 
 ##### 响应
 
@@ -2424,6 +2437,76 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 1. 调用 `bgm-preview` 获取 diff 预览（不写库）
 2. 前端展示 diff 列表，用户勾选确认
 3. 调用 `bgm-sync` 将用户选择的结果提交，后端执行新增/匹配
+
+---
+
+#### 5.1.10 批量补齐作品封面（Bangumi 条目图）
+
+- **URL**：`POST /api/ips/fetch-covers/`
+- **权限**：仅 `Admin`（普通用户 / 匿名返回 403）
+- **说明**：为缺失封面的 IP 从 Bangumi 解析封面并写库。
+  - 已绑定 `bgm_subject_id` 的 IP 走 `GET /v0/subjects/{id}` 的 `images`；
+  - 未绑定的 IP 走 `POST /v0/search/subjects` 按作品名搜索，**只接受名称精确匹配**的候选，且**不会回写** `bgm_subject_id`；
+  - 每次尝试都会写 `cover_checked_at`：未命中的 IP 默认 7 天内不再重试（`force=true` 可绕过）；
+  - 相邻两次 BGM 请求间隔 0.25s，单次最多 50 条，避免长时间占用请求。
+
+##### 请求体（JSON，全部可选）
+
+| 参数名  | 类型           | 说明                                                        |
+| ------- | -------------- | ----------------------------------------------------------- |
+| `ids`   | array[int]     | 只处理这些 IP；不存在的 ID 计入 `skipped`                    |
+| `force` | boolean        | `true` 时忽略封面与时间节流并覆盖已有封面，默认 `false`      |
+| `limit` | int            | 本次最多处理条数，夹在 `1..50`，默认 `20`                    |
+
+##### 响应示例
+
+```json
+{
+  "updated": 1,
+  "checked": 2,
+  "skipped": 0,
+  "items": [
+    { "id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg" },
+    { "id": 2, "name": "黑执事", "cover_image": null }
+  ],
+  "failed": [{ "id": 2, "name": "黑执事", "reason": "BGM 搜索未找到同名条目" }],
+  "remaining": 12
+}
+```
+
+**字段说明**：
+- `updated`：本次成功写入封面的数量。
+- `checked`：本次实际发出 BGM 查询的 IP 数量。
+- `items`：本次处理过的 IP 及其最终封面值（未取到时为 `null`）。
+- `failed`：未命中或请求失败的明细（`reason` 为原因）。
+- `remaining`：候选队列中尚未处理的 IP 数量；前端据此续跑（`force=true` 时恒为 `0`）。
+
+---
+
+#### 5.1.11 重新解析单个作品封面
+
+- **URL**：`POST /api/ips/{id}/fetch-cover/`
+- **权限**：仅 `Admin`
+- **说明**：强制重算单个 IP 的封面并立即写库（编辑弹窗里的「从 Bangumi 取封面」）。不带请求体。
+
+##### 响应示例
+
+```json
+{
+  "id": 1,
+  "name": "崩坏：星穹铁道",
+  "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg",
+  "bgm_subject_id": 360097,
+  "status": "updated",
+  "detail": "",
+  "resolved": true
+}
+```
+
+**字段说明**：
+- `status`：`updated`（取到封面）/ `no_match`（BGM 无同名条目或无图）/ `error`（BGM 请求失败）。
+- `resolved`：本次是否解析到新封面。
+- `detail`：未解析到时的人类可读原因。
 
 ---
 

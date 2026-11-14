@@ -1,6 +1,7 @@
 """
 BGM API 相关的视图函数
 """
+from django.utils import timezone
 from drf_spectacular.utils import extend_schema
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes
@@ -9,7 +10,13 @@ from rest_framework.response import Response
 
 from core.permissions import IsAdmin
 
-from ..bgm_service import search_ip_characters, search_subjects_list, get_subject_info, get_characters
+from ..bgm_service import (
+    get_characters,
+    get_subject_info,
+    normalize_image_url,
+    search_ip_characters,
+    search_subjects_list,
+)
 from ..models import Character, IP
 from ..serializers import (
     BGMCreateCharactersRequestSerializer,
@@ -146,6 +153,7 @@ def bgm_create_characters(request):
         avatar = char_data.get('avatar')  # 可选字段，头像URL
         bgm_subject_id = char_data.get('bgm_subject_id')  # 可选，BGM 作品 ID（用于增量同步绑定）
         bgm_character_id = char_data.get('bgm_character_id')  # 可选，BGM 角色 ID
+        cover_image = normalize_image_url(char_data.get('cover_image'))  # 可选，作品封面URL
 
         try:
             # 获取或创建IP
@@ -158,6 +166,12 @@ def bgm_create_characters(request):
             if not ip_created and ip_obj.subject_type is None and subject_type:
                 ip_obj.subject_type = subject_type
                 ip_obj.save(update_fields=['subject_type'])
+
+            # 回填封面：仅当本次带图、且本地 IP 还没有封面时写入（不覆盖手工封面）
+            if cover_image and not ip_obj.cover_image:
+                ip_obj.cover_image = cover_image
+                ip_obj.cover_checked_at = timezone.now()
+                ip_obj.save(update_fields=['cover_image', 'cover_checked_at'])
 
             # 回填 bgm_subject_id：仅当本次提供了 ID、且本地 IP 尚未绑定时写入
             # （unique 约束由数据库保证；若已被其他 IP 占用则抛异常进入 error 分支）

@@ -3,15 +3,17 @@ IP作品相关的视图
 """
 from django.db import transaction
 from django.db.models import Count
+from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.response import Response
 
-from ..bgm_service import get_characters, get_subject_info
+from ..bgm_service import get_characters, get_subject_info, pick_cover_url
 from ..bgm_sync import apply_bgm_sync, compute_bgm_diff
+from ..ip_cover import DEFAULT_LIMIT, backfill_ip_covers, refresh_ip_cover
 from ..models import IP
-from core.permissions import IsAdminOrReadOnly
+from core.permissions import IsAdmin, IsAdminOrReadOnly
 from ..serializers import (
     BGMSyncApplyRequestSerializer,
     BGMSyncApplyResponseSerializer,
@@ -197,6 +199,102 @@ class IPViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR,
             )
 
+    # ==================== 封面（Bangumi 条目图） ====================
+
+    @staticmethod
+    def _fill_cover_from_images(ip, images):
+        """BGM 条目带图且本地没有封面时顺手补上（从不覆盖手工封面）。"""
+        if ip.cover_image:
+            return
+        cover = pick_cover_url(images)
+        if not cover:
+            return
+        ip.cover_image = cover
+        ip.cover_checked_at = timezone.now()
+        ip.save(update_fields=["cover_image", "cover_checked_at"])
+
+    @action(detail=False, methods=["post"], url_path="fetch-covers",
+            permission_classes=[IsAdmin])
+    def fetch_covers(self, request):
+        """批量补齐缺失的作品封面（从 Bangumi 条目封面图解析）。
+
+        URL: POST /api/ips/fetch-covers/
+
+        请求体::
+
+            {
+                "ids": [1, 2, 3],   // 可选，只处理这些 IP
+                "force": false,     // 可选，true 时忽略封面/时间节流并覆盖已有封面
+                "limit": 20         // 可选，本次最多处理条数（1..50）
+            }
+
+        响应::
+
+            {
+                "updated": 5, "checked": 8, "skipped": 0,
+                "items": [{"id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://..."}],
+                "failed": [{"id": 2, "name": "黑执事", "reason": "BGM 搜索未找到同名条目"}],
+                "remaining": 12
+            }
+        """
+        payload = request.data or {}
+        ids = payload.get("ids")
+        if ids is not None and not isinstance(ids, (list, tuple)):
+            return Response(
+                {"detail": "ids 必须是数组"}, status=status.HTTP_400_BAD_REQUEST
+            )
+
+        try:
+            result = backfill_ip_covers(
+                ids=ids,
+                force=bool(payload.get("force", False)),
+                limit=payload.get("limit", DEFAULT_LIMIT),
+            )
+        except Exception as e:
+            return Response(
+                {"detail": f"补齐封面失败: {str(e)}"},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            )
+
+        from apps.admin_api.services import record_admin_action
+
+        record_admin_action(
+            request,
+            action="ip.fetch_covers",
+            resource_type="ip",
+            resource_id=None,
+            summary=f"补齐 {result['checked']} 个 IP 的作品封面",
+            changes={
+                "updated": result["updated"],
+                "checked": result["checked"],
+                "remaining": result["remaining"],
+            },
+        )
+        return Response(result, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=["post"], url_path="fetch-cover",
+            permission_classes=[IsAdmin])
+    def fetch_cover(self, request, pk=None):
+        """强制重算单个 IP 的封面（编辑弹窗里的「从 Bangumi 取封面」）。
+
+        URL: POST /api/ips/{id}/fetch-cover/
+        """
+        ip = self.get_object()
+        cover, cover_status, reason = refresh_ip_cover(ip, force=True)
+
+        return Response(
+            {
+                "id": ip.id,
+                "name": ip.name,
+                "cover_image": ip.cover_image,
+                "bgm_subject_id": ip.bgm_subject_id,
+                "status": cover_status,
+                "detail": reason,
+                "resolved": bool(cover),
+            },
+            status=status.HTTP_200_OK,
+        )
+
     # ==================== BGM 增量同步 ====================
 
     def _resolve_bgm_subject_id(self, ip, payload_subject_id):
@@ -331,6 +429,9 @@ class IPViewSet(viewsets.ModelViewSet):
             # 取不到 subject_info 不阻塞新增/回填，只是无法更新 subject_type
             bgm_subject_type = None
             _ = e
+        else:
+            # 顺手把 BGM 条目封面补到本地（本地已有封面时不覆盖）
+            self._fill_cover_from_images(ip, (subject_info or {}).get("images"))
 
         try:
             result = apply_bgm_sync(
