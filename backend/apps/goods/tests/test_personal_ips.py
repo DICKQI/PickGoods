@@ -3,7 +3,7 @@
 
 覆盖：
 1. IP 列表 / 详情的可见性（官方 + 本人 / 他人不可见）；
-2. 写权限（官方 IP 只读、本人私有可写、管理员全权、社团账号拒绝）；
+2. 写权限（官方 IP 只读、本人私有可写、管理员只对官方 IP 全权、社团账号拒绝）；
 3. 名称与 BGM 绑定的归属域唯一性；
 4. 角色随 IP 的作用域与写权限；
 5. 删除仍有谷子的作品返回 409；
@@ -104,12 +104,24 @@ class IPVisibilityTests(PersonalIPTestBase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["user_id"], self.alice.id)
 
-    def test_admin_sees_everything(self):
+    def test_admin_sees_official_and_own_only(self):
+        """管理员在前台没有「看全量」的特权：只看官方 + 自己名下的个人 IP。"""
         IP.objects.create(name="爱丽丝作品", user=self.alice)
         IP.objects.create(name="鲍勃作品", user=self.bob)
+        IP.objects.create(name="管理员自己的作品", user=self.admin)
         self.as_user(self.admin)
         names = {item["name"] for item in self.client.get(IPS_URL).data}
-        self.assertEqual(names, {"官方作品", "爱丽丝作品", "鲍勃作品"})
+        self.assertEqual(names, {"官方作品", "管理员自己的作品"})
+
+    def test_admin_gets_404_on_other_users_personal_ip(self):
+        """他人个人 IP 对管理员同样不存在（404 而非 403，避免暴露存在性）。"""
+        personal = IP.objects.create(name="爱丽丝作品", user=self.alice)
+        Character.objects.create(ip=personal, name="爱丽丝角色")
+        self.as_user(self.admin)
+        self.assertEqual(self.client.get(f"{IPS_URL}{personal.id}/").status_code, 404)
+        self.assertEqual(
+            self.client.get(f"{IPS_URL}{personal.id}/characters/").status_code, 404
+        )
 
     def test_search_does_not_leak_personal_ips(self):
         IP.objects.create(name="爱丽丝限定作品", user=self.alice)
@@ -165,21 +177,42 @@ class IPWritePermissionTests(PersonalIPTestBase):
             self.client.delete(f"{IPS_URL}{personal.id}/").status_code, 404
         )
 
-    def test_admin_can_modify_personal_and_official_ips(self):
-        personal = IP.objects.create(name="爱丽丝作品", user=self.alice)
+    def test_admin_can_modify_official_ip(self):
         self.as_user(self.admin)
-        self.assertEqual(
-            self.client.patch(
-                f"{IPS_URL}{personal.id}/", {"name": "管理员改名"}, format="json"
-            ).status_code,
-            200,
-        )
         self.assertEqual(
             self.client.patch(
                 f"{IPS_URL}{self.official.id}/", {"name": "官方改名"}, format="json"
             ).status_code,
             200,
         )
+        self.assertEqual(
+            self.client.delete(f"{IPS_URL}{self.official.id}/").status_code, 204
+        )
+
+    def test_admin_cannot_modify_other_users_personal_ip(self):
+        """管理员不再代管他人个人 IP：前台看不到，接口层一律 404。"""
+        personal = IP.objects.create(name="爱丽丝作品", user=self.alice)
+        self.as_user(self.admin)
+        self.assertEqual(
+            self.client.patch(
+                f"{IPS_URL}{personal.id}/", {"name": "管理员改名"}, format="json"
+            ).status_code,
+            404,
+        )
+        self.assertEqual(self.client.delete(f"{IPS_URL}{personal.id}/").status_code, 404)
+        personal.refresh_from_db()
+        self.assertEqual(personal.name, "爱丽丝作品")
+
+    def test_admin_can_modify_own_personal_ip(self):
+        """管理员自己名下的个人 IP 仍按「自己的」可见可写。"""
+        own = IP.objects.create(name="管理员自己的作品", user=self.admin)
+        self.as_user(self.admin)
+        response = self.client.patch(
+            f"{IPS_URL}{own.id}/", {"name": "管理员自己改名"}, format="json"
+        )
+        self.assertEqual(response.status_code, 200, response.data)
+        own.refresh_from_db()
+        self.assertEqual(own.name, "管理员自己改名")
 
     def test_club_account_cannot_create_ip(self):
         self.as_user(self.club)
@@ -211,6 +244,16 @@ class IPNameAndBGMBindingTests(PersonalIPTestBase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("已存在同名官方 IP", str(response.data))
         self.assertEqual(IP.objects.filter(name="官方作品").count(), 1)
+
+    def test_admin_cannot_rename_own_personal_ip_to_official_name(self):
+        """「个人 IP 不得占用官方名称」的不变量对管理员同样成立。"""
+        own = IP.objects.create(name="管理员自己的作品", user=self.admin)
+        self.as_user(self.admin)
+        response = self.client.patch(
+            f"{IPS_URL}{own.id}/", {"name": "官方作品"}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("官方作品已存在", str(response.data))
 
     def test_same_owner_cannot_repeat_name(self):
         self.assertEqual(self.create_ip(self.alice, "重名作品").status_code, 201)
@@ -318,6 +361,36 @@ class CharacterScopeTests(PersonalIPTestBase):
         self.as_user(self.alice)
         names = {item["name"] for item in self.client.get(CHARACTERS_URL).data}
         self.assertEqual(names, {"爱丽丝角色", "官方角色"})
+
+    def test_admin_character_list_excludes_other_users_personal_characters(self):
+        other = IP.objects.create(name="鲍勃作品", user=self.bob)
+        own = IP.objects.create(name="管理员自己的作品", user=self.admin)
+        Character.objects.create(ip=other, name="鲍勃角色")
+        Character.objects.create(ip=own, name="管理员角色")
+        Character.objects.create(ip=self.official, name="官方角色")
+
+        self.as_user(self.admin)
+        names = {item["name"] for item in self.client.get(CHARACTERS_URL).data}
+        self.assertEqual(names, {"官方角色", "管理员角色"})
+
+    def test_admin_cannot_create_character_under_other_personal_ip(self):
+        """ip_id 作用域收敛后，管理员也挂不到他人的个人 IP 上（400）。"""
+        other = IP.objects.create(name="鲍勃作品", user=self.bob)
+        self.as_user(self.admin)
+        response = self.client.post(
+            CHARACTERS_URL, {"name": "越权角色", "ip_id": other.id}, format="json"
+        )
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(Character.objects.filter(name="越权角色").exists())
+
+    def test_admin_can_create_character_under_official_ip(self):
+        self.as_user(self.admin)
+        response = self.client.post(
+            CHARACTERS_URL,
+            {"name": "官方新角色", "ip_id": self.official.id},
+            format="json",
+        )
+        self.assertEqual(response.status_code, 201, response.data)
 
     def test_collector_cannot_delete_official_character(self):
         official_character = Character.objects.create(ip=self.official, name="官方角色")

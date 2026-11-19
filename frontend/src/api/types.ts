@@ -2024,6 +2024,14 @@ export interface AdminGoodsListItem extends GoodsListItem {
 export interface AdminIPListItem extends IP {
   goods_count: number
   created_at: string
+  /**
+   * 归属用户：官方 IP 为 null，用户自建的个人 IP 为 `{ id, username }`。
+   * 后台列表是唯一能看到他人个人 IP 的地方，个人行在前台/接口层只读。
+   */
+  user?: {
+    id: number
+    username: string
+  } | null
 }
 
 export interface AdminCharacterListItem extends Character {

@@ -67,6 +67,14 @@
               <el-table-column label="类型" width="120">
                 <template #default="{ row }">{{ subjectTypeLabel(row.subject_type) }}</template>
               </el-table-column>
+              <el-table-column label="归属" width="130">
+                <template #default="{ row }">
+                  <el-tag v-if="row.user" size="small" effect="plain" type="warning">
+                    {{ row.user.username }}
+                  </el-tag>
+                  <span v-else class="admin-muted">官方</span>
+                </template>
+              </el-table-column>
               <el-table-column prop="character_count" label="角色数" width="90" align="center" sortable="custom" />
               <el-table-column prop="goods_count" label="谷子数" width="90" align="center" sortable="custom" />
               <el-table-column label="BGM" min-width="150">
@@ -82,7 +90,17 @@
               </el-table-column>
               <el-table-column label="操作" width="240" fixed="right" align="right">
                 <template #default="{ row }">
-                  <div class="admin-action-inline">
+                  <!-- 个人作品：详情/编辑/删除都走 /api/ips/，对他人个人 IP 已收敛为 404，
+                       后台只保留只读展示，处置请用 Django admin 或 purge_personal_ips -->
+                  <div v-if="row.user" class="admin-action-inline">
+                    <el-tooltip
+                      content="用户自建的个人作品，前台仅归属者可见；需要处置请用 Django 管理后台或 purge_personal_ips 命令"
+                      placement="top"
+                    >
+                      <span class="admin-muted">只读</span>
+                    </el-tooltip>
+                  </div>
+                  <div v-else class="admin-action-inline">
                     <el-button link type="primary" @click="openIPDetail(row)">详情</el-button>
                     <el-button link type="primary" @click="openIPDialog(row)">编辑</el-button>
                     <el-button link type="success" @click="startBGMSync(row)">BGM 同步</el-button>
@@ -182,8 +200,18 @@
               </el-table-column>
               <el-table-column label="操作" width="150" fixed="right" align="right">
                 <template #default="{ row }">
-                  <el-button link type="primary" @click="openCharacterDialog(row)">编辑</el-button>
-                  <el-button link type="danger" @click="removeCharacter(row)">删除</el-button>
+                  <!-- 个人 IP 下的角色对管理员只读：/api/characters/ 已按作用域收敛 -->
+                  <el-tooltip
+                    v-if="row.ip?.user_id"
+                    content="该角色属于用户的个人作品，前台仅归属者可见，后台只读"
+                    placement="top"
+                  >
+                    <span class="admin-muted">只读</span>
+                  </el-tooltip>
+                  <template v-else>
+                    <el-button link type="primary" @click="openCharacterDialog(row)">编辑</el-button>
+                    <el-button link type="danger" @click="removeCharacter(row)">删除</el-button>
+                  </template>
                 </template>
               </el-table-column>
             </el-table>
@@ -249,10 +277,15 @@
             filterable
             remote
             :remote-method="searchIPOptions"
-            placeholder="搜索并选择 IP"
+            placeholder="搜索并选择 IP（仅官方 IP）"
             style="width: 100%"
           >
-            <el-option v-for="ip in ipOptions" :key="ip.id" :label="ip.name" :value="ip.id" />
+            <el-option
+              v-for="ip in creatableIpOptions"
+              :key="ip.id"
+              :label="ip.name"
+              :value="ip.id"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="性别">
@@ -444,6 +477,11 @@ const characterList = ref<AdminCharacterListItem[]>([])
 const ipListRequests = createLatestRequestGuard()
 const characterListRequests = createLatestRequestGuard()
 const ipOptions = ref<AdminIPListItem[]>([])
+/**
+ * 角色挂载候选：只放官方 IP。管理员对「他人的个人 IP」没有写权限
+ * （/api/characters/ 的 ip_id 作用域已收敛），选了也只会得到 400。
+ */
+const creatableIpOptions = ref<AdminIPListItem[]>([])
 const ipTotal = ref(0)
 const characterTotal = ref(0)
 const ipPage = ref(1)
@@ -556,9 +594,9 @@ async function loadCharacters() {
 }
 
 async function searchIPOptions(query: string) {
-  ipOptions.value = (
-    await getAdminIPs({ search: query || undefined, page_size: 50 })
-  ).results
+  const results = (await getAdminIPs({ search: query || undefined, page_size: 50 })).results
+  ipOptions.value = results
+  creatableIpOptions.value = results.filter((ip) => !ip.user_id)
 }
 
 function handleIPSearch() {

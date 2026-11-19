@@ -10,8 +10,8 @@ from .ip import IPSimpleSerializer
 class ScopedIPField(serializers.PrimaryKeyRelatedField):
     """角色可挂载的 IP 作用域。
 
-    - 管理员：任意 IP（含官方与用户的个人 IP）；
-    - 普通账号：只允许挂到自己的个人 IP 上（官方 IP 的角色仍由管理员维护）。
+    - 管理员：官方 IP + 自己名下的个人 IP（官方 IP 的角色由管理员维护）；
+    - 普通账号：只允许挂到自己的个人 IP 上。
 
     作用域外的 IP 会以 "invalid pk" 形式返回 400，避免 500 或越权写入。
     """

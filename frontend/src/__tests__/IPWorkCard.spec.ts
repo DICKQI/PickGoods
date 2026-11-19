@@ -155,6 +155,22 @@ describe('IPWorkCard', () => {
     expect(wrapper.find('.ip-card-drag').exists()).toBe(false)
   })
 
+  it('shows the drag handle only for official works seen by an admin', () => {
+    expect(mountCard({ isAdmin: true }).find('.ip-card-drag').exists()).toBe(true)
+    // 个人作品即使由管理员看到也不给拖拽把手：排序只对官方目录生效
+    expect(
+      mountCard({ isAdmin: true, ip: { ...baseIp, user_id: 7 } }).find('.ip-card-drag').exists(),
+    ).toBe(false)
+  })
+
+  it('describes the personal badge as owner-visible only', () => {
+    const personal = mountCard({ ip: { ...baseIp, user_id: 7 } })
+
+    expect(personal.get('.ip-card-personal-badge').attributes('title')).toBe(
+      '用户自建的个人作品，仅归属者本人可见',
+    )
+  })
+
   it('keeps the keyword tooltip and BGM badge for bound works', () => {
     const wrapper = mountCard()
 

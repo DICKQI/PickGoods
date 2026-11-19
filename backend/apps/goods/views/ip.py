@@ -2,8 +2,10 @@
 IP作品相关的视图
 
 可见性与可写性规则集中在 ``apps.goods.scoping``：
-官方 IP（``user`` 为空）对所有登录账号可见、仅管理员可写；个人 IP 只对本人与
-管理员可见可写。``PERSONAL_IP_ENABLED=0`` 时个人数据对所有人不可见（T0 回滚）。
+官方 IP（``user`` 为空）对所有登录账号可见、仅管理员可写；个人 IP 只对归属者
+本人可见可写，**管理员没有前台特权**（不要再给管理员加全量可见的分支，运营查看
+他人个人 IP 请走 ``/api/admin/ips/`` 或 Django admin）。
+``PERSONAL_IP_ENABLED=0`` 时个人数据对所有人不可见（T0 回滚）。
 """
 from django.db import transaction
 from django.db.models import Count
@@ -44,7 +46,7 @@ class IPViewSet(viewsets.ModelViewSet):
     """
     IP作品CRUD接口。
 
-    - list: 获取IP作品列表（官方 + 自己的个人 IP；管理员看全量）
+    - list: 获取IP作品列表（官方 + 自己的个人 IP，管理员同样只看这两类）
     - retrieve: 获取单个IP作品详情（包含关键词）
     - create: 创建IP作品（管理员→官方 IP；收藏者→自己的个人 IP）
     - update: 更新IP作品（管理员可改任意；收藏者只能改自己的个人 IP）

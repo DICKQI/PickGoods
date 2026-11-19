@@ -19,6 +19,17 @@
 
 > 与 `docs/game-achievement-function-rollback.md` 一致：本仓库**优先只回滚代码、不回滚迁移**。个人 IP 的迁移只做了「新增 `IP.user` 列 + 把全局唯一改成按归属域唯一」，官方名称唯一性没有放松，所以旧代码在新表结构上运行是安全的。
 
+## 零、作用域基线（改完后必须保持）
+
+- 前台 `/api/ips/`、`/api/character/`、`/api/ips/{id}/characters/` 一律返回「官方 + 自己的个人 IP」，
+  **管理员同样没有全量可见特权**：他人创建的个人 IP / 角色对管理员也是 `404`；
+- 官方域写权限只属于管理员；个人域写权限只属于归属者本人（`apps.goods.scoping.can_manage_ip`）；
+- 运营总览 / 处置他人的个人 IP 走：`GET /api/admin/ips/`（含「归属用户」列，个人行只读）、
+  Django admin（`IP` / `Character` 已注册）、`python manage.py purge_personal_ips`；
+- 若确实需要给管理员临时恢复全量可见做排查，只改 `backend/apps/goods/scoping.py` 的
+  `visible_ip_filter` / `visible_character_filter` 两处即可，用完务必还原，并同步前端
+  `frontend/src/utils/ip.ts` 的 `canManageIp`（避免出现「看得到但改不动」的不一致）。
+
 ## 一、实施前基线（回滚时的对照点）
 
 实施个人 IP 功能时已记录：

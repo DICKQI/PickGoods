@@ -190,9 +190,21 @@ class AdminGoodsListSerializer(GoodsListSerializer):
 
 class AdminIPListSerializer(IPSimpleSerializer):
     goods_count = serializers.IntegerField(read_only=True, default=0)
+    user = serializers.SerializerMethodField()
 
     class Meta(IPSimpleSerializer.Meta):
-        fields = IPSimpleSerializer.Meta.fields + ("goods_count", "created_at")
+        fields = IPSimpleSerializer.Meta.fields + ("goods_count", "created_at", "user")
+
+    def get_user(self, obj):
+        """归属用户：官方 IP 为 None，个人 IP 为 {id, username}。
+
+        后台列表是唯一能看到他人个人 IP 的地方：用归属列区分「官方目录」与
+        「用户自建」，前端据此把个人行降级为只读（编辑/删除走 /api/ips/，
+        那边对他人个人 IP 已经收敛为 404）。
+        """
+        if not obj.user_id:
+            return None
+        return {"id": obj.user_id, "username": obj.user.username}
 
 
 class AdminCharacterListSerializer(CharacterSimpleSerializer):

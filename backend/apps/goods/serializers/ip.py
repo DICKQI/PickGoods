@@ -130,7 +130,11 @@ class IPDetailSerializer(serializers.ModelSerializer):
         if is_admin(user):
             owner_id = getattr(instance, "user_id", None)
             if owner_id is not None:
-                # 管理员维护某个用户的个人 IP：只在该用户域内校验
+                # 管理员维护自己名下的个人 IP：在该用户域内校验，同时仍然不允许
+                # 占用官方名称——否则会破坏「个人 IP 不得与官方同名」的不变量，
+                # 前台列表里会出现两个同名作品。
+                if exists(user__isnull=True, name=name):
+                    raise serializers.ValidationError("该名称的官方作品已存在")
                 if exists(user_id=owner_id, name=name):
                     raise serializers.ValidationError("该用户已有同名作品")
                 return name

@@ -60,7 +60,8 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain(':reorderable="!sortState.prop"')
 
     const cardSource = readFileSync(join(process.cwd(), 'src/components/IPWorkCard.vue'), 'utf-8')
-    expect(cardSource).toContain('v-if="isAdmin && reorderable"')
+    // 个人作品不参与官方目录的拖拽排序，因此把手还要额外排除 user_id 非空的行
+    expect(cardSource).toContain('v-if="isAdmin && reorderable && !ip.user_id"')
     expect(cardSource).toContain('reorderable?: boolean')
   })
 
@@ -152,7 +153,11 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain('const canCreateIP = computed(')
     expect(source).toContain('authStore.personalIpEnabled')
     expect(source).toContain('const canEditIP = (ip: IP) =>')
-    expect(source).toContain('ip.user_id === authStore.user?.id')
+    // 归属判定收敛到 canManageIp（与后端 can_manage_ip 同源）：官方归管理员、个人归本人
+    expect(source).toContain("import { canManageIp, ipLabel } from '@/utils/ip'")
+    expect(source).toContain(
+      'canManageIp(ip, { isAdmin: authStore.isAdmin, userId: authStore.user?.id })',
+    )
     expect(source).toContain('const canSyncBGM = (ip: IP) =>')
     expect(source).toContain('const canImportFromBGM = computed(')
 

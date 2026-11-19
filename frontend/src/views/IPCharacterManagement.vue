@@ -1304,7 +1304,7 @@ import AppFilterPanel from '@/components/AppFilterPanel.vue'
 import AddFab, { type AddFabItem, type AddFabProps } from '@/components/AddFab.vue'
 import { SUBJECT_TYPE_OPTIONS, subjectTypeLabel } from '@/navigation/subjectTypes'
 import { debounce } from '@/utils/debounce'
-import { ipLabel } from '@/utils/ip'
+import { canManageIp, ipLabel } from '@/utils/ip'
 import {
   getIPList,
   getIPDetail,
@@ -1350,14 +1350,18 @@ const canCreateIP = computed(
   () => authStore.isAdmin || (authStore.isCollector && authStore.personalIpEnabled),
 )
 
-/** 能否编辑 / 删除该作品：管理员任意；普通账号只有自己的个人 IP */
+/**
+ * 能否编辑 / 删除该作品：官方作品归管理员，个人作品只归归属者本人。
+ * 管理员不再拥有「他人个人 IP」的读写权限，前台也看不到这些作品，
+ * 与后端 `apps.goods.scoping.can_manage_ip` 一一对应。
+ */
 const canEditIP = (ip: IP) =>
-  authStore.isAdmin || (Boolean(ip.user_id) && ip.user_id === authStore.user?.id)
+  canManageIp(ip, { isAdmin: authStore.isAdmin, userId: authStore.user?.id })
 
-/** 能否对该作品做 BGM 增量更新：管理员，或本人个人 IP 且已填写个人 Bangumi Token */
+/** 能否对该作品做 BGM 增量更新：官方作品归管理员；个人作品需本人已配置个人 Token */
 const canSyncBGM = (ip: IP) => {
-  if (authStore.isAdmin) return true
-  return canEditIP(ip) && authStore.hasBGMToken
+  if (!canEditIP(ip)) return false
+  return authStore.isAdmin || authStore.hasBGMToken
 }
 
 /** 「从 Bangumi 导入」需要 token：管理员用系统 token，普通账号必须自己配置 */
@@ -1366,11 +1370,12 @@ const canImportFromBGM = computed(() => authStore.isAdmin || authStore.hasBGMTok
 /** 「从 Bangumi 取封面」同样需要 token */
 const canFetchCover = computed(() => authStore.isAdmin || authStore.hasBGMToken)
 
-/** 角色弹窗里可选的「所属作品」：普通账号只能挂到自己的个人 IP */
+/** 角色弹窗里可选的「所属作品」：与 canManageIp 同源——官方归管理员，个人归本人 */
 const characterIpOptions = computed<IP[]>(() => {
-  if (authStore.isAdmin) return ipList.value
   const me = authStore.user?.id
-  return ipList.value.filter((ip) => Boolean(ip.user_id) && ip.user_id === me)
+  return ipList.value.filter((ip) =>
+    canManageIp(ip, { isAdmin: authStore.isAdmin, userId: me }),
+  )
 })
 const metadataStore = useMetadataStore()
 const mobileAddSheetVisible = ref(false)

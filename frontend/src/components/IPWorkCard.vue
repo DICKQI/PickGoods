@@ -25,8 +25,9 @@
 
       <span v-if="isAdmin && !showCover" class="ip-card-cover-hint">暂无封面</span>
 
+      <!-- 拖拽排序只对官方目录有意义：个人作品的顺序跟随归属者自己的列表 -->
       <button
-        v-if="isAdmin && reorderable"
+        v-if="isAdmin && reorderable && !ip.user_id"
         type="button"
         class="ip-card-drag"
         title="拖拽调整顺序"
@@ -164,7 +165,7 @@ const coverInitial = computed(() => (props.ip.name || '?').trim().charAt(0) || '
 
 const ipTitle = computed(() => ipLabel(props.ip))
 
-const personalBadgeHint = computed(() => '这是我自己创建的个人作品，只有我可见')
+const personalBadgeHint = computed(() => '用户自建的个人作品，仅归属者本人可见')
 
 const characterCount = computed(() => {
   const count = props.ip.character_count

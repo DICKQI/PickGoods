@@ -74,7 +74,8 @@ class CharacterViewSet(viewsets.ModelViewSet):
         return queryset.filter(visible_character_filter(user))
 
     def _assert_ip_manageable(self, ip):
-        """写操作前校验所属 IP 归属；官方 IP / 他人个人 IP 一律 403。"""
+        """写操作前校验所属 IP 归属：官方 IP 只有管理员可写，个人 IP 只有归属者
+        本人可写；他人个人 IP 在 get_queryset 阶段已变成 404，这里是兜底。"""
         if can_manage_ip(self.request.user, ip):
             return
         if getattr(ip, "user_id", None) is None:
