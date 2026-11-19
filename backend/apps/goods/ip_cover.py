@@ -54,19 +54,26 @@ _IGNORED_NAME_CHARS = set(
 
 
 class _DefaultBGMService:
-    """把 bgm_service 的模块函数包成可注入的服务对象（便于测试替换）。"""
+    """把 bgm_service 的模块函数包成可注入的服务对象（便于测试替换）。
 
-    @staticmethod
-    def get_subject_info(subject_id):
-        return bgm_service.get_subject_info(subject_id)
+    ``access_token`` 为 None 时使用服务端环境变量里的 token；传入用户自己的
+    token 时，请求头会带上该用户的 Authorization（个人 IP 取封面）。
+    """
 
-    @staticmethod
-    def search_subject_candidates(keyword, subject_type=None, limit=10):
-        return bgm_service.search_subject_candidates(keyword, subject_type, limit=limit)
+    def __init__(self, access_token=None):
+        self.access_token = access_token
+
+    def get_subject_info(self, subject_id):
+        return bgm_service.get_subject_info(subject_id, access_token=self.access_token)
+
+    def search_subject_candidates(self, keyword, subject_type=None, limit=10):
+        return bgm_service.search_subject_candidates(
+            keyword, subject_type, limit=limit, access_token=self.access_token
+        )
 
 
-def default_service():
-    return _DefaultBGMService()
+def default_service(access_token=None):
+    return _DefaultBGMService(access_token=access_token)
 
 
 def normalize_subject_name(value):
@@ -163,6 +170,7 @@ def backfill_ip_covers(
     """批量补齐缺失的封面。
 
     候选集：
+      - 只处理官方 IP（``user IS NULL``）；个人 IP 的封面由归属者自己取；
       - 传入 ``ids`` 时只处理这些 IP；
       - ``force=False`` 时只处理「没有封面」且「``cover_checked_at`` 为空或已过期」的 IP；
       - ``force=True`` 时不看封面与时间，直接重算（会覆盖已有封面）。
@@ -196,7 +204,8 @@ def backfill_ip_covers(
     stale_before = now - timedelta(days=stale_days)
 
     skipped = 0
-    queryset = IP.objects.all()
+    # 只批量维护官方 IP：个人 IP 的封面由归属者自己取，管理员不代劳
+    queryset = IP.objects.filter(user__isnull=True)
     if ids:
         requested_ids = set()
         for pk in ids:
@@ -204,7 +213,9 @@ def backfill_ip_covers(
                 requested_ids.add(int(pk))
             except (TypeError, ValueError):
                 continue
-        existing = set(IP.objects.filter(id__in=requested_ids).values_list("id", flat=True))
+        existing = set(
+            IP.objects.filter(user__isnull=True, id__in=requested_ids).values_list("id", flat=True)
+        )
         skipped = len(requested_ids - existing)
         queryset = queryset.filter(id__in=existing)
 

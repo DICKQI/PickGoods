@@ -11,13 +11,17 @@ vi.mock('element-plus', () => ({
   ElMessageBox: { confirm: vi.fn() },
 }))
 vi.mock('@/api/auth', () => ({
+  clearBGMToken: vi.fn(),
   removeCurrentUserAvatar: vi.fn(),
+  setBGMToken: vi.fn(),
   updateCurrentAccount: vi.fn(),
   uploadCurrentUserAvatar: vi.fn(),
 }))
 
 import {
+  clearBGMToken,
   removeCurrentUserAvatar,
+  setBGMToken,
   updateCurrentAccount,
   uploadCurrentUserAvatar,
 } from '@/api/auth'
@@ -85,6 +89,8 @@ interface MountOptions {
   clubName?: string
   clubAvatar?: string
   userAvatar?: string
+  /** 已配置的个人 Bangumi token 掩码（不传表示未配置） */
+  bgmTokenHint?: string
 }
 
 function mountPage(options: MountOptions = {}) {
@@ -94,6 +100,7 @@ function mountPage(options: MountOptions = {}) {
     clubName,
     clubAvatar,
     userAvatar,
+    bgmTokenHint,
   } = options
   setActivePinia(createPinia())
   const authStore = useAuthStore()
@@ -107,6 +114,9 @@ function mountPage(options: MountOptions = {}) {
     club: accountType === 'club'
       ? { id: 9, name: clubName || '星屑社', avatar: clubAvatar }
       : null,
+    bgm_token_is_set: Boolean(bgmTokenHint),
+    bgm_token_hint: bgmTokenHint ?? null,
+    personal_ip_enabled: true,
   }
   const wrapper = mount(ProfileAccount, {
     global: {
@@ -355,6 +365,50 @@ describe('ProfileAccount 账号页', () => {
     expect(wrapper.get('[data-test="account-summary"]').text()).toContain('refreshed-user')
     expect(vm.accountForm.username).toBe('refreshed-user')
     expect(ElMessage.success).toHaveBeenCalledWith('已刷新')
+  })
+
+  it('未配置时提示未配置，已配置时只显示掩码', () => {
+    const empty = mountPage()
+    expect(empty.wrapper.get('[data-test="bangumi-token-state"]').text()).toBe('未配置')
+
+    const configured = mountPage({ bgmTokenHint: '****abcd' })
+    expect(configured.wrapper.get('[data-test="bangumi-token-state"]').text()).toContain('****abcd')
+  })
+
+  it('社团账号不展示个人 Bangumi 接入卡片', () => {
+    const { wrapper } = mountPage({ accountType: 'club' })
+    expect(wrapper.find('[data-test="bangumi-access"]').exists()).toBe(false)
+  })
+
+  it('保存个人 Bangumi Token 后刷新账号信息', async () => {
+    const { wrapper, authStore } = mountPage()
+    vi.mocked(setBGMToken).mockResolvedValue({ is_set: true, hint: '****1234' })
+    const refresh = vi.spyOn(authStore, 'fetchCurrentUser').mockResolvedValue(true)
+
+    const vm = wrapper.vm as unknown as {
+      bangumiTokenInput: string
+      saveBangumiToken: () => Promise<void>
+    }
+    vm.bangumiTokenInput = 'personal-token'
+    await vm.saveBangumiToken()
+
+    expect(setBGMToken).toHaveBeenCalledWith('personal-token')
+    expect(refresh).toHaveBeenCalled()
+    expect(ElMessage.success).toHaveBeenCalledWith('Bangumi Token 已保存')
+  })
+
+  it('清除个人 Bangumi Token 需二次确认', async () => {
+    const { wrapper, authStore } = mountPage({ bgmTokenHint: '****abcd' })
+    vi.mocked(clearBGMToken).mockResolvedValue({ is_set: false, hint: null })
+    vi.mocked(ElMessageBox.confirm).mockResolvedValue(undefined as never)
+    const refresh = vi.spyOn(authStore, 'fetchCurrentUser').mockResolvedValue(true)
+
+    const vm = wrapper.vm as unknown as { clearBangumiToken: () => Promise<void> }
+    await vm.clearBangumiToken()
+
+    expect(ElMessageBox.confirm).toHaveBeenCalled()
+    expect(clearBGMToken).toHaveBeenCalledOnce()
+    expect(refresh).toHaveBeenCalled()
   })
 
   it('退出登录仍先二次确认再清理会话', async () => {

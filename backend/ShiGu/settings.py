@@ -197,6 +197,8 @@ REST_FRAMEWORK = {
         "auth_login_username": "10/minute",
         "auth_captcha": "30/minute",
         "auth_captcha_image": "60/minute",
+        # 个人 Bangumi 调用（用户自带 token）：保护服务器出口，避免被刷
+        "bgm_personal": "30/minute",
     },
     # 默认不信任客户端传入的 X-Forwarded-For；反向代理部署时显式配置。
     "NUM_PROXIES": int(os.environ.get("DRF_NUM_PROXIES", "0")),
@@ -254,6 +256,16 @@ ADMIN_AUDIT_RETENTION_DAYS = int(
 
 # 游戏化默认关闭；部署迁移并完成基线初始化后再显式开启。
 GAMIFICATION_ENABLED = os.environ.get("GAMIFICATION_ENABLED", "false").lower() in {
+    "1",
+    "true",
+    "yes",
+    "on",
+}
+
+# 个人 IP（用户自建、仅本人可见）默认开启。置为 0/false 即 T0 回滚：
+# 普通账号写操作一律 403，所有 IP / 角色查询只返回官方数据（个人数据保留但不可见）。
+# 详见 docs/personal-ip-rollback.md。
+PERSONAL_IP_ENABLED = os.environ.get("PERSONAL_IP_ENABLED", "1").lower() in {
     "1",
     "true",
     "yes",

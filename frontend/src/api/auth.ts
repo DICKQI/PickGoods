@@ -1,5 +1,13 @@
 import request from '@/utils/request'
-import type { AccountUpdatePayload, AuthTokenResponse, CaptchaChallenge, RegisterPayload, RegistrationPending, UserInfo } from './types'
+import type {
+  AccountUpdatePayload,
+  AuthTokenResponse,
+  BGMTokenStatus,
+  CaptchaChallenge,
+  RegisterPayload,
+  RegistrationPending,
+  UserInfo,
+} from './types'
 
 /** 注册（创建用户并返回 Token） */
 export function register(data: RegisterPayload) {
@@ -36,6 +44,20 @@ export function uploadCurrentUserAvatar(file: File) {
 /** 删除当前用户头像并恢复默认首字母头像。 */
 export function removeCurrentUserAvatar() {
   return request.delete<UserInfo>('/api/auth/me/avatar/', { suppressGlobalError: true })
+}
+
+/** 保存个人 Bangumi Access Token（只回显掩码，不会返回原文）。 */
+export function setBGMToken(accessToken: string) {
+  return request.post<BGMTokenStatus>(
+    '/api/auth/me/bgm-token/',
+    { access_token: accessToken },
+    { suppressGlobalError: true },
+  )
+}
+
+/** 清除个人 Bangumi Access Token。 */
+export function clearBGMToken() {
+  return request.delete<BGMTokenStatus>('/api/auth/me/bgm-token/', { suppressGlobalError: true })
 }
 
 /** 登出（需携带 Token，成功后前端清除本地 Token） */

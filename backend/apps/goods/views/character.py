@@ -1,5 +1,8 @@
 """
 角色（Character）相关的视图
+
+可见性与可写性跟随所属 IP（见 ``apps.goods.scoping``）：官方 IP 的角色对所有
+登录账号可见、仅管理员可写；个人 IP 的角色只对本人与管理员可见可写。
 """
 from decimal import Decimal
 
@@ -10,22 +13,25 @@ from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import filters as drf_filters, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.response import Response
 
+from ..feature_flags import personal_ip_enabled
 from ..models import Character, Goods
+from ..scoping import can_manage_ip, visible_character_filter
 from ..serializers import CharacterSimpleSerializer
 from ..serializers.ip import ip_list_queryset
-from core.permissions import IsAdminOrReadOnly, is_admin
+from core.permissions import IsAdminOrReadOnly, IsCollectorAccount, is_admin
 
 
 class CharacterViewSet(viewsets.ModelViewSet):
     """
     角色CRUD接口。
 
-    - list: 获取所有角色列表，支持按IP过滤
+    - list: 获取角色列表（官方 IP 的角色 + 自己的个人 IP 的角色）
     - retrieve: 获取单个角色详情
-    - create: 创建新角色
-    - update: 更新角色
+    - create: 创建新角色（普通账号只能挂在自己的个人 IP 下）
+    - update: 更新角色（同样受 IP 归属限制）
     - partial_update: 部分更新角色
     - destroy: 删除角色
     """
@@ -37,7 +43,17 @@ class CharacterViewSet(viewsets.ModelViewSet):
         "ip": ["exact"],
         "name": ["exact", "icontains"],
     }
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """写操作要求管理员或收藏者账号；个人 IP 关闭时非管理员一律只读。"""
+        user = getattr(self.request, "user", None)
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            admin = is_admin(user)
+            if not admin and not personal_ip_enabled():
+                return [IsAuthenticated(), IsAdminOrReadOnly()]
+            return [IsAuthenticated(), IsCollectorAccount()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
         """预取 IP 并把角色数/关键词一次性取回，避免逐行查询。
@@ -47,14 +63,31 @@ class CharacterViewSet(viewsets.ModelViewSet):
         这里不能再叠加 ``select_related("ip")``——JOIN 出的实例会覆盖 prefetch
         结果并丢掉注解。
         """
-        return (
+        queryset = (
             Character.objects.all()
             .prefetch_related(Prefetch("ip", queryset=ip_list_queryset()))
             .order_by("created_at")
         )
+        user = getattr(self.request, "user", None)
+        if user is None or not getattr(user, "id", None):
+            return queryset.filter(ip__user__isnull=True)
+        return queryset.filter(visible_character_filter(user))
+
+    def _assert_ip_manageable(self, ip):
+        """写操作前校验所属 IP 归属：官方 IP 只有管理员可写，个人 IP 只有归属者
+        本人可写；他人个人 IP 在 get_queryset 阶段已变成 404，这里是兜底。"""
+        if can_manage_ip(self.request.user, ip):
+            return
+        if getattr(ip, "user_id", None) is None:
+            raise PermissionDenied("官方 IP 下的角色只能由管理员维护")
+        raise PermissionDenied("只能维护自己创建的个人 IP 下的角色")
 
     def perform_create(self, serializer):
+        self._assert_ip_manageable(serializer.validated_data["ip"])
         instance = serializer.save()
+        if not is_admin(self.request.user):
+            return  # 审计表只记录管理员操作
+
         from apps.admin_api.services import record_admin_action
 
         record_admin_action(
@@ -67,12 +100,19 @@ class CharacterViewSet(viewsets.ModelViewSet):
         )
 
     def perform_update(self, serializer):
+        self._assert_ip_manageable(serializer.instance.ip)
+        target_ip = serializer.validated_data.get("ip")
+        if target_ip is not None:
+            self._assert_ip_manageable(target_ip)
         before = {
             "name": serializer.instance.name,
             "ip_id": serializer.instance.ip_id,
             "gender": serializer.instance.gender,
         }
         instance = serializer.save()
+        if not is_admin(self.request.user):
+            return
+
         from apps.admin_api.services import record_admin_action
 
         record_admin_action(
@@ -92,10 +132,14 @@ class CharacterViewSet(viewsets.ModelViewSet):
         )
 
     def perform_destroy(self, instance):
+        self._assert_ip_manageable(instance.ip)
         resource_id = instance.pk
         name = instance.name
         ip_id = instance.ip_id
         instance.delete()
+        if not is_admin(self.request.user):
+            return
+
         from apps.admin_api.services import record_admin_action
 
         record_admin_action(
@@ -386,7 +430,9 @@ class CharacterViewSet(viewsets.ModelViewSet):
                 "raw_metrics": raw_metrics,
             }
 
-        all_platform_ip_metrics = build_ip_metrics(Goods.objects.all())
+        # 平台热度榜只统计官方 IP：个人 IP 的谷子只属于本人，放进平台排名会污染
+        # 样本；个人维度的热度（my_ip_metrics）不受影响。
+        all_platform_ip_metrics = build_ip_metrics(Goods.objects.filter(ip__user__isnull=True))
         current_platform_ip_metrics = next(
             (row for row in all_platform_ip_metrics if row["ip_id"] == character.ip_id),
             {"ip_id": character.ip_id, "ip__name": character.ip.name, "collectors": 0, "quantity": 0, "goods_count": 0, "total_value": Decimal("0.00"), "recent": 0},

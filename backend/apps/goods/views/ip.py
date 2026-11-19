@@ -1,5 +1,11 @@
 """
 IP作品相关的视图
+
+可见性与可写性规则集中在 ``apps.goods.scoping``：
+官方 IP（``user`` 为空）对所有登录账号可见、仅管理员可写；个人 IP 只对归属者
+本人可见可写，**管理员没有前台特权**（不要再给管理员加全量可见的分支，运营查看
+他人个人 IP 请走 ``/api/admin/ips/`` 或 Django admin）。
+``PERSONAL_IP_ENABLED=0`` 时个人数据对所有人不可见（T0 回滚）。
 """
 from django.db import transaction
 from django.db.models import Count
@@ -7,13 +13,23 @@ from django.utils import timezone
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework import filters as drf_filters, status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from ..bgm_service import get_characters, get_subject_info, pick_cover_url
 from ..bgm_sync import apply_bgm_sync, compute_bgm_diff
-from ..ip_cover import DEFAULT_LIMIT, backfill_ip_covers, refresh_ip_cover
+from ..bgm_token import require_bgm_token
+from ..feature_flags import personal_ip_enabled
+from ..ip_cover import (
+    DEFAULT_LIMIT,
+    backfill_ip_covers,
+    default_service,
+    refresh_ip_cover,
+)
 from ..models import IP
-from core.permissions import IsAdmin, IsAdminOrReadOnly
+from ..scoping import can_manage_ip, visible_ip_filter
+from core.permissions import IsAdmin, IsCollectorAccount, IsOwnerOnly, is_admin
 from ..serializers import (
     BGMSyncApplyRequestSerializer,
     BGMSyncApplyResponseSerializer,
@@ -30,14 +46,14 @@ class IPViewSet(viewsets.ModelViewSet):
     """
     IP作品CRUD接口。
 
-    - list: 获取所有IP作品列表（包含关键词）
+    - list: 获取IP作品列表（官方 + 自己的个人 IP，管理员同样只看这两类）
     - retrieve: 获取单个IP作品详情（包含关键词）
-    - create: 创建新IP作品（支持同时创建关键词）
-    - update: 更新IP作品（支持同时更新关键词）
-    - partial_update: 部分更新IP作品（支持同时更新关键词）
-    - destroy: 删除IP作品
+    - create: 创建IP作品（管理员→官方 IP；收藏者→自己的个人 IP）
+    - update: 更新IP作品（管理员可改任意；收藏者只能改自己的个人 IP）
+    - partial_update: 部分更新IP作品
+    - destroy: 删除IP作品（作品下仍有谷子时返回 409）
     - characters: 获取指定IP下的所有角色列表（/api/ips/{id}/characters/）
-    - batch_update_order: 批量更新IP作品排序（用于拖拽排序等功能）
+    - batch_update_order: 批量更新IP作品排序（仅管理员）
     """
 
     filter_backends = (DjangoFilterBackend, drf_filters.SearchFilter)
@@ -46,16 +62,36 @@ class IPViewSet(viewsets.ModelViewSet):
         "name": ["exact", "icontains"],
         "subject_type": ["exact", "in"],  # exact: 精确匹配，in: 多值筛选（逗号分隔）
     }
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        """按动作分配权限；个人 IP 开关关闭时，非管理员的写操作一律拒绝。"""
+        user = getattr(self.request, "user", None)
+        admin = is_admin(user)
+        if self.action in ("batch_update_order", "fetch_covers"):
+            return [IsAuthenticated(), IsAdmin()]
+        if self.action in ("create", "update", "partial_update", "destroy"):
+            if not admin and not personal_ip_enabled():
+                return [IsAuthenticated(), IsAdmin()]
+            if self.action == "create":
+                return [IsAuthenticated(), IsCollectorAccount()]
+            # IsOwnerOnly：admin 直通，其余要求 obj.user_id == request.user.id
+            # （官方 IP 的 user_id 为空，普通账号因此改不动官方作品）
+            return [IsAuthenticated(), IsOwnerOnly()]
+        return [IsAuthenticated()]
 
     def get_queryset(self):
-        """优化查询，预加载关键词并统计角色数量"""
-        return (
+        """优化查询，预加载关键词并统计角色数量；同时按可见性收敛数据范围"""
+        user = getattr(self.request, "user", None)
+        queryset = (
             IP.objects.all()
             .prefetch_related("keywords")
             .annotate(character_count=Count("characters"))
-            .order_by("order", "id")
         )
+        if user is None or not getattr(user, "id", None):
+            # 理论上 IsAuthenticated 已拦住匿名；这里保持官方数据兜底
+            return queryset.filter(user__isnull=True).order_by("order", "id")
+        return queryset.filter(visible_ip_filter(user)).order_by("order", "id")
 
     def get_serializer_class(self):
         """根据操作类型选择序列化器"""
@@ -63,9 +99,22 @@ class IPViewSet(viewsets.ModelViewSet):
             return IPDetailSerializer
         return IPSimpleSerializer
 
+    def _assert_ip_writable(self, ip):
+        """BGM 同步 / 取封面这类动作：管理员或该 IP 的归属者才有权调用。"""
+        if can_manage_ip(self.request.user, ip):
+            return
+        if ip.user_id is None:
+            raise PermissionDenied("官方作品只能由管理员维护")
+        raise PermissionDenied("只能维护自己创建的个人 IP")
+
     def perform_create(self, serializer):
-        instance = serializer.save()
-        from apps.admin_api.services import normalize_resource_ids, record_admin_action
+        # 归属只由服务端决定：管理员创建的是官方 IP，其余账号创建的是自己的个人 IP
+        owner = None if is_admin(self.request.user) else self.request.user
+        instance = serializer.save(user=owner)
+        if not is_admin(self.request.user):
+            return  # 审计表只记录管理员操作
+
+        from apps.admin_api.services import record_admin_action
 
         record_admin_action(
             self.request,
@@ -84,7 +133,10 @@ class IPViewSet(viewsets.ModelViewSet):
             "bgm_subject_id": serializer.instance.bgm_subject_id,
         }
         instance = serializer.save()
-        from apps.admin_api.services import normalize_resource_ids, record_admin_action
+        if not is_admin(self.request.user):
+            return
+
+        from apps.admin_api.services import record_admin_action
 
         record_admin_action(
             self.request,
@@ -103,11 +155,31 @@ class IPViewSet(viewsets.ModelViewSet):
             },
         )
 
+    def destroy(self, request, *args, **kwargs):
+        """删除前检查谷子引用：``Goods.ip`` 是 PROTECT，直接删会 500。"""
+        instance = self.get_object()
+        goods_count = instance.goods.count()
+        if goods_count:
+            return Response(
+                {
+                    "detail": (
+                        f"该作品下还有 {goods_count} 件谷子，"
+                        "请先移走或删除这些谷子后再删除作品"
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        self.perform_destroy(instance)
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
     def perform_destroy(self, instance):
         resource_id = instance.pk
         name = instance.name
         instance.delete()
-        from apps.admin_api.services import normalize_resource_ids, record_admin_action
+        if not is_admin(self.request.user):
+            return
+
+        from apps.admin_api.services import record_admin_action
 
         record_admin_action(
             self.request,
@@ -275,15 +347,21 @@ class IPViewSet(viewsets.ModelViewSet):
         )
         return Response(result, status=status.HTTP_200_OK)
 
-    @action(detail=True, methods=["post"], url_path="fetch-cover",
-            permission_classes=[IsAdmin])
+    @action(detail=True, methods=["post"], url_path="fetch-cover")
     def fetch_cover(self, request, pk=None):
         """强制重算单个 IP 的封面（编辑弹窗里的「从 Bangumi 取封面」）。
 
         URL: POST /api/ips/{id}/fetch-cover/
+
+        管理员可对任意 IP 调用；普通账号只能对自己创建的个人 IP 调用，
+        且必须已配置个人 Bangumi Token。
         """
         ip = self.get_object()
-        cover, cover_status, reason = refresh_ip_cover(ip, force=True)
+        self._assert_ip_writable(ip)
+        token = require_bgm_token(request.user)
+        cover, cover_status, reason = refresh_ip_cover(
+            ip, force=True, service=default_service(access_token=token)
+        )
 
         return Response(
             {
@@ -325,9 +403,10 @@ class IPViewSet(viewsets.ModelViewSet):
                 },
                 status=status.HTTP_409_CONFLICT,
             )
-        # 校验目标 subject_id 是否被其它 IP 占用
+        # 校验目标 subject_id 是否被同一归属域内的其它 IP 占用
+        # （官方域全局唯一；个人域按用户唯一，因此不同用户可各自绑定同一部作品）
         conflict = (
-            IP.objects.filter(bgm_subject_id=payload_subject_id)
+            IP.objects.filter(bgm_subject_id=payload_subject_id, user=ip.user)
             .exclude(pk=ip.pk)
             .first()
         )
@@ -354,6 +433,7 @@ class IPViewSet(viewsets.ModelViewSet):
         - 历史 IP 首次同步时需在请求中传入 subject_id。
         """
         ip = self.get_object()
+        self._assert_ip_writable(ip)
         req = BGMSyncPreviewRequestSerializer(data=request.data)
         req.is_valid(raise_exception=True)
         payload_subject_id = req.validated_data.get("subject_id")
@@ -362,14 +442,15 @@ class IPViewSet(viewsets.ModelViewSet):
         if err is not None:
             return err
 
+        token = require_bgm_token(request.user)
         try:
-            subject_info = get_subject_info(subject_id)
+            subject_info = get_subject_info(subject_id, access_token=token)
             if not subject_info:
                 return Response(
                     {"detail": f"未找到 BGM subject_id={subject_id}"},
                     status=status.HTTP_404_NOT_FOUND,
                 )
-            bgm_characters = get_characters(subject_id)
+            bgm_characters = get_characters(subject_id, access_token=token)
         except Exception as e:
             return Response(
                 {"detail": f"获取 BGM 数据失败: {str(e)}"},
@@ -409,6 +490,7 @@ class IPViewSet(viewsets.ModelViewSet):
         但角色列表以请求中传入的 items 为准（前端已基于 preview 让用户勾选过）。
         """
         ip = self.get_object()
+        self._assert_ip_writable(ip)
         req = BGMSyncApplyRequestSerializer(data=request.data)
         req.is_valid(raise_exception=True)
         payload_subject_id = req.validated_data.get("subject_id")
@@ -419,9 +501,10 @@ class IPViewSet(viewsets.ModelViewSet):
         if err is not None:
             return err
 
+        token = require_bgm_token(request.user)
         bgm_subject_type = None
         try:
-            subject_info = get_subject_info(subject_id)
+            subject_info = get_subject_info(subject_id, access_token=token)
             if not subject_info:
                 return Response(
                     {"detail": f"未找到 BGM subject_id={subject_id}"},

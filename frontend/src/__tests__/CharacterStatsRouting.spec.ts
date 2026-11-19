@@ -18,7 +18,7 @@ describe('character stats routing and entrypoint', () => {
     expect(ipCharacterSource).not.toContain("router.push(`/characters/${character.id}/stats`)")
     expect(ipCharacterSource).not.toContain('title="查看厨力统计"')
     expect(ipCharacterSource).not.toContain('@click.stop="goToCharacterStats(char)"')
-    expect(ipCharacterSource).toContain('@click="authStore.isAdmin && handleEditCharacter(char)"')
+    expect(ipCharacterSource).toContain('@click="canEditIP(item) && handleEditCharacter(char)"')
     expect(ipCharacterSource).toContain('@click.stop="handleDeleteCharacter(char)"')
   })
 })

@@ -612,7 +612,8 @@ class AdminIPViewSet(mixins.ListModelMixin, viewsets.GenericViewSet):
 
     def get_queryset(self):
         return (
-            IP.objects.prefetch_related("keywords")
+            IP.objects.select_related("user")
+            .prefetch_related("keywords")
             .annotate(
                 character_count=Count("characters", distinct=True),
                 goods_count=Count("goods", distinct=True),

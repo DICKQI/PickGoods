@@ -15,6 +15,10 @@ export const useAuthStore = defineStore('auth', () => {
   const isAdmin = computed(() => user.value?.role?.trim().toLowerCase() === 'admin')
   const isClub = computed(() => !isAdmin.value && user.value?.account_type === 'club')
   const isCollector = computed(() => isAdmin.value || user.value?.account_type === 'collector')
+  /** 是否已配置个人 Bangumi Access Token（BGM 导入/同步需要） */
+  const hasBGMToken = computed(() => Boolean(user.value?.bgm_token_is_set))
+  /** 个人 IP 开关：后端 PERSONAL_IP_ENABLED 关闭时为 false，前端据此隐藏所有入口 */
+  const personalIpEnabled = computed(() => user.value?.personal_ip_enabled === true)
 
   function setToken(value: string | null) {
     if (token.value !== value) {
@@ -123,6 +127,8 @@ export const useAuthStore = defineStore('auth', () => {
     isAdmin,
     isClub,
     isCollector,
+    hasBGMToken,
+    personalIpEnabled,
     initFromStorage,
     login,
     registerAccount,

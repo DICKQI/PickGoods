@@ -97,6 +97,69 @@
         </div>
       </section>
 
+      <section
+        v-if="canUseBangumi"
+        class="account-section account-section--actions"
+        aria-labelledby="account-bangumi-title"
+        data-test="bangumi-access"
+      >
+        <header class="section-header">
+          <span class="section-icon" aria-hidden="true"><Link /></span>
+          <div>
+            <h3 id="account-bangumi-title">Bangumi 接入</h3>
+          </div>
+        </header>
+        <div class="action-list">
+          <div class="bangumi-card">
+            <p class="bangumi-status">
+              <span class="bangumi-status-label">Access Token</span>
+              <span class="bangumi-status-value" data-test="bangumi-token-state">
+                {{ bangumiTokenSet ? `已配置 ${bangumiTokenHint}` : '未配置' }}
+              </span>
+            </p>
+            <p class="bangumi-tip">
+              填入你自己的 Bangumi Access Token 后，才能在「整理 → IP 与角色」里搜索作品、
+              导入角色与更新封面。Token 只用于你自己的请求，页面上不会显示原文。
+            </p>
+            <el-input
+              v-model="bangumiTokenInput"
+              type="password"
+              show-password
+              clearable
+              autocomplete="off"
+              placeholder="粘贴 Bangumi Access Token"
+              data-test="bangumi-token-input"
+            />
+            <div class="bangumi-actions">
+              <el-button
+                type="primary"
+                :loading="bangumiSaving"
+                data-test="bangumi-token-save"
+                @click="saveBangumiToken"
+              >
+                保存
+              </el-button>
+              <el-button
+                :disabled="!bangumiTokenSet"
+                :loading="bangumiSaving"
+                data-test="bangumi-token-clear"
+                @click="clearBangumiToken"
+              >
+                清除
+              </el-button>
+              <a
+                class="bangumi-link"
+                href="https://next.bgm.tv/demo/access-token"
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                如何获取 Token
+              </a>
+            </div>
+          </div>
+        </div>
+      </section>
+
       <section class="account-section account-section--actions" aria-labelledby="account-management-title">
         <header class="section-header">
           <span class="section-icon" aria-hidden="true"><Key /></span>
@@ -221,9 +284,11 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { ArrowRight, CameraFilled, Close, Key, Lock, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowRight, CameraFilled, Close, Key, Link, Lock, Refresh, SwitchButton, User } from '@element-plus/icons-vue'
 import {
+  clearBGMToken,
   removeCurrentUserAvatar,
+  setBGMToken,
   updateCurrentAccount,
   uploadCurrentUserAvatar,
 } from '@/api/auth'
@@ -242,6 +307,8 @@ const accountEditorVisible = ref(false)
 const avatarEditorVisible = ref(false)
 const avatarUploading = ref(false)
 const avatarRemoving = ref(false)
+const bangumiTokenInput = ref('')
+const bangumiSaving = ref(false)
 const accountForm = ref({
   username: authStore.user?.username || '',
   current_password: '',
@@ -252,6 +319,10 @@ const accountForm = ref({
 const roleLabel = computed(() => authStore.isAdmin ? '管理员' : '普通用户')
 const accountTypeLabel = computed(() => authStore.isClub ? '社团' : '吃谷人')
 const canManageCredentials = computed(() => authStore.isCollector || authStore.isClub)
+/** Bangumi 接入只对吃谷人开放（社团账号没有谷子业务） */
+const canUseBangumi = computed(() => authStore.isCollector)
+const bangumiTokenSet = computed(() => Boolean(authStore.user?.bgm_token_is_set))
+const bangumiTokenHint = computed(() => authStore.user?.bgm_token_hint || '')
 const canEditAvatar = computed(() => authStore.isCollector)
 const credentialsTitle = computed(() => authStore.isClub ? '社团登录信息' : '登录信息')
 const credentialsDescription = computed(() => authStore.isClub ? '修改社团帐号的登录用户名或设置新密码' : '修改登录用户名或设置新密码')
@@ -384,6 +455,58 @@ function resetAccountEditor() {
   accountForm.value.current_password = ''
   accountForm.value.new_password = ''
   accountForm.value.confirm_password = ''
+}
+
+function bangumiTokenErrorMessage(error: unknown): string {
+  const data = (error as { response?: { data?: Record<string, unknown> } })?.response?.data
+  if (!data) return 'Token 保存失败，请检查网络后重试'
+  for (const key of ['access_token', 'detail', 'non_field_errors']) {
+    const value = data[key]
+    if (typeof value === 'string' && value) return value
+    if (Array.isArray(value) && typeof value[0] === 'string') return value[0]
+  }
+  return 'Token 保存失败，请检查内容后重试'
+}
+
+async function saveBangumiToken() {
+  const token = bangumiTokenInput.value.trim()
+  if (!token) return ElMessage.error('请先粘贴 Bangumi Access Token')
+  bangumiSaving.value = true
+  try {
+    await setBGMToken(token)
+    bangumiTokenInput.value = ''
+    await authStore.fetchCurrentUser()
+    ElMessage.success('Bangumi Token 已保存')
+  } catch (error) {
+    ElMessage.error(bangumiTokenErrorMessage(error))
+  } finally {
+    bangumiSaving.value = false
+  }
+}
+
+async function clearBangumiToken() {
+  try {
+    await ElMessageBox.confirm('清除后，Bangumi 搜索/导入/更新封面将不可用，确定清除吗？', '清除 Bangumi Token', {
+      confirmButtonText: '确定清除',
+      cancelButtonText: '取消',
+      type: 'warning',
+      confirmButtonType: 'danger',
+      lockScroll: true,
+    })
+  } catch (error) {
+    if (error !== 'cancel' && error !== 'close') console.error(error)
+    return
+  }
+  bangumiSaving.value = true
+  try {
+    await clearBGMToken()
+    await authStore.fetchCurrentUser()
+    ElMessage.success('已清除 Bangumi Token')
+  } catch (error) {
+    ElMessage.error(bangumiTokenErrorMessage(error))
+  } finally {
+    bangumiSaving.value = false
+  }
 }
 
 async function refreshUser() {
@@ -751,6 +874,58 @@ async function logout() {
 .action-arrow {
   color: var(--text-lighter);
   font-size: 16px;
+}
+
+.bangumi-card {
+  display: grid;
+  gap: 10px;
+  padding: 14px 12px 12px;
+}
+
+.bangumi-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 0;
+}
+
+.bangumi-status-label {
+  color: var(--text-regular);
+  font-size: var(--font-caption);
+  font-weight: 600;
+}
+
+.bangumi-status-value {
+  color: var(--text-light);
+  font-size: var(--font-caption);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.bangumi-tip {
+  margin: 0;
+  color: var(--text-light);
+  font-size: var(--font-small);
+  line-height: 1.6;
+}
+
+.bangumi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.bangumi-link {
+  color: var(--accent-purple-dark);
+  font-size: var(--font-small);
+  text-decoration: none;
+}
+
+.bangumi-link:hover,
+.bangumi-link:focus-visible {
+  text-decoration: underline;
 }
 
 .action-row--danger {

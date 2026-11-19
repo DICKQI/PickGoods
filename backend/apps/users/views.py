@@ -13,6 +13,8 @@ from rest_framework.parsers import FormParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from apps.goods.bgm_token import mask_token
+from apps.goods.feature_flags import personal_ip_enabled
 from apps.goods.utils import compress_image
 from core.permissions import IsCollectorAccount
 
@@ -25,6 +27,7 @@ from .throttling import (
     RegisterRateThrottle,
 )
 from .serializers import (
+    BGMTokenUpdateSerializer,
     LoginSerializer,
     CaptchaChallengeSerializer,
     RegisterSerializer,
@@ -40,6 +43,7 @@ def serialize_current_user(user, request):
     avatar = user.avatar.url if user.avatar else None
     if avatar and request:
         avatar = request.build_absolute_uri(avatar)
+    bgm_token = (getattr(user, "bgm_access_token", "") or "").strip()
     payload = {
         "id": user.id,
         "username": getattr(user, "username", ""),
@@ -48,6 +52,10 @@ def serialize_current_user(user, request):
         "approval_status": user.approval_status,
         "avatar": avatar,
         "club": None,
+        # 个人 Bangumi 接入：只回显状态与掩码，原文永不出网关
+        "bgm_token_is_set": bool(bgm_token),
+        "bgm_token_hint": mask_token(bgm_token or None),
+        "personal_ip_enabled": personal_ip_enabled(),
     }
     club = getattr(user, "club_profile", None)
     if club is not None:
@@ -360,6 +368,39 @@ def avatar(request):
         default_storage.delete(old_name)
     return Response(serialize_current_user(user, request), status=status.HTTP_200_OK)
 
+
+@extend_schema(
+    tags=["Auth"],
+    summary="保存 / 清除个人 Bangumi Access Token",
+    description=(
+        "个人 Token 只用于该账号自己的 Bangumi 导入与同步请求，绝不会回落到别人的 token。\n\n"
+        "- `POST`：保存 token，返回 `{\"is_set\": true, \"hint\": \"****abcd\"}`；\n"
+        "- `DELETE`：清除已保存的 token。\n"
+        "- 响应中永不返回 token 原文，只返回掩码提示。"
+    ),
+    request=BGMTokenUpdateSerializer,
+    responses={
+        200: OpenApiResponse(description="保存/清除成功，返回 is_set 与 hint"),
+        400: OpenApiResponse(description="token 为空或超长"),
+    },
+)
+@api_view(["POST", "DELETE"])
+@permission_classes([IsAuthenticated])
+def bgm_token(request):
+    """保存或清除当前账号的个人 Bangumi Access Token。"""
+    user = request.user
+    if request.method == "DELETE":
+        User.objects.filter(pk=user.pk).update(bgm_access_token="")
+        return Response({"is_set": False, "hint": None}, status=status.HTTP_200_OK)
+
+    serializer = BGMTokenUpdateSerializer(data=request.data)
+    serializer.is_valid(raise_exception=True)
+    token = serializer.validated_data["access_token"]
+    User.objects.filter(pk=user.pk).update(bgm_access_token=token)
+    return Response(
+        {"is_set": True, "hint": mask_token(token)},
+        status=status.HTTP_200_OK,
+    )
 
 @extend_schema(
     tags=["Auth"],

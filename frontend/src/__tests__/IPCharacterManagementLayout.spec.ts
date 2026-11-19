@@ -94,7 +94,7 @@ describe('IPCharacterManagement mobile layout', () => {
   it('uses a compact mobile create button with a bottom action sheet', () => {
     expect(source).toContain("import MobileActionSheet from '@/components/MobileActionSheet.vue'")
     expect(source).toContain('const mobileAddSheetVisible = ref(false)')
-    expect(source).toContain('const ipMobileCreateActions = [')
+    expect(source).toContain('const ipMobileCreateActions = computed<IPMobileCreateAction[]>(')
     // 移动端标题由便签栏承担，新增入口是搜索行里的圆形按钮 + 底部 ActionSheet
     expect(source).not.toContain('class="header-section"')
     expect(source).toContain('class="mobile-inline-create"')
@@ -105,7 +105,7 @@ describe('IPCharacterManagement mobile layout', () => {
 
   it('moves the desktop create entry into a bottom-right floating button', () => {
     expect(source).toContain("import AddFab, { type AddFabItem, type AddFabProps } from '@/components/AddFab.vue'")
-    expect(source).toContain('const ipFabItems: AddFabItem[] = [')
+    expect(source).toContain('const ipFabItems = computed<AddFabItem[]>(')
     // 按钮配置注册给 Layout 外壳渲染，页面只在没有被外壳接管时回退渲染
     expect(source).toContain('const ipFabProps = computed<AddFabProps>(')
     expect(source).toContain("useOrganizeFab('ip'")
@@ -114,7 +114,9 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('v-bind="ipFabProps"')
     expect(source).toContain('v-on="ipFabHandlers"')
     expect(source).toContain("label: '新增 / 导入'")
-    expect(source).toContain('showPrimary: authStore.isAdmin')
+    expect(source).toContain('showPrimary: canCreateIP.value')
+    // 「从 Bangumi 导入」要有 token：管理员用系统 token，普通账号必须自己配置
+    expect(source).toContain('canImportFromBGM')
     expect(source).toContain('showRefresh: true')
     expect(source).toContain('command: handleActionCommand')
     expect(source).toContain('refresh: handleRefresh')

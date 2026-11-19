@@ -60,7 +60,8 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain(':reorderable="!sortState.prop"')
 
     const cardSource = readFileSync(join(process.cwd(), 'src/components/IPWorkCard.vue'), 'utf-8')
-    expect(cardSource).toContain('v-if="isAdmin && reorderable"')
+    // 个人作品不参与官方目录的拖拽排序，因此把手还要额外排除 user_id 非空的行
+    expect(cardSource).toContain('v-if="isAdmin && reorderable && !ip.user_id"')
     expect(cardSource).toContain('reorderable?: boolean')
   })
 
@@ -145,5 +146,36 @@ describe('IPCharacterManagement PC card grid', () => {
 
     const apiSource = readFileSync(join(process.cwd(), 'src/api/metadata.ts'), 'utf-8')
     expect(apiSource.match(/suppressGlobalError: true/g)).toHaveLength(2)
+  })
+
+  it('scopes write actions to official IPs vs personal IPs', () => {
+    // 权限收敛成三个 helper：新建入口、单卡编辑、BGM 更新
+    expect(source).toContain('const canCreateIP = computed(')
+    expect(source).toContain('authStore.personalIpEnabled')
+    expect(source).toContain('const canEditIP = (ip: IP) =>')
+    // 归属判定收敛到 canManageIp（与后端 can_manage_ip 同源）：官方归管理员、个人归本人
+    expect(source).toContain("import { canManageIp, ipLabel } from '@/utils/ip'")
+    expect(source).toContain(
+      'canManageIp(ip, { isAdmin: authStore.isAdmin, userId: authStore.user?.id })',
+    )
+    expect(source).toContain('const canSyncBGM = (ip: IP) =>')
+    expect(source).toContain('const canImportFromBGM = computed(')
+
+    // 桌面卡片 / 抽屉 / 移动端展开区都按 helper 渲染，而不是 authStore.isAdmin
+    expect(source).toContain(':can-edit="canEditIP(item)"')
+    expect(source).toContain(':can-sync="canSyncBGM(item)"')
+    expect(source).toContain(':can-manage="drawerIP ? canEditIP(drawerIP) : false"')
+    expect(source).toContain('v-if="canEditIP(item)"')
+    expect(source).toContain('v-if="canEditIP(item) || canSyncBGM(item)"')
+    expect(source).toContain('v-if="canCreateIP"')
+
+    // 角色弹窗只列本人可写的 IP，并用 ipLabel 区分同名
+    expect(source).toContain('const characterIpOptions = computed<IP[]>(() =>')
+    expect(source).toContain(':label="ipLabel(ip)"')
+
+    // 拖拽排序仍然只给管理员（batch-update-order 是管理员接口）
+    expect(source).toContain(':reorderable="!sortState.prop"')
+    expect(source).toContain('class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin"')
+    expect(source).toContain('if (typeof window === \'undefined\' || !authStore.isAdmin) return')
   })
 })

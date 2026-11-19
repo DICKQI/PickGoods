@@ -25,8 +25,9 @@
 
       <span v-if="isAdmin && !showCover" class="ip-card-cover-hint">暂无封面</span>
 
+      <!-- 拖拽排序只对官方目录有意义：个人作品的顺序跟随归属者自己的列表 -->
       <button
-        v-if="isAdmin && reorderable"
+        v-if="isAdmin && reorderable && !ip.user_id"
         type="button"
         class="ip-card-drag"
         title="拖拽调整顺序"
@@ -43,9 +44,10 @@
 
     <div class="ip-card-body">
       <div class="ip-card-title-row">
-        <button type="button" class="ip-card-name" :title="ip.name" @click.stop="emitOpen">
+        <button type="button" class="ip-card-name" :title="ipTitle" @click.stop="emitOpen">
           {{ ip.name }}
         </button>
+        <span v-if="ip.user_id" class="ip-card-personal-badge" :title="personalBadgeHint">个人</span>
         <el-tooltip
           v-if="ip.bgm_subject_id"
           placement="top"
@@ -76,8 +78,13 @@
           <span class="ip-card-count-label">角色</span>
         </button>
 
-        <div v-if="isAdmin" class="ip-card-actions">
-          <el-tooltip content="从 Bangumi 更新角色（增量同步）" placement="top" :show-after="400">
+        <div v-if="canEdit || canSync" class="ip-card-actions">
+          <el-tooltip
+            v-if="canSync"
+            content="从 Bangumi 更新角色（增量同步）"
+            placement="top"
+            :show-after="400"
+          >
             <button
               type="button"
               class="ip-card-action"
@@ -89,6 +96,7 @@
             </button>
           </el-tooltip>
           <button
+            v-if="canEdit"
             type="button"
             class="ip-card-action"
             title="编辑"
@@ -98,6 +106,7 @@
             <el-icon :size="15"><Edit /></el-icon>
           </button>
           <button
+            v-if="canEdit"
             type="button"
             class="ip-card-action is-danger"
             title="删除"
@@ -117,6 +126,7 @@
 import { computed, ref } from 'vue'
 import { Delete, Edit, Link, Refresh } from '@element-plus/icons-vue'
 import type { IP, IPKeyword } from '@/api/types'
+import { ipLabel } from '@/utils/ip'
 
 const props = withDefaults(
   defineProps<{
@@ -127,8 +137,15 @@ const props = withDefaults(
      * 卡片右上角的拖拽把手直接不渲染（此时拖拽本来就是暂停的）。
      */
     reorderable?: boolean
+    /**
+     * 是否可以编辑 / 删除这个作品：管理员为 true；普通账号只有自己的个人 IP 为 true。
+     * 官方 IP 对普通账号只读。
+     */
+    canEdit?: boolean
+    /** 是否显示「从 Bangumi 更新」：需要管理员，或本人的个人 IP 且已配置个人 token */
+    canSync?: boolean
   }>(),
-  { isAdmin: false, reorderable: true },
+  { isAdmin: false, reorderable: true, canEdit: false, canSync: false },
 )
 
 const emit = defineEmits<{
@@ -145,6 +162,10 @@ const coverFailed = ref(false)
 const showCover = computed(() => Boolean(props.ip.cover_image) && !coverFailed.value)
 
 const coverInitial = computed(() => (props.ip.name || '?').trim().charAt(0) || '?')
+
+const ipTitle = computed(() => ipLabel(props.ip))
+
+const personalBadgeHint = computed(() => '用户自建的个人作品，仅归属者本人可见')
 
 const characterCount = computed(() => {
   const count = props.ip.character_count
@@ -258,6 +279,20 @@ const handleCardClick = () => emitOpen()
   font-weight: 700;
   color: rgba(90, 75, 255, 0.42);
   letter-spacing: 2px;
+}
+
+.ip-card-personal-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(212, 175, 55, 0.16);
+  border: 1px solid rgba(212, 175, 55, 0.5);
+  color: var(--primary-gold-dark, #b7912a);
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: nowrap;
+  flex: none;
 }
 
 .ip-card-type {
