@@ -1,24 +1,65 @@
-"""
-BGM 函数视图的权限测试。
+"""BGM 函数视图的权限测试。
 
-重点关注 bgm_create_characters 的归属规则：
-- 管理员 → 写入/复用官方 IP（``IP.user`` 为空）；
-- 收藏者（collector）→ 只能写入自己的个人 IP；
+2026-11 起「从 Bangumi 导入」收敛为管理员专属：
+
+- 管理员 → 写入/复用**官方** IP（IP.user 为空）；
+- 收藏者（collector）→ 403（个人账号不能再从 BGM 导入，只能手工建自己的作品）；
 - 社团账号与匿名请求 → 一律拒绝（前端隐藏入口不代表服务端安全边界）。
-"""
-from django.urls import reverse
-from rest_framework.test import APIClient
 
-from django.test import TestCase
+附带的封面行为：导入时带的 BGM 封面会先转存到本站媒体目录，再写入 IP。
+"""
+import io
+import shutil
+import tempfile
+from unittest.mock import patch
+
+from django.core.files.storage import default_storage
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from PIL import Image
+from rest_framework.test import APIClient
 
 from apps.goods.models import Character, IP
 from apps.users.models import Role, User
+
+
+def _jpeg_bytes(width=600, height=800):
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), (90, 120, 180)).save(buffer, format="JPEG", quality=90)
+    return buffer.getvalue()
+
+
+class _FakeImageResponse:
+    """requests.get 的替身，返回一张可解码的 JPEG。"""
+
+    status_code = 200
+
+    def __init__(self):
+        self.headers = {"Content-Type": "image/jpeg"}
+        self.body = _jpeg_bytes()
+
+    def iter_content(self, chunk_size=8192):
+        for start in range(0, len(self.body), chunk_size):
+            yield self.body[start:start + chunk_size]
+
+    def close(self):
+        pass
 
 
 class BGMCreateCharactersPermissionTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.url = reverse("bgm-create-characters")
+
+        self.media_root = tempfile.mkdtemp(prefix="pickgoods-bgm-covers-")
+        override = override_settings(MEDIA_ROOT=self.media_root)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root, True)
+
+        patcher = patch("apps.goods.cover_cache.requests.get", return_value=_FakeImageResponse())
+        patcher.start()
+        self.addCleanup(patcher.stop)
 
         self.admin_role, _ = Role.objects.get_or_create(name="Admin")
         self.user_role, _ = Role.objects.get_or_create(name="User")
@@ -31,15 +72,14 @@ class BGMCreateCharactersPermissionTests(TestCase):
             account_type=User.ACCOUNT_TYPE_CLUB,
         )
 
-    def _payload(self):
-        return {
-            "characters": [
-                {
-                    "ip_name": "权限测试作品",
-                    "character_name": "权限测试角色",
-                }
-            ]
+    def _payload(self, cover_image=None):
+        character = {
+            "ip_name": "权限测试作品",
+            "character_name": "权限测试角色",
         }
+        if cover_image:
+            character["cover_image"] = cover_image
+        return {"characters": [character]}
 
     def test_anonymous_request_is_forbidden(self):
         # DRF 函数视图未携带认证器上下文时，匿名请求被权限层拒绝为 403
@@ -48,49 +88,24 @@ class BGMCreateCharactersPermissionTests(TestCase):
         self.assertFalse(IP.objects.filter(name="权限测试作品").exists())
         self.assertFalse(Character.objects.filter(name="权限测试角色").exists())
 
-    def test_collector_creates_entries_under_own_personal_ip(self):
-        """收藏者可以导入，但落库的 IP 必须归自己（个人 IP），不能污染官方目录。"""
+    def test_collector_cannot_import_from_bgm(self):
+        """个人账号（collector）不再允许从 Bangumi 导入 IP，且不留下任何数据。"""
         self.client.force_authenticate(user=self.user)
         response = self.client.post(self.url, data=self._payload(), format="json")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["created"], 1)
 
-        ip = IP.objects.get(name="权限测试作品")
-        self.assertEqual(ip.user_id, self.user.id)
-        self.assertTrue(
-            Character.objects.filter(ip=ip, name="权限测试角色").exists()
-        )
-        # 官方域里没有同名 IP
-        self.assertFalse(IP.objects.filter(name="权限测试作品", user__isnull=True).exists())
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(IP.objects.filter(name="权限测试作品").exists())
+        self.assertFalse(Character.objects.filter(name="权限测试角色").exists())
 
-    def test_collector_reuses_own_personal_ip(self):
-        """同一个账号再次导入同名作品时复用已有的个人 IP，不会报无法创建。"""
+    def test_collector_cannot_import_into_own_personal_ip(self):
+        """即便本人已有同名个人 IP，导入接口对个人账号同样关闭。"""
+        IP.objects.create(name="权限测试作品", user=self.user)
         self.client.force_authenticate(user=self.user)
-        self.client.post(self.url, data=self._payload(), format="json")
-        response = self.client.post(
-            self.url,
-            data={
-                "characters": [
-                    {"ip_name": "权限测试作品", "character_name": "第二个角色"}
-                ]
-            },
-            format="json",
-        )
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(IP.objects.filter(name="权限测试作品").count(), 1)
-        self.assertEqual(IP.objects.get(name="权限测试作品").characters.count(), 2)
 
-    def test_collector_cannot_shadow_official_name(self):
-        """官方已有同名 IP 时，普通账号导入被拒绝并给出可操作提示。"""
-        IP.objects.create(name="权限测试作品")
-        self.client.force_authenticate(user=self.user)
         response = self.client.post(self.url, data=self._payload(), format="json")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["created"], 0)
-        detail = response.data["details"][0]
-        self.assertEqual(detail["status"], "error")
-        self.assertIn("已存在同名官方 IP", detail["error"])
-        self.assertFalse(IP.objects.filter(name="权限测试作品", user=self.user).exists())
+
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(Character.objects.filter(name="权限测试角色").count(), 0)
 
     def test_club_account_is_forbidden(self):
         self.client.force_authenticate(user=self.club_user)
@@ -111,6 +126,20 @@ class BGMCreateCharactersPermissionTests(TestCase):
             ).exists()
         )
 
+    def test_admin_import_stores_cover_on_server(self):
+        """导入带的封面必须转存到本站媒体目录，库里不保留 BGM 外链。"""
+        self.client.force_authenticate(user=self.admin)
+        response = self.client.post(
+            self.url,
+            data=self._payload(cover_image="https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg"),
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        ip = IP.objects.get(name="权限测试作品")
+        self.assertTrue(ip.cover_image.startswith("/media/ips/covers/"), ip.cover_image)
+        self.assertTrue(default_storage.exists(ip.cover_image[len("/media/"):]))
+
     def test_admin_does_not_attach_to_users_personal_ip(self):
         """管理员导入同名作品时不会挂到用户的个人 IP 上（官方域独立）。"""
         IP.objects.create(name="权限测试作品", user=self.user)
@@ -120,4 +149,3 @@ class BGMCreateCharactersPermissionTests(TestCase):
         self.assertEqual(IP.objects.filter(name="权限测试作品").count(), 2)
         official = IP.objects.get(name="权限测试作品", user__isnull=True)
         self.assertTrue(Character.objects.filter(ip=official).exists())
-

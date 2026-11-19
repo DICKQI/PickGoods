@@ -41,8 +41,8 @@
 | `subject_type` | Integer (可空)        | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄 |
 | `order`        | Integer               | 展示排序，越小越靠前，默认 `0`                        |
 | `bgm_subject_id`| Integer (可空)       | 绑定的 BGM 作品 ID，用于 BGM 增量同步；唯一性按归属域判定 |
-| `cover_image`  | Char(500) (可空)      | 作品封面：BGM 条目封面 URL，或手填外链 / 服务器相对路径；为空时前端用首字占位 |
-| `cover_checked_at` | DateTime (可空)   | 最近一次**得出结论**的封面解析时间（命中或未命中），用于节流重试；网络失败不写入 |
+| `cover_image`  | Char(500) (可空)      | 作品封面：库里存**服务器托管**的 `/media/ips/covers/xxx.jpg`，接口对外拼成绝对 URL。写入时外链一律由后端下载转存（`cover_cache`），客户端不再直连 Bangumi CDN；为空时前端用首字占位 |
+| `cover_checked_at` | DateTime (可空)   | 最近一次**得出结论**的封面解析时间（命中或未命中），用于节流重试；网络失败（含封面下载失败）不写入 |
 
 > **唯一性（按归属域）**：
 >
@@ -1995,11 +1995,12 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | 动作 | 管理员 | 收藏者（collector） | 社团（club）/ 匿名 |
 | --- | --- | --- | --- |
 | 列表 / 详情 / 角色列表 | 官方 IP + **自己的**个人 IP | 官方 IP + **自己的**个人 IP | 403 |
-| 创建 IP | 创建官方 IP（`user` 恒为空） | 创建自己的个人 IP | 403 |
+| 创建 IP | 默认创建官方 IP；传 `is_personal=true` 可创建**归自己**的个人 IP | 创建自己的个人 IP（`is_personal` 被忽略） | 403 |
 | 修改 / 删除 IP | 官方 IP + 自己的个人 IP（他人个人→404） | 仅自己的个人 IP（官方→403，他人个人→404） | 403 |
 | 批量排序 `batch-update-order` | ✅（官方目录） | 403 | 403 |
 | 批量补封面 `fetch-covers` | ✅（仅官方 IP） | 403 | 403 |
-| 单人取封面 `fetch-cover` / BGM 预览与同步 | 官方 IP + 自己的个人 IP（个人 IP 需个人 Token） | 仅自己的个人 IP，且需已配置个人 Bangumi Token | 403 |
+| 单人取封面 `fetch-cover` / BGM 预览与同步 | 官方 IP + 自己的个人 IP（个人 IP 需个人 Token）；`fetch-cover` 的前端入口已撤下，接口保留 | 仅自己的个人 IP，且需已配置个人 Bangumi Token | 403 |
+| 从 Bangumi 导入（`/api/bgm/create-characters/`、`/api/bgm/search-characters/`） | ✅（只写官方 IP） | 403 | 403 |
 | 创建 / 修改 / 删除角色 | 官方 IP + 自己的个人 IP 下的角色 | 仅自己的个人 IP 下的角色 | 403 |
 | 品类 / 主题 | 读写 | 只读 | 403 |
 
@@ -2051,7 +2052,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
     "character_count": 5,
     "bgm_subject_id": 360097,
     "last_synced_at": "2026-11-01T10:00:00+08:00",
-    "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg",
+    "cover_image": "http://192.168.3.150:8000/media/ips/covers/9f1c2b7d4e5a6c8b.jpg",
     "cover_checked_at": "2026-11-14T21:30:00+08:00"
   },
   {
@@ -2076,7 +2077,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `order`：展示排序，越小越靠前（默认 `0`）。
 - `keywords`：IP关键词/别名数组，每个关键词包含 `id` 和 `value` 字段。
 - `character_count`：该IP下的角色数量（整数）。
-- `cover_image`：作品封面 URL（BGM 条目封面或手填），可为 `null`（前端用作品首字占位）。
+- `cover_image`：作品封面的**绝对 URL**（指向本站后端的 `/media/ips/covers/`），可为 `null`（前端用作品首字占位）。图片由后端托管，与访问者能否访问 Bangumi CDN 无关。
 - `cover_checked_at`：最近一次得出结论（命中/未命中）的封面解析时间，可为 `null`；前端据此避免重复请求，网络失败不会被记录。
 
 **使用示例**：
@@ -2157,12 +2158,14 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null` |
 | `order`        | integer        | 否   | 展示排序，越小越靠前，默认 `0`                                       |
 | `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符，会自动去重和去空 |
-| `cover_image`  | string         | 否   | 封面 URL；个人 IP 可直接手填外链 |
+| `cover_image`  | string         | 否   | 封面：传 http(s) 外链时后端会下载并转存到 `/media/ips/covers/`，也可直接传已有的 `/media/...` 路径；下载失败返回 `400`。响应里一律是绝对 URL |
+| `is_personal` | boolean        | 否   | **仅管理员**在新建时生效：`true` = 创建归自己的**个人作品**，`false`/省略 = 官方全局作品。普通账号恒为个人作品（该字段被忽略）。`PERSONAL_IP_ENABLED=0` 时传 `true` 返回 `400` |
 | `bgm_subject_id` | integer      | 否   | **仅管理员可写**；普通账号请走「八、BGM 导入接口」 |
 
 ##### 归属与同名规则
 
-- 请求体**不接受** `user` 字段：管理员创建的恒为官方 IP，普通账号创建的恒归自己。
+- 请求体**不接受** `user` 字段：归属由服务端决定——管理员默认写官方域，显式传 `is_personal=true` 时归自己；普通账号恒归自己。
+- 归属**只在新建时生效**，更新接口会忽略 `is_personal`（作品不会在官方域 / 个人域之间跳转）。
 - 名称唯一性按归属域判定：
 
 | 操作者 | 情形 | 结果 |
@@ -2170,7 +2173,10 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | 收藏者 | 已存在同名官方 IP | `400`「已存在同名官方 IP，请直接使用」 |
 | 收藏者 | 自己已有同名个人 IP | `400`「你已创建过同名作品」 |
 | 收藏者 | 其他用户有同名个人 IP | `201`（各自独立） |
-| 管理员 | 已存在同名官方 IP | `400`「该名称的官方作品已存在」 |
+| 管理员 | 已存在同名官方 IP（建官方） | `400`「该名称的官方作品已存在」 |
+| 管理员 | 建个人作品，但已有同名官方 IP | `400`「该名称的官方作品已存在」 |
+| 管理员 | 建个人作品，自己已有同名个人 IP | `400`「你已创建过同名作品」 |
+| 管理员 | 建官方作品，其他用户有同名个人 IP | `201`（域独立，互不影响） |
 
 ##### 响应
 
@@ -2221,7 +2227,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 | `subject_type` | integer        | 否   | 作品类型：`1`=书籍, `2`=动画, `3`=音乐, `4`=游戏, `6`=三次元/特摄。可为 `null`（PUT 可选，PATCH 可选） |
 | `order`        | integer        | 否   | 展示排序，越小越靠前（PUT 可选，PATCH 可选）                         |
 | `keywords`     | array[string]  | 否   | 关键词/别名列表，例如：`["星铁", "崩铁", "HSR"]`。每个关键词最大长度50字符。更新时会**完全替换**现有关键词列表（删除不在列表中的关键词，添加新关键词） |
-| `cover_image`  | string         | 否   | 作品封面 URL（BGM 封面或手填外链 / 相对路径），最大长度500字符；传 `null` 或空字符串表示清除，回落到首字占位 |
+| `cover_image`  | string         | 否   | 作品封面：外链会下载转存到 `/media/ips/covers/`，也可传已有 `/media/...` 路径，最大长度500字符；传 `null` 或空字符串表示清除（回落到首字占位，旧文件会被清理）；换图时响应返回新的绝对 URL |
 
 ##### 响应
 
@@ -2521,7 +2527,8 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 - **URL**：`POST /api/ips/fetch-covers/`
 - **权限**：仅 `Admin`（普通用户 / 匿名返回 403）
-- **说明**：为缺失封面的 IP 从 Bangumi 解析封面并写库。
+- **说明**：为缺失封面的 IP 从 Bangumi 解析封面、**转存到本站媒体目录**后写库。
+  - 解析到的外链会先下载到 `MEDIA_ROOT/ips/covers/`，库里只存 `/media/...` 路径；下载失败按 `error` 处理（不写 `cover_checked_at`，可立即重试）；
   - 已绑定 `bgm_subject_id` 的 IP 走 `GET /v0/subjects/{id}` 的 `images`；
   - 未绑定的 IP 走 `POST /v0/search/subjects` 按作品名搜索，**只接受名称精确匹配**的候选，且**不会回写** `bgm_subject_id`；
   - **只有得出结论的尝试才写 `cover_checked_at`**：命中（`updated`）或 BGM 确实没有同名条目（`no_match`）默认 7 天内不再重试（`force=true` 可绕过）；**网络失败（`error`）不写时间戳**，下次调用/手动重试仍会处理它（避免断网一轮把作品锁死 7 天）；
@@ -2543,7 +2550,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
   "checked": 2,
   "skipped": 0,
   "items": [
-    { "id": 1, "name": "崩坏：星穹铁道", "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg", "status": "updated" },
+    { "id": 1, "name": "崩坏：星穹铁道", "cover_image": "/media/ips/covers/9f1c2b7d4e5a6c8b.jpg", "status": "updated" },
     { "id": 2, "name": "黑执事", "cover_image": null, "status": "no_match" }
   ],
   "failed": [{ "id": 2, "name": "黑执事", "reason": "BGM 搜索未找到同名条目" }],
@@ -2564,7 +2571,8 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 
 - **URL**：`POST /api/ips/{id}/fetch-cover/`
 - **权限**：仅 `Admin`
-- **说明**：强制重算单个 IP 的封面并立即写库（编辑弹窗里的「从 Bangumi 取封面」）。不带请求体。
+- **说明**：强制重算单个 IP 的封面并立即写库。不带请求体。
+- **前端入口已撤下**（2026-11）：新增/编辑 IP 弹窗不再提供「从 Bangumi 取封面」按钮，接口保留给运维与脚本使用；取到的封面同样转存到本站媒体目录。
 
 ##### 响应示例
 
@@ -2572,7 +2580,7 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 {
   "id": 1,
   "name": "崩坏：星穹铁道",
-  "cover_image": "https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg",
+  "cover_image": "http://192.168.3.150:8000/media/ips/covers/9f1c2b7d4e5a6c8b.jpg",
   "bgm_subject_id": 360097,
   "status": "updated",
   "detail": "",
@@ -2585,6 +2593,9 @@ DELETE /api/goods/abc123/additional-photos/?photo_ids=10,11,12
 - `resolved`：本次是否解析到新封面。
 - `status=error` 时不写 `cover_checked_at`，可以直接再点一次重试。
 - `detail`：未解析到时的人类可读原因。
+- `cover_image`：对外返回**绝对 URL**（库里存的是 `/media/ips/covers/...`）。
+
+> **历史数据迁移**：`python manage.py cache_ip_covers`（干跑）/ `--apply`（真正下载并回写）会把库里残留的 BGM 外链封面逐个转存到本站；成功的不重复处理，失败的打印原因后可重跑。
 
 ---
 
@@ -3814,10 +3825,10 @@ gender: female
 
 #### 导入归属（`/api/bgm/create-characters/`）
 
-- 管理员：只写入/复用**官方 IP**，不会挂到用户的个人 IP 上；
-- 收藏者：只写入**自己的个人 IP**；若官方已有同名 IP，该条返回
-  `{"status": "error", "error": "已存在同名官方 IP，请直接使用"}`；
-- 社团账号（club）与匿名请求：`403`。***
+- **只有管理员可以导入**：收藏者（collector）与社团账号、匿名请求一律 `403`；
+- 管理员：只写入/复用**官方 IP**，不会挂到用户的个人 IP 上（个人作品请用表单新建）；
+- 导入时带的 BGM 封面会先转存到本站媒体目录再写入 IP（转存失败只跳过封面，不影响角色导入）；
+- 个人账号如需建自己的作品，走 `POST /api/ips/`（`is_personal` 恒为个人）。
 
 ### 8.1 搜索 IP 作品并获取角色列表
 
@@ -3904,7 +3915,8 @@ gender: female
 
 - **URL**：`POST /api/bgm/create-characters/`
 - **说明**：
-  - 前端在「BGM 搜索」页勾选需要导入的角色后，将勾选结果回传给后端。
+  - **仅管理员可用**（个人账号 `403`；前台入口也只对管理员显示）；
+  - 前端在「从 Bangumi 导入IP」弹窗勾选需要导入的角色后，将勾选结果回传给后端。
   - 后端会根据 `ip_name` 和 `character_name` 在本地数据库中**批量创建 IP 和角色**：
     - IP 不存在时：自动创建 `IP` 记录；
     - IP 已存在时：直接在该 IP 下创建角色；

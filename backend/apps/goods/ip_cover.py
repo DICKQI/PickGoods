@@ -1,4 +1,8 @@
-"""IP 作品封面（Bangumi 条目封面图）解析与批量补齐。
+"""IP 作品封面（Bangumi 条目封面图）解析、**转存到本站**与批量补齐。
+
+解析到的图片不再以 BGM 外链入库：一律经 cover_cache 下载到 MEDIA_ROOT/ips/covers/
+并改写成本站 /media/ 路径，前端因此不再依赖客户端能否访问 lain.bgm.tv。下载失败
+按 error 处理（不写节流时间戳，可立刻重试）。
 
 封面来源（按优先级）：
 
@@ -21,6 +25,7 @@ from django.db.models import Q
 from django.utils import timezone
 
 from . import bgm_service
+from .cover_cache import try_cache_cover
 from .models import IP
 
 # 默认参数：老 IP 首次进入页面时每次最多补 20 条，避免单个请求过久
@@ -76,6 +81,18 @@ def default_service(access_token=None):
     return _DefaultBGMService(access_token=access_token)
 
 
+def _cache_or_error(cover):
+    """下载并转存封面到本站媒体目录。
+
+    转存成功返回 (路径, updated, "")；失败返回 (None, error, 原因)——下载失败
+    属于「没有结论」的失败，调用方不会写 cover_checked_at，下次可以立刻重试。
+    """
+    stored = try_cache_cover(cover)
+    if not stored:
+        return None, STATUS_ERROR, "封面下载失败（服务器无法获取图片），稍后可重试"
+    return stored, STATUS_UPDATED, ""
+
+
 def normalize_subject_name(value):
     """归一化作品名用于精确匹配：去空白与中英文标点、忽略大小写。"""
     if not isinstance(value, str):
@@ -101,7 +118,7 @@ def resolve_ip_cover(ip, *, service=None):
             info = service.get_subject_info(ip.bgm_subject_id) or {}
             cover = bgm_service.pick_cover_url(info.get("images"))
             if cover:
-                return cover, STATUS_UPDATED, ""
+                return _cache_or_error(cover)
             return None, STATUS_NO_MATCH, "BGM 条目没有封面图"
 
         target = normalize_subject_name(ip.name)
@@ -118,7 +135,7 @@ def resolve_ip_cover(ip, *, service=None):
                 continue
             cover = bgm_service.pick_cover_url(candidate.get("images"))
             if cover:
-                return cover, STATUS_UPDATED, ""
+                return _cache_or_error(cover)
         return None, STATUS_NO_MATCH, "BGM 搜索未找到同名条目"
     except Exception as exc:  # noqa: BLE001 - 单条失败不应该中断整批补齐
         return None, STATUS_ERROR, str(exc)

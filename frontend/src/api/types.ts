@@ -264,17 +264,6 @@ export interface IPCoverBackfillResponse {
   remaining: number
 }
 
-// 单条封面重算响应
-export interface IPCoverFetchResponse {
-  id: number
-  name: string
-  cover_image: string | null
-  bgm_subject_id: number | null
-  status: IPCoverStatus
-  detail: string
-  resolved: boolean
-}
-
 // 角色性别类型
 export type CharacterGender = 'male' | 'female' | 'other'
 

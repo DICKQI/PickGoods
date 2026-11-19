@@ -59,13 +59,6 @@ export function fetchIPCovers(params: {
   })
 }
 
-/** 强制重算单个 IP 的封面（编辑弹窗「从 Bangumi 取封面」） */
-export function fetchIPCover(id: number) {
-  return request.post<IPCoverFetchResponse>(`/api/ips/${id}/fetch-cover/`, {}, {
-    suppressGlobalError: true,
-  })
-}
-
 // 创建IP
 export function createIP(data: {
   name: string
@@ -74,6 +67,8 @@ export function createIP(data: {
   order?: number
   bgm_subject_id?: number | null
   cover_image?: string | null
+  /** 仅管理员有效：true=创建归自己的个人作品，false/省略=官方全局作品 */
+  is_personal?: boolean
 }) {
   return request.post<IP>('/api/ips/', data)
 }
@@ -344,7 +339,6 @@ import type {
   BGMSyncApplyResponse,
   BGMSyncPreviewResponse,
   IPCoverBackfillResponse,
-  IPCoverFetchResponse,
 } from './types'
 
 // 搜索BGM IP作品列表

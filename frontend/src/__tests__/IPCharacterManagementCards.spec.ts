@@ -111,12 +111,25 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain('summary.noMatch) parts.push(`${summary.noMatch} 部 BGM 无匹配`)')
   })
 
-  it('lets admins manage the cover from the IP editor dialog', () => {
+  it('keeps cover handling server-side instead of fetching it in the editor', () => {
+    // 封面统一由后端转存到服务器，编辑弹窗不再提供「从 Bangumi 取封面」按钮
     expect(source).toContain('ip-editor-section--cover')
-    expect(source).toContain('handleFetchCoverForIP')
-    expect(source).toContain('fetchIPCover(editingIPId.value)')
+    expect(source).not.toContain('从 Bangumi 取封面')
+    expect(source).not.toContain('handleFetchCoverForIP')
+    expect(source).not.toContain('fetchIPCover(')
     expect(source).toContain('handleClearIPCover')
     expect(source).toContain('cover_image: ipFormData.value.cover_image ?? null')
+    expect(source).toContain('粘贴图片地址后会转存到服务器')
+  })
+
+  it('lets admins pick the IP scope when creating but never on edit', () => {
+    // 管理员新建时可选「全局作品 / 个人作品」；编辑时只读展示归属
+    expect(source).toContain('const showIpScopeField = computed(')
+    expect(source).toContain('authStore.isAdmin && !isEditIP.value')
+    expect(source).toContain('v-if="showIpScopeField"')
+    expect(source).toContain('作品归属')
+    expect(source).toContain('is_personal: false')
+    expect(source).toContain('...(isEditIP.value ? {} : { is_personal: ipFormData.value.is_personal })')
   })
 
   it('passes the selected Bangumi cover along with the import payload', () => {
@@ -145,7 +158,8 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain('服务端版本较旧，补齐封面暂不可用')
 
     const apiSource = readFileSync(join(process.cwd(), 'src/api/metadata.ts'), 'utf-8')
-    expect(apiSource.match(/suppressGlobalError: true/g)).toHaveLength(2)
+    // 只剩批量补齐封面这一个容错调用（单条取封面接口已从 UI 撤下）
+    expect(apiSource.match(/suppressGlobalError: true/g)).toHaveLength(1)
   })
 
   it('scopes write actions to official IPs vs personal IPs', () => {
@@ -159,7 +173,8 @@ describe('IPCharacterManagement PC card grid', () => {
       'canManageIp(ip, { isAdmin: authStore.isAdmin, userId: authStore.user?.id })',
     )
     expect(source).toContain('const canSyncBGM = (ip: IP) =>')
-    expect(source).toContain('const canImportFromBGM = computed(')
+    // BGM 导入收敛为管理员专属（个人账号不再有入口，后端同样 403）
+    expect(source).toContain('const canImportFromBGM = computed(() => authStore.isAdmin)')
 
     // 桌面卡片 / 抽屉 / 移动端展开区都按 helper 渲染，而不是 authStore.isAdmin
     expect(source).toContain(':can-edit="canEditIP(item)"')

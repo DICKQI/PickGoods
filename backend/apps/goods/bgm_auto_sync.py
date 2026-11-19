@@ -28,6 +28,7 @@ from django.db import transaction
 from django.utils import timezone
 
 from . import bgm_service as default_bgm_service
+from .cover_cache import try_cache_cover
 from .bgm_sync import apply_bgm_sync, compute_bgm_diff
 from .models import (
     BGMSyncJob,
@@ -115,7 +116,11 @@ def _fill_ip_cover_from_images(ip, images) -> bool:
     cover = default_bgm_service.pick_cover_url(images)
     if not cover:
         return False
-    ip.cover_image = cover
+    # 转存到本站媒体目录；失败就跳过（不影响角色同步）
+    stored = try_cache_cover(cover)
+    if not stored:
+        return False
+    ip.cover_image = stored
     ip.cover_checked_at = timezone.now()
     ip.save(update_fields=["cover_image", "cover_checked_at"])
     return True

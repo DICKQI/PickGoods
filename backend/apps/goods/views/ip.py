@@ -20,6 +20,7 @@ from rest_framework.response import Response
 from ..bgm_service import get_characters, get_subject_info, pick_cover_url
 from ..bgm_sync import apply_bgm_sync, compute_bgm_diff
 from ..bgm_token import require_bgm_token
+from ..cover_cache import absolute_cover_url, try_cache_cover
 from ..feature_flags import personal_ip_enabled
 from ..ip_cover import (
     DEFAULT_LIMIT,
@@ -108,21 +109,26 @@ class IPViewSet(viewsets.ModelViewSet):
         raise PermissionDenied("只能维护自己创建的个人 IP")
 
     def perform_create(self, serializer):
-        # 归属只由服务端决定：管理员创建的是官方 IP，其余账号创建的是自己的个人 IP
-        owner = None if is_admin(self.request.user) else self.request.user
-        instance = serializer.save(user=owner)
+        # 归属由 IPDetailSerializer 决定（唯一出口）：管理员默认官方 IP，
+        # 显式 is_personal=true 时归自己；其余账号一律创建自己的个人 IP。
+        instance = serializer.save()
         if not is_admin(self.request.user):
             return  # 审计表只记录管理员操作
 
         from apps.admin_api.services import record_admin_action
 
+        scope_label = "个人" if instance.user_id else "官方"
         record_admin_action(
             self.request,
             action="ip.create",
             resource_type="ip",
             resource_id=instance.pk,
-            summary=f"创建 IP {instance.name}",
-            changes={"name": instance.name, "subject_type": instance.subject_type},
+            summary=f"创建{scope_label} IP {instance.name}",
+            changes={
+                "name": instance.name,
+                "subject_type": instance.subject_type,
+                "personal": instance.user_id is not None,
+            },
         )
 
     def perform_update(self, serializer):
@@ -275,13 +281,19 @@ class IPViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _fill_cover_from_images(ip, images):
-        """BGM 条目带图且本地没有封面时顺手补上（从不覆盖手工封面）。"""
+        """BGM 条目带图且本地没有封面时顺手补上（从不覆盖手工封面）。
+
+        外链一律先转存到本站媒体目录，失败就跳过，不影响同步主流程。
+        """
         if ip.cover_image:
             return
         cover = pick_cover_url(images)
         if not cover:
             return
-        ip.cover_image = cover
+        stored = try_cache_cover(cover)
+        if not stored:
+            return
+        ip.cover_image = stored
         ip.cover_checked_at = timezone.now()
         ip.save(update_fields=["cover_image", "cover_checked_at"])
 
@@ -349,12 +361,12 @@ class IPViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["post"], url_path="fetch-cover")
     def fetch_cover(self, request, pk=None):
-        """强制重算单个 IP 的封面（编辑弹窗里的「从 Bangumi 取封面」）。
+        """强制重算单个 IP 的封面（2026-11 起前端不再提供入口，接口保留）。
 
         URL: POST /api/ips/{id}/fetch-cover/
 
         管理员可对任意 IP 调用；普通账号只能对自己创建的个人 IP 调用，
-        且必须已配置个人 Bangumi Token。
+        且必须已配置个人 Bangumi Token。取到的封面同样会转存到本站媒体目录。
         """
         ip = self.get_object()
         self._assert_ip_writable(ip)
@@ -367,7 +379,7 @@ class IPViewSet(viewsets.ModelViewSet):
             {
                 "id": ip.id,
                 "name": ip.name,
-                "cover_image": ip.cover_image,
+                "cover_image": absolute_cover_url(request, ip.cover_image),
                 "bgm_subject_id": ip.bgm_subject_id,
                 "status": cover_status,
                 "detail": reason,

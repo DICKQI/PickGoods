@@ -7,6 +7,7 @@ from django.core.files.base import ContentFile
 from django.core.files.storage import default_storage
 from rest_framework import serializers
 
+from ..cover_cache import CoverCacheError, absolute_cover_url, normalize_cover_input
 from ..models import IPKeyword
 from ..utils import compress_image
 
@@ -128,3 +129,53 @@ class AvatarField(serializers.Field):
             return data
         
         raise serializers.ValidationError("头像必须是文件或URL字符串")
+
+class IPCoverField(serializers.CharField):
+    """IP 作品封面字段。
+
+    - 读取：把库里的 /media/ips/covers/... 补成绝对 URL（nginx 不服务 /media/，
+      所以必须绝对；与 Goods.main_photo 的 DRF ImageField 行为一致）；
+    - 写入：外链一律由后端下载转存到本站媒体目录（cover_cache），
+      /media/... 原样保留，空字符串/null 表示清除。
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("allow_null", True)
+        kwargs.setdefault("allow_blank", True)
+        kwargs.setdefault("max_length", 500)
+        super().__init__(**kwargs)
+
+    def to_representation(self, value):
+        request = self.context.get("request")
+        return absolute_cover_url(request, value)
+
+    def to_internal_value(self, data):
+        if data is None:
+            return None
+        text = str(data).strip()
+        if not text:
+            return None
+        try:
+            return normalize_cover_input(text)
+        except CoverCacheError as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+
+class IsPersonalField(serializers.BooleanField):
+    """归属标记字段：读时为「该作品是否个人作品」，写时为「是否创建个人作品」。
+
+    - 写：只有管理员新建时生效（普通账号恒为个人作品，序列化器会忽略该值）；
+    - 读：直接看 IP.user 是否为空，前端不必自己推断。
+    """
+
+    def __init__(self, **kwargs):
+        kwargs.setdefault("required", False)
+        kwargs.setdefault("default", False)
+        super().__init__(**kwargs)
+
+    def get_attribute(self, instance):
+        # 读取时先拿模型实例本身，再由 to_representation 判断归属
+        return instance
+
+    def to_representation(self, instance):
+        return getattr(instance, "user_id", None) is not None

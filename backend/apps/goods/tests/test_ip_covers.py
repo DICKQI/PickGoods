@@ -9,16 +9,23 @@
 4. ``/api/ips/fetch-covers/`` 与 ``/api/ips/{id}/fetch-cover/`` 的权限与返回结构；
 5. 序列化器暴露 ``cover_image`` / ``cover_checked_at``，且可通过 PATCH 写入与清除。
 
-测试全程不联网：BGM 侧通过注入假 service 替代。
+测试全程不联网：BGM 侧通过注入假 service 替代，封面图下载通过
+``apps.goods.cover_cache.requests.get` 的替身替代（命中后落到临时 MEDIA_ROOT）。
 """
+import io
+import shutil
+import tempfile
 from datetime import timedelta
 from unittest.mock import patch
 
-from django.test import TestCase
+from django.core.files.storage import default_storage
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from PIL import Image
 from rest_framework.test import APIClient
 
+from apps.goods import cover_cache
 from apps.goods.bgm_service import normalize_image_url, pick_cover_url
 from apps.goods.ip_cover import (
     STATUS_ERROR,
@@ -59,6 +66,57 @@ class FakeBGMService:
 
 def cover_images(url="https://lain.bgm.tv/pic/cover/l/d2/c9/360097_z4dYA.jpg"):
     return {"large": url, "common": url, "medium": url, "grid": url, "small": url}
+
+
+def make_test_image(width=600, height=800):
+    buffer = io.BytesIO()
+    Image.new("RGB", (width, height), (120, 140, 200)).save(buffer, format="JPEG", quality=90)
+    return buffer.getvalue()
+
+
+class FakeImageResponse:
+    """``requests.get`` 的替身：返回一张真实可解码的 JPEG。"""
+
+    def __init__(self, body=None, content_type="image/jpeg", status_code=200):
+        self.status_code = status_code
+        self.headers = {"Content-Type": content_type}
+        self.body = body if body is not None else make_test_image()
+        self.closed = False
+
+    def iter_content(self, chunk_size=8192):
+        for start in range(0, len(self.body), chunk_size):
+            yield self.body[start:start + chunk_size]
+
+    def close(self):
+        self.closed = True
+
+
+class CoverTestBase(TestCase):
+    """统一给封面相关用例：临时 MEDIA_ROOT + 假图片下载（绝不联网）。"""
+
+    def setUp(self):
+        super().setUp()
+        self.media_root = tempfile.mkdtemp(prefix="pickgoods-ip-covers-")
+        override = override_settings(MEDIA_ROOT=self.media_root)
+        override.enable()
+        self.addCleanup(override.disable)
+        self.addCleanup(shutil.rmtree, self.media_root, True)
+
+        self.image_response = FakeImageResponse()
+        patcher = patch("apps.goods.cover_cache.requests.get", side_effect=self._fake_image_get)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _fake_image_get(self, url, **kwargs):
+        if isinstance(self.image_response, Exception):
+            raise self.image_response
+        return self.image_response
+
+    def assertStoredCover(self, value):
+        """封面必须是本站托管的 /media/ips/covers/ 文件，且文件真实存在。"""
+        text = str(value)
+        self.assertTrue(text.startswith("/media/ips/covers/"), text)
+        self.assertTrue(default_storage.exists(text[len("/media/"):]), text)
 
 
 class CoverUrlTests(TestCase):
@@ -108,14 +166,15 @@ class NormalizeSubjectNameTests(TestCase):
         self.assertEqual(normalize_subject_name("  "), "")
 
 
-class ResolveIpCoverTests(TestCase):
+class ResolveIpCoverTests(CoverTestBase):
     def test_bound_subject_uses_subject_images(self):
         ip = IP.objects.create(name="崩坏：星穹铁道", bgm_subject_id=360097)
         service = FakeBGMService(subject_images={360097: cover_images()})
 
         cover, cover_status, reason = resolve_ip_cover(ip, service=service)
 
-        self.assertEqual(cover, cover_images()["large"])
+        # 解析到的 BGM 外链必须已经转存到本站，而不是原样入库
+        self.assertStoredCover(cover)
         self.assertEqual(cover_status, STATUS_UPDATED)
         self.assertEqual(reason, "")
         self.assertEqual(service.subject_calls, [360097])
@@ -143,7 +202,7 @@ class ResolveIpCoverTests(TestCase):
 
         cover, cover_status, _reason = resolve_ip_cover(ip, service=service)
 
-        self.assertEqual(cover, cover_images()["large"])
+        self.assertStoredCover(cover)
         self.assertEqual(cover_status, STATUS_UPDATED)
         self.assertEqual(service.search_calls, [("崩坏：星穹铁道", 4)])
         # 解析封面不允许改写绑定关系
@@ -186,8 +245,9 @@ class ResolveIpCoverTests(TestCase):
         self.assertIn("BGM timeout", reason)
 
 
-class BackfillIpCoversTests(TestCase):
+class BackfillIpCoversTests(CoverTestBase):
     def setUp(self):
+        super().setUp()
         self.now = timezone.now()
 
     def _service(self, candidates=None, subject_images=None):
@@ -229,19 +289,11 @@ class BackfillIpCoversTests(TestCase):
         self.assertEqual(result["failed"], [])
         self.assertEqual(result["remaining"], 0)
         ip.refresh_from_db()
-        self.assertEqual(ip.cover_image, cover_images()["large"])
+        self.assertStoredCover(ip.cover_image)
         self.assertEqual(ip.cover_checked_at, self.now)
-        self.assertEqual(
-            result["items"],
-            [
-                {
-                    "id": ip.id,
-                    "name": ip.name,
-                    "cover_image": cover_images()["large"],
-                    "status": STATUS_UPDATED,
-                }
-            ],
-        )
+        self.assertEqual(result["items"][0]["id"], ip.id)
+        self.assertEqual(result["items"][0]["status"], STATUS_UPDATED)
+        self.assertStoredCover(result["items"][0]["cover_image"])
 
     def test_no_match_still_records_checked_at(self):
         ip = IP.objects.create(name="没有条目的作品")
@@ -286,7 +338,7 @@ class BackfillIpCoversTests(TestCase):
         self.assertEqual(result["updated"], 1)
         self.assertEqual(result["remaining"], 0)
         ip.refresh_from_db()
-        self.assertEqual(ip.cover_image, cover_images()["large"])
+        self.assertStoredCover(ip.cover_image)
 
     def test_limit_bounds_work_and_reports_remaining(self):
         for index in range(3):
@@ -336,7 +388,7 @@ class BackfillIpCoversTests(TestCase):
         self.assertEqual(len(result["failed"]), 1)
         self.assertEqual(result["failed"][0]["name"], "坏作品")
         good.refresh_from_db()
-        self.assertEqual(good.cover_image, cover_images()["large"])
+        self.assertStoredCover(good.cover_image)
 
     def test_network_error_does_not_throttle_the_ip(self):
         """断网时批量补齐过一轮，网络恢复后同一个 IP 必须还能被补上。"""
@@ -359,7 +411,7 @@ class BackfillIpCoversTests(TestCase):
         self.assertEqual(second["updated"], 1)
         self.assertEqual(second["checked"], 1)
         ip.refresh_from_db()
-        self.assertEqual(ip.cover_image, cover_images()["large"])
+        self.assertStoredCover(ip.cover_image)
         self.assertEqual(ip.cover_checked_at, self.now)
 
     def test_no_match_result_is_reported_in_items(self):
@@ -386,18 +438,35 @@ class BackfillIpCoversTests(TestCase):
         self.assertEqual(result["updated"], 1)
 
 
-class RefreshIpCoverTests(TestCase):
+class RefreshIpCoverTests(CoverTestBase):
     def test_refresh_saves_resolved_cover(self):
         ip = IP.objects.create(name="崩坏：星穹铁道", bgm_subject_id=360097)
         service = FakeBGMService(subject_images={360097: cover_images()})
 
         cover, cover_status, _reason = refresh_ip_cover(ip, service=service)
 
-        self.assertEqual(cover, cover_images()["large"])
+        self.assertStoredCover(cover)
         self.assertEqual(cover_status, STATUS_UPDATED)
         ip.refresh_from_db()
-        self.assertEqual(ip.cover_image, cover_images()["large"])
+        self.assertStoredCover(ip.cover_image)
         self.assertIsNotNone(ip.cover_checked_at)
+
+    def test_cover_download_failure_is_error_without_throttle(self):
+        """BGM 有图但服务器下载失败：按 error 处理，且不写节流时间戳，可立刻重试。"""
+        import requests
+
+        ip = IP.objects.create(name="崩坏：星穹铁道", bgm_subject_id=360097)
+        service = FakeBGMService(subject_images={360097: cover_images()})
+        self.image_response = requests.exceptions.ConnectionError("TLS handshake timeout")
+
+        cover, cover_status, reason = refresh_ip_cover(ip, service=service)
+
+        self.assertIsNone(cover)
+        self.assertEqual(cover_status, STATUS_ERROR)
+        self.assertIn("下载失败", reason)
+        ip.refresh_from_db()
+        self.assertIsNone(ip.cover_image)
+        self.assertIsNone(ip.cover_checked_at)
 
     def test_refresh_error_keeps_checked_at_empty(self):
         """单条「从 Bangumi 取封面」失败时不能留下节流时间戳，否则重试也没用。"""
@@ -413,8 +482,9 @@ class RefreshIpCoverTests(TestCase):
         self.assertIsNone(ip.cover_checked_at)
 
 
-class IPCoverApiTests(TestCase):
+class IPCoverApiTests(CoverTestBase):
     def setUp(self):
+        super().setUp()
         self.client = APIClient()
         admin_role, _ = Role.objects.get_or_create(name="Admin")
         user_role, _ = Role.objects.get_or_create(name="User")
@@ -455,7 +525,7 @@ class IPCoverApiTests(TestCase):
         self.assertEqual(payload["skipped"], 0)
         self.assertEqual(payload["items"][0]["id"], ip.id)
         ip.refresh_from_db()
-        self.assertEqual(ip.cover_image, cover_images()["large"])
+        self.assertStoredCover(ip.cover_image)
 
     def test_ids_must_be_a_list(self):
         self.client.force_authenticate(user=self.admin)
@@ -467,17 +537,23 @@ class IPCoverApiTests(TestCase):
         service = FakeBGMService(subject_images={360097: cover_images()})
         self.client.force_authenticate(user=self.admin)
 
-        with patch("apps.goods.ip_cover.default_service", return_value=service):
+        # 视图在导入期就绑定了 default_service，必须 patch 视图侧的引用
+        with patch("apps.goods.views.ip.default_service", return_value=service):
             response = self.client.post(reverse("ips-fetch-cover", args=[ip.id]), data={}, format="json")
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["cover_image"], cover_images()["large"])
+        # 对外返回绝对 URL（nginx 不服务 /media/，必须走 :8000 的绝对地址）
+        self.assertTrue(
+            response.data["cover_image"].startswith("http://testserver/media/ips/covers/"),
+            response.data["cover_image"],
+        )
         self.assertEqual(response.data["status"], STATUS_UPDATED)
         self.assertTrue(response.data["resolved"])
 
 
-class IPCoverSerializerTests(TestCase):
+class IPCoverSerializerTests(CoverTestBase):
     def setUp(self):
+        super().setUp()
         self.client = APIClient()
         admin_role, _ = Role.objects.get_or_create(name="Admin")
         self.admin = User.objects.create(username="cover_serializer_admin", role=admin_role)
@@ -491,6 +567,30 @@ class IPCoverSerializerTests(TestCase):
         self.assertIn("cover_image", row)
         self.assertIn("cover_checked_at", row)
 
+    def test_list_returns_absolute_cover_url(self):
+        stored = cover_cache.cache_cover_from_url("https://lain.bgm.tv/pic/cover/l/a.jpg")
+        self.ip.cover_image = stored
+        self.ip.save(update_fields=["cover_image"])
+
+        response = self.client.get(reverse("ips-list"))
+
+        row = next(item for item in response.data if item["id"] == self.ip.id)
+        self.assertEqual(row["cover_image"], "http://testserver" + stored)
+
+    def test_patch_with_undownloadable_url_returns_400(self):
+        import requests
+
+        self.image_response = requests.exceptions.ConnectionError("boom")
+        response = self.client.patch(
+            reverse("ips-detail", args=[self.ip.id]),
+            data={"cover_image": "https://lain.bgm.tv/pic/cover/l/broken.jpg"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 400)
+        self.ip.refresh_from_db()
+        self.assertIsNone(self.ip.cover_image)
+
     def test_patch_writes_and_clears_cover(self):
         detail_url = reverse("ips-detail", args=[self.ip.id])
 
@@ -499,7 +599,8 @@ class IPCoverSerializerTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.ip.refresh_from_db()
-        self.assertEqual(self.ip.cover_image, "https://lain.bgm.tv/manual.jpg")
+        # 手填外链也在保存时转存到本站
+        self.assertStoredCover(self.ip.cover_image)
 
         response = self.client.patch(detail_url, data={"cover_image": ""}, format="json")
         self.assertEqual(response.status_code, 200)

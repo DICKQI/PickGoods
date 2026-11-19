@@ -1,5 +1,6 @@
-from django.contrib import admin
+from django.contrib import admin, messages
 
+from .cover_cache import CoverCacheError, normalize_cover_input
 from .models import (
     Category,
     Character,
@@ -33,6 +34,16 @@ class IPAdmin(admin.ModelAdmin):
     search_fields = ("name", "keywords__value")
     ordering = ("name",)
     inlines = [IPKeywordInline]
+
+    def save_model(self, request, obj, form, change):
+        """后台手填封面外链时也转存到本站（与外链不再入外的规则保持一致）。"""
+        try:
+            obj.cover_image = normalize_cover_input(obj.cover_image)
+        except CoverCacheError as exc:
+            messages.warning(
+                request, f"封面未转存（{exc}），先保留原值"
+            )
+        super().save_model(request, obj, form, change)
 
 
 @admin.register(Character)

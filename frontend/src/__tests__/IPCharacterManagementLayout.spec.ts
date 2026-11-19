@@ -166,7 +166,7 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('class="bgm-dialog-title"')
     expect(source).toContain('class="bgm-dialog-subtitle"')
     expect(source).toContain("{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}")
-    expect(source).toContain("{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}")
+    expect(source).toContain("{{ bgmDialogMode === 'import' ? '从 Bangumi 导入IP' : '从 Bangumi 更新角色' }}")
   })
 
   it('uses themed roomy PC shells for IP, character, and Bangumi entry forms', () => {
@@ -189,11 +189,19 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).toContain('max-height: calc(100vh - 156px);')
   })
 
-  it('wraps Bangumi search stages in a branded flow panel and uses a shared footer action bar', () => {
+  it('renders the Bangumi import search form with the same sections as the IP editor', () => {
+    // 导入弹窗的搜索区与 IP 表单同构：区块标题 + 说明 + 两列表单（标签在上）
+    expect(source).toContain('class="ip-editor-form bgm-import-form"')
+    expect(source).toContain('label-position="top"')
+    expect(source).toContain('class="ip-editor-section"')
+    expect(source).toContain('class="bgm-step-search"')
+
+    // 「增量更新」弹窗仍沿用左侧标签的流式面板：只剩它一处 label-width
     expect(source).toContain('class="bgm-flow-panel"')
     expect(source).toContain('class="bgm-search-form"')
-    expect(source.match(/label-width="136px"/g)?.length).toBe(2)
+    expect(source.match(/label-width="136px"/g)?.length).toBe(1)
     expect(source).toContain('white-space: nowrap;')
+
     expect(source).toContain('class="bgm-dialog-footer"')
     expect(source).toContain('class="bgm-dialog-cancel"')
     expect(source).toContain('class="bgm-dialog-submit brand-add-btn brand-add-btn--compact"')

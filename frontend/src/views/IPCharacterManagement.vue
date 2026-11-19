@@ -462,12 +462,36 @@
                   </el-select>
                 </el-form-item>
               </div>
+              <div v-if="showIpScopeField" class="ip-editor-scope">
+                <span class="ip-editor-scope-label">作品归属</span>
+                <el-radio-group v-model="ipFormData.is_personal" class="ip-editor-scope-group">
+                  <el-radio-button :value="false">全局作品</el-radio-button>
+                  <el-radio-button :value="true">个人作品</el-radio-button>
+                </el-radio-group>
+                <p class="ip-editor-scope-hint">
+                  {{
+                    ipFormData.is_personal
+                      ? '个人作品只归你自己：仅你可见、可挂角色，不会进入官方目录。'
+                      : '全局作品是官方目录，所有用户都看得到、都能用。'
+                  }}
+                </p>
+              </div>
+              <div v-else-if="isEditIP" class="ip-editor-scope ip-editor-scope--readonly">
+                <span class="ip-editor-scope-label">作品归属</span>
+                <el-tag
+                  size="small"
+                  round
+                  :type="ipFormData.is_personal ? 'warning' : 'info'"
+                >
+                  {{ ipFormData.is_personal ? '个人作品（仅自己可见）' : '官方作品' }}
+                </el-tag>
+              </div>
             </section>
 
             <section class="ip-editor-section ip-editor-section--cover">
               <div class="ip-editor-section-header">
                 <h4>作品封面</h4>
-                <p>留空会用作品名首字占位；也可以一键从 Bangumi 取封面，或手填图片地址~</p>
+                <p>留空会用作品名首字占位；粘贴图片地址后会转存到服务器，不再依赖外部网络~</p>
               </div>
               <div class="ip-editor-cover-row">
                 <div class="ip-editor-cover-preview" :class="{ 'is-empty': !ipFormData.cover_image }">
@@ -482,16 +506,6 @@
                     @update:model-value="(value: string) => (ipFormData.cover_image = value || null)"
                   />
                   <div class="ip-editor-cover-actions">
-                    <el-button
-                      v-if="canFetchCover"
-                      size="small"
-                      :loading="ipCoverFetching"
-                      :disabled="!isEditIP || ipCoverFetching"
-                      @click="handleFetchCoverForIP"
-                    >
-                      <el-icon><Picture /></el-icon>
-                      从 Bangumi 取封面
-                    </el-button>
                     <el-button size="small" :disabled="!ipFormData.cover_image" @click="handleClearIPCover">
                       清除
                     </el-button>
@@ -562,9 +576,9 @@
           </div>
           <div class="bgm-dialog-header-copy">
             <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
-            <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+            <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入IP' : '从 Bangumi 更新角色' }}</h3>
             <p class="bgm-dialog-subtitle">
-              从 Bangumi 把角色资料带回来，再整理成批量候选列表~ 建档会轻松很多哦
+              按作品名搜索 Bangumi 条目，把作品和角色一起带回来~ 建档会轻松很多哦
             </p>
           </div>
         </div>
@@ -576,8 +590,8 @@
           </div>
           <div class="bgm-import-mobile-hero-copy">
             <span>{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
-            <h3>{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
-            <p>搜索作品、勾选角色，再一口气建立角色档案吧~</p>
+            <h3>{{ bgmDialogMode === 'import' ? '从 Bangumi 导入IP' : '从 Bangumi 更新角色' }}</h3>
+            <p>搜索作品、勾选角色，再一口气建立IP和角色档案吧~</p>
           </div>
           <button
             class="bgm-import-mobile-close"
@@ -591,37 +605,46 @@
         </div>
         <!-- 搜索阶段 -->
         <div v-if="bgmStep === 'search'" class="bgm-step-search">
-          <div class="bgm-flow-panel">
-            <el-form @submit.prevent="handleBGMSearch" class="bgm-search-form" label-width="136px">
-              <el-form-item label="IP作品名称">
-                <el-input
-                  v-model="bgmSearchInput"
-                  placeholder="例如：崩坏：星穹铁道"
-                  clearable
-                  @keyup.enter="handleBGMSearch"
-                  :disabled="bgmSearching"
-                >
-                  <template #prefix>
-                    <el-icon><Search /></el-icon>
-                  </template>
-                </el-input>
-              </el-form-item>
-              <el-form-item label="作品类型（可选）">
-                <el-select
-                  v-model="bgmSubjectType"
-                  placeholder="选择作品类型（不选则搜索所有类型）"
-                  clearable
-                  :disabled="bgmSearching"
-                  style="width: 100%"
-                >
-                  <el-option label="所有类型" :value="undefined" />
-                  <el-option label="书籍" :value="1" />
-                  <el-option label="动画" :value="2" />
-                  <el-option label="音乐" :value="3" />
-                  <el-option label="游戏" :value="4" />
-                  <el-option label="三次元/特摄" :value="6" />
-                </el-select>
-              </el-form-item>
+          <el-form
+            @submit.prevent="handleBGMSearch"
+            class="ip-editor-form bgm-import-form"
+            label-position="top"
+          >
+            <section class="ip-editor-section">
+              <div class="ip-editor-section-header">
+                <h4>作品信息</h4>
+                <p>先用作品全称搜到 Bangumi 条目，选上类型可以让匹配更准~</p>
+              </div>
+              <div class="ip-editor-field-grid">
+                <el-form-item label="作品全称">
+                  <el-input
+                    v-model="bgmSearchInput"
+                    placeholder="例如：崩坏：星穹铁道"
+                    clearable
+                    @keyup.enter="handleBGMSearch"
+                    :disabled="bgmSearching"
+                  >
+                    <template #prefix>
+                      <el-icon><Search /></el-icon>
+                    </template>
+                  </el-input>
+                </el-form-item>
+                <el-form-item label="作品类型（可选）">
+                  <el-select
+                    v-model="bgmSubjectType"
+                    placeholder="不选则搜索所有类型"
+                    clearable
+                    :disabled="bgmSearching"
+                    style="width: 100%"
+                  >
+                    <el-option label="书籍" :value="1" />
+                    <el-option label="动画" :value="2" />
+                    <el-option label="音乐" :value="3" />
+                    <el-option label="游戏" :value="4" />
+                    <el-option label="三次元/特摄" :value="6" />
+                  </el-select>
+                </el-form-item>
+              </div>
               <div class="bgm-search-actions">
                 <el-button
                   type="primary"
@@ -630,11 +653,11 @@
                   :loading="bgmSearching"
                   :disabled="!bgmSearchInput.trim()"
                 >
-                  搜索BGM
+                  搜索 Bangumi
                 </el-button>
               </div>
-            </el-form>
-          </div>
+            </section>
+          </el-form>
         </div>
 
         <!-- 搜索中等待页面 -->
@@ -853,7 +876,7 @@
           </div>
           <div class="bgm-dialog-header-copy">
             <span class="bgm-dialog-kicker">{{ bgmDialogMode === 'import' ? 'Bangumi Import' : 'Bangumi Sync' }}</span>
-            <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入角色' : '从 Bangumi 更新角色' }}</h3>
+            <h3 class="bgm-dialog-title">{{ bgmDialogMode === 'import' ? '从 Bangumi 导入IP' : '从 Bangumi 更新角色' }}</h3>
             <p class="bgm-dialog-subtitle">
               对比本地角色和 Bangumi 最新条目，确认差异后再更新~ 角色资料就能保持一致啦
             </p>
@@ -1312,13 +1335,11 @@ import {
   updateIP,
   deleteIP,
   fetchIPCovers,
-  fetchIPCover,
   getIPCharacters,
   batchUpdateIPOrder,
   createCharacter,
   updateCharacter,
   deleteCharacter,
-  searchBGMCharacters,
   createBGMCharacters,
   searchBGMSubjects,
   getBGMCharactersBySubjectId,
@@ -1364,11 +1385,17 @@ const canSyncBGM = (ip: IP) => {
   return authStore.isAdmin || authStore.hasBGMToken
 }
 
-/** 「从 Bangumi 导入」需要 token：管理员用系统 token，普通账号必须自己配置 */
-const canImportFromBGM = computed(() => authStore.isAdmin || authStore.hasBGMToken)
+/**
+ * 「从 Bangumi 导入」只对管理员开放：导入会写官方 IP / 批量建角色，
+ * 个人账号请用自己的表单新建作品（后端同样拒绝收藏者调用该接口）。
+ */
+const canImportFromBGM = computed(() => authStore.isAdmin)
 
-/** 「从 Bangumi 取封面」同样需要 token */
-const canFetchCover = computed(() => authStore.isAdmin || authStore.hasBGMToken)
+/**
+ * 归属选择只在「管理员 + 新建」时出现：
+ * 个人账号恒为个人作品，编辑时不允许改变归属（避免作品在官方/个人域之间跳）。
+ */
+const showIpScopeField = computed(() => authStore.isAdmin && !isEditIP.value)
 
 /** 角色弹窗里可选的「所属作品」：与 canManageIp 同源——官方归管理员，个人归本人 */
 const characterIpOptions = computed<IP[]>(() => {
@@ -1933,6 +1960,8 @@ const ipFormData = ref({
   keywords: [] as string[],
   subject_type: null as number | null,
   cover_image: null as string | null,
+  // 仅管理员新建时可选：true=个人作品（归自己），false=官方全局作品
+  is_personal: false,
 })
 const ipFormRules: FormRules = {
   name: [{ required: true, message: '请输入作品名称', trigger: 'blur' }],
@@ -2284,7 +2313,13 @@ const { hosted: fabHosted } = useOrganizeFab('ip', () => ({
 const handleAddIP = () => {
   isEditIP.value = false
   editingIPId.value = null
-  ipFormData.value = { name: '', keywords: [], subject_type: null, cover_image: null }
+  ipFormData.value = {
+    name: '',
+    keywords: [],
+    subject_type: null,
+    cover_image: null,
+    is_personal: false,
+  }
   newKeyword.value = ''
   ipDialogVisible.value = true
 }
@@ -2299,6 +2334,7 @@ const handleEditIP = async (row: IP) => {
       keywords: detail.keywords?.map((k) => k.value) || [],
       subject_type: detail.subject_type ?? null,
       cover_image: detail.cover_image ?? null,
+      is_personal: Boolean(detail.is_personal),
     }
   } catch {
     ipFormData.value = {
@@ -2306,39 +2342,11 @@ const handleEditIP = async (row: IP) => {
       keywords: row.keywords?.map((k) => k.value) || [],
       subject_type: row.subject_type ?? null,
       cover_image: row.cover_image ?? null,
+      is_personal: Boolean(row.is_personal),
     }
   }
   newKeyword.value = ''
   ipDialogVisible.value = true
-}
-
-/** 编辑弹窗里「从 Bangumi 取封面」：强制重算并立刻回填预览 */
-const ipCoverFetching = ref(false)
-
-const handleFetchCoverForIP = async () => {
-  if (!editingIPId.value || ipCoverFetching.value) return
-  ipCoverFetching.value = true
-  try {
-    const result = await fetchIPCover(editingIPId.value)
-    if (result.cover_image) {
-      ipFormData.value.cover_image = result.cover_image
-      ElMessage.success('已从 Bangumi 取到封面')
-    } else {
-      ElMessage.warning(result.detail || 'Bangumi 上没有匹配到封面')
-    }
-    applyCoverResults([
-      { id: result.id, name: result.name, cover_image: result.cover_image, status: result.status },
-    ])
-  } catch (err: any) {
-    if (isEndpointUnsupportedError(err)) {
-      coverBackfillUnsupported.value = true
-      ElMessage.warning('当前服务端还不支持取封面，请更新后端后再试')
-    } else {
-      ElMessage.error(err?.message || '获取封面失败')
-    }
-  } finally {
-    ipCoverFetching.value = false
-  }
 }
 
 const handleClearIPCover = () => {
@@ -2388,6 +2396,8 @@ const handleSubmitIP = async () => {
         keywords: ipFormData.value.keywords,
         subject_type: ipFormData.value.subject_type ?? null,
         cover_image: ipFormData.value.cover_image ?? null,
+        // 归属只在新建时提交；编辑时不带，后端也会忽略
+        ...(isEditIP.value ? {} : { is_personal: ipFormData.value.is_personal }),
       }
       if (isEditIP.value && editingIPId.value) {
         await updateIP(editingIPId.value, data)
@@ -2590,7 +2600,7 @@ const handleSubmitCharacter = async () => {
 
 const handleOpenBGMImport = () => {
   if (!canImportFromBGM.value) {
-    ElMessage.warning('请先在个人中心填写 Bangumi Access Token 后再导入')
+    ElMessage.warning('只有管理员可以从 Bangumi 导入IP')
     return
   }
   bgmDialogVisible.value = true
@@ -4385,6 +4395,39 @@ const handleBGMSyncClose = () => {
   grid-template-columns: minmax(0, 1.35fr) minmax(190px, 0.65fr);
   gap: 18px;
   align-items: start;
+}
+
+/* 作品归属（管理员新建时可选，编辑时只读展示） */
+.ip-editor-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 14px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px dashed rgba(162, 155, 254, 0.32);
+  border-radius: 16px;
+  background: rgba(250, 249, 255, 0.72);
+}
+
+.ip-editor-scope--readonly {
+  border-style: solid;
+  border-color: rgba(212, 175, 55, 0.18);
+}
+
+.ip-editor-scope-label {
+  color: #5f5874;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.ip-editor-scope-hint {
+  flex: 1 1 100%;
+  margin: 0;
+  color: var(--text-light);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .ip-editor-section :deep(.el-form-item),
