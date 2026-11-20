@@ -18,7 +18,8 @@ describe('character stats routing and entrypoint', () => {
     expect(ipCharacterSource).not.toContain("router.push(`/characters/${character.id}/stats`)")
     expect(ipCharacterSource).not.toContain('title="查看厨力统计"')
     expect(ipCharacterSource).not.toContain('@click.stop="goToCharacterStats(char)"')
-    expect(ipCharacterSource).toContain('@click="canEditIP(item) && handleEditCharacter(char)"')
-    expect(ipCharacterSource).toContain('@click.stop="handleDeleteCharacter(char)"')
+    // 移动端就地展开的角色瓦片已下线（改由角色抽屉承载），编辑/删除入口仍在抽屉上
+    expect(ipCharacterSource).toContain('@edit-character="handleEditCharacter"')
+    expect(ipCharacterSource).toContain('@delete-character="handleDeleteCharacter"')
   })
 })

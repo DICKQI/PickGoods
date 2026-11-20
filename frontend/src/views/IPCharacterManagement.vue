@@ -12,6 +12,14 @@
       @select="handleMobileCreateAction"
     />
 
+    <!-- 移动端卡片右下角「更多」：两列卡宽度不够做左滑，管理操作统一收进底部面板 -->
+    <MobileActionSheet
+      v-model="cardSheetVisible"
+      :title="cardSheetIP?.name || '作品操作'"
+      :actions="cardSheetActions"
+      @select="handleCardSheetSelect"
+    />
+
     <!-- 桌面端：与谷仓「筛选谷子」同款的筛选面板（金边 + 悬停浮起 + 折叠） -->
     <AppFilterPanel
       v-if="!isMobile"
@@ -191,174 +199,26 @@
         <!-- 下拉加载提示区 -->
         <MobilePullIndicator :distance="pullDistance" :refreshing="isRefreshing" />
 
-        <!-- 内容区域 -->
-        <!-- 修改点：遍历 sortedIpList，保持顺序一致 -->
-        <div class="mobile-view-inner" ref="mobileListRef" :class="{ 'is-sorting': isSorting }">
+        <!-- 内容区域：两列瀑布流，封面按原始比例自适应，与谷仓卡片同款错落排布 -->
+        <div class="mp-masonry-summary" v-if="sortedIpList.length">共 {{ sortedIpList.length }} 部作品</div>
+        <div class="mp-masonry" ref="mobileMasonryRef" :class="{ 'is-sorting': isSorting }">
           <div
-            v-for="item in sortedIpList"
-            :key="item.id"
-            class="ip-card-item"
-            :class="{
-              'is-expanded': expandedIPs.includes(item.id),
-              'is-sticky-active': activeStickyIPId === item.id,
-            }"
-            :data-ip-id="item.id"
-            :style="getMobileStickyCardStyle(item.id)"
+            v-for="(column, columnIndex) in mobileIPColumns"
+            :key="columnIndex"
+            class="mp-masonry-column"
+            :ref="(el) => setMasonryColumnRef(el as HTMLElement | null, columnIndex)"
           >
-            <div
-              class="ip-card-sticky-shell"
-              :class="{ 'is-stuck': activeStickyIPId === item.id }"
-              :style="getMobileStickyShellStyle(item.id)"
-            >
-              <div
-                class="ip-swipe-item"
-                :class="{ open: openSwipeId === item.id, dragging: swipeTouch.id === item.id && swipeTouch.dragging }"
-                @touchstart="onCardTouchStart($event, item.id)"
-                @touchmove="onCardTouchMove($event)"
-                @touchend="onCardTouchEnd"
-                @touchcancel="onCardTouchEnd"
-              >
-                <div
-                  v-if="canEditIP(item) || canSyncBGM(item)"
-                  class="swipe-actions"
-                >
-                  <button
-                    v-if="canSyncBGM(item)"
-                    class="swipe-action-btn sync"
-                    type="button"
-                    @click.stop="handleOpenBGMSync(item)"
-                  >
-                    <el-icon><Refresh /></el-icon>
-                    <span>更新</span>
-                  </button>
-                  <button
-                    v-if="canEditIP(item)"
-                    class="swipe-action-btn edit"
-                    type="button"
-                    @click.stop="handleEditIP(item)"
-                  >
-                    <el-icon><Edit /></el-icon>
-                    <span>编辑</span>
-                  </button>
-                  <button
-                    v-if="canEditIP(item)"
-                    class="swipe-action-btn delete"
-                    type="button"
-                    @click.stop="handleDeleteIP(item)"
-                  >
-                    <el-icon><Delete /></el-icon>
-                    <span>删除</span>
-                  </button>
-                </div>
-
-                <div class="swipe-content" :style="getSwipeContentStyle(item.id)">
-                  <div class="ip-card-spine" aria-hidden="true"></div>
-                  <div class="card-main" @click="handleMobileCardClick(item.id)">
-                    <div class="card-info">
-                      <div class="name-row">
-                        <div class="name-text">
-                          <span class="name-label">{{ item.name }}</span>
-                          <el-icon
-                            v-if="item.bgm_subject_id"
-                            class="bgm-bound-icon-mobile"
-                            :size="14"
-                          ><Link /></el-icon>
-                        </div>
-                      </div>
-                      <div v-if="item.subject_type" class="meta-row">
-                        <span class="subject-type-pill">
-                          {{ getSubjectTypeLabel(item.subject_type) }}
-                        </span>
-                      </div>
-                      <div class="keyword-row">
-                        <span v-for="keyword in item.keywords || []" :key="keyword.id" class="mini-tag">
-                          {{ keyword.value }}
-                        </span>
-                        <span v-if="!item.keywords?.length" class="no-tag">暂无关键词</span>
-                      </div>
-                    </div>
-                    <div class="card-actions-panel">
-                      <div
-                        class="character-count-chip"
-                        :aria-label="`角色数量：${item.character_count ?? (characterMap[item.id]?.length || 0)}`"
-                      >
-                        <span class="count-value">{{ item.character_count ?? (characterMap[item.id]?.length || 0) }}</span>
-                        <span class="count-label">角色</span>
-                      </div>
-                      <div class="card-control-row">
-                        <div class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin" @click.stop>
-                          <svg viewBox="0 0 16 16" width="16" height="16" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <line x1="2" y1="4" x2="14" y2="4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                            <line x1="2" y1="8" x2="14" y2="8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                            <line x1="2" y1="12" x2="14" y2="12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-                          </svg>
-                        </div>
-                        <button
-                          class="mobile-expand-indicator"
-                          type="button"
-                          :aria-label="expandedIPs.includes(item.id) ? '收起角色列表' : '展开角色列表'"
-                          @click.stop="handleMobileCardClick(item.id)"
-                        >
-                          <el-icon><ArrowRight /></el-icon>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <!-- 展开的角色列表 -->
-            <Transition name="mobile-expand">
-              <div
-                v-if="expandedIPs.includes(item.id)"
-                v-loading="characterLoadingMap[item.id]"
-                class="character-list"
-              >
-                <div class="character-list-header">
-                  <span>角色列表</span>
-                  <el-button
-                    v-if="canEditIP(item)"
-                    size="small"
-                    type="primary"
-                    text
-                    @click.stop="handleAddCharacterForIP(item)"
-                  >
-                    <el-icon><Plus /></el-icon>
-                    添加角色
-                  </el-button>
-                </div>
-                <template v-if="characterMap[item.id]?.length">
-                  <div class="character-grid character-grid--mobile">
-                    <div
-                      v-for="char in characterMap[item.id]"
-                      :key="char.id"
-                      class="character-tile"
-                      :class="{ clickable: canEditIP(item) }"
-                      @click="canEditIP(item) && handleEditCharacter(char)"
-                    >
-                      <el-avatar :size="46" :src="char.avatar || undefined" shape="square" class="char-avatar tile-avatar">
-                        <el-icon><UserFilled /></el-icon>
-                      </el-avatar>
-                      <div class="character-name-compact" :title="char.name">{{ char.name }}</div>
-
-                      <el-button
-                        v-if="canEditIP(item)"
-                        class="tile-delete-btn"
-                        size="small"
-                        text
-                        type="danger"
-                        @click.stop="handleDeleteCharacter(char)"
-                        title="删除"
-                      >
-                        <el-icon><Delete /></el-icon>
-                      </el-button>
-                    </div>
-                  </div>
-                </template>
-                <el-empty v-else description="暂无角色" :image-size="60" />
-              </div>
-            </Transition>
+            <IPWorkCardMobile
+              v-for="item in column"
+              :key="item.id"
+              :ip="item"
+              :is-admin="authStore.isAdmin"
+              :reorderable="!sortState.prop"
+              :can-edit="canEditIP(item)"
+              :can-sync="canSyncBGM(item)"
+              @open="openCharactersDrawer(item)"
+              @menu="openCardActionSheet(item)"
+            />
           </div>
         </div>
 
@@ -1291,8 +1151,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, reactive, watch } from 'vue'
-import type { Component, CSSProperties } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import type { Component } from 'vue'
 import {
   Plus,
   Edit,
@@ -1322,6 +1182,7 @@ import { isEndpointUnsupportedError } from '@/utils/request'
 import MobileActionSheet from '@/components/MobileActionSheet.vue'
 import MobilePullIndicator from '@/components/ui/MobilePullIndicator.vue'
 import IPWorkCard from '@/components/IPWorkCard.vue'
+import IPWorkCardMobile from '@/components/IPWorkCardMobile.vue'
 import IPCharactersDrawer from '@/components/IPCharactersDrawer.vue'
 import AppFilterPanel from '@/components/AppFilterPanel.vue'
 import AddFab, { type AddFabItem, type AddFabProps } from '@/components/AddFab.vue'
@@ -1407,6 +1268,10 @@ const characterIpOptions = computed<IP[]>(() => {
 const metadataStore = useMetadataStore()
 const mobileAddSheetVisible = ref(false)
 
+// 移动端卡片「更多」面板：两列卡宽度不够做左滑，编辑/删除/更新统一收进底部面板
+const cardSheetVisible = ref(false)
+const cardSheetIP = ref<IP | null>(null)
+
 type IPMobileCreateAction = {
   key: string
   label: string
@@ -1436,33 +1301,13 @@ const ipFabItems = computed<AddFabItem[]>(() => {
 })
 
 onMounted(() => {
-  document.addEventListener('click', handleDocumentClick, true)
-  window.addEventListener('scroll', queueUpdateMobileStickyHeader, { passive: true })
-  window.addEventListener('resize', queueUpdateMobileStickyHeader)
   fetchIPList()
-  nextTick(() => queueUpdateMobileStickyHeader())
 })
 
 onUnmounted(() => {
-  document.removeEventListener('click', handleDocumentClick, true)
-  window.removeEventListener('scroll', queueUpdateMobileStickyHeader)
-  window.removeEventListener('resize', queueUpdateMobileStickyHeader)
-  if (mobileStickyRaf != null) {
-    window.cancelAnimationFrame(mobileStickyRaf)
-    mobileStickyRaf = null
-  }
   handleKeywordInput.cancel()
   destroySortables()
 })
-
-const handleDocumentClick = (evt: MouseEvent) => {
-  if (!isMobile.value) return
-  if (openSwipeId.value == null) return
-  const target = evt.target as HTMLElement | null
-  if (!target) return
-  if (target.closest('.ip-swipe-item')) return
-  closeSwipe(openSwipeId.value)
-}
 
 // 下拉刷新相关状态
 const scrollContainerRef = ref<HTMLElement | null>(null)
@@ -1470,7 +1315,6 @@ const isSorting = ref(false)
 const {
   pullDistance,
   isRefreshing,
-  isDragging,
   handleTouchStart,
   handleTouchMove,
   handleTouchEnd,
@@ -1489,129 +1333,16 @@ const {
 
 // 拖拽排序相关
 const gridRef = ref<HTMLElement | null>(null)
-const mobileListRef = ref<HTMLElement | null>(null)
+/** 移动端两列瀑布流容器（下拉刷新与拖拽都挂在这棵子树里） */
+const mobileMasonryRef = ref<HTMLElement | null>(null)
+/** 每列的 DOM 元素：每列各挂一个 Sortable，跨列共享 group 才能互相拖拽 */
+const masonryColumnEls = new Map<number, HTMLElement>()
+const setMasonryColumnRef = (el: HTMLElement | null, index: number) => {
+  if (el) masonryColumnEls.set(index, el)
+  else masonryColumnEls.delete(index)
+}
 let sortableGrid: ReturnType<typeof Sortable.create> | null = null
-let sortableMobile: ReturnType<typeof Sortable.create> | null = null
-
-// 移动端：侧滑操作（编辑/删除）
-const SWIPE_ACTION_WIDTH = 132 // px
-const openSwipeId = ref<number | null>(null)
-const swipeOffsetMap = ref<Record<number, number>>({})
-const swipeTouch = reactive({
-  id: null as number | null,
-  startX: 0,
-  startY: 0,
-  dragging: false,
-  moved: false,
-})
-
-const closeSwipe = (id?: number) => {
-  const targetId = id ?? openSwipeId.value
-  if (targetId == null) return
-  swipeOffsetMap.value = { ...swipeOffsetMap.value, [targetId]: 0 }
-  if (openSwipeId.value === targetId) openSwipeId.value = null
-}
-
-const openSwipe = (id: number) => {
-  openSwipeId.value = id
-  swipeOffsetMap.value = { ...swipeOffsetMap.value, [id]: -SWIPE_ACTION_WIDTH }
-}
-
-const shouldDisableSwipe = () => {
-  if (!isMobile.value) return true
-  if (isSorting.value) return true
-  if (isDragging.value) return true
-  if (pullDistance.value > 0) return true
-  return false
-}
-
-const onCardTouchStart = (e: TouchEvent, id: number) => {
-  if (shouldDisableSwipe()) return
-  const target = e.target as HTMLElement | null
-  if (target?.closest?.('.mobile-drag-handle')) return
-  const t = e.touches?.[0]
-  if (!t) return
-
-  if (openSwipeId.value != null && openSwipeId.value !== id) {
-    closeSwipe(openSwipeId.value)
-  }
-
-  swipeTouch.id = id
-  swipeTouch.startX = t.clientX
-  swipeTouch.startY = t.clientY
-  swipeTouch.dragging = false
-  swipeTouch.moved = false
-
-  if (swipeOffsetMap.value[id] == null) {
-    swipeOffsetMap.value = { ...swipeOffsetMap.value, [id]: openSwipeId.value === id ? -SWIPE_ACTION_WIDTH : 0 }
-  }
-}
-
-const onCardTouchMove = (e: TouchEvent) => {
-  if (shouldDisableSwipe()) return
-  const id = swipeTouch.id
-  if (id == null) return
-  const t = e.touches?.[0]
-  if (!t) return
-
-  const dx = t.clientX - swipeTouch.startX
-  const dy = t.clientY - swipeTouch.startY
-
-  if (!swipeTouch.dragging) {
-    const absX = Math.abs(dx)
-    const absY = Math.abs(dy)
-    if (absX < 10) return
-    if (absX <= absY + 6) return
-    swipeTouch.dragging = true
-  }
-
-  swipeTouch.moved = true
-  if (e.cancelable) e.preventDefault()
-
-  const base = openSwipeId.value === id ? -SWIPE_ACTION_WIDTH : 0
-  let nextOffset = base + dx
-  nextOffset = Math.min(0, Math.max(-SWIPE_ACTION_WIDTH, nextOffset))
-  swipeOffsetMap.value = { ...swipeOffsetMap.value, [id]: nextOffset }
-}
-
-const onCardTouchEnd = () => {
-  const id = swipeTouch.id
-  if (id == null) return
-
-  if (swipeTouch.dragging) {
-    const offset = swipeOffsetMap.value[id] ?? 0
-    if (offset <= -SWIPE_ACTION_WIDTH / 2) {
-      openSwipe(id)
-    } else {
-      closeSwipe(id)
-    }
-  }
-
-  swipeTouch.id = null
-  swipeTouch.dragging = false
-}
-
-const handleMobileCardClick = async (ipId: number) => {
-  if (swipeTouch.moved) {
-    swipeTouch.moved = false
-    return
-  }
-
-  if (openSwipeId.value === ipId) {
-    closeSwipe(ipId)
-    return
-  }
-
-  await toggleExpand(ipId)
-}
-
-const getSwipeContentStyle = (id: number) => {
-  const offset = swipeOffsetMap.value[id] ?? (openSwipeId.value === id ? -SWIPE_ACTION_WIDTH : 0)
-  return {
-    transform: `translateX(${offset}px)`,
-    transition: swipeTouch.id === id && swipeTouch.dragging ? 'none' : 'transform 0.22s ease',
-  }
-}
+let sortableMasonryColumns: ReturnType<typeof Sortable.create>[] = []
 
 // 弹窗宽度计算
 const dialogWidth = computed(() => {
@@ -1656,7 +1387,6 @@ const handleResetFilters = () => {
 const ipList = ref<IP[]>([])
 const characterMap = ref<Record<number, Character[]>>({})
 const characterLoadingMap = ref<Record<number, boolean>>({})
-const expandedIPs = ref<number[]>([])
 
 // 排序状态管理：默认（手动拖拽）/ 名称 / 类型 / 角色数，同一列再次点击切换升降序
 const sortState = ref<{ prop: '' | 'name' | 'subject_type' | 'character_count', order: '' | 'ascending' | 'descending' }>({
@@ -1721,154 +1451,23 @@ const sortedIpList = computed(() => {
   })
 })
 
-type MobileStickyState = {
-  top: number
-  left: number
-  width: number
-  height: number
-}
-
-const activeStickyIPId = ref<number | null>(null)
-const stickyHeaderState = ref<Record<number, MobileStickyState>>({})
-let mobileStickyRaf: number | null = null
-
-const resetMobileStickyHeader = () => {
-  activeStickyIPId.value = null
-  stickyHeaderState.value = {}
-}
-
-const getMobileStickyTopOffset = () => {
-  const navbar = document.querySelector<HTMLElement>('.navbar')
-  const navBottom = navbar?.getBoundingClientRect().bottom ?? 64
-  return Math.max(64, Math.ceil(navBottom)) + 8
-}
-
-const updateMobileStickyHeader = () => {
-  if (!isMobile.value || isSorting.value || expandedIPs.value.length === 0) {
-    resetMobileStickyHeader()
-    return
-  }
-
-  const top = getMobileStickyTopOffset()
-  const expandedIds = new Set(expandedIPs.value)
-  const expandedCards = Array.from(
-    document.querySelectorAll<HTMLElement>('.mobile-view-inner .ip-card-item.is-expanded[data-ip-id]')
-  )
-  const nextStates: Record<number, MobileStickyState> = {}
-  let nextActiveId: number | null = null
-
-  for (const card of expandedCards) {
-    const id = Number(card.dataset.ipId)
-    if (!Number.isFinite(id) || !expandedIds.has(id)) continue
-
-    const header = card.querySelector<HTMLElement>('.ip-card-sticky-shell')
-    if (!header) continue
-
-    const cardRect = card.getBoundingClientRect()
-    const headerHeight = header.offsetHeight || header.getBoundingClientRect().height
-
-    if (cardRect.top > top || cardRect.bottom <= top + headerHeight) continue
-
-    nextStates[id] = {
-      top,
-      left: Math.round(cardRect.left),
-      width: Math.round(cardRect.width),
-      height: Math.ceil(headerHeight),
-    }
-    nextActiveId = id
-  }
-
-  applyMobileStickyState(nextActiveId, nextStates)
-}
-
-const isSameMobileStickyState = (
-  current: Record<number, MobileStickyState>,
-  next: Record<number, MobileStickyState>
-) => {
-  const currentKeys = Object.keys(current)
-  const nextKeys = Object.keys(next)
-  if (currentKeys.length !== nextKeys.length) return false
-
-  return nextKeys.every((key) => {
-    const id = Number(key)
-    const a = current[id]
-    const b = next[id]
-    return !!a && !!b && a.top === b.top && a.left === b.left && a.width === b.width && a.height === b.height
-  })
-}
-
-const applyMobileStickyState = (nextActiveId: number | null, nextStates: Record<number, MobileStickyState>) => {
-  if (activeStickyIPId.value !== nextActiveId) {
-    activeStickyIPId.value = nextActiveId
-  }
-
-  if (!isSameMobileStickyState(stickyHeaderState.value, nextStates)) {
-    stickyHeaderState.value = nextStates
-  }
-}
-
-const queueUpdateMobileStickyHeader = () => {
-  if (typeof window === 'undefined') return
-  if (mobileStickyRaf != null) return
-
-  mobileStickyRaf = window.requestAnimationFrame(() => {
-    mobileStickyRaf = null
-    updateMobileStickyHeader()
-  })
-}
-
-const getMobileStickyShellStyle = (ipId: number): CSSProperties | undefined => {
-  const state = stickyHeaderState.value[ipId]
-  if (!state) return undefined
-
-  return {
-    position: 'fixed',
-    top: `${state.top}px`,
-    left: `${state.left}px`,
-    width: `${state.width}px`,
-    transform: 'none',
-  }
-}
-
-const getMobileStickyCardStyle = (ipId: number): CSSProperties | undefined => {
-  const state = stickyHeaderState.value[ipId]
-  if (!state) return undefined
-
-  return {
-    '--mobile-sticky-shell-height': `${state.height}px`,
-  } as CSSProperties
-}
-
-watch(
-  () => sortedIpList.value.map((x) => x.id).join(','),
-  () => {
-    // 筛选/刷新导致列表变化时，关闭已打开的侧滑，避免残留偏移
-    if (openSwipeId.value != null) closeSwipe(openSwipeId.value)
-  }
-)
-
-watch(
-  () => [
-    isMobile.value,
-    isSorting.value,
-    expandedIPs.value.join(','),
-    sortedIpList.value.map((x) => x.id).join(','),
-  ],
-  () => {
-    nextTick(() => queueUpdateMobileStickyHeader())
-  },
-  { flush: 'post' }
-)
+/**
+ * 移动端：把当前列表按原顺序拆成左右两列。
+ * 与云展柜「谷仓」一致——各列独立纵向排列，封面比例不同就自然错落，
+ * 不做高度均衡（封面原始比例未知，均衡需要先量尺寸，收益不抵复杂度）。
+ */
+const mobileIPColumns = computed(() => [
+  sortedIpList.value.filter((_, index) => index % 2 === 0),
+  sortedIpList.value.filter((_, index) => index % 2 === 1),
+])
 
 const destroySortables = () => {
   if (sortableGrid) {
     sortableGrid.destroy()
     sortableGrid = null
   }
-  if (sortableMobile) {
-    sortableMobile.destroy()
-    sortableMobile = null
-  }
+  sortableMasonryColumns.forEach((instance) => instance.destroy())
+  sortableMasonryColumns = []
 }
 
 const handleRowReorder = async (oldIndex: number, newIndex: number) => {
@@ -1910,6 +1509,69 @@ const handleRowReorder = async (oldIndex: number, newIndex: number) => {
   }
 }
 
+/**
+ * 两列瀑布流的拖拽落位：Sortable 会把卡片挪到新位置（可能跨列），
+ * 这里按卡片的实际矩形「先上后下、先左后右」还原成一条线性顺序再写回。
+ * 这样左侧第 1 张 → 右侧第 1 张 → 左侧第 2 张……与奇偶分列的阅读顺序一致。
+ */
+const collectMasonryOrder = () => {
+  const cards = Array.from(
+    document.querySelectorAll<HTMLElement>('.mp-masonry .ip-mobile-card[data-ip-id]')
+  )
+  const measured = cards
+    .map((card) => {
+      const rect = card.getBoundingClientRect()
+      return {
+        id: Number(card.dataset.ipId),
+        top: rect.top,
+        left: rect.left,
+      }
+    })
+    .filter((item) => Number.isFinite(item.id))
+
+  measured.sort((a, b) => {
+    // 同一行容差 8px：两列卡片高度不同，避免轻微的 top 差异把左右顺序打乱
+    if (Math.abs(a.top - b.top) > 8) return a.top - b.top
+    return a.left - b.left
+  })
+
+  return measured.map((item) => item.id)
+}
+
+const handleMasonryReorder = async () => {
+  if (sortState.value.prop) {
+    ElMessage.warning('请切换回「默认」排序后再进行拖拽排序')
+    await fetchIPList(true)
+    return
+  }
+
+  const ids = collectMasonryOrder()
+  if (ids.length < 2) return
+
+  const byId = new Map(ipList.value.map((item) => [item.id, item]))
+  const list = ids.map((id) => byId.get(id)).filter((item): item is IP => Boolean(item))
+  if (list.length !== ipList.value.length) {
+    // DOM 与数据不一致（渲染中途被打断等）：直接以服务端为准重建
+    await fetchIPList(true)
+    return
+  }
+
+  const items = list.map((item, index) => ({ id: item.id, order: index * 10 }))
+  const orderMap = new Map(items.map((item) => [item.id, item.order]))
+  ipList.value = list.map((item) => ({ ...item, order: orderMap.get(item.id) ?? item.order }))
+
+  await nextTick()
+  initDragSort()
+
+  try {
+    await batchUpdateIPOrder(items)
+    ElMessage.success('排序已更新')
+  } catch (err: any) {
+    ElMessage.error(err?.message || '排序更新失败，已回滚')
+    await fetchIPList(true)
+  }
+}
+
 const initDragSort = () => {
   destroySortables()
   if (typeof window === 'undefined' || !authStore.isAdmin) return
@@ -1931,19 +1593,24 @@ const initDragSort = () => {
     })
   }
 
-  const mobileListEl = mobileListRef.value
-  if (mobileListEl && !sortState.value.prop) {
-    sortableMobile = Sortable.create(mobileListEl, {
-      handle: '.mobile-drag-handle',
-      draggable: '.ip-card-item',
-      animation: 150,
-      onStart: () => {
-        isSorting.value = true
-      },
-      onEnd: (evt: any) => {
-        isSorting.value = false
-        handleRowReorder(evt.oldIndex ?? 0, evt.newIndex ?? 0)
-      },
+  // 移动端两列瀑布流：每列各建一个 Sortable，共享 group 才能跨列拖拽
+  if (!sortState.value.prop) {
+    masonryColumnEls.forEach((columnEl) => {
+      sortableMasonryColumns.push(
+        Sortable.create(columnEl, {
+          group: { name: 'ip-masonry', pull: true, put: true },
+          handle: '.mobile-drag-handle',
+          draggable: '.ip-mobile-card',
+          animation: 150,
+          onStart: () => {
+            isSorting.value = true
+          },
+          onEnd: () => {
+            isSorting.value = false
+            void handleMasonryReorder()
+          },
+        })
+      )
     })
   }
 }
@@ -2046,6 +1713,45 @@ const openMobileAddSheet = () => {
 
 const handleMobileCreateAction = (command: string) => {
   handleActionCommand(command)
+}
+
+// ==================== 移动端卡片「更多」 ====================
+const openCardActionSheet = (ip: IP) => {
+  cardSheetIP.value = ip
+  cardSheetVisible.value = true
+}
+
+type IPCardSheetAction = {
+  key: string
+  label: string
+  icon: Component
+  tone?: 'default' | 'primary' | 'danger'
+}
+
+/** 面板项按权限动态生成：普通账号看不到任何管理动作 */
+const cardSheetActions = computed<IPCardSheetAction[]>(() => {
+  const ip = cardSheetIP.value
+  if (!ip) return []
+
+  const actions: IPCardSheetAction[] = []
+  if (canSyncBGM(ip)) {
+    actions.push({ key: 'sync', label: '从 BGM 更新角色', icon: Refresh, tone: 'primary' })
+  }
+  if (canEditIP(ip)) {
+    actions.push({ key: 'edit', label: '编辑作品', icon: Edit })
+    actions.push({ key: 'remove', label: '删除该作品', icon: Delete, tone: 'danger' })
+  }
+  return actions
+})
+
+const handleCardSheetSelect = (key: string) => {
+  const ip = cardSheetIP.value
+  cardSheetVisible.value = false
+  if (!ip) return
+
+  if (key === 'sync') void handleOpenBGMSync(ip)
+  else if (key === 'edit') void handleEditIP(ip)
+  else if (key === 'remove') void handleDeleteIP(ip)
 }
 
 // ==================== 封面补齐（Bangumi 条目图） ====================
@@ -2212,7 +1918,6 @@ const fetchIPList = async (force = false) => {
 
     ipList.value = filtered
     characterMap.value = {}
-    expandedIPs.value = []
     await nextTick()
     initDragSort()
     // 进页面后静默补齐缺失封面（仅管理员；后端按 cover_checked_at 节流）
@@ -2247,19 +1952,6 @@ const fetchIPCharacters = async (ipId: number) => {
   } finally {
     characterLoadingMap.value[ipId] = false
   }
-}
-
-const toggleExpand = async (ipId: number) => {
-  if (expandedIPs.value.includes(ipId)) {
-    expandedIPs.value = []
-    resetMobileStickyHeader()
-    return
-  }
-
-  expandedIPs.value = [ipId]
-  await fetchIPCharacters(ipId)
-  await nextTick()
-  queueUpdateMobileStickyHeader()
 }
 
 // ==================== 桌面端角色抽屉 ====================
@@ -2401,7 +2093,8 @@ const handleSubmitIP = async () => {
       }
       if (isEditIP.value && editingIPId.value) {
         await updateIP(editingIPId.value, data)
-        if (expandedIPs.value.includes(editingIPId.value)) {
+        // 抽屉正开着这部作品时，封面/资料变更后同步刷新它的角色列表
+        if (drawerIPId.value === editingIPId.value) {
           delete characterMap.value[editingIPId.value]
           await fetchIPCharacters(editingIPId.value)
         }
@@ -2585,7 +2278,6 @@ const handleSubmitCharacter = async () => {
           setIPCharacterCount(newIpId, (ipList.value.find((x) => x.id === newIpId)?.character_count || 0) + 1)
         }
         await fetchIPCharacters(newIpId)
-        expandedIPs.value = [newIpId]
       }
       ElMessage.success('保存成功')
       characterDialogVisible.value = false
@@ -3309,62 +3001,6 @@ const handleBGMSyncClose = () => {
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
 }
 
-.character-grid--mobile {
-  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-}
-
-.character-tile {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  background: #fff;
-  border-radius: 10px;
-  border: 1px solid #f2f6fc;
-  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
-}
-
-.character-tile.clickable {
-  cursor: pointer;
-}
-
-.character-tile.clickable:hover {
-  transform: translateY(-1px);
-  border-color: #e6e2ff;
-  box-shadow: 0 6px 16px rgba(142, 125, 255, 0.10);
-}
-
-.tile-avatar {
-  flex-shrink: 0;
-}
-
-.character-name-compact {
-  flex: 1;
-  min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  color: #303133;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.tile-delete-btn {
-  position: absolute;
-  right: 6px;
-  top: 50%;
-  transform: translateY(-50%);
-  padding: 4px;
-  height: auto;
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.9);
-}
-
-.tile-delete-btn:hover {
-  background: rgba(255, 255, 255, 1);
-}
-
 .character-row {
   display: flex;
   justify-content: space-between;
@@ -3452,492 +3088,26 @@ const handleBGMSyncClose = () => {
   position: relative;
 }
 
-.mobile-view-inner {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+/* 移动端两列瀑布流：封面按原始比例自适应，两列各自纵向排布，比例不同自然错落 */
+.mp-masonry-summary {
+  margin: 0 2px 8px;
+  font-size: 12px;
+  color: var(--text-muted, #8d86b8);
+}
+
+.mp-masonry {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: start;
   padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 
-.ip-card-item {
-  background: rgba(255, 255, 255, 0.96);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow:
-    0 10px 28px -20px rgba(17, 24, 39, 0.36),
-    0 3px 10px -8px rgba(212, 175, 55, 0.18);
-  border: 1px solid rgba(212, 175, 55, 0.12);
-  transition: transform var(--transition-fast), box-shadow var(--transition-fast), border-color var(--transition-fast);
-}
-
-.ip-card-item.is-expanded {
-  overflow: visible;
-  border-color: rgba(212, 175, 55, 0.34);
-  box-shadow:
-    0 14px 34px -22px rgba(17, 24, 39, 0.38),
-    0 4px 16px rgba(212, 175, 55, 0.12);
-}
-
-.ip-card-item.is-sticky-active {
-  padding-top: var(--mobile-sticky-shell-height, 0px);
-}
-
-.ip-card-sticky-shell {
-  position: relative;
-  z-index: 1;
-  background: #fff;
-  border-radius: 16px;
-}
-
-.ip-card-item.is-expanded > .ip-card-sticky-shell {
-  z-index: 20;
-  border-radius: 16px 16px 0 0;
-  box-shadow:
-    0 12px 28px -22px rgba(17, 24, 39, 0.48),
-    0 1px 0 rgba(212, 175, 55, 0.16);
-}
-
-.ip-card-item.is-expanded > .ip-card-sticky-shell.is-stuck {
-  z-index: 990;
-  border: 1px solid rgba(212, 175, 55, 0.28);
-  border-radius: 16px;
-  overflow: hidden;
-  box-shadow:
-    0 14px 30px -20px rgba(17, 24, 39, 0.48),
-    0 4px 14px -10px rgba(212, 175, 55, 0.32);
-}
-
-.mobile-view-inner.is-sorting .ip-card-item.is-expanded > .ip-card-sticky-shell {
-  position: relative;
-  top: auto;
-  left: auto;
-  width: auto;
-  transform: none !important;
-  z-index: 1;
-}
-
-.ip-card-item.is-expanded > .ip-card-sticky-shell .ip-swipe-item {
-  border-radius: 16px 16px 0 0;
-}
-
-.ip-swipe-item {
-  position: relative;
-  width: 100%;
-  overflow: hidden;
-  border-radius: 16px;
-}
-
-.swipe-actions {
-  position: absolute;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  width: 132px;
+.mp-masonry-column {
   display: flex;
   flex-direction: column;
-  border-left: 1px solid rgba(212, 175, 55, 0.12);
-  background: linear-gradient(180deg, rgba(246, 244, 255, 0.98) 0%, rgba(234, 205, 163, 0.28) 100%);
-}
-
-.swipe-action-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: none;
-  background: transparent;
-  color: var(--accent-purple-dark);
-  font-size: 13px;
-  font-weight: 800;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  transition: background var(--transition-fast), transform var(--transition-fast);
-}
-
-.swipe-action-btn .el-icon {
-  font-size: 16px;
-}
-
-.swipe-action-btn.edit {
-  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
-}
-
-.swipe-action-btn.sync {
-  color: var(--accent-purple-dark);
-  border-bottom: 1px solid rgba(162, 155, 254, 0.18);
-}
-
-.swipe-action-btn.delete {
-  color: #e5484d;
-}
-
-.swipe-action-btn.sync {
-  color: var(--accent-purple-dark);
-  border-bottom: 1px solid rgba(162, 155, 254, 0.18);
-}
-
-.swipe-action-btn:active {
-  background: rgba(162, 155, 254, 0.12);
-}
-
-.swipe-action-btn.delete:active {
-  background: rgba(245, 108, 108, 0.08);
-}
-
-/* ==================== BGM 增量同步弹窗补充样式 ==================== */
-.bgm-sync-alert {
-  margin-bottom: 12px;
-}
-
-.bgm-sync-notice {
-  margin-bottom: 12px;
-}
-
-.bgm-sync-list .bgm-sync-item {
-  align-items: center;
-  gap: 12px;
-}
-
-.bgm-sync-item.action-matched {
-  opacity: 0.6;
-}
-
-.bgm-sync-item.action-local_only {
-  opacity: 0.55;
-  background: rgba(0, 0, 0, 0.02);
-}
-
-.bgm-sync-item.action-skipped_duplicate {
-  opacity: 0.55;
-}
-
-.bgm-sync-item:not(.selectable) {
-  cursor: default;
-}
-
-.bgm-sync-item .sync-fixed-icon {
-  width: 16px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-secondary, #909399);
-}
-
-.bgm-sync-item.action-matched .sync-fixed-icon {
-  color: var(--el-color-success, #67c23a);
-}
-
-.bgm-sync-item.action-skipped_duplicate .sync-fixed-icon {
-  color: var(--el-color-warning, #e6a23c);
-}
-
-.swipe-content {
-  position: relative;
-  z-index: 1;
-  background: #fff;
-  will-change: transform;
-  overflow: hidden;
-}
-
-.ip-card-item:active {
-  transform: scale(0.98);
-}
-
-.ip-card-item.is-expanded:active {
-  transform: none;
-}
-
-.card-main {
-  position: relative;
-  min-height: 96px;
-  padding: 16px 13px 15px 18px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 78px;
-  align-items: center;
-  gap: 14px;
-  cursor: pointer;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.ip-card-spine {
-  position: absolute;
-  top: 12px;
-  bottom: 12px;
-  left: 0;
-  width: 4px;
-  border-radius: 0 999px 999px 0;
-  background: linear-gradient(180deg, var(--primary-gold), var(--accent-purple));
-  box-shadow: 0 0 0 3px rgba(212, 175, 55, 0.08);
-}
-
-.card-main:focus,
-.card-main:active {
-  outline: none;
-}
-
-.ip-card-item .card-info {
+  gap: 10px;
   min-width: 0;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
-}
-
-.ip-card-item .name-row {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-}
-
-.ip-card-item .meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  min-width: 0;
-}
-
-.type-row {
-  margin-bottom: 8px;
-}
-
-.ip-card-item .name-text {
-  margin: 0;
-  min-width: 0;
-  flex: 1;
-  font-size: 16px;
-  line-height: 1.28;
-  color: var(--text-dark);
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.subject-type-pill {
-  flex: 0 1 auto;
-  max-width: 100%;
-  min-height: 22px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(212, 175, 55, 0.18);
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--primary-gold-dark);
-  font-size: 11px;
-  font-weight: 800;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.bgm-bound-icon-mobile {
-  color: #67c23a;
-  margin-left: 6px;
-  flex-shrink: 0;
-  opacity: 0.85;
-}
-
-.card-actions-panel {
-  align-self: stretch;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  justify-content: center;
-  gap: 8px;
-  min-width: 0;
-}
-
-.ip-card-item .character-count-chip {
-  flex: 0 0 auto;
-  min-width: 62px;
-  height: 28px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 4px;
-  padding: 3px 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(162, 155, 254, 0.24);
-  background: rgba(162, 155, 254, 0.12);
-  color: var(--accent-purple-dark);
-  box-shadow: 0 5px 14px -12px rgba(162, 155, 254, 0.9);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-}
-
-.character-count-chip .count-value {
-  font-size: 13px;
-  line-height: 1;
-  font-weight: 800;
-}
-
-.character-count-chip .count-label {
-  font-size: 10px;
-  line-height: 1;
-  font-weight: 800;
-  color: rgba(90, 75, 255, 0.72);
-}
-
-.card-control-row {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
-.ip-card-item .keyword-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-width: 0;
-  max-height: 48px;
-  overflow: hidden;
-}
-
-.ip-card-item .mini-tag {
-  font-size: 11px;
-  line-height: 1.25;
-  background: rgba(162, 155, 254, 0.1);
-  color: var(--accent-purple-dark);
-  padding: 3px 8px;
-  border-radius: 999px;
-  border: 1px solid rgba(162, 155, 254, 0.2);
-  font-weight: 700;
-}
-
-.ip-card-item .no-tag {
-  font-size: 12px;
-  color: var(--text-lighter);
-  font-style: italic;
-}
-
-.card-arrow {
-  color: #c0c4cc;
-  transition: transform 0.3s;
-}
-
-.card-arrow .rotated {
-  transform: rotate(90deg);
-}
-
-.drag-handle,
-.card-drag-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #909399;
-  cursor: grab;
-  user-select: none;
-}
-
-.drag-handle {
-  width: 100%;
-  padding: 6px 0;
-}
-
-.drag-handle:hover,
-.card-drag-handle:hover {
-  color: #606266;
-}
-
-.drag-handle svg,
-.card-drag-handle svg {
-  pointer-events: none;
-}
-
-.card-drag-handle {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  border-radius: 999px;
-  background: rgba(162, 155, 254, 0.06);
-  border: 1px solid rgba(162, 155, 254, 0.18);
-  color: rgba(90, 75, 255, 0.72);
-  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
-
-.mobile-drag-handle {
-  touch-action: none;
-}
-
-.mobile-expand-indicator {
-  width: 30px;
-  height: 30px;
-  flex: 0 0 30px;
-  padding: 0;
-  border: 0;
-  border-radius: 999px;
-  background: rgba(212, 175, 55, 0.1);
-  color: var(--primary-gold-dark);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform var(--transition-fast), background var(--transition-fast);
-}
-
-.card-drag-handle:active {
-  background: rgba(162, 155, 254, 0.12);
-  border-color: rgba(162, 155, 254, 0.3);
-  color: var(--accent-purple-dark);
-}
-
-.mobile-expand-indicator:active {
-  background: rgba(212, 175, 55, 0.18);
-}
-
-.ip-card-item.is-expanded .mobile-expand-indicator {
-  transform: rotate(90deg);
-  background: rgba(212, 175, 55, 0.16);
-}
-
-/* 角色列表展开区域（移动端） */
-.character-list {
-  padding: 12px 14px 14px 18px;
-  background:
-    linear-gradient(180deg, rgba(245, 245, 247, 0.74), rgba(255, 255, 255, 0.92));
-  border-top: 1px solid rgba(212, 175, 55, 0.12);
-  border-radius: 0 0 16px 16px;
-}
-
-.character-list-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-dark);
-}
-
-.mobile-expand-enter-active,
-.mobile-expand-leave-active {
-  overflow: hidden;
-  transition: opacity 0.22s ease, transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), max-height 0.26s ease;
-  max-height: 420px;
-}
-
-.mobile-expand-enter-from,
-.mobile-expand-leave-to {
-  opacity: 0;
-  transform: translateY(-6px);
-  max-height: 0;
-}
-
-@media (max-width: 768px) {
-  .character-grid--mobile {
-    gap: 8px;
-  }
-  .character-tile {
-    padding: 9px 10px;
-    border-radius: 12px;
-    border-color: rgba(212, 175, 55, 0.1);
-    box-shadow: 0 6px 14px -12px rgba(17, 24, 39, 0.26);
-  }
-  .character-name-compact {
-    font-size: 13px;
-  }
 }
 
 .character-card {
@@ -4105,26 +3275,9 @@ const handleBGMSyncClose = () => {
 }
 
 @media (max-width: 380px) {
-  .card-main {
-    grid-template-columns: minmax(0, 1fr) 70px;
-    gap: 10px;
-    padding-right: 11px;
-  }
-
-  .ip-card-item .character-count-chip {
-    min-width: 56px;
-    padding-inline: 7px;
-  }
-
-  .card-control-row {
-    gap: 6px;
-  }
-
-  .card-drag-handle,
-  .mobile-expand-indicator {
-    width: 28px;
-    height: 28px;
-    flex-basis: 28px;
+  .mp-masonry,
+  .mp-masonry-column {
+    gap: 8px;
   }
 }
 
@@ -5801,19 +4954,5 @@ const handleBGMSyncClose = () => {
     box-shadow: 0 1px 4px rgba(142, 125, 255, 0.18) !important;
   }
 
-  .character-grid--mobile {
-    gap: 8px;
-  }
-
-  .character-tile {
-    padding: 9px 10px;
-    border-radius: 12px;
-    border-color: rgba(212, 175, 55, 0.1);
-    box-shadow: 0 6px 14px -12px rgba(17, 24, 39, 0.26);
-  }
-
-  .character-name-compact {
-    font-size: 13px;
-  }
 }
 </style>

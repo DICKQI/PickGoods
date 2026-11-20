@@ -31,64 +31,60 @@ describe('IPCharacterManagement mobile layout', () => {
     expect(source).not.toContain('has-index-bar')
   })
 
-  it('keeps the mobile character count as a labeled metric separate from card controls', () => {
-    expect(source).toContain('class="card-actions-panel"')
-    expect(source).toContain('class="character-count-chip"')
-    expect(source).toContain('class="count-label">角色</span>')
-    expect(source).toContain('class="card-control-row"')
-    expect(source).not.toContain('character-count-badge')
+  it('renders the mobile card with a labeled character count separate from the controls', () => {
+    const cardSource = readFileSync(join(process.cwd(), 'src/components/IPWorkCardMobile.vue'), 'utf-8')
+
+    expect(cardSource).toContain('class="ip-mobile-count"')
+    expect(cardSource).toContain('class="ip-mobile-count-value"')
+    expect(cardSource).toContain('class="ip-mobile-count-label">角色</span>')
+    expect(cardSource).toContain('class="ip-mobile-actions"')
+    expect(cardSource).not.toContain('character-count-badge')
   })
 
-  it('keeps expanded mobile IP headers outside the swipe-transformed content', () => {
-    const stickyShellStart = source.indexOf('class="ip-card-sticky-shell"')
-    const characterListComment = source.indexOf('<!-- 展开的角色列表 -->', stickyShellStart)
-    const stickyHeaderTemplate = source.slice(stickyShellStart, characterListComment)
+  it('renders the mobile list as a two-column cover masonry', () => {
+    const cardSource = readFileSync(join(process.cwd(), 'src/components/IPWorkCardMobile.vue'), 'utf-8')
+    const masonryRule = cssRuleBlock(source, '.mp-masonry {')
 
-    expect(source).toContain(':class="{ \'is-sorting\': isSorting }"')
-    expect(source).toContain(':data-ip-id="item.id"')
-    expect(stickyShellStart).toBeGreaterThan(-1)
-    expect(characterListComment).toBeGreaterThan(stickyShellStart)
-    expect(stickyHeaderTemplate).toContain('class="swipe-content"')
-    expect(stickyHeaderTemplate).not.toContain('class="character-list"')
-    expect(source.indexOf('class="character-list"', characterListComment)).toBeGreaterThan(characterListComment)
+    expect(source).toContain('class="mp-masonry"')
+    expect(source).toContain('class="mp-masonry-column"')
+    expect(source).toContain('v-for="(column, columnIndex) in mobileIPColumns"')
+    expect(source).toContain('const mobileIPColumns = computed(() => [')
+    expect(source).toContain('ref="mobileMasonryRef"')
+    expect(source).toContain('<IPWorkCardMobile')
+    // 两列并排 + 每列独立纵向排列，才是瀑布流
+    expect(masonryRule).toContain('grid-template-columns: repeat(2, minmax(0, 1fr));')
+    expect(cssRuleBlock(source, '.mp-masonry-column {')).toContain('flex-direction: column;')
+    // 封面按原始比例：不写死方图、不裁剪
+    expect(cardSource).toContain('class="ip-mobile-cover-img"')
+    expect(cssRuleBlock(cardSource, '.ip-mobile-cover-img {')).toContain('height: auto;')
+    expect(cssRuleBlock(cardSource, '.ip-mobile-cover-img {')).not.toContain('object-fit: cover')
+    // 旧的整行列表 / 吸顶 / 左滑结构彻底下线
+    expect(source).not.toContain('ip-card-sticky-shell')
+    expect(source).not.toContain('ip-swipe-item')
+    expect(source).not.toContain('openSwipeId')
+    expect(source).not.toContain('class="mobile-view-inner"')
   })
 
-  it('sticks the original expanded mobile IP header without rendering a mirror card', () => {
-    const stickyRuleStart = source.indexOf('.ip-card-item.is-expanded > .ip-card-sticky-shell')
-    const stickyRuleEnd = source.indexOf('}', stickyRuleStart)
-    const stickyRule = source.slice(stickyRuleStart, stickyRuleEnd)
-    const cardStart = source.indexOf('class="ip-card-item"')
-    const cardEnd = source.indexOf('class="ip-card-sticky-shell"', cardStart)
-    const cardTemplate = source.slice(cardStart, cardEnd)
-    const stickyShellStart = source.indexOf('class="ip-card-sticky-shell"')
-    const stickyShellEnd = source.indexOf('class="ip-swipe-item"', stickyShellStart)
-    const stickyShellTemplate = source.slice(stickyShellStart, stickyShellEnd)
-
-    expect(source).not.toContain('mobile-sticky-ip-header')
-    expect(source).not.toContain('const activeStickyIP = computed')
-    expect(source).toContain("window.addEventListener('scroll', queueUpdateMobileStickyHeader")
-    expect(source).toContain('const activeStickyIPId = ref<number | null>(null)')
-    expect(source).toContain('const stickyHeaderState = ref<Record<number, MobileStickyState>>({})')
-    expect(source).toContain('const getMobileStickyCardStyle = (ipId: number)')
-    expect(source).toContain('const getMobileStickyShellStyle = (ipId: number)')
-    expect(source).toContain("position: 'fixed'")
-    expect(source).toContain("'--mobile-sticky-shell-height'")
-    expect(cardTemplate).toContain("'is-sticky-active': activeStickyIPId === item.id")
-    expect(cardTemplate).toContain(':style="getMobileStickyCardStyle(item.id)"')
-    expect(stickyShellTemplate).toContain(":class=\"{ 'is-stuck': activeStickyIPId === item.id }\"")
-    expect(stickyShellTemplate).toContain(':style="getMobileStickyShellStyle(item.id)"')
-    expect(stickyRuleStart).toBeGreaterThan(-1)
-    expect(stickyRule).not.toContain('will-change: transform;')
+  it('drags cards across the two masonry columns and rebuilds a row-major order', () => {
+    expect(source).toContain("group: { name: 'ip-masonry', pull: true, put: true }")
+    expect(source).toContain("draggable: '.ip-mobile-card'")
+    expect(source).toContain("handle: '.mobile-drag-handle'")
+    expect(source).toContain('const collectMasonryOrder = () =>')
+    expect(source).toContain('const handleMasonryReorder = async () =>')
+    expect(source).toContain("querySelectorAll<HTMLElement>('.mp-masonry .ip-mobile-card[data-ip-id]')")
+    expect(source).toContain('Math.abs(a.top - b.top) > 8')
+    expect(source).toContain('batchUpdateIPOrder(items)')
   })
 
-  it('keeps mobile expansion and the PC drawer single-selection', () => {
-    expect(source).toContain('expandedIPs.value = [ipId]')
-    expect(source).toContain('expandedIPs.value = [newIpId]')
-    expect(source).not.toContain('expandedIPs.value.push(ipId)')
-    expect(source).not.toContain('expandedIPs.value.push(newIpId)')
-    // PC 端已改为卡片 + 抽屉：不再有表格展开，抽屉同一时间只展示一个作品
+  it('opens the single character drawer for a tapped card instead of expanding in place', () => {
+    // 移动端不再就地展开角色列表（瀑布局里会撑破列宽），统一走 btt 抽屉
+    expect(source).not.toContain('expandedIPs')
+    expect(source).not.toContain('handleMobileCardClick')
     expect(source).not.toContain('handleTableExpandChange')
+    expect(source).toContain('@open="openCharactersDrawer(item)"')
+    expect(source).toContain('const openCharactersDrawer = async (ip: IP) =>')
     expect(source).toContain('drawerIPId.value = ip.id')
+    expect(source).toContain('const drawerIPId = ref<number | null>(null)')
   })
 
   it('uses a compact mobile create button with a bottom action sheet', () => {

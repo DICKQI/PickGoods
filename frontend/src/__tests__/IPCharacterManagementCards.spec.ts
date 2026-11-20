@@ -138,12 +138,14 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain('bgmSelectedSubject.value?.image || null')
   })
 
-  it('keeps the mobile card list untouched', () => {
+  it('rebuilds the mobile list as a cover masonry', () => {
     expect(source).toContain('class="mobile-view pull-refresh-wrapper"')
-    expect(source).toContain('class="ip-card-item"')
-    expect(source).toContain('class="card-actions-panel"')
-    expect(source).toContain('class="character-count-chip"')
-    expect(source).toContain('class="mobile-view-inner"')
+    expect(source).toContain('class="mp-masonry"')
+    expect(source).toContain('class="mp-masonry-column"')
+    expect(source).toContain('<IPWorkCardMobile')
+    // 旧的整行列表结构下线
+    expect(source).not.toContain('class="ip-card-item"')
+    expect(source).not.toContain('class="mobile-view-inner"')
   })
 
   it('degrades quietly when the backend is too old for the cover endpoints', () => {
@@ -180,8 +182,13 @@ describe('IPCharacterManagement PC card grid', () => {
     expect(source).toContain(':can-edit="canEditIP(item)"')
     expect(source).toContain(':can-sync="canSyncBGM(item)"')
     expect(source).toContain(':can-manage="drawerIP ? canEditIP(drawerIP) : false"')
-    expect(source).toContain('v-if="canEditIP(item)"')
-    expect(source).toContain('v-if="canEditIP(item) || canSyncBGM(item)"')
+    // 移动端卡片把管理权限交给组件的 canEdit/canSync，卡片自己决定是否露出「更多」
+    const mobileCardSource = readFileSync(join(process.cwd(), 'src/components/IPWorkCardMobile.vue'), 'utf-8')
+    expect(mobileCardSource).toContain('canEdit?: boolean')
+    expect(mobileCardSource).toContain('canSync?: boolean')
+    expect(mobileCardSource).toContain('v-if="canEdit || canSync"')
+    expect(source).toContain(':can-edit="canEditIP(item)"')
+    expect(source).toContain(':can-sync="canSyncBGM(item)"')
     expect(source).toContain('v-if="canCreateIP"')
 
     // 角色弹窗只列本人可写的 IP，并用 ipLabel 区分同名
@@ -190,7 +197,10 @@ describe('IPCharacterManagement PC card grid', () => {
 
     // 拖拽排序仍然只给管理员（batch-update-order 是管理员接口）
     expect(source).toContain(':reorderable="!sortState.prop"')
-    expect(source).toContain('class="card-drag-handle mobile-drag-handle" v-if="authStore.isAdmin"')
+    // 拖拽把手挂在各列 Sortable 上，卡片内部再按管理员 + 官方作品收口
+    expect(source).toContain("handle: '.mobile-drag-handle'")
+    expect(mobileCardSource).toContain('v-if="showDragHandle"')
+    expect(mobileCardSource).toContain('props.isAdmin && props.reorderable && !props.ip.user_id')
     expect(source).toContain('if (typeof window === \'undefined\' || !authStore.isAdmin) return')
   })
 })
